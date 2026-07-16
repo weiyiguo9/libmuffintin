@@ -7,7 +7,7 @@
 `libmuffintin` is a memory-safe Rust experimental library for the algebra shared by
 muffin-tin electronic-structure methods.  The long-term target includes
 FP-KKR, (L)APW(+lo), and the LMTO/EMTO/NMTO family; the v0.1 route is LAPW
-first.
+first. Note that this library is not for production DFT calculations, and the API is subject to further changes.  The library is intended to be used as experiments to unify the foudamental muffin-tin basis in electronic structure methods and abstrct the common/heavy relyed functions.
 
 The current M-A/M-B implementation provides:
 
