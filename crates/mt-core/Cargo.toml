@@ -1,0 +1,18 @@
+[package]
+name = "mt-core"
+description = "Conventions and closed-form numerical primitives for muffin-tin methods"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+num-complex.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
