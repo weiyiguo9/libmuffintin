@@ -9,7 +9,7 @@ muffin-tin electronic-structure methods.  The long-term target includes
 FP-KKR, (L)APW(+lo), and the LMTO/EMTO/NMTO family; the v0.1 route is LAPW
 first. Note that this library is not for production DFT calculations, and the API is subject to further changes.  The library is intended to be used as experiments to unify the foudamental muffin-tin basis in electronic structure methods and abstrct the common/heavy relyed functions. Apparantly named after libxc, libpaw, libcint.
 
-The current M-A through M-C foundation provides:
+The current M-A through M-F implementation candidate provides:
 
 - `mt-core`: Hartree/Bohr units, complex and real spherical harmonics,
   SPEX-convention complex Gaunt coefficients, real Gaunt coefficients,
@@ -20,20 +20,23 @@ The current M-A through M-C foundation provides:
   solutions, energy derivatives, local orbitals, radial integral blocks, and
   a separate spherical four-component Dirac bound-core solver;
 - an explicitly reserved valence 4c Dirac interface. Full valence 4c support
-  also needs spinor augmentation and assembly and is not claimed here.
+  also needs spinor augmentation and assembly and is not claimed here;
 - `mt-grid`: typed atom-centred, uniform, interstitial, and stable composite
   quadrature grids, with an optional `rstsr` tensor conversion feature;
 - `mt-sphere`: `(L,M)`-resolved sphere fields and Gaunt-weighted radial matrix
   elements for complex or real harmonics;
 - `mt-io`: independently versioned, human-diffable TOML formats for physical
   snapshots and materialized grid artifacts. The FLEUR converter remains
-  frozen.
+  frozen;
 - `mt-lapw` M-D: SPEX-convention APW boundary matching, explicit Rayleigh and
   site phases, and dense complex overlap assembly through the empty-sphere
-  `S=I` regression.
+  `S=I` regression;
 - `mt-lapw` M-E: SPEX symmetric-Laplacian Hamiltonian assembly, full Hermitian
   muffin-tin blocks for spherical and warped potentials, a `faer`-based
-  overlap-filtered generalized eigensolver, and `(k,band)` reference reports.
+  overlap-filtered generalized eigensolver, and `(k,band)` reference reports;
+- `mt-lapw` M-F: one `[APW][site LO]` basis layout and `P^H(S/H)P` assembly for
+  APW--APW, APW--LO, and LO--LO blocks, plus independent collinear up/down
+  channels without SOC.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.
@@ -54,8 +57,10 @@ recorded in the numbered derivation notes.
 
 ## Scope boundary
 
-This is not yet a self-consistent DFT code. M-E includes APW-only `(H,S)`
-assembly and eigensolving, but local-orbital basis rows and spin-channel drivers
-remain M-F. The real Cu-versus-SPEX one-meV gate also still needs a frozen
+This is a frozen-input LAPW operator engine, not yet a self-consistent DFT code.
+M-F includes local-orbital basis rows and collinear spin-channel drivers, but
+not SCF, SOC, noncollinear spin, occupations, or potential construction. The
+real Cu-versus-SPEX one-meV gate still needs a matching frozen
 potential/basis/eigenvalue fixture; synthetic empty-lattice tests do not replace
-that evidence. Producer-specific FLEUR conversion is intentionally frozen.
+that evidence, so the README overlay and `v0.1` release tag are not yet claimed.
+Producer-specific FLEUR conversion is intentionally frozen.
