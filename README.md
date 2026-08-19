@@ -9,7 +9,7 @@ muffin-tin electronic-structure methods.  The long-term target includes
 FP-KKR, (L)APW(+lo), and the LMTO/EMTO/NMTO family; the v0.1 route is LAPW
 first. Note that this library is not for production DFT calculations, and the API is subject to further changes.  The library is intended to be used as experiments to unify the foudamental muffin-tin basis in electronic structure methods and abstrct the common/heavy relyed functions. Apparantly named after libxc, libpaw, libcint.
 
-The current M-A/M-B implementation provides:
+The current M-A through M-C foundation provides:
 
 - `mt-core`: Hartree/Bohr units, complex and real spherical harmonics,
   SPEX-convention complex Gaunt coefficients, real Gaunt coefficients,
@@ -21,6 +21,13 @@ The current M-A/M-B implementation provides:
   a separate spherical four-component Dirac bound-core solver;
 - an explicitly reserved valence 4c Dirac interface. Full valence 4c support
   also needs spinor augmentation and assembly and is not claimed here.
+- `mt-grid`: typed atom-centred, uniform, interstitial, and stable composite
+  quadrature grids, with an optional `rstsr` tensor conversion feature;
+- `mt-sphere`: `(L,M)`-resolved sphere fields and Gaunt-weighted radial matrix
+  elements for complex or real harmonics;
+- `mt-io`: independently versioned, human-diffable TOML formats for physical
+  snapshots and materialized grid artifacts. The FLEUR converter remains
+  frozen.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.
@@ -32,6 +39,7 @@ the numbered formula derivations are under [`doc/`](doc/).
 ```sh
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
+cargo test -p mt-grid --features rstsr
 ```
 
 The implementation is cross-referenced against FLEUR conventions and
@@ -40,6 +48,7 @@ recorded in the numbered derivation notes.
 
 ## Scope boundary
 
-This is not a self-consistent DFT code.  M-A/M-B stop at conventions and the
-radial engine; LAPW matching, `(H,S)` assembly, eigensolving, snapshot I/O,
-and FLEUR conversion belong to later milestones.
+This is not yet a self-consistent DFT code. M-A through M-C stop at numerical
+conventions, the radial engine, composite grids, sphere algebra, and versioned
+artifacts. LAPW matching, `(H,S)` assembly, and eigensolving are the next
+milestones; producer-specific FLEUR conversion is intentionally frozen.

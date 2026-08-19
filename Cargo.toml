@@ -2,7 +2,10 @@
 resolver = "2"
 members = [
     "crates/mt-core",
+    "crates/mt-grid",
+    "crates/mt-io",
     "crates/mt-radial",
+    "crates/mt-sphere",
 ]
 
 [workspace.package]
