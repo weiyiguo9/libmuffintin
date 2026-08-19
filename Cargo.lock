@@ -278,6 +278,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mt-lapw"
+version = "0.1.0"
+dependencies = [
+ "mt-core",
+ "mt-radial",
+ "num-complex",
+ "thiserror",
+]
+
+[[package]]
 name = "mt-radial"
 version = "0.1.0"
 dependencies = [
