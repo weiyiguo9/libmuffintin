@@ -86,6 +86,35 @@ SPEX, sign-changing/tiny initial data receives no correction and an inferred
 never add an origin contribution. Mesh parameters and this quadrature identity
 are serialized data, not adjustable implementation details.
 
+## Composite-grid convention
+
+Real-space grid positions are Cartesian Bohr and volume weights are Bohr
+cubed. Atom grids use shell-major/angular-minor order; uniform grids use
+lexicographic fractional `(i,j,k)` order with `k` fastest; composite grids use
+stable atom-index order followed by the interstitial. This order is serialized
+and must be preserved by tensor conversions and THC point indices.
+
+For an exponential radial weight `w_i` (which already integrates `dr`) and an
+angular weight `w_a` normalized to `sum_a w_a = 4 pi`, the three-dimensional
+weight is `w_i r_i^2 w_a`. Interstitial midpoint points are rejected using the
+periodic nearest-image distance in the full direct-lattice metric.
+
+## Sphere-field convention
+
+`SphereField` always names either the complex Condon--Shortley or real tesseral
+harmonic basis. Its samples are coefficients of normalized harmonics. Thus a
+constant physical scalar `v` is represented by the `(0,0)` coefficient
+`sqrt(4 pi) v`. A sphere matrix element is the sum of the corresponding Gaunt
+factor times `integral (p_left p_right + Q_left Q_right) V_LM dr`.
+
+## Versioned-artifact convention
+
+The physical-input `SnapshotV1` and the derived `GridArtifactV1` have separate
+format discriminators and version numbers. A grid-layout change does not bump
+the snapshot schema. Both formats explicitly label units and harmonic/Fourier
+conventions. RSTSR conversion is an optional grid consumer boundary; it is not
+canonical storage and is not serialized.
+
 ## Reciprocal lattice and cutoff
 
 Direct and reciprocal primitive vectors obey
