@@ -7,6 +7,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
 mt-core = { path = "../mt-core" }
 mt-radial = { path = "../mt-radial" }
 num-complex.workspace = true

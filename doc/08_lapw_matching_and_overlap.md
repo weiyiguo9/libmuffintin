@@ -101,8 +101,9 @@ M-D requires:
 - value and slope matching residuals no larger than `1e-10`;
 - Hermitian dense `S` for translated spheres and nonzero `k`;
 - an empty-sphere cell yielding the exact plane-wave identity overlap;
-- explicit rejection of mixed-k matrices, inconsistent `lm` counts, and
-  nonsymmetric radial overlap blocks.
+- explicit rejection of mixed-k matrices, missing site blocks, and inconsistent
+  `lm` counts. `RadialOverlapBlock` stores only the three independent entries,
+  so asymmetry is unrepresentable by construction.
 
 The empty-sphere result is the overlap half of the empty-lattice regression.
 Free-electron eigenvalues require the M-E kinetic matrix and are therefore not
