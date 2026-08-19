@@ -153,6 +153,23 @@ step table at `G_max` is not allowed. Consumers should enumerate the basis
 first, form its actual differences when possible, and otherwise use the safe
 double cutoff.
 
+## LAPW plane-wave and matching convention
+
+The interstitial basis is `exp(+i (k+G) dot r) / sqrt(Omega)`. Its complex
+Rayleigh coefficient is `4 pi i^l conj(Y_lm(qhat)) / sqrt(Omega)`, with
+`q=k+G`; expansion about site `R_a` adds `exp(+i q dot R_a)`.
+
+For the physical, unnormalized energy derivative `udot`, APW matching solves
+
+```text
+[ u(R)     udot(R)  ] [A]   [j_l(qR)       ]
+[ u'(R)    udot'(R) ] [B] = [q j_l'(qR)].
+```
+
+SPEX normalizes its stored `udot` column and compensates `B` by `dotnorm`;
+libmuffintin does neither, so both represent the same physical augmented wave.
+The overlap is `Theta_I(G-G')` plus site-resolved `c^H O c` radial blocks.
+
 ## Interstitial kinetic convention: explicit strategy choice
 
 There is no hidden default. `KineticOperatorConvention` must be selected by an

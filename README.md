@@ -28,6 +28,9 @@ The current M-A through M-C foundation provides:
 - `mt-io`: independently versioned, human-diffable TOML formats for physical
   snapshots and materialized grid artifacts. The FLEUR converter remains
   frozen.
+- `mt-lapw` M-D: SPEX-convention APW boundary matching, explicit Rayleigh and
+  site phases, and dense complex overlap assembly through the empty-sphere
+  `S=I` regression.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.
@@ -48,7 +51,7 @@ recorded in the numbered derivation notes.
 
 ## Scope boundary
 
-This is not yet a self-consistent DFT code. M-A through M-C stop at numerical
-conventions, the radial engine, composite grids, sphere algebra, and versioned
-artifacts. LAPW matching, `(H,S)` assembly, and eigensolving are the next
-milestones; producer-specific FLEUR conversion is intentionally frozen.
+This is not yet a self-consistent DFT code. M-D includes LAPW boundary matching
+and overlap assembly, but Hamiltonian assembly, eigensolving, local-orbital
+basis rows, and spin-channel drivers remain later milestones. Producer-specific
+FLEUR conversion is intentionally frozen.

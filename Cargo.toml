@@ -4,6 +4,7 @@ members = [
     "crates/mt-core",
     "crates/mt-grid",
     "crates/mt-io",
+    "crates/mt-lapw",
     "crates/mt-radial",
     "crates/mt-sphere",
 ]
