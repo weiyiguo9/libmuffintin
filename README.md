@@ -31,6 +31,9 @@ The current M-A through M-C foundation provides:
 - `mt-lapw` M-D: SPEX-convention APW boundary matching, explicit Rayleigh and
   site phases, and dense complex overlap assembly through the empty-sphere
   `S=I` regression.
+- `mt-lapw` M-E: SPEX symmetric-Laplacian Hamiltonian assembly, full Hermitian
+  muffin-tin blocks for spherical and warped potentials, a `faer`-based
+  overlap-filtered generalized eigensolver, and `(k,band)` reference reports.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.
@@ -51,7 +54,8 @@ recorded in the numbered derivation notes.
 
 ## Scope boundary
 
-This is not yet a self-consistent DFT code. M-D includes LAPW boundary matching
-and overlap assembly, but Hamiltonian assembly, eigensolving, local-orbital
-basis rows, and spin-channel drivers remain later milestones. Producer-specific
-FLEUR conversion is intentionally frozen.
+This is not yet a self-consistent DFT code. M-E includes APW-only `(H,S)`
+assembly and eigensolving, but local-orbital basis rows and spin-channel drivers
+remain M-F. The real Cu-versus-SPEX one-meV gate also still needs a frozen
+potential/basis/eigenvalue fixture; synthetic empty-lattice tests do not replace
+that evidence. Producer-specific FLEUR conversion is intentionally frozen.

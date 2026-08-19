@@ -194,3 +194,26 @@ The forms coincide on the diagonal but are not interchangeable off diagonal.
 The SPEX-named enum variant records the production reference; the gradient
 variant records the formula written in the v0.1 plan. Surface-discontinuity
 handling remains private to the LAPW assembly strategy as required by A7.
+The `mt-lapw` M-E assembler explicitly selects the SPEX symmetric-Laplacian
+form and combines it only with the matching SPEX radial Hamiltonian identity.
+
+## LAPW radial Hamiltonian and overlap filtering
+
+In the raw `(u, udot)` basis at linearization energy `E`, the SPEX spherical
+radial block is
+
+```text
+h00 = E O00
+h01 = E O01 + O00/2
+h11 = E O11.
+```
+
+The spherical potential is already included in the radial equation and is not
+added again as a sampled `(L,M)=(0,0)` field. Non-spherical `v_LM` terms enter
+the full site Hermitian block separately.
+
+The generalized problem is reduced with the eigensystem of `S`, retaining
+positive directions above a declared relative threshold. A significantly
+negative overlap eigenvalue is an error, not a filter candidate. Returned
+vectors are normalized by `C^H S C = I`, and each eigenpair carries an
+`H C - S C epsilon` residual.
