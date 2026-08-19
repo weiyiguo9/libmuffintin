@@ -8,14 +8,13 @@
 
 use mt_core::{
     Bohr, GVector, Hartree, InterstitialGeometry, InverseBohr, Lm, VolumeBohr3,
-    complex_spherical_harmonics, lm_count, lm_from_index, spherical_bessel_j,
-    spherical_bessel_j_derivative,
+    complex_spherical_harmonics, lm_count, spherical_bessel_j, spherical_bessel_j_derivative,
 };
 use mt_radial::BoundaryData;
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use std::f64::consts::PI;
-use std::ops::Index;
+use std::ops::{Index, Range};
 use thiserror::Error;
 
 /// A normalized plane wave identified by `G`, with Cartesian `q = k + G`.
@@ -77,6 +76,10 @@ pub enum LapwError {
     PlaneWaveCount { expected: usize, actual: usize },
     #[error("geometry has {expected} spheres, but {actual} site blocks were supplied")]
     SiteCount { expected: usize, actual: usize },
+    #[error("basis layout has {actual} plane waves, expected {expected}")]
+    BasisPlaneWaveCount { expected: usize, actual: usize },
+    #[error("basis layout has {actual} sites, expected {expected}")]
+    BasisSiteCount { expected: usize, actual: usize },
     #[error("site plane wave {plane_wave} has {actual} lm channels, expected {expected}")]
     ChannelCount {
         plane_wave: usize,
@@ -91,6 +94,13 @@ pub enum LapwError {
     StepFunction(String),
     #[error("matrix data has length {actual}, expected {expected}")]
     MatrixDataLength { expected: usize, actual: usize },
+    #[error("site {site} {matrix} block has dimension {actual}, expected {expected}")]
+    SiteBlockDimension {
+        site: usize,
+        matrix: &'static str,
+        expected: usize,
+        actual: usize,
+    },
     #[error("matrix dimensions differ: H is {hamiltonian}, S is {overlap}")]
     MatrixDimensionMismatch { hamiltonian: usize, overlap: usize },
     #[error("matrix is not Hermitian at ({row}, {column})")]
@@ -241,15 +251,107 @@ pub fn augmentation_coefficients(
     Ok(PlaneWaveAugmentation { coefficients })
 }
 
-/// Per-site APW coefficients and real radial overlap blocks.
+/// Counts and ordering of one site's local orbitals.
 ///
-/// `radial_overlaps[l]` uses the ordered radial basis
-/// `(u_l, du_l/dE)`.  Local orbitals are deliberately absent from this M-D
-/// representation.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SiteAugmentation {
-    pub plane_waves: Vec<PlaneWaveAugmentation>,
-    pub radial_overlaps: Vec<RadialOverlapBlock>,
+/// Orbitals are contiguous in `(l, m, n)` order: increasing `l`, then
+/// `m = -l..l`, then the local-orbital number `n` for that `l`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LocalOrbitalLayout {
+    counts_by_l: Vec<usize>,
+}
+
+impl LocalOrbitalLayout {
+    pub fn new(counts_by_l: Vec<usize>) -> Self {
+        Self { counts_by_l }
+    }
+
+    pub fn counts_by_l(&self) -> &[usize] {
+        &self.counts_by_l
+    }
+
+    pub fn len(&self) -> usize {
+        self.counts_by_l
+            .iter()
+            .enumerate()
+            .map(|(l, count)| (2 * l + 1) * count)
+            .sum()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Site-local LO index in the documented `(l, m, n)` order.
+    pub fn index(&self, l: u32, m: i32, n: usize) -> Option<usize> {
+        let count = *self.counts_by_l.get(l as usize)?;
+        if m < -(l as i32) || m > l as i32 || n >= count {
+            return None;
+        }
+        let preceding = self
+            .counts_by_l
+            .iter()
+            .enumerate()
+            .take(l as usize)
+            .map(|(previous_l, count)| (2 * previous_l + 1) * count)
+            .sum::<usize>();
+        Some(preceding + (m + l as i32) as usize * count + n)
+    }
+}
+
+/// Global LAPW basis order: all plane waves, followed by each site's LOs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LapwBasisLayout {
+    plane_wave_count: usize,
+    local_orbitals: Vec<LocalOrbitalLayout>,
+}
+
+impl LapwBasisLayout {
+    pub fn new(plane_wave_count: usize, local_orbitals: Vec<LocalOrbitalLayout>) -> Self {
+        Self {
+            plane_wave_count,
+            local_orbitals,
+        }
+    }
+
+    pub const fn plane_wave_count(&self) -> usize {
+        self.plane_wave_count
+    }
+
+    pub fn plane_wave_range(&self) -> Range<usize> {
+        0..self.plane_wave_count
+    }
+
+    pub fn site_count(&self) -> usize {
+        self.local_orbitals.len()
+    }
+
+    pub fn site_layout(&self, site: usize) -> Option<&LocalOrbitalLayout> {
+        self.local_orbitals.get(site)
+    }
+
+    pub fn site_local_orbital_range(&self, site: usize) -> Option<Range<usize>> {
+        let site_layout = self.local_orbitals.get(site)?;
+        let start = self.plane_wave_count
+            + self.local_orbitals[..site]
+                .iter()
+                .map(LocalOrbitalLayout::len)
+                .sum::<usize>();
+        Some(start..start + site_layout.len())
+    }
+
+    pub fn local_orbital_index(&self, site: usize, l: u32, m: i32, n: usize) -> Option<usize> {
+        let range = self.site_local_orbital_range(site)?;
+        Some(range.start + self.local_orbitals[site].index(l, m, n)?)
+    }
+
+    pub fn dimension(&self) -> usize {
+        self.plane_wave_count
+            + self
+                .local_orbitals
+                .iter()
+                .map(LocalOrbitalLayout::len)
+                .sum::<usize>()
+    }
 }
 
 /// A real symmetric `2 x 2` radial overlap block in the `(u, du/dE)` basis.
@@ -258,17 +360,6 @@ pub struct RadialOverlapBlock {
     pub uu: f64,
     pub u_udot: f64,
     pub udot_udot: f64,
-}
-
-impl RadialOverlapBlock {
-    fn element(self, left: usize, right: usize) -> f64 {
-        match (left, right) {
-            (0, 0) => self.uu,
-            (0, 1) | (1, 0) => self.u_udot,
-            (1, 1) => self.udot_udot,
-            _ => unreachable!("radial indices are fixed to 0 and 1"),
-        }
-    }
 }
 
 /// Dense row-major complex Hermitian matrix.
@@ -297,6 +388,19 @@ impl DenseHermitianMatrix {
 
     pub const fn dimension(&self) -> usize {
         self.dimension
+    }
+
+    /// Construct from full row-major data after validating Hermiticity.
+    pub fn from_row_major(dimension: usize, data: Vec<Complex64>) -> Result<Self, LapwError> {
+        if data.len() != dimension * dimension {
+            return Err(LapwError::MatrixDataLength {
+                expected: dimension * dimension,
+                actual: data.len(),
+            });
+        }
+        let matrix = Self { dimension, data };
+        validate_dense_hermitian(&matrix, "input")?;
+        Ok(matrix)
     }
 
     pub fn as_slice(&self) -> &[Complex64] {
@@ -342,66 +446,6 @@ impl Index<(usize, usize)> for DenseEigenvectors {
     }
 }
 
-/// Assemble the LAPW overlap
-/// `Theta(G_i-G_j) + sum_a,lm c_i^dagger O^a_l c_j`.
-///
-/// Only the upper triangle is evaluated; the lower triangle is filled by
-/// conjugation, making the returned dense matrix Hermitian by construction.
-pub fn assemble_overlap(
-    plane_waves: &[PlaneWave],
-    geometry: &InterstitialGeometry,
-    sites: &[SiteAugmentation],
-) -> Result<DenseHermitianMatrix, LapwError> {
-    validate_plane_wave_norms(plane_waves)?;
-    if let Some(first) = plane_waves.first() {
-        if plane_waves.iter().any(|wave| wave.k != first.k) {
-            return Err(LapwError::MixedKPoints);
-        }
-    }
-    let dimension = plane_waves.len();
-    if sites.len() != geometry.spheres().len() {
-        return Err(LapwError::SiteCount {
-            expected: geometry.spheres().len(),
-            actual: sites.len(),
-        });
-    }
-    for site in sites {
-        validate_site(site, dimension)?;
-    }
-
-    let mut data = vec![Complex64::new(0.0, 0.0); dimension * dimension];
-    for i in 0..dimension {
-        for j in i..dimension {
-            let difference = std::array::from_fn(|axis| {
-                InverseBohr(
-                    plane_waves[i].g.cartesian[axis].get() - plane_waves[j].g.cartesian[axis].get(),
-                )
-            });
-            let mut value = geometry
-                .coefficient(difference)
-                .map_err(|error| LapwError::StepFunction(error.to_string()))?;
-            for site in sites {
-                let left = &site.plane_waves[i].coefficients;
-                let right = &site.plane_waves[j].coefficients;
-                for channel in 0..left.len() {
-                    let l = lm_from_index(channel).l as usize;
-                    let overlap = site.radial_overlaps[l];
-                    for (alpha, left_coefficient) in left[channel].iter().enumerate() {
-                        for (beta, right_coefficient) in right[channel].iter().enumerate() {
-                            value += left_coefficient.conj()
-                                * overlap.element(alpha, beta)
-                                * right_coefficient;
-                        }
-                    }
-                }
-            }
-            data[i * dimension + j] = value;
-            data[j * dimension + i] = value.conj();
-        }
-    }
-    Ok(DenseHermitianMatrix { dimension, data })
-}
-
 /// Cell-normalized interstitial potential coefficients keyed by integer
 /// reciprocal-lattice coordinates.  Supplying one member also installs its
 /// conjugate partner, so lookup is explicitly Hermitian.
@@ -441,45 +485,69 @@ impl InterstitialPotential {
     }
 }
 
-/// One site's dense muffin-tin Hamiltonian block.  Its basis is flattened as
-/// contiguous `lm`, then `(u, udot)` within each `lm` channel.
+/// Both muffin-tin operators in the same local basis.
+///
+/// The block order is all APW radial functions as contiguous `lm` channels
+/// `(u, udot)`, followed by all LOs in [`LocalOrbitalLayout`] order.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SiteHamiltonian {
+pub struct SiteOperatorBlocks {
     pub plane_waves: Vec<PlaneWaveAugmentation>,
-    pub block: DenseHermitianMatrix,
+    pub overlap: DenseHermitianMatrix,
+    pub hamiltonian: DenseHermitianMatrix,
 }
 
-/// Assemble the dense LAPW Hamiltonian in Hartree.
+/// The two matrices of one generalized LAPW eigenproblem.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LapwEigenproblem {
+    pub overlap: DenseHermitianMatrix,
+    pub hamiltonian: DenseHermitianMatrix,
+}
+
+/// Assemble `S` and `H` together in the global [`LapwBasisLayout`].
 ///
-/// The interstitial kinetic term is
-/// `0.25 (|q_i|^2 + |q_j|^2) Theta(G_i-G_j)`, and the muffin-tin term is
-/// evaluated as `c_i^dagger h c_j` in the documented flattened basis.
-pub fn assemble_hamiltonian(
+/// Interstitial terms occupy only the plane-wave block.  Every site is added
+/// as `P^dagger B P`; APW--LO and LO--LO entries therefore come from the same
+/// full local block as the APW--APW entries.
+pub fn assemble_eigenproblem(
     plane_waves: &[PlaneWave],
     geometry: &InterstitialGeometry,
+    layout: &LapwBasisLayout,
     potential: &InterstitialPotential,
-    sites: &[SiteHamiltonian],
-) -> Result<DenseHermitianMatrix, LapwError> {
+    sites: &[SiteOperatorBlocks],
+) -> Result<LapwEigenproblem, LapwError> {
     validate_plane_wave_norms(plane_waves)?;
     if let Some(first) = plane_waves.first()
         && plane_waves.iter().any(|wave| wave.k != first.k)
     {
         return Err(LapwError::MixedKPoints);
     }
-    let dimension = plane_waves.len();
+    if layout.plane_wave_count != plane_waves.len() {
+        return Err(LapwError::BasisPlaneWaveCount {
+            expected: plane_waves.len(),
+            actual: layout.plane_wave_count,
+        });
+    }
     if sites.len() != geometry.spheres().len() {
         return Err(LapwError::SiteCount {
             expected: geometry.spheres().len(),
             actual: sites.len(),
         });
     }
-    for site in sites {
-        validate_hamiltonian_site(site, dimension)?;
+    if layout.site_count() != sites.len() {
+        return Err(LapwError::BasisSiteCount {
+            expected: sites.len(),
+            actual: layout.site_count(),
+        });
+    }
+    for (site_index, site) in sites.iter().enumerate() {
+        validate_operator_site(site_index, site, layout)?;
     }
 
-    let mut data = vec![Complex64::new(0.0, 0.0); dimension * dimension];
-    for i in 0..dimension {
-        for j in i..dimension {
+    let dimension = layout.dimension();
+    let mut overlap = vec![Complex64::default(); dimension * dimension];
+    let mut hamiltonian = vec![Complex64::default(); dimension * dimension];
+    for i in 0..plane_waves.len() {
+        for j in i..plane_waves.len() {
             let cartesian_difference = std::array::from_fn(|axis| {
                 InverseBohr(
                     plane_waves[i].g.cartesian[axis].get() - plane_waves[j].g.cartesian[axis].get(),
@@ -493,41 +561,55 @@ pub fn assemble_hamiltonian(
                 .map_err(|error| LapwError::StepFunction(error.to_string()))?;
             let kinetic =
                 0.25 * (plane_waves[i].q_norm.squared() + plane_waves[j].q_norm.squared());
-            let mut value = kinetic * theta + potential.coefficient(integer_difference);
-
-            for site in sites {
-                let left = &site.plane_waves[i].coefficients;
-                let right = &site.plane_waves[j].coefficients;
-                for (left_channel, left_coefficients) in left.iter().enumerate() {
-                    for (left_radial, left_coefficient) in left_coefficients.iter().enumerate() {
-                        let left_index = 2 * left_channel + left_radial;
-                        for (right_channel, right_coefficients) in right.iter().enumerate() {
-                            for (right_radial, right_coefficient) in
-                                right_coefficients.iter().enumerate()
-                            {
-                                let right_index = 2 * right_channel + right_radial;
-                                value += left_coefficient.conj()
-                                    * site.block[(left_index, right_index)]
-                                    * right_coefficient;
-                            }
-                        }
-                    }
-                }
-            }
-            data[i * dimension + j] = value;
-            data[j * dimension + i] = value.conj();
+            set_hermitian(&mut overlap, dimension, i, j, theta);
+            set_hermitian(
+                &mut hamiltonian,
+                dimension,
+                i,
+                j,
+                kinetic * theta + potential.coefficient(integer_difference),
+            );
         }
     }
-    Ok(DenseHermitianMatrix { dimension, data })
+
+    for (site_index, site) in sites.iter().enumerate() {
+        add_site_projection(
+            &mut overlap,
+            dimension,
+            site_index,
+            site,
+            &site.overlap,
+            layout,
+        );
+        add_site_projection(
+            &mut hamiltonian,
+            dimension,
+            site_index,
+            site,
+            &site.hamiltonian,
+            layout,
+        );
+    }
+    Ok(LapwEigenproblem {
+        overlap: DenseHermitianMatrix {
+            dimension,
+            data: overlap,
+        },
+        hamiltonian: DenseHermitianMatrix {
+            dimension,
+            data: hamiltonian,
+        },
+    })
 }
 
-fn validate_hamiltonian_site(
-    site: &SiteHamiltonian,
-    plane_wave_count: usize,
+fn validate_operator_site(
+    site_index: usize,
+    site: &SiteOperatorBlocks,
+    layout: &LapwBasisLayout,
 ) -> Result<(), LapwError> {
-    if site.plane_waves.len() != plane_wave_count {
+    if site.plane_waves.len() != layout.plane_wave_count {
         return Err(LapwError::PlaneWaveCount {
-            expected: plane_wave_count,
+            expected: layout.plane_wave_count,
             actual: site.plane_waves.len(),
         });
     }
@@ -535,13 +617,6 @@ fn validate_hamiltonian_site(
         .plane_waves
         .first()
         .map_or(0, |augmentation| augmentation.coefficients.len());
-    let expected = 2 * channels;
-    if site.block.dimension() != expected {
-        return Err(LapwError::MatrixDimensionMismatch {
-            hamiltonian: site.block.dimension(),
-            overlap: expected,
-        });
-    }
     for (plane_wave, augmentation) in site.plane_waves.iter().enumerate() {
         if augmentation.coefficients.len() != channels {
             return Err(LapwError::ChannelCount {
@@ -551,14 +626,118 @@ fn validate_hamiltonian_site(
             });
         }
     }
+    let expected = 2 * channels + layout.local_orbitals[site_index].len();
+    for (name, block) in [
+        ("overlap", &site.overlap),
+        ("Hamiltonian", &site.hamiltonian),
+    ] {
+        if block.dimension() != expected {
+            return Err(LapwError::SiteBlockDimension {
+                site: site_index,
+                matrix: name,
+                expected,
+                actual: block.dimension(),
+            });
+        }
+        validate_dense_hermitian(block, name)?;
+    }
     Ok(())
+}
+
+fn add_site_projection(
+    global: &mut [Complex64],
+    dimension: usize,
+    site_index: usize,
+    site: &SiteOperatorBlocks,
+    block: &DenseHermitianMatrix,
+    layout: &LapwBasisLayout,
+) {
+    let channels = site
+        .plane_waves
+        .first()
+        .map_or(0, |augmentation| augmentation.coefficients.len());
+    let apw_dimension = 2 * channels;
+    let lo_range = layout
+        .site_local_orbital_range(site_index)
+        .expect("validated site index");
+    let global_indices = layout
+        .plane_wave_range()
+        .chain(lo_range.clone())
+        .collect::<Vec<_>>();
+    let projections = global_indices
+        .iter()
+        .map(|&global_index| {
+            let mut column = vec![Complex64::default(); block.dimension()];
+            if global_index < layout.plane_wave_count {
+                for (channel, coefficients) in site.plane_waves[global_index]
+                    .coefficients
+                    .iter()
+                    .enumerate()
+                {
+                    column[2 * channel] = coefficients[0];
+                    column[2 * channel + 1] = coefficients[1];
+                }
+            } else {
+                column[apw_dimension + global_index - lo_range.start] = Complex64::new(1.0, 0.0);
+            }
+            column
+        })
+        .collect::<Vec<_>>();
+    for left in 0..global_indices.len() {
+        for right in left..global_indices.len() {
+            let value = bilinear(&projections[left], block, &projections[right]);
+            add_hermitian(
+                global,
+                dimension,
+                global_indices[left],
+                global_indices[right],
+                value,
+            );
+        }
+    }
+}
+
+fn bilinear(left: &[Complex64], block: &DenseHermitianMatrix, right: &[Complex64]) -> Complex64 {
+    let mut value = Complex64::default();
+    for row in 0..block.dimension() {
+        for column in 0..block.dimension() {
+            value += left[row].conj() * block[(row, column)] * right[column];
+        }
+    }
+    value
+}
+
+fn set_hermitian(
+    data: &mut [Complex64],
+    dimension: usize,
+    row: usize,
+    column: usize,
+    value: Complex64,
+) {
+    data[row * dimension + column] = value;
+    data[column * dimension + row] = value.conj();
+}
+
+fn add_hermitian(
+    data: &mut [Complex64],
+    dimension: usize,
+    row: usize,
+    column: usize,
+    value: Complex64,
+) {
+    data[row * dimension + column] += value;
+    if row == column {
+        data[row * dimension + row].im = 0.0;
+    } else {
+        data[column * dimension + row] += value.conj();
+    }
 }
 
 /// SPEX spherical radial Hamiltonian in the `(u, udot)` basis.
 ///
-/// This is the symmetrized identity from `hamilton.f:396-425`:
-/// `(E_1 + E_2) O / 2`, plus `O(u, *) / 2` for every side occupied by
-/// `udot`.
+/// This is the symmetrized identity from `hamilton.f:396-425`.  In the
+/// `(u, udot)` basis it gives `H_uu = E O_uu`,
+/// `H_u,udot = E O_u,udot + O_uu / 2`, and `H_udot,udot = E O_udot,udot`.
 pub fn spex_spherical_radial_hamiltonian(
     linearization_energy: Hartree,
     overlap: RadialOverlapBlock,
@@ -590,7 +769,7 @@ pub struct EigenpairResidual {
 pub struct GeneralizedEigensolution {
     /// Eigenvalues in nondecreasing Hartree order.
     pub eigenvalues: Vec<Hartree>,
-    /// Eigenvector columns expressed in the original plane-wave basis.
+    /// Eigenvector columns expressed in the global LAPW basis.
     pub eigenvectors: DenseEigenvectors,
     pub retained_dimension: usize,
     pub filtered_dimension: usize,
@@ -734,6 +913,57 @@ pub fn solve_generalized_hermitian(
     })
 }
 
+/// Independent spin-up and spin-down values for a collinear, no-SOC problem.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Collinear<T> {
+    pub up: T,
+    pub down: T,
+}
+
+impl<T> Collinear<T> {
+    pub const fn new(up: T, down: T) -> Self {
+        Self { up, down }
+    }
+}
+
+/// Matrices and eigensolution for one spin channel.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SolvedLapwEigenproblem {
+    pub eigenproblem: LapwEigenproblem,
+    pub solution: GeneralizedEigensolution,
+}
+
+/// Assemble and solve two independent collinear spin channels.
+///
+/// Plane waves, geometry, and global layout are shared.  Potentials and local
+/// operator blocks are channel-specific, and no doubled spin matrix is formed.
+pub fn solve_collinear_eigenproblems(
+    plane_waves: &[PlaneWave],
+    geometry: &InterstitialGeometry,
+    layout: &LapwBasisLayout,
+    potentials: Collinear<&InterstitialPotential>,
+    sites: Collinear<&[SiteOperatorBlocks]>,
+    relative_overlap_threshold: f64,
+) -> Result<Collinear<SolvedLapwEigenproblem>, LapwError> {
+    let solve_channel = |potential: &InterstitialPotential, site_blocks: &[SiteOperatorBlocks]| {
+        let eigenproblem =
+            assemble_eigenproblem(plane_waves, geometry, layout, potential, site_blocks)?;
+        let solution = solve_generalized_hermitian(
+            &eigenproblem.hamiltonian,
+            &eigenproblem.overlap,
+            relative_overlap_threshold,
+        )?;
+        Ok(SolvedLapwEigenproblem {
+            eigenproblem,
+            solution,
+        })
+    };
+    Ok(Collinear {
+        up: solve_channel(potentials.up, sites.up)?,
+        down: solve_channel(potentials.down, sites.down)?,
+    })
+}
+
 fn validate_dense_hermitian(
     matrix: &DenseHermitianMatrix,
     matrix_name: &'static str,
@@ -843,29 +1073,6 @@ pub fn compare_band_references(
     })
 }
 
-fn validate_site(site: &SiteAugmentation, plane_wave_count: usize) -> Result<(), LapwError> {
-    if site.plane_waves.len() != plane_wave_count {
-        return Err(LapwError::PlaneWaveCount {
-            expected: plane_wave_count,
-            actual: site.plane_waves.len(),
-        });
-    }
-    let expected_channels = site
-        .radial_overlaps
-        .len()
-        .saturating_mul(site.radial_overlaps.len());
-    for (plane_wave, augmentation) in site.plane_waves.iter().enumerate() {
-        if augmentation.coefficients.len() != expected_channels {
-            return Err(LapwError::ChannelCount {
-                plane_wave,
-                expected: expected_channels,
-                actual: augmentation.coefficients.len(),
-            });
-        }
-    }
-    Ok(())
-}
-
 fn validate_plane_wave_norms(plane_waves: &[PlaneWave]) -> Result<(), LapwError> {
     if let Some(q_norm) = plane_waves
         .iter()
@@ -957,19 +1164,45 @@ mod tests {
                 )
                 .unwrap()
             })
-            .collect();
-        let site = SiteAugmentation {
-            plane_waves,
-            radial_overlaps: vec![
-                RadialOverlapBlock {
-                    uu: 1.0,
-                    u_udot: 0.04,
-                    udot_udot: 0.7,
-                };
-                3
-            ],
+            .collect::<Vec<_>>();
+        let radial = RadialOverlapBlock {
+            uu: 1.0,
+            u_udot: 0.04,
+            udot_udot: 0.7,
         };
-        let overlap = assemble_overlap(&waves, &geometry, &[site]).unwrap();
+        let local_dimension = 2 * plane_waves[0].coefficients.len();
+        let overlap_block =
+            DenseHermitianMatrix::from_upper_triangle(local_dimension, |row, column| {
+                if row / 2 != column / 2 {
+                    return Complex64::default();
+                }
+                Complex64::new(
+                    match (row % 2, column % 2) {
+                        (0, 0) => radial.uu,
+                        (0, 1) => radial.u_udot,
+                        (1, 1) => radial.udot_udot,
+                        _ => unreachable!(),
+                    },
+                    0.0,
+                )
+            });
+        let site = SiteOperatorBlocks {
+            plane_waves,
+            overlap: overlap_block,
+            hamiltonian: DenseHermitianMatrix::from_upper_triangle(local_dimension, |_, _| {
+                Complex64::default()
+            }),
+        };
+        let layout = LapwBasisLayout::new(waves.len(), vec![LocalOrbitalLayout::default()]);
+        let overlap = assemble_eigenproblem(
+            &waves,
+            &geometry,
+            &layout,
+            &InterstitialPotential::default(),
+            &[site],
+        )
+        .unwrap()
+        .overlap;
         for i in 0..overlap.dimension() {
             for j in 0..overlap.dimension() {
                 assert!((overlap[(i, j)] - overlap[(j, i)].conj()).norm() < 2.0e-14);
@@ -981,7 +1214,16 @@ mod tests {
     fn empty_sphere_geometry_is_identity() {
         let waves = waves();
         let geometry = InterstitialGeometry::new(VolumeBohr3(100.0), vec![]).unwrap();
-        let overlap = assemble_overlap(&waves, &geometry, &[]).unwrap();
+        let layout = LapwBasisLayout::new(waves.len(), vec![]);
+        let overlap = assemble_eigenproblem(
+            &waves,
+            &geometry,
+            &layout,
+            &InterstitialPotential::default(),
+            &[],
+        )
+        .unwrap()
+        .overlap;
         for i in 0..overlap.dimension() {
             for j in 0..overlap.dimension() {
                 let expected = if i == j { 1.0 } else { 0.0 };
@@ -995,8 +1237,10 @@ mod tests {
         let waves = waves();
         let geometry = InterstitialGeometry::new(VolumeBohr3(100.0), vec![]).unwrap();
         let potential = InterstitialPotential::default();
-        let overlap = assemble_overlap(&waves, &geometry, &[]).unwrap();
-        let hamiltonian = assemble_hamiltonian(&waves, &geometry, &potential, &[]).unwrap();
+        let layout = LapwBasisLayout::new(waves.len(), vec![]);
+        let problem = assemble_eigenproblem(&waves, &geometry, &layout, &potential, &[]).unwrap();
+        let overlap = problem.overlap;
+        let hamiltonian = problem.hamiltonian;
         for i in 0..hamiltonian.dimension() {
             for j in 0..hamiltonian.dimension() {
                 let expected = if i == j {
@@ -1044,21 +1288,169 @@ mod tests {
                 (1, 1) => Complex64::new(0.8, 0.0),
                 _ => unreachable!(),
             });
-        let hamiltonian = assemble_hamiltonian(
+        let layout = LapwBasisLayout::new(waves.len(), vec![LocalOrbitalLayout::default()]);
+        let hamiltonian = assemble_eigenproblem(
             &waves,
             &geometry,
+            &layout,
             &InterstitialPotential::default(),
-            &[SiteHamiltonian {
+            &[SiteOperatorBlocks {
                 plane_waves: augmentations,
-                block,
+                overlap: DenseHermitianMatrix::from_upper_triangle(2, |row, column| {
+                    Complex64::new(if row == column { 1.0 } else { 0.0 }, 0.0)
+                }),
+                hamiltonian: block,
             }],
         )
-        .unwrap();
+        .unwrap()
+        .hamiltonian;
         for i in 0..hamiltonian.dimension() {
             for j in 0..hamiltonian.dimension() {
                 assert!((hamiltonian[(i, j)] - hamiltonian[(j, i)].conj()).norm() < 1.0e-14);
             }
         }
+    }
+
+    #[test]
+    fn local_orbital_layout_uses_site_l_m_n_order_and_global_offsets() {
+        let first = LocalOrbitalLayout::new(vec![2, 1]);
+        let second = LocalOrbitalLayout::new(vec![0, 2, 1]);
+        assert_eq!(first.len(), 5);
+        assert_eq!(first.index(0, 0, 0), Some(0));
+        assert_eq!(first.index(0, 0, 1), Some(1));
+        assert_eq!(first.index(1, -1, 0), Some(2));
+        assert_eq!(first.index(1, 1, 0), Some(4));
+        assert_eq!(first.index(1, 1, 1), None);
+
+        let layout = LapwBasisLayout::new(7, vec![first, second]);
+        assert_eq!(layout.site_local_orbital_range(0), Some(7..12));
+        assert_eq!(layout.site_local_orbital_range(1), Some(12..23));
+        assert_eq!(layout.local_orbital_index(1, 1, -1, 1), Some(13));
+        assert_eq!(layout.local_orbital_index(1, 2, 2, 0), Some(22));
+        assert_eq!(layout.dimension(), 23);
+    }
+
+    #[test]
+    fn full_local_blocks_generate_complex_apw_lo_and_lo_lo_elements() {
+        let wave = waves()[0];
+        let plane_waves = [wave];
+        let geometry = InterstitialGeometry::new(
+            VolumeBohr3(100.0),
+            vec![Sphere {
+                center: [Bohr(0.2), Bohr(-0.1), Bohr(0.3)],
+                radius: Bohr(0.7),
+            }],
+        )
+        .unwrap();
+        let a = Complex64::new(0.3, -0.2);
+        let b = Complex64::new(-0.1, 0.4);
+        let overlap =
+            DenseHermitianMatrix::from_upper_triangle(3, |row, column| match (row, column) {
+                (0, 0) => Complex64::new(1.1, 0.0),
+                (0, 1) => Complex64::new(0.2, 0.1),
+                (0, 2) => Complex64::new(-0.3, 0.25),
+                (1, 1) => Complex64::new(0.9, 0.0),
+                (1, 2) => Complex64::new(0.15, -0.35),
+                (2, 2) => Complex64::new(1.4, 0.0),
+                _ => unreachable!(),
+            });
+        let hamiltonian =
+            DenseHermitianMatrix::from_upper_triangle(3, |row, column| match (row, column) {
+                (0, 0) => Complex64::new(0.8, 0.0),
+                (0, 1) => Complex64::new(-0.2, 0.05),
+                (0, 2) => Complex64::new(0.4, -0.3),
+                (1, 1) => Complex64::new(1.2, 0.0),
+                (1, 2) => Complex64::new(-0.1, 0.2),
+                (2, 2) => Complex64::new(2.3, 0.0),
+                _ => unreachable!(),
+            });
+        let site = SiteOperatorBlocks {
+            plane_waves: vec![PlaneWaveAugmentation {
+                coefficients: vec![[a, b]],
+            }],
+            overlap,
+            hamiltonian,
+        };
+        let layout = LapwBasisLayout::new(1, vec![LocalOrbitalLayout::new(vec![1])]);
+        let problem = assemble_eigenproblem(
+            &plane_waves,
+            &geometry,
+            &layout,
+            &InterstitialPotential::default(),
+            std::slice::from_ref(&site),
+        )
+        .unwrap();
+        let expected_s_apw_lo = a.conj() * site.overlap[(0, 2)] + b.conj() * site.overlap[(1, 2)];
+        let expected_h_apw_lo =
+            a.conj() * site.hamiltonian[(0, 2)] + b.conj() * site.hamiltonian[(1, 2)];
+        assert!((problem.overlap[(0, 1)] - expected_s_apw_lo).norm() < 1.0e-14);
+        assert!((problem.hamiltonian[(0, 1)] - expected_h_apw_lo).norm() < 1.0e-14);
+        assert_eq!(problem.overlap[(1, 1)], site.overlap[(2, 2)]);
+        assert_eq!(problem.hamiltonian[(1, 1)], site.hamiltonian[(2, 2)]);
+    }
+
+    #[test]
+    fn nonzero_k_site_phase_is_carried_by_augmentation_coefficients() {
+        let wave = waves()[0];
+        assert!(wave.k.iter().any(|component| component.get() != 0.0));
+        let matched = [ApwMatch {
+            l: 0,
+            coefficients: [0.7, -0.2],
+            value_residual: 0.0,
+            slope_residual: 0.0,
+        }];
+        let origin =
+            augmentation_coefficients(&wave, [Bohr(0.0); 3], VolumeBohr3(80.0), &matched).unwrap();
+        let site = [Bohr(0.31), Bohr(-0.27), Bohr(0.19)];
+        let translated =
+            augmentation_coefficients(&wave, site, VolumeBohr3(80.0), &matched).unwrap();
+        let phase = site_translation_phase(wave.q, site);
+        for radial in 0..2 {
+            assert!(
+                (translated.coefficients[0][radial] - phase * origin.coefficients[0][radial])
+                    .norm()
+                    < 1.0e-14
+            );
+        }
+    }
+
+    #[test]
+    fn collinear_driver_matches_two_independent_channel_solves() {
+        let waves = waves();
+        let geometry = InterstitialGeometry::new(VolumeBohr3(100.0), vec![]).unwrap();
+        let layout = LapwBasisLayout::new(waves.len(), vec![]);
+        let up = InterstitialPotential::new([([0; 3], Complex64::new(0.17, 0.0))]).unwrap();
+        let down = InterstitialPotential::new([([0; 3], Complex64::new(-0.09, 0.0))]).unwrap();
+        let spins = solve_collinear_eigenproblems(
+            &waves,
+            &geometry,
+            &layout,
+            Collinear::new(&up, &down),
+            Collinear::new(&[][..], &[][..]),
+            0.0,
+        )
+        .unwrap();
+        let up_problem = assemble_eigenproblem(&waves, &geometry, &layout, &up, &[]).unwrap();
+        let down_problem = assemble_eigenproblem(&waves, &geometry, &layout, &down, &[]).unwrap();
+        let up_solution =
+            solve_generalized_hermitian(&up_problem.hamiltonian, &up_problem.overlap, 0.0).unwrap();
+        let down_solution =
+            solve_generalized_hermitian(&down_problem.hamiltonian, &down_problem.overlap, 0.0)
+                .unwrap();
+        assert_eq!(spins.up.solution.eigenvalues, up_solution.eigenvalues);
+        assert_eq!(spins.down.solution.eigenvalues, down_solution.eigenvalues);
+        assert_ne!(
+            spins.up.solution.eigenvalues,
+            spins.down.solution.eigenvalues
+        );
+        assert_eq!(
+            spins.up.eigenproblem.overlap.dimension(),
+            layout.dimension()
+        );
+        assert_eq!(
+            spins.down.eigenproblem.overlap.dimension(),
+            layout.dimension()
+        );
     }
 
     #[test]

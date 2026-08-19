@@ -217,3 +217,21 @@ positive directions above a declared relative threshold. A significantly
 negative overlap eigenvalue is an error, not a filter candidate. Returned
 vectors are normalized by `C^H S C = I`, and each eigenpair carries an
 `H C - S C epsilon` residual.
+
+## APW+LO basis and collinear-spin convention
+
+The global one-spin basis is ordered as all plane waves followed by local
+orbitals grouped in stored site order. Within a site, LO order is increasing
+`l`, then `m=-l..l`, then the radial LO number. The local operator block is
+ordered as every `lm` channel's `(u, udot)` pair followed by those LOs.
+
+Overlap and Hamiltonian use the same site projection `P^H block P`.
+Interstitial terms occupy only the plane-wave corner. An APW coefficient
+already contains `exp(+i q dot R_a)`; APW--LO terms inherit its conjugate from
+`P^H` and must not receive a second site phase. LO--LO terms have no
+interstitial contribution.
+
+Collinear spin without SOC is two independent generalized eigenproblems that
+share geometry and basis layout but have separate potentials, radial blocks,
+`H`, `S`, and eigensolutions. It is not represented as a coupled `2N x 2N`
+spinor matrix, and no cross-spin block exists.
