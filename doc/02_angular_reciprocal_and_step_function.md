@@ -5,35 +5,35 @@ This note fixes the angular and reciprocal-space formulas used by
 
 ## 1. Complex spherical harmonics and storage
 
-Let \(P_l^m(x)\) denote the associated Legendre function without an embedded
+Let $P_l^m(x)$ denote the associated Legendre function without an embedded
 Condon--Shortley phase.  The normalized complex harmonic is
 
-\[
+```math
 Y_{lm}(\theta,\phi)=(-1)^m
 \sqrt{\frac{2l+1}{4\pi}\frac{(l-m)!}{(l+m)!}}
 P_l^m(\cos\theta)e^{im\phi},\qquad m\geq0,
-\]
+```
 
 and negative orders are defined by
 
-\[
+```math
 Y_{l,-m}=(-1)^mY_{lm}^{*}.
-\]
+```
 
-Hence \(Y_{00}=1/\sqrt{4\pi}\),
-\(\int Y_{lm}^{*}Y_{l'm'}d\Omega=\delta_{ll'}\delta_{mm'}\), and the
+Hence $Y_{00}=1/\sqrt{4\pi}$,
+$\int Y_{lm}^{*}Y_{l'm'}d\Omega=\delta_{ll'}\delta_{mm'}$, and the
 Condon--Shortley phase is explicit.  If a special-function library instead
-builds \((-1)^m\) into its associated Legendre function, the prefactor above
+builds $(-1)^m$ into its associated Legendre function, the prefactor above
 must be omitted exactly once.
 
-Channels are ordered by increasing \(l\), and within an \(l\) block by
-\(m=-l,-l+1,\ldots,l\).  The public zero-based compound index is
+Channels are ordered by increasing $l$, and within an $l$ block by
+$m=-l,-l+1,\ldots,l$.  The public zero-based compound index is
 
-\[
+```math
 L(l,m)=l(l+1)+m,
-\]
+```
 
-so the block for angular momentum \(l\) occupies \(l^2,\ldots,(l+1)^2-1\).
+so the block for angular momentum $l$ occupies $l^2,\ldots,(l+1)^2-1$.
 SPEX's one-based array in `src/numerics.f:482-600` occupies the same block as
 `Y(l**2+1:(l+1)**2)`.
 
@@ -41,40 +41,40 @@ SPEX's one-based array in `src/numerics.f:482-600` occupies the same block as
 
 The real basis used for real-valued muffin-tin fields is the unitary transform
 
-\[
+```math
 R_{l0}=Y_{l0},
-\]
+```
 
-\[
+```math
 R_{lm}=\frac{Y_{l,-m}+(-1)^mY_{lm}}{\sqrt2},\qquad m>0,
-\]
+```
 
-and, writing \(p=-m>0\),
+and, writing $p=-m>0$,
 
-\[
+```math
 R_{l,-p}=\frac{i}{\sqrt2}
 \left[Y_{lp}-(-1)^pY_{l,-p}\right].
-\]
+```
 
 These functions are real on the sphere and orthonormal.  This is the transform
 implemented by SPEX `src/vector.f:241-280`.  A snapshot must name its angular
 basis; changing from real to complex harmonics is a matrix transform, not an
 index relabeling.
 
-## 3. Wigner \(3j\) symbols and Gaunt coefficients
+## 3. Wigner $3j$ symbols and Gaunt coefficients
 
-The Wigner \(3j\) symbol is evaluated with the Racah formula.  For integral or
-half-integral arguments satisfying \(m_1+m_2+m_3=0\), define
+The Wigner $3j$ symbol is evaluated with the Racah formula.  For integral or
+half-integral arguments satisfying $m_1+m_2+m_3=0$, define
 
-\[
+```math
 \Delta(j_1j_2j_3)=
 \frac{(j_1+j_2-j_3)!(j_1-j_2+j_3)!(-j_1+j_2+j_3)!}
 {(j_1+j_2+j_3+1)!}.
-\]
+```
 
 Then
 
-\[
+```math
 \begin{split}
 \begin{pmatrix}j_1&j_2&j_3\\m_1&m_2&m_3\end{pmatrix}
 ={}&(-1)^{j_1-j_2-m_3}
@@ -85,44 +85,44 @@ Then
 &\hspace{36mm}\times
 \frac{1}{(j_3-j_2+m_1+z)!(j_3-j_1-m_2+z)!},
 \end{split}
-\]
+```
 
-where the sum contains precisely the integer \(z\) values for which every
+where the sum contains precisely the integer $z$ values for which every
 factorial argument is nonnegative.  Triangle, magnetic-sum, and
-\(|m_i|\leq j_i\) failures return zero before the sum.  This is the convention
+$|m_i|\leq j_i$ failures return zero before the sum.  This is the convention
 in SPEX `src/numerics.f:604-667`.
 
 For the usual one-conjugate Gaunt coefficient,
 
-\[
+```math
 \mathcal G^{LM}_{lm,l'm'}=
 \int Y_{lm}^{*}(\hat r)Y_{LM}(\hat r)Y_{l'm'}(\hat r)d\Omega,
-\]
+```
 
 the closed form is
 
-\[
+```math
 \mathcal G^{LM}_{lm,l'm'}=(-1)^m
 \sqrt{\frac{(2l+1)(2L+1)(2l'+1)}{4\pi}}
 \begin{pmatrix}l&L&l'\\0&0&0\end{pmatrix}
 \begin{pmatrix}l&L&l'\\-m&M&m'\end{pmatrix}.
-\]
+```
 
-It vanishes unless \(|l-l'|\leq L\leq l+l'\), \(l+L+l'\) is even, and
-\(-m+M+m'=0\).  SPEX's routine calls its arguments in the two-conjugate form
+It vanishes unless $|l-l'|\leq L\leq l+l'$, $l+L+l'$ is even, and
+$-m+M+m'=0$.  SPEX's routine calls its arguments in the two-conjugate form
 
-\[
+```math
 g=\int Y_{l_1m_1}^{*}Y_{l_2m_2}Y_{l_3m_3}^{*}d\Omega,
-\]
+```
 
 which equals
 
-\[
+```math
 (-1)^{m_1+m_3}
 \sqrt{\frac{(2l_1+1)(2l_2+1)(2l_3+1)}{4\pi}}
 \begin{pmatrix}l_1&l_2&l_3\\0&0&0\end{pmatrix}
 \begin{pmatrix}l_1&l_2&l_3\\-m_1&m_2&-m_3\end{pmatrix}.
-\]
+```
 
 The two APIs must not share a table without making this conjugation difference
 explicit.
@@ -131,55 +131,55 @@ explicit.
 
 The regular spherical Bessel function satisfies
 
-\[
+```math
 x^2j_l''+2xj_l'+[x^2-l(l+1)]j_l=0,
 \qquad j_l(x)\sim\frac{x^l}{(2l+1)!!}\quad(x\to0).
-\]
+```
 
 Starting values and recurrences are
 
-\[
+```math
 j_0(x)=\frac{\sin x}{x},\qquad
 j_1(x)=\frac{\sin x-x\cos x}{x^2},
-\]
+```
 
-\[
+```math
 j_{l+1}(x)=\frac{2l+1}{x}j_l(x)-j_{l-1}(x),
 \qquad
 j_l'(x)=\frac{l}{x}j_l(x)-j_{l+1}(x).
-\]
+```
 
-Upward recurrence is adequate when \(l\) is not large relative to \(|x|\);
+Upward recurrence is adequate when $l$ is not large relative to $|x|$;
 otherwise use normalized downward recurrence, as SPEX does in
-`src/numerics.f:750-908`.  At \(x=0\), use the series rather than a divided
-formula.  The parity rule is \(j_l(-x)=(-1)^lj_l(x)\).
+`src/numerics.f:750-908`.  At $x=0$, use the series rather than a divided
+formula.  The parity rule is $j_l(-x)=(-1)^lj_l(x)$.
 
 The angular expansion connecting plane waves and radial solutions is
 
-\[
+```math
 e^{i\mathbf q\cdot\mathbf r}=4\pi\sum_{lm}i^l
 j_l(qr)Y_{lm}^{*}(\hat q)Y_{lm}(\hat r).
-\]
+```
 
-It supplies both the \(i^l\) phase and the APW boundary values
-\(j_l(qR)\), \(qj_l'(qR)\); see SPEX `src/hamilton.f:248-264`.
+It supplies both the $i^l$ phase and the APW boundary values
+$j_l(qR)$, $qj_l'(qR)$; see SPEX `src/hamilton.f:248-264`.
 
 ## 5. Reciprocal vectors and phase factors
 
-With direct columns \(A=(\mathbf a_1\ \mathbf a_2\ \mathbf a_3)\),
+With direct columns $A=(\mathbf a_1\ \mathbf a_2\ \mathbf a_3)$,
 
-\[
+```math
 B=2\pi A^{-T},\qquad \mathbf G=B\mathbf g,\qquad
 \mathbf K_{\mathbf G}=B(\mathbf k+\mathbf g).
-\]
+```
 
-For a site at fractional coordinate \(\mathbf s_a\),
-\(\boldsymbol\tau_a=A\mathbf s_a\) and
+For a site at fractional coordinate $\mathbf s_a$,
+$\boldsymbol\tau_a=A\mathbf s_a$ and
 
-\[
+```math
 e^{-i\mathbf G\cdot\boldsymbol\tau_a}
 =e^{-i2\pi\mathbf g\cdot\mathbf s_a}.
-\]
+```
 
 This identity is useful for computing phases without mixing Cartesian and
 fractional coordinates.  The reciprocal construction is identical to SPEX
@@ -187,31 +187,31 @@ fractional coordinates.  The reciprocal construction is identical to SPEX
 
 ## 6. Analytic muffin-tin/interstitial step Fourier coefficient
 
-Let nonoverlapping spheres \(S_a=\{|\mathbf r-\boldsymbol\tau_a|<R_a\}\)
+Let nonoverlapping spheres $S_a=\{|\mathbf r-\boldsymbol\tau_a|<R_a\}$
 be removed from the unit cell, and define the interstitial characteristic
 function
 
-\[
+```math
 \chi_I(\mathbf r)=1-\sum_a\mathbf1_{S_a}(\mathbf r).
-\]
+```
 
 Its Fourier coefficient is
 
-\[
+```math
 \Theta_{\mathbf G}=\frac1\Omega\int_\Omega
 \chi_I(\mathbf r)e^{-i\mathbf G\cdot\mathbf r}d^3r.
-\]
+```
 
-For \(\mathbf G=0\), direct volume subtraction gives
+For $\mathbf G=0$, direct volume subtraction gives
 
-\[
+```math
 \Theta_{0}=1-\frac1\Omega\sum_a\frac{4\pi R_a^3}{3}.
-\]
+```
 
-For \(G>0\), translate each sphere and align the polar axis with
-\(\mathbf G\):
+For $G>0$, translate each sphere and align the polar axis with
+$\mathbf G$:
 
-\[
+```math
 \begin{split}
 \int_{S_a}e^{-i\mathbf G\cdot\mathbf r}d^3r
 &=e^{-i\mathbf G\cdot\boldsymbol\tau_a}
@@ -221,43 +221,43 @@ For \(G>0\), translate each sphere and align the polar axis with
 &=e^{-i\mathbf G\cdot\boldsymbol\tau_a}
 4\pi R_a^3\frac{j_1(GR_a)}{GR_a}.
 \end{split}
-\]
+```
 
 Therefore
 
-\[
+```math
 \boxed{\Theta_{\mathbf G}=-\frac{4\pi}{\Omega}
 \sum_a R_a^3\frac{j_1(GR_a)}{GR_a}
 e^{-i\mathbf G\cdot\boldsymbol\tau_a}},\qquad G>0.
-\]
+```
 
-The \(G\to0\) limit of a sphere contribution is its volume, because
-\(j_1(x)/x\to1/3\).  For real \(\chi_I\),
-\(\Theta_{-\mathbf G}=\Theta_{\mathbf G}^{*}\).  SPEX implements these
+The $G\to0$ limit of a sphere contribution is its volume, because
+$j_1(x)/x\to1/3$.  For real $\chi_I$,
+$\Theta_{-\mathbf G}=\Theta_{\mathbf G}^{*}$.  SPEX implements these
 relations and the negative Fourier phase in `src/overlap.f:141-202`.
 
 The matrix element between normalized plane waves is
 
-\[
+```math
 \langle\mathbf K_{\mathbf G}|\chi_I|
 \mathbf K_{\mathbf G'}\rangle=\Theta_{\mathbf G-\mathbf G'}.
-\]
+```
 
 Consequently, the difference set required for a basis cutoff is larger than
-the basis itself.  It must cover every \(\mathbf G'-\mathbf G\) that can occur;
+the basis itself.  It must cover every $\mathbf G'-\mathbf G$ that can occur;
 SPEX's full-plane-wave convolution comments in
 `src/wavefproducts.f:556-567,708` make this cutoff distinction explicit.
 
 ## 7. Numerical checks
 
-1. Verify orthonormality and \(Y_{l,-m}=(-1)^mY_{lm}^{*}\) on an angular grid.
+1. Verify orthonormality and $Y_{l,-m}=(-1)^mY_{lm}^{*}$ on an angular grid.
 2. Compare tabulated Gaunt coefficients with direct angular quadrature and
    reject selection-rule violations exactly.
 3. Compare the analytic sphere transform with numerical integration for
-   \(GR\ll1\), \(GR\sim1\), and \(GR\gg1\).
-4. Check \(\Theta_0\), Hermitian symmetry, and translation phases for a
+   $GR\ll1$, $GR\sim1$, and $GR\gg1$.
+4. Check $\Theta_0$, Hermitian symmetry, and translation phases for a
    nonsymmetric multi-atom cell.
-5. Check that \(qj_l'(qR)\), not merely \(j_l'(qR)\), is used as the radial
+5. Check that $qj_l'(qR)$, not merely $j_l'(qR)$, is used as the radial
    derivative in APW matching.
 
 ## Source anchors
@@ -267,7 +267,7 @@ The SPEX anchors below were inspected in the local tree
 
 - SPEX harmonics and indexing: `spex06.00pre36/src/numerics.f:482-600`.
 - SPEX real/complex transform: `spex06.00pre36/src/vector.f:241-280`.
-- SPEX Wigner \(3j\) and Gaunt routines: `spex06.00pre36/src/numerics.f:604-667`.
+- SPEX Wigner $3j$ and Gaunt routines: `spex06.00pre36/src/numerics.f:604-667`.
 - SPEX spherical Bessel functions: `spex06.00pre36/src/numerics.f:750-908`.
 - SPEX plane-wave/APW matching values: `spex06.00pre36/src/hamilton.f:248-264`.
 - SPEX reciprocal lattice: `spex06.00pre36/src/getinput.f:3017-3028`.
