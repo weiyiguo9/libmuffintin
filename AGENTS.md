@@ -12,9 +12,16 @@
   ````
 
 - Do not use `\(...\)`, `\[...\]`, or `$$...$$` delimiters in Markdown.
-- Do not wrap mathematical variables or expressions in backticks. Reserve
-  backticks and ordinary code fences for identifiers, paths, commands, source
-  literals, and actual code.
+- Do not use GitHub-disallowed MathJax macros such as `\operatorname`. Use
+  supported upright text instead, for example `\mathrm{Re}`, `\mathrm{Im}`,
+  and `\mathrm{sgn}`; add explicit `\,` spacing or parentheses where the
+  operator needs separation from its operand.
+- When Markdown-sensitive characters make ordinary `$...$` ambiguous, use
+  GitHub's math-aware backtick delimiter, written as `` $`...`$ `` in source.
+  This is a math delimiter, not ordinary inline code.
+- Do not wrap mathematical variables or expressions in ordinary backticks.
+  Reserve ordinary backticks and code fences for identifiers, paths, commands,
+  source literals, and actual code.
 - Keep a blank line before and after each display-math fence so both local
   MathJax-aware Markdown previews and GitHub parse it as a separate block.
 

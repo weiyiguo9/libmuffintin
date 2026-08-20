@@ -67,7 +67,7 @@ $P_{a\sigma}$ from global basis columns to those site coordinates:
   LO coordinate;
 - an LO column belonging to another site is zero.
 
-Let $S^{a\sigma}_{\rm MT}$ and $H^{a\sigma}_{\rm MT}$ be the full site
+Let $`S^{a\sigma}_{\mathrm{MT}}`$ and $`H^{a\sigma}_{\mathrm{MT}}`$ be the full site
 matrices in those same coordinates, including all APW--APW, APW--LO, and
 LO--LO blocks. Then both operators obey the same congruence:
 
