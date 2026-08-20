@@ -4,7 +4,8 @@
 //! coefficient and the site-translation phase are exposed separately so that
 //! neither convention is hidden inside the real, radial boundary solve.
 //! Site muffin-tin contributions are `einsum("ci,cd,dj->ij", [P^*, B, P])`
-//! in `mt-tensor`.
+//! in `mt-tensor`. The filtered generalized solver keeps faer for Hermitian
+//! EVD and uses einsum for $X$, $X^\dagger H X$, $C=XZ$, and residuals.
 
 #![forbid(unsafe_code)]
 
@@ -845,64 +846,83 @@ pub fn solve_generalized_hermitian(
     }
     let r = retained.len();
 
-    // X = U_keep diag(s_keep^-1/2), so X^H S X = I.
-    let mut x = vec![Complex64::new(0.0, 0.0); n * r];
+    // X = U_keep diag(s_keep^{-1/2}), so X^H S X = I. Filtering stays here;
+    // the products are einsum.
+    let mut u_keep = vec![Complex64::default(); n * r];
+    let mut scales = vec![Complex64::default(); r];
     for (column, &source_column) in retained.iter().enumerate() {
-        let scale = 1.0 / s_eigen.S()[source_column].re.sqrt();
+        scales[column] = Complex64::new(1.0 / s_eigen.S()[source_column].re.sqrt(), 0.0);
         for row in 0..n {
-            x[row * r + column] = s_eigen.U()[(row, source_column)] * scale;
+            u_keep[row * r + column] = s_eigen.U()[(row, source_column)];
         }
     }
+    let u_keep =
+        ComplexTensor::from_host_row_major(&[n, r], &[Axis::GlobalBasis, Axis::Reduced], u_keep)?;
+    let scales = ComplexTensor::from_host_row_major(&[r], &[Axis::Reduced], scales)?;
+    let x = einsum("ik,k->ik", &[&u_keep, &scales])?;
 
-    let reduced = Mat::from_fn(r, r, |left, right| {
-        let mut value = Complex64::new(0.0, 0.0);
-        for i in 0..n {
-            for j in 0..n {
-                value += x[i * r + left].conj() * hamiltonian[(i, j)] * x[j * r + right];
-            }
-        }
-        value
+    let hamiltonian_tensor = HermitianMatrix::from_host_row_major(
+        n,
+        Axis::GlobalBasis,
+        hamiltonian.as_slice().to_vec(),
+    )?;
+    let overlap_tensor =
+        HermitianMatrix::from_host_row_major(n, Axis::GlobalBasis, overlap.as_slice().to_vec())?;
+    let x_conj = x.conjugate();
+    let reduced = HermitianMatrix::from_tensor(einsum(
+        "ir,ij,js->rs",
+        &[&x_conj, hamiltonian_tensor.as_tensor(), &x],
+    )?)?;
+    let reduced_matrix = Mat::from_fn(r, r, |row, column| {
+        reduced
+            .get(row, column)
+            .expect("reduced Hermitian block is square")
     });
-    let reduced_eigen = reduced
+    let reduced_eigen = reduced_matrix
         .self_adjoint_eigen(Side::Lower)
         .map_err(|_| LapwError::Eigensolver)?;
 
     let eigenvalues = (0..r)
         .map(|band| Hartree(reduced_eigen.S()[band].re))
         .collect::<Vec<_>>();
-    let mut vectors = vec![Complex64::new(0.0, 0.0); n * r];
-    for row in 0..n {
+    let mut z = vec![Complex64::default(); r * r];
+    for row in 0..r {
         for band in 0..r {
-            for reduced_row in 0..r {
-                vectors[row * r + band] +=
-                    x[row * r + reduced_row] * reduced_eigen.U()[(reduced_row, band)];
-            }
+            z[row * r + band] = reduced_eigen.U()[(row, band)];
         }
     }
+    let z = ComplexTensor::from_host_row_major(&[r, r], &[Axis::Reduced, Axis::Band], z)?;
+    let vectors = einsum("ir,rb->ib", &[&x, &z])?;
 
-    let residuals = eigenvalues
-        .iter()
-        .enumerate()
-        .map(|(band, eigenvalue)| {
-            let mut residual_squared = 0.0;
-            let mut hc_squared = 0.0;
-            let mut sc_squared = 0.0;
-            for row in 0..n {
-                let mut hc = Complex64::new(0.0, 0.0);
-                let mut sc = Complex64::new(0.0, 0.0);
-                for column in 0..n {
-                    let coefficient = vectors[column * r + band];
-                    hc += hamiltonian[(row, column)] * coefficient;
-                    sc += overlap[(row, column)] * coefficient;
-                }
-                residual_squared += (hc - sc * eigenvalue.get()).norm_sqr();
-                hc_squared += hc.norm_sqr();
-                sc_squared += sc.norm_sqr();
-            }
-            let absolute = residual_squared.sqrt();
-            let denominator = hc_squared
-                .sqrt()
-                .max(eigenvalue.get().abs() * sc_squared.sqrt());
+    let hc = einsum("ij,jb->ib", &[hamiltonian_tensor.as_tensor(), &vectors])?;
+    let sc = einsum("ij,jb->ib", &[overlap_tensor.as_tensor(), &vectors])?;
+    let epsilon = ComplexTensor::from_host_row_major(
+        &[r],
+        &[Axis::Band],
+        eigenvalues
+            .iter()
+            .map(|value| Complex64::new(value.get(), 0.0))
+            .collect(),
+    )?;
+    let sc_eps = einsum("ib,b->ib", &[&sc, &epsilon])?;
+    let residual = hc.sub(&sc_eps)?;
+    let residual_conj = residual.conjugate();
+    let residual_sq = einsum("ib,ib->b", &[&residual_conj, &residual])?;
+    let hc_conj = hc.conjugate();
+    let hc_sq = einsum("ib,ib->b", &[&hc_conj, &hc])?;
+    let sc_conj = sc.conjugate();
+    let sc_sq = einsum("ib,ib->b", &[&sc_conj, &sc])?;
+    let residuals = (0..r)
+        .map(|band| {
+            let absolute = residual_sq
+                .get(&[band])
+                .expect("band residual")
+                .re
+                .max(0.0)
+                .sqrt();
+            let hc_norm = hc_sq.get(&[band]).expect("Hc norm").re.max(0.0).sqrt();
+            let sc_norm = sc_sq.get(&[band]).expect("Sc norm").re.max(0.0).sqrt();
+            let denominator = hc_norm.max(eigenvalues[band].get().abs() * sc_norm);
             EigenpairResidual {
                 band_index: band,
                 absolute,
@@ -920,7 +940,7 @@ pub fn solve_generalized_hermitian(
         eigenvectors: DenseEigenvectors {
             rows: n,
             columns: r,
-            data: vectors,
+            data: vectors.to_host_row_major(),
         },
         retained_dimension: r,
         filtered_dimension: n - r,
