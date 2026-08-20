@@ -14,11 +14,13 @@ use mt_core::{
     complex_spherical_harmonics, lm_count, spherical_bessel_j, spherical_bessel_j_derivative,
 };
 use mt_radial::BoundaryData;
-use mt_tensor::{Axis, ComplexTensor, HermitianMatrix, TensorError, einsum};
+use mt_tensor::{Axis, TensorError, einsum};
+
+pub use mt_tensor::{ComplexTensor, HermitianMatrix};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use std::f64::consts::PI;
-use std::ops::{Index, Range};
+use std::ops::Range;
 use thiserror::Error;
 
 /// A normalized plane wave identified by `G`, with Cartesian `q = k + G`.
@@ -368,90 +370,6 @@ pub struct RadialOverlapBlock {
     pub udot_udot: f64,
 }
 
-/// Dense row-major complex Hermitian matrix.
-#[derive(Clone, Debug, PartialEq)]
-pub struct DenseHermitianMatrix {
-    dimension: usize,
-    data: Vec<Complex64>,
-}
-
-impl DenseHermitianMatrix {
-    /// Construct a Hermitian matrix from its upper triangle.
-    pub fn from_upper_triangle(
-        dimension: usize,
-        mut element: impl FnMut(usize, usize) -> Complex64,
-    ) -> Self {
-        let mut data = vec![Complex64::new(0.0, 0.0); dimension * dimension];
-        for row in 0..dimension {
-            for column in row..dimension {
-                let value = element(row, column);
-                data[row * dimension + column] = value;
-                data[column * dimension + row] = value.conj();
-            }
-        }
-        Self { dimension, data }
-    }
-
-    pub const fn dimension(&self) -> usize {
-        self.dimension
-    }
-
-    /// Construct from full row-major data after validating Hermiticity.
-    pub fn from_row_major(dimension: usize, data: Vec<Complex64>) -> Result<Self, LapwError> {
-        if data.len() != dimension * dimension {
-            return Err(LapwError::MatrixDataLength {
-                expected: dimension * dimension,
-                actual: data.len(),
-            });
-        }
-        let matrix = Self { dimension, data };
-        validate_dense_hermitian(&matrix, "input")?;
-        Ok(matrix)
-    }
-
-    pub fn as_slice(&self) -> &[Complex64] {
-        &self.data
-    }
-}
-
-impl Index<(usize, usize)> for DenseHermitianMatrix {
-    type Output = Complex64;
-
-    fn index(&self, (row, column): (usize, usize)) -> &Self::Output {
-        &self.data[row * self.dimension + column]
-    }
-}
-
-/// Dense row-major matrix whose columns are vectors in the original LAPW basis.
-#[derive(Clone, Debug, PartialEq)]
-pub struct DenseEigenvectors {
-    rows: usize,
-    columns: usize,
-    data: Vec<Complex64>,
-}
-
-impl DenseEigenvectors {
-    pub const fn rows(&self) -> usize {
-        self.rows
-    }
-
-    pub const fn columns(&self) -> usize {
-        self.columns
-    }
-
-    pub fn as_slice(&self) -> &[Complex64] {
-        &self.data
-    }
-}
-
-impl Index<(usize, usize)> for DenseEigenvectors {
-    type Output = Complex64;
-
-    fn index(&self, (row, column): (usize, usize)) -> &Self::Output {
-        &self.data[row * self.columns + column]
-    }
-}
-
 /// Cell-normalized interstitial potential coefficients keyed by integer
 /// reciprocal-lattice coordinates.  Supplying one member also installs its
 /// conjugate partner, so lookup is explicitly Hermitian.
@@ -498,15 +416,15 @@ impl InterstitialPotential {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SiteOperatorBlocks {
     pub plane_waves: Vec<PlaneWaveAugmentation>,
-    pub overlap: DenseHermitianMatrix,
-    pub hamiltonian: DenseHermitianMatrix,
+    pub overlap: HermitianMatrix,
+    pub hamiltonian: HermitianMatrix,
 }
 
 /// The two matrices of one generalized LAPW eigenproblem.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LapwEigenproblem {
-    pub overlap: DenseHermitianMatrix,
-    pub hamiltonian: DenseHermitianMatrix,
+    pub overlap: HermitianMatrix,
+    pub hamiltonian: HermitianMatrix,
 }
 
 /// Assemble `S` and `H` together in the global [`LapwBasisLayout`].
@@ -597,14 +515,12 @@ pub fn assemble_eigenproblem(
         )?;
     }
     Ok(LapwEigenproblem {
-        overlap: DenseHermitianMatrix {
+        overlap: HermitianMatrix::from_host_row_major(dimension, Axis::GlobalBasis, overlap)?,
+        hamiltonian: HermitianMatrix::from_host_row_major(
             dimension,
-            data: overlap,
-        },
-        hamiltonian: DenseHermitianMatrix {
-            dimension,
-            data: hamiltonian,
-        },
+            Axis::GlobalBasis,
+            hamiltonian,
+        )?,
     })
 }
 
@@ -645,7 +561,13 @@ fn validate_operator_site(
                 actual: block.dimension(),
             });
         }
-        validate_dense_hermitian(block, name)?;
+        if block.axis() != Axis::SiteCoordinate {
+            return Err(LapwError::Tensor(TensorError::Axis {
+                index: 0,
+                expected: Axis::SiteCoordinate,
+                actual: block.axis(),
+            }));
+        }
     }
     Ok(())
 }
@@ -655,7 +577,7 @@ fn add_site_projection(
     dimension: usize,
     site_index: usize,
     site: &SiteOperatorBlocks,
-    block: &DenseHermitianMatrix,
+    block: &HermitianMatrix,
     layout: &LapwBasisLayout,
 ) -> Result<(), LapwError> {
     let channels = site
@@ -698,15 +620,10 @@ fn add_site_projection(
         &[Axis::SiteCoordinate, Axis::SiteBasis],
         projection,
     )?;
-    let local_block = HermitianMatrix::from_host_row_major(
-        n_coord,
-        Axis::SiteCoordinate,
-        block.as_slice().to_vec(),
-    )?;
     let conjugated = projection.conjugate();
     let site_matrix = HermitianMatrix::from_tensor(einsum(
         "ci,cd,dj->ij",
-        &[&conjugated, local_block.as_tensor(), &projection],
+        &[&conjugated, block.as_tensor(), &projection],
     )?)?;
     let values = site_matrix.to_host_row_major();
     for left in 0..n_basis {
@@ -757,9 +674,9 @@ fn add_hermitian(
 pub fn spex_spherical_radial_hamiltonian(
     linearization_energy: Hartree,
     overlap: RadialOverlapBlock,
-) -> DenseHermitianMatrix {
+) -> HermitianMatrix {
     let energy = linearization_energy.get();
-    DenseHermitianMatrix::from_upper_triangle(2, |row, column| {
+    HermitianMatrix::from_upper_triangle(2, Axis::SiteCoordinate, |row, column| {
         let value = match (row, column) {
             (0, 0) => energy * overlap.uu,
             (0, 1) => energy * overlap.u_udot + 0.5 * overlap.uu,
@@ -768,6 +685,7 @@ pub fn spex_spherical_radial_hamiltonian(
         };
         Complex64::new(value, 0.0)
     })
+    .expect("SPEX radial block is Hermitian")
 }
 
 /// Residual diagnostic for one generalized eigenpair.
@@ -785,8 +703,8 @@ pub struct EigenpairResidual {
 pub struct GeneralizedEigensolution {
     /// Eigenvalues in nondecreasing Hartree order.
     pub eigenvalues: Vec<Hartree>,
-    /// Eigenvector columns expressed in the global LAPW basis.
-    pub eigenvectors: DenseEigenvectors,
+    /// Eigenvector columns on axes `[GlobalBasis, Band]`.
+    pub eigenvectors: ComplexTensor,
     pub retained_dimension: usize,
     pub filtered_dimension: usize,
     pub residuals: Vec<EigenpairResidual>,
@@ -796,16 +714,23 @@ pub struct GeneralizedEigensolution {
 /// directions.  An overlap eigenvalue is retained when it is positive and
 /// greater than `relative_overlap_threshold * max(eigenvalue(S))`.
 pub fn solve_generalized_hermitian(
-    hamiltonian: &DenseHermitianMatrix,
-    overlap: &DenseHermitianMatrix,
+    hamiltonian: &HermitianMatrix,
+    overlap: &HermitianMatrix,
     relative_overlap_threshold: f64,
 ) -> Result<GeneralizedEigensolution, LapwError> {
     use faer::{Mat, Side};
 
-    if hamiltonian.dimension != overlap.dimension {
+    if hamiltonian.axis() != Axis::GlobalBasis || overlap.axis() != Axis::GlobalBasis {
+        return Err(LapwError::Tensor(TensorError::Axis {
+            index: 0,
+            expected: Axis::GlobalBasis,
+            actual: hamiltonian.axis(),
+        }));
+    }
+    if hamiltonian.dimension() != overlap.dimension() {
         return Err(LapwError::MatrixDimensionMismatch {
-            hamiltonian: hamiltonian.dimension,
-            overlap: overlap.dimension,
+            hamiltonian: hamiltonian.dimension(),
+            overlap: overlap.dimension(),
         });
     }
     if !relative_overlap_threshold.is_finite() || relative_overlap_threshold < 0.0 {
@@ -813,13 +738,11 @@ pub fn solve_generalized_hermitian(
             relative_overlap_threshold,
         ));
     }
-    validate_dense_hermitian(hamiltonian, "Hamiltonian")?;
-    validate_dense_hermitian(overlap, "overlap")?;
-    let n = overlap.dimension;
+    let n = overlap.dimension();
     if n == 0 {
         return Err(LapwError::EmptyOverlapSubspace);
     }
-    let s_matrix = Mat::from_fn(n, n, |row, column| overlap[(row, column)]);
+    let s_matrix = Mat::from_fn(n, n, |row, column| overlap.at(row, column));
     let s_eigen = s_matrix
         .self_adjoint_eigen(Side::Lower)
         .map_err(|_| LapwError::Eigensolver)?;
@@ -861,17 +784,10 @@ pub fn solve_generalized_hermitian(
     let scales = ComplexTensor::from_host_row_major(&[r], &[Axis::Reduced], scales)?;
     let x = einsum("ik,k->ik", &[&u_keep, &scales])?;
 
-    let hamiltonian_tensor = HermitianMatrix::from_host_row_major(
-        n,
-        Axis::GlobalBasis,
-        hamiltonian.as_slice().to_vec(),
-    )?;
-    let overlap_tensor =
-        HermitianMatrix::from_host_row_major(n, Axis::GlobalBasis, overlap.as_slice().to_vec())?;
     let x_conj = x.conjugate();
     let reduced = HermitianMatrix::from_tensor(einsum(
         "ir,ij,js->rs",
-        &[&x_conj, hamiltonian_tensor.as_tensor(), &x],
+        &[&x_conj, hamiltonian.as_tensor(), &x],
     )?)?;
     let reduced_matrix = Mat::from_fn(r, r, |row, column| {
         reduced
@@ -894,8 +810,8 @@ pub fn solve_generalized_hermitian(
     let z = ComplexTensor::from_host_row_major(&[r, r], &[Axis::Reduced, Axis::Band], z)?;
     let vectors = einsum("ir,rb->ib", &[&x, &z])?;
 
-    let hc = einsum("ij,jb->ib", &[hamiltonian_tensor.as_tensor(), &vectors])?;
-    let sc = einsum("ij,jb->ib", &[overlap_tensor.as_tensor(), &vectors])?;
+    let hc = einsum("ij,jb->ib", &[hamiltonian.as_tensor(), &vectors])?;
+    let sc = einsum("ij,jb->ib", &[overlap.as_tensor(), &vectors])?;
     let epsilon = ComplexTensor::from_host_row_major(
         &[r],
         &[Axis::Band],
@@ -937,11 +853,7 @@ pub fn solve_generalized_hermitian(
 
     Ok(GeneralizedEigensolution {
         eigenvalues,
-        eigenvectors: DenseEigenvectors {
-            rows: n,
-            columns: r,
-            data: vectors.to_host_row_major(),
-        },
+        eigenvectors: vectors,
         retained_dimension: r,
         filtered_dimension: n - r,
         residuals,
@@ -999,36 +911,6 @@ pub fn solve_collinear_eigenproblems(
         up: solve_channel(potentials.up, sites.up)?,
         down: solve_channel(potentials.down, sites.down)?,
     })
-}
-
-fn validate_dense_hermitian(
-    matrix: &DenseHermitianMatrix,
-    matrix_name: &'static str,
-) -> Result<(), LapwError> {
-    let scale = matrix
-        .data
-        .iter()
-        .filter(|value| value.re.is_finite() && value.im.is_finite())
-        .map(|value| value.norm())
-        .fold(0.0, f64::max)
-        .max(1.0);
-    let tolerance = 128.0 * f64::EPSILON * scale;
-    for row in 0..matrix.dimension {
-        for column in 0..matrix.dimension {
-            let value = matrix[(row, column)];
-            if !value.re.is_finite() || !value.im.is_finite() {
-                return Err(LapwError::NonFiniteMatrix {
-                    matrix: matrix_name,
-                    row,
-                    column,
-                });
-            }
-            if (value - matrix[(column, row)].conj()).norm() > tolerance {
-                return Err(LapwError::NonHermitianMatrix { row, column });
-            }
-        }
-    }
-    Ok(())
 }
 
 /// Default SPEX reference-comparison tolerance: one meV in Hartree.
@@ -1159,6 +1041,17 @@ mod tests {
             .collect()
     }
 
+    fn site_h(dimension: usize, element: impl FnMut(usize, usize) -> Complex64) -> HermitianMatrix {
+        HermitianMatrix::from_upper_triangle(dimension, Axis::SiteCoordinate, element).unwrap()
+    }
+
+    fn global_h(
+        dimension: usize,
+        element: impl FnMut(usize, usize) -> Complex64,
+    ) -> HermitianMatrix {
+        HermitianMatrix::from_upper_triangle(dimension, Axis::GlobalBasis, element).unwrap()
+    }
+
     #[test]
     fn matching_residuals_are_small() {
         let basis = ApwBoundaryBasis {
@@ -1208,27 +1101,24 @@ mod tests {
             udot_udot: 0.7,
         };
         let local_dimension = 2 * plane_waves[0].coefficients.len();
-        let overlap_block =
-            DenseHermitianMatrix::from_upper_triangle(local_dimension, |row, column| {
-                if row / 2 != column / 2 {
-                    return Complex64::default();
-                }
-                Complex64::new(
-                    match (row % 2, column % 2) {
-                        (0, 0) => radial.uu,
-                        (0, 1) => radial.u_udot,
-                        (1, 1) => radial.udot_udot,
-                        _ => unreachable!(),
-                    },
-                    0.0,
-                )
-            });
+        let overlap_block = site_h(local_dimension, |row, column| {
+            if row / 2 != column / 2 {
+                return Complex64::default();
+            }
+            Complex64::new(
+                match (row % 2, column % 2) {
+                    (0, 0) => radial.uu,
+                    (0, 1) => radial.u_udot,
+                    (1, 1) => radial.udot_udot,
+                    _ => unreachable!(),
+                },
+                0.0,
+            )
+        });
         let site = SiteOperatorBlocks {
             plane_waves,
             overlap: overlap_block,
-            hamiltonian: DenseHermitianMatrix::from_upper_triangle(local_dimension, |_, _| {
-                Complex64::default()
-            }),
+            hamiltonian: site_h(local_dimension, |_, _| Complex64::default()),
         };
         let layout = LapwBasisLayout::new(waves.len(), vec![LocalOrbitalLayout::default()]);
         let overlap = assemble_eigenproblem(
@@ -1242,7 +1132,7 @@ mod tests {
         .overlap;
         for i in 0..overlap.dimension() {
             for j in 0..overlap.dimension() {
-                assert!((overlap[(i, j)] - overlap[(j, i)].conj()).norm() < 2.0e-14);
+                assert!((overlap.at(i, j) - overlap.at(j, i).conj()).norm() < 2.0e-14);
             }
         }
     }
@@ -1264,7 +1154,7 @@ mod tests {
         for i in 0..overlap.dimension() {
             for j in 0..overlap.dimension() {
                 let expected = if i == j { 1.0 } else { 0.0 };
-                assert!((overlap[(i, j)] - expected).norm() < 2.0e-14);
+                assert!((overlap.at(i, j) - expected).norm() < 2.0e-14);
             }
         }
     }
@@ -1278,14 +1168,14 @@ mod tests {
         let problem = assemble_eigenproblem(&waves, &geometry, &layout, &potential, &[]).unwrap();
         let overlap = problem.overlap;
         let hamiltonian = problem.hamiltonian;
-        for i in 0..hamiltonian.dimension() {
+        for (i, wave) in waves.iter().enumerate() {
             for j in 0..hamiltonian.dimension() {
                 let expected = if i == j {
-                    0.5 * waves[i].q_norm.squared()
+                    0.5 * wave.q_norm.squared()
                 } else {
                     0.0
                 };
-                assert!((hamiltonian[(i, j)] - expected).norm() <= 1.0e-12);
+                assert!((hamiltonian.at(i, j) - expected).norm() <= 1.0e-12);
             }
         }
         let solution = solve_generalized_hermitian(&hamiltonian, &overlap, 0.0).unwrap();
@@ -1318,13 +1208,12 @@ mod tests {
                 ]],
             })
             .collect();
-        let block =
-            DenseHermitianMatrix::from_upper_triangle(2, |row, column| match (row, column) {
-                (0, 0) => Complex64::new(1.2, 0.0),
-                (0, 1) => Complex64::new(0.1, -0.2),
-                (1, 1) => Complex64::new(0.8, 0.0),
-                _ => unreachable!(),
-            });
+        let block = site_h(2, |row, column| match (row, column) {
+            (0, 0) => Complex64::new(1.2, 0.0),
+            (0, 1) => Complex64::new(0.1, -0.2),
+            (1, 1) => Complex64::new(0.8, 0.0),
+            _ => unreachable!(),
+        });
         let layout = LapwBasisLayout::new(waves.len(), vec![LocalOrbitalLayout::default()]);
         let hamiltonian = assemble_eigenproblem(
             &waves,
@@ -1333,7 +1222,7 @@ mod tests {
             &InterstitialPotential::default(),
             &[SiteOperatorBlocks {
                 plane_waves: augmentations,
-                overlap: DenseHermitianMatrix::from_upper_triangle(2, |row, column| {
+                overlap: site_h(2, |row, column| {
                     Complex64::new(if row == column { 1.0 } else { 0.0 }, 0.0)
                 }),
                 hamiltonian: block,
@@ -1343,7 +1232,7 @@ mod tests {
         .hamiltonian;
         for i in 0..hamiltonian.dimension() {
             for j in 0..hamiltonian.dimension() {
-                assert!((hamiltonian[(i, j)] - hamiltonian[(j, i)].conj()).norm() < 1.0e-14);
+                assert!((hamiltonian.at(i, j) - hamiltonian.at(j, i).conj()).norm() < 1.0e-14);
             }
         }
     }
@@ -1381,26 +1270,24 @@ mod tests {
         .unwrap();
         let a = Complex64::new(0.3, -0.2);
         let b = Complex64::new(-0.1, 0.4);
-        let overlap =
-            DenseHermitianMatrix::from_upper_triangle(3, |row, column| match (row, column) {
-                (0, 0) => Complex64::new(1.1, 0.0),
-                (0, 1) => Complex64::new(0.2, 0.1),
-                (0, 2) => Complex64::new(-0.3, 0.25),
-                (1, 1) => Complex64::new(0.9, 0.0),
-                (1, 2) => Complex64::new(0.15, -0.35),
-                (2, 2) => Complex64::new(1.4, 0.0),
-                _ => unreachable!(),
-            });
-        let hamiltonian =
-            DenseHermitianMatrix::from_upper_triangle(3, |row, column| match (row, column) {
-                (0, 0) => Complex64::new(0.8, 0.0),
-                (0, 1) => Complex64::new(-0.2, 0.05),
-                (0, 2) => Complex64::new(0.4, -0.3),
-                (1, 1) => Complex64::new(1.2, 0.0),
-                (1, 2) => Complex64::new(-0.1, 0.2),
-                (2, 2) => Complex64::new(2.3, 0.0),
-                _ => unreachable!(),
-            });
+        let overlap = site_h(3, |row, column| match (row, column) {
+            (0, 0) => Complex64::new(1.1, 0.0),
+            (0, 1) => Complex64::new(0.2, 0.1),
+            (0, 2) => Complex64::new(-0.3, 0.25),
+            (1, 1) => Complex64::new(0.9, 0.0),
+            (1, 2) => Complex64::new(0.15, -0.35),
+            (2, 2) => Complex64::new(1.4, 0.0),
+            _ => unreachable!(),
+        });
+        let hamiltonian = site_h(3, |row, column| match (row, column) {
+            (0, 0) => Complex64::new(0.8, 0.0),
+            (0, 1) => Complex64::new(-0.2, 0.05),
+            (0, 2) => Complex64::new(0.4, -0.3),
+            (1, 1) => Complex64::new(1.2, 0.0),
+            (1, 2) => Complex64::new(-0.1, 0.2),
+            (2, 2) => Complex64::new(2.3, 0.0),
+            _ => unreachable!(),
+        });
         let site = SiteOperatorBlocks {
             plane_waves: vec![PlaneWaveAugmentation {
                 coefficients: vec![[a, b]],
@@ -1417,35 +1304,35 @@ mod tests {
             std::slice::from_ref(&site),
         )
         .unwrap();
-        let expected_s_apw_lo = a.conj() * site.overlap[(0, 2)] + b.conj() * site.overlap[(1, 2)];
+        let expected_s_apw_lo = a.conj() * site.overlap.at(0, 2) + b.conj() * site.overlap.at(1, 2);
         let expected_h_apw_lo =
-            a.conj() * site.hamiltonian[(0, 2)] + b.conj() * site.hamiltonian[(1, 2)];
-        let expected_s_apw_apw = a.conj() * (site.overlap[(0, 0)] * a + site.overlap[(0, 1)] * b)
-            + b.conj() * (site.overlap[(1, 0)] * a + site.overlap[(1, 1)] * b);
+            a.conj() * site.hamiltonian.at(0, 2) + b.conj() * site.hamiltonian.at(1, 2);
+        let expected_s_apw_apw = a.conj() * (site.overlap.at(0, 0) * a + site.overlap.at(0, 1) * b)
+            + b.conj() * (site.overlap.at(1, 0) * a + site.overlap.at(1, 1) * b);
         let expected_h_apw_apw = a.conj()
-            * (site.hamiltonian[(0, 0)] * a + site.hamiltonian[(0, 1)] * b)
-            + b.conj() * (site.hamiltonian[(1, 0)] * a + site.hamiltonian[(1, 1)] * b);
+            * (site.hamiltonian.at(0, 0) * a + site.hamiltonian.at(0, 1) * b)
+            + b.conj() * (site.hamiltonian.at(1, 0) * a + site.hamiltonian.at(1, 1) * b);
         let theta = geometry
             .coefficient(std::array::from_fn(|_| InverseBohr(0.0)))
             .unwrap();
-        assert!((problem.overlap[(0, 0)] - (theta + expected_s_apw_apw)).norm() < 1.0e-14);
+        assert!((problem.overlap.at(0, 0) - (theta + expected_s_apw_apw)).norm() < 1.0e-14);
         assert!(
-            (problem.hamiltonian[(0, 0)]
+            (problem.hamiltonian.at(0, 0)
                 - (0.5 * wave.q_norm.squared() * theta + expected_h_apw_apw))
                 .norm()
                 < 1.0e-14
         );
-        assert!((problem.overlap[(0, 1)] - expected_s_apw_lo).norm() < 1.0e-14);
-        assert!((problem.hamiltonian[(0, 1)] - expected_h_apw_lo).norm() < 1.0e-14);
-        assert_eq!(problem.overlap[(1, 1)], site.overlap[(2, 2)]);
-        assert_eq!(problem.hamiltonian[(1, 1)], site.hamiltonian[(2, 2)]);
+        assert!((problem.overlap.at(0, 1) - expected_s_apw_lo).norm() < 1.0e-14);
+        assert!((problem.hamiltonian.at(0, 1) - expected_h_apw_lo).norm() < 1.0e-14);
+        assert_eq!(problem.overlap.at(1, 1), site.overlap.at(2, 2));
+        assert_eq!(problem.hamiltonian.at(1, 1), site.hamiltonian.at(2, 2));
         for i in 0..2 {
             for j in 0..2 {
                 assert!(
-                    (problem.overlap[(i, j)] - problem.overlap[(j, i)].conj()).norm() < 1.0e-14
+                    (problem.overlap.at(i, j) - problem.overlap.at(j, i).conj()).norm() < 1.0e-14
                 );
                 assert!(
-                    (problem.hamiltonian[(i, j)] - problem.hamiltonian[(j, i)].conj()).norm()
+                    (problem.hamiltonian.at(i, j) - problem.hamiltonian.at(j, i).conj()).norm()
                         < 1.0e-14
                 );
             }
@@ -1466,20 +1353,18 @@ mod tests {
         .unwrap();
         let a = Complex64::new(0.3, -0.2);
         let b = Complex64::new(-0.1, 0.4);
-        let overlap =
-            DenseHermitianMatrix::from_upper_triangle(2, |row, column| match (row, column) {
-                (0, 0) => Complex64::new(1.1, 0.0),
-                (0, 1) => Complex64::new(0.2, 0.1),
-                (1, 1) => Complex64::new(0.9, 0.0),
-                _ => unreachable!(),
-            });
-        let hamiltonian =
-            DenseHermitianMatrix::from_upper_triangle(2, |row, column| match (row, column) {
-                (0, 0) => Complex64::new(0.8, 0.0),
-                (0, 1) => Complex64::new(-0.2, 0.05),
-                (1, 1) => Complex64::new(1.2, 0.0),
-                _ => unreachable!(),
-            });
+        let overlap = site_h(2, |row, column| match (row, column) {
+            (0, 0) => Complex64::new(1.1, 0.0),
+            (0, 1) => Complex64::new(0.2, 0.1),
+            (1, 1) => Complex64::new(0.9, 0.0),
+            _ => unreachable!(),
+        });
+        let hamiltonian = site_h(2, |row, column| match (row, column) {
+            (0, 0) => Complex64::new(0.8, 0.0),
+            (0, 1) => Complex64::new(-0.2, 0.05),
+            (1, 1) => Complex64::new(1.2, 0.0),
+            _ => unreachable!(),
+        });
         let site = SiteOperatorBlocks {
             plane_waves: vec![PlaneWaveAugmentation {
                 coefficients: vec![[a, b]],
@@ -1496,16 +1381,16 @@ mod tests {
             std::slice::from_ref(&site),
         )
         .unwrap();
-        let expected_s = a.conj() * (site.overlap[(0, 0)] * a + site.overlap[(0, 1)] * b)
-            + b.conj() * (site.overlap[(1, 0)] * a + site.overlap[(1, 1)] * b);
-        let expected_h = a.conj() * (site.hamiltonian[(0, 0)] * a + site.hamiltonian[(0, 1)] * b)
-            + b.conj() * (site.hamiltonian[(1, 0)] * a + site.hamiltonian[(1, 1)] * b);
+        let expected_s = a.conj() * (site.overlap.at(0, 0) * a + site.overlap.at(0, 1) * b)
+            + b.conj() * (site.overlap.at(1, 0) * a + site.overlap.at(1, 1) * b);
+        let expected_h = a.conj() * (site.hamiltonian.at(0, 0) * a + site.hamiltonian.at(0, 1) * b)
+            + b.conj() * (site.hamiltonian.at(1, 0) * a + site.hamiltonian.at(1, 1) * b);
         let theta = geometry
             .coefficient(std::array::from_fn(|_| InverseBohr(0.0)))
             .unwrap();
-        assert!((problem.overlap[(0, 0)] - (theta + expected_s)).norm() < 1.0e-14);
+        assert!((problem.overlap.at(0, 0) - (theta + expected_s)).norm() < 1.0e-14);
         assert!(
-            (problem.hamiltonian[(0, 0)] - (0.5 * wave.q_norm.squared() * theta + expected_h))
+            (problem.hamiltonian.at(0, 0) - (0.5 * wave.q_norm.squared() * theta + expected_h))
                 .norm()
                 < 1.0e-14
         );
@@ -1578,14 +1463,14 @@ mod tests {
 
     #[test]
     fn generalized_solver_filters_near_null_overlap_and_rejects_indefinite_overlap() {
-        let h = DenseHermitianMatrix::from_upper_triangle(2, |row, column| {
+        let h = global_h(2, |row, column| {
             if row == column {
                 Complex64::new((row + 1) as f64, 0.0)
             } else {
                 Complex64::new(0.0, 0.0)
             }
         });
-        let nearly_singular = DenseHermitianMatrix::from_upper_triangle(2, |row, column| {
+        let nearly_singular = global_h(2, |row, column| {
             if row == column {
                 Complex64::new(if row == 0 { 1.0 } else { -1.0e-14 }, 0.0)
             } else {
@@ -1597,7 +1482,7 @@ mod tests {
         assert_eq!(solution.filtered_dimension, 1);
         assert!((solution.eigenvalues[0].get() - 1.0).abs() < 1.0e-14);
 
-        let indefinite = DenseHermitianMatrix::from_upper_triangle(2, |row, column| {
+        let indefinite = global_h(2, |row, column| {
             if row == column {
                 Complex64::new(if row == 0 { 1.0 } else { -0.1 }, 0.0)
             } else {
@@ -1612,13 +1497,13 @@ mod tests {
 
     #[test]
     fn generalized_eigenvectors_are_s_orthonormal_with_small_residuals() {
-        let h = DenseHermitianMatrix::from_upper_triangle(2, |row, column| match (row, column) {
+        let h = global_h(2, |row, column| match (row, column) {
             (0, 0) => Complex64::new(1.0, 0.0),
             (0, 1) => Complex64::new(0.2, 0.1),
             (1, 1) => Complex64::new(2.0, 0.0),
             _ => unreachable!(),
         });
-        let s = DenseHermitianMatrix::from_upper_triangle(2, |row, column| match (row, column) {
+        let s = global_h(2, |row, column| match (row, column) {
             (0, 0) => Complex64::new(1.3, 0.0),
             (0, 1) => Complex64::new(0.1, -0.05),
             (1, 1) => Complex64::new(0.9, 0.0),
@@ -1630,9 +1515,9 @@ mod tests {
                 let mut value = Complex64::new(0.0, 0.0);
                 for i in 0..2 {
                     for j in 0..2 {
-                        value += solution.eigenvectors[(i, left)].conj()
-                            * s[(i, j)]
-                            * solution.eigenvectors[(j, right)];
+                        value += solution.eigenvectors.at(&[i, left]).conj()
+                            * s.at(i, j)
+                            * solution.eigenvectors.at(&[j, right]);
                     }
                 }
                 let expected = if left == right { 1.0 } else { 0.0 };
@@ -1655,9 +1540,9 @@ mod tests {
             udot_udot: 0.8,
         };
         let h = spex_spherical_radial_hamiltonian(Hartree(0.5), overlap);
-        assert_eq!(h[(0, 0)], Complex64::new(0.6, 0.0));
-        assert_eq!(h[(0, 1)], Complex64::new(0.75, 0.0));
-        assert_eq!(h[(1, 1)], Complex64::new(0.4, 0.0));
+        assert_eq!(h.at(0, 0), Complex64::new(0.6, 0.0));
+        assert_eq!(h.at(0, 1), Complex64::new(0.75, 0.0));
+        assert_eq!(h.at(1, 1), Complex64::new(0.4, 0.0));
     }
 
     #[test]

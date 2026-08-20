@@ -234,6 +234,11 @@ impl ComplexTensor {
         }
     }
 
+    /// In-bounds entry. Panics if the index is invalid.
+    pub fn at(&self, indices: &[usize]) -> Complex64 {
+        self.get(indices).unwrap_or_else(|error| panic!("{error}"))
+    }
+
     pub fn get(&self, indices: &[usize]) -> Result<Complex64, TensorError> {
         let shape = self.shape();
         if indices.len() != shape.len() {
@@ -380,6 +385,23 @@ impl HermitianMatrix {
         )?)
     }
 
+    /// Build a Hermitian matrix from the upper triangle, including the diagonal.
+    pub fn from_upper_triangle(
+        dimension: usize,
+        axis: Axis,
+        mut element: impl FnMut(usize, usize) -> Complex64,
+    ) -> Result<Self, TensorError> {
+        let mut values = vec![Complex64::default(); dimension * dimension];
+        for row in 0..dimension {
+            for column in row..dimension {
+                let value = element(row, column);
+                values[row * dimension + column] = value;
+                values[column * dimension + row] = value.conj();
+            }
+        }
+        Self::from_host_row_major(dimension, axis, values)
+    }
+
     pub fn as_tensor(&self) -> &ComplexTensor {
         &self.tensor
     }
@@ -394,6 +416,12 @@ impl HermitianMatrix {
 
     pub fn get(&self, row: usize, column: usize) -> Result<Complex64, TensorError> {
         self.tensor.get(&[row, column])
+    }
+
+    /// In-bounds entry. Panics if the index is invalid.
+    pub fn at(&self, row: usize, column: usize) -> Complex64 {
+        self.get(row, column)
+            .unwrap_or_else(|error| panic!("{error}"))
     }
 
     pub fn to_host_row_major(&self) -> Vec<Complex64> {
