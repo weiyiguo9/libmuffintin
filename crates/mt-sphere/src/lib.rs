@@ -148,13 +148,13 @@ impl SphereOrbital {
     ) -> Result<Self, SphereOrbitalError> {
         let angular =
             Lm::new(l, m).map_err(|_| SphereOrbitalError::InvalidAngularChannel { l, m })?;
-        if let Some(values) = &small
-            && values.len() != large.len()
-        {
-            return Err(SphereOrbitalError::SmallComponentLength {
-                expected: large.len(),
-                actual: values.len(),
-            });
+        if let Some(values) = &small {
+            if values.len() != large.len() {
+                return Err(SphereOrbitalError::SmallComponentLength {
+                    expected: large.len(),
+                    actual: values.len(),
+                });
+            }
         }
         Ok(Self {
             angular,
@@ -192,13 +192,13 @@ pub fn matrix_element(
 ) -> Result<Complex64, MatrixElementError> {
     validate_orbital_length(mesh, left, Operand::Left)?;
     validate_orbital_length(mesh, right, Operand::Right)?;
-    if let Some(actual) = field.sample_count
-        && actual != mesh.len()
-    {
-        return Err(MatrixElementError::FieldMeshLength {
-            expected: mesh.len(),
-            actual,
-        });
+    if let Some(actual) = field.sample_count {
+        if actual != mesh.len() {
+            return Err(MatrixElementError::FieldMeshLength {
+                expected: mesh.len(),
+                actual,
+            });
+        }
     }
 
     let mut result = Complex64::new(0.0, 0.0);
@@ -284,15 +284,15 @@ fn validate_orbital_length(
             actual: orbital.large.len(),
         });
     }
-    if let Some(small) = &orbital.small
-        && small.len() != expected
-    {
-        return Err(MatrixElementError::OrbitalMeshLength {
-            operand,
-            component: Component::Small,
-            expected,
-            actual: small.len(),
-        });
+    if let Some(small) = &orbital.small {
+        if small.len() != expected {
+            return Err(MatrixElementError::OrbitalMeshLength {
+                operand,
+                component: Component::Small,
+                expected,
+                actual: small.len(),
+            });
+        }
     }
     Ok(())
 }
