@@ -23,20 +23,21 @@ The current M-A through M-F implementation candidate provides:
   also needs spinor augmentation and assembly and is not claimed here;
 - `mt-grid`: typed atom-centred, uniform, interstitial, and stable composite
   quadrature grids, with an optional `rstsr` tensor conversion feature;
-- `mt-sphere`: `(L,M)`-resolved sphere fields and Gaunt-weighted radial matrix
+- `mt-sphere`: $(L,M)$-resolved sphere fields and Gaunt-weighted radial matrix
   elements for complex or real harmonics;
 - `mt-io`: independently versioned, human-diffable TOML formats for physical
   snapshots and materialized grid artifacts. The FLEUR converter remains
   frozen;
 - `mt-lapw` M-D: SPEX-convention APW boundary matching, explicit Rayleigh and
   site phases, and dense complex overlap assembly through the empty-sphere
-  `S=I` regression;
+  $S=I$ regression;
 - `mt-lapw` M-E: SPEX symmetric-Laplacian Hamiltonian assembly, full Hermitian
   muffin-tin blocks for spherical and warped potentials, a `faer`-based
-  overlap-filtered generalized eigensolver, and `(k,band)` reference reports;
-- `mt-lapw` M-F: one `[APW][site LO]` basis layout and `P^H(S/H)P` assembly for
-  APW--APW, APW--LO, and LO--LO blocks, plus independent collinear up/down
-  channels without SOC.
+  overlap-filtered generalized eigensolver, and $(k,\mathrm{band})$ reference
+  reports;
+- `mt-lapw` M-F: one $[\mathrm{APW}][\text{site LO}]$ basis layout and
+  $P^\dagger(S/H)P$ assembly for APW--APW, APW--LO, and LO--LO blocks, plus
+  independent collinear up/down channels without SOC.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.
