@@ -7,6 +7,7 @@ members = [
     "crates/mt-lapw",
     "crates/mt-radial",
     "crates/mt-sphere",
+    "crates/mt-tensor",
 ]
 
 [workspace.package]

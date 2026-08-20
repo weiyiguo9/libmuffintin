@@ -256,11 +256,16 @@ $l$, then $m=-l,\ldots,l$, then the radial LO number. The local operator block
 is ordered as every $\mathrm{lm}$ channel's $(u,\dot u)$ pair followed by those
 LOs.
 
-Overlap and Hamiltonian use the same site projection $P^\dagger(\text{block})P$.
-Interstitial terms occupy only the plane-wave corner. An APW coefficient
-already contains $\exp(i\mathbf q\cdot\mathbf R_a)$; APW--LO terms inherit its
-conjugate from $P^\dagger$ and must not receive a second site phase. LO--LO
-terms have no interstitial contribution.
+Overlap and Hamiltonian use the same site projection $P^\dagger(\text{block})P$,
+evaluated as `einsum("ci,cd,dj->ij", [P^*, B, P])` in `mt-tensor`. The
+coefficient tensor $P$ has axes $[\text{site coordinates}][\text{site basis}]$.
+Each site remains a separate tensor; sites are not padded into one rectangle.
+The einsum layer may run on RSTSR+TBLIS or, later, tenferro-rs; the subscripts
+are the contract. Interstitial terms occupy only the plane-wave corner. An APW
+coefficient already contains $\exp(i\mathbf q\cdot\mathbf R_a)$; APW--LO terms
+inherit its conjugate from $P^*$ and must not receive a second site phase.
+LO--LO terms have no interstitial contribution. Host snapshots and `mt-io`
+artifacts stay backend-neutral.
 
 Collinear spin without SOC is two independent generalized eigenproblems that
 share geometry and basis layout but have separate potentials, radial blocks,

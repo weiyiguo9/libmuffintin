@@ -10,6 +10,7 @@ rust-version.workspace = true
 faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
 mt-core = { path = "../mt-core" }
 mt-radial = { path = "../mt-radial" }
+mt-tensor = { path = "../mt-tensor" }
 num-complex.workspace = true
 thiserror.workspace = true
 
