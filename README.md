@@ -68,6 +68,10 @@ requires rustc 1.96. Leave the workspace at 1.85 unless you enable that
 feature; if you do, raise `rust-version` to 1.96 in the root `Cargo.toml` or
 the tenferro backend will not compile.
 
+```sh
+cargo test -p mt-tensor --features backend-tenferro
+```
+
 The implementation is cross-referenced against FLEUR conventions and
 the FlapwMBPT radial formalism.  Reference paths and exact source symbols are
 recorded in the numbered derivation notes.
