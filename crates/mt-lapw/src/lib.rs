@@ -385,15 +385,15 @@ impl InterstitialPotential {
         let mut result = Self::default();
         for (g, value) in coefficients {
             let minus_g = g.map(|component| -component);
-            if let Some(previous) = result.coefficients.get(&g)
-                && (*previous - value).norm() > 64.0 * f64::EPSILON * value.norm().max(1.0)
-            {
-                return Err(LapwError::NonHermitianPotential { g });
+            if let Some(previous) = result.coefficients.get(&g) {
+                if (*previous - value).norm() > 64.0 * f64::EPSILON * value.norm().max(1.0) {
+                    return Err(LapwError::NonHermitianPotential { g });
+                }
             }
-            if let Some(previous) = result.coefficients.get(&minus_g)
-                && (*previous - value.conj()).norm() > 64.0 * f64::EPSILON * value.norm().max(1.0)
-            {
-                return Err(LapwError::NonHermitianPotential { g });
+            if let Some(previous) = result.coefficients.get(&minus_g) {
+                if (*previous - value.conj()).norm() > 64.0 * f64::EPSILON * value.norm().max(1.0) {
+                    return Err(LapwError::NonHermitianPotential { g });
+                }
             }
             if g == [0; 3] && value.im.abs() > 64.0 * f64::EPSILON * value.re.abs().max(1.0) {
                 return Err(LapwError::NonHermitianPotential { g });
@@ -440,10 +440,10 @@ pub fn assemble_eigenproblem(
     sites: &[SiteOperatorBlocks],
 ) -> Result<LapwEigenproblem, LapwError> {
     validate_plane_wave_norms(plane_waves)?;
-    if let Some(first) = plane_waves.first()
-        && plane_waves.iter().any(|wave| wave.k != first.k)
-    {
-        return Err(LapwError::MixedKPoints);
+    if let Some(first) = plane_waves.first() {
+        if plane_waves.iter().any(|wave| wave.k != first.k) {
+            return Err(LapwError::MixedKPoints);
+        }
     }
     if layout.plane_wave_count != plane_waves.len() {
         return Err(LapwError::BasisPlaneWaveCount {
@@ -720,11 +720,18 @@ pub fn solve_generalized_hermitian(
 ) -> Result<GeneralizedEigensolution, LapwError> {
     use faer::{Mat, Side};
 
-    if hamiltonian.axis() != Axis::GlobalBasis || overlap.axis() != Axis::GlobalBasis {
+    if hamiltonian.axis() != Axis::GlobalBasis {
         return Err(LapwError::Tensor(TensorError::Axis {
             index: 0,
             expected: Axis::GlobalBasis,
             actual: hamiltonian.axis(),
+        }));
+    }
+    if overlap.axis() != Axis::GlobalBasis {
+        return Err(LapwError::Tensor(TensorError::Axis {
+            index: 0,
+            expected: Axis::GlobalBasis,
+            actual: overlap.axis(),
         }));
     }
     if hamiltonian.dimension() != overlap.dimension() {
@@ -1496,6 +1503,21 @@ mod tests {
             solve_generalized_hermitian(&h, &indefinite, 1.0e-10),
             Err(LapwError::IndefiniteOverlap { .. })
         ));
+    }
+
+    #[test]
+    fn generalized_solver_reports_the_overlap_axis() {
+        let h = global_h(1, |_, _| Complex64::new(1.0, 0.0));
+        let overlap = site_h(1, |_, _| Complex64::new(1.0, 0.0));
+        let error = solve_generalized_hermitian(&h, &overlap, 0.0).unwrap_err();
+        assert_eq!(
+            error,
+            LapwError::Tensor(TensorError::Axis {
+                index: 0,
+                expected: Axis::GlobalBasis,
+                actual: Axis::SiteCoordinate,
+            })
+        );
     }
 
     #[test]

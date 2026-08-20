@@ -450,12 +450,14 @@ impl DenseEigenvectors {
                 actual: tensor.rank(),
             });
         }
-        if tensor.axes() != [Axis::GlobalBasis, Axis::Band] {
-            return Err(TensorError::Axis {
-                index: 0,
-                expected: Axis::GlobalBasis,
-                actual: tensor.axes()[0],
-            });
+        for (index, expected) in [Axis::GlobalBasis, Axis::Band].into_iter().enumerate() {
+            if tensor.axes()[index] != expected {
+                return Err(TensorError::Axis {
+                    index,
+                    expected,
+                    actual: tensor.axes()[index],
+                });
+            }
         }
         Ok(Self { tensor })
     }
@@ -721,6 +723,25 @@ mod tests {
                 right_len: 2
             }
         ));
+    }
+
+    #[test]
+    fn dense_eigenvectors_report_the_mismatched_axis() {
+        let tensor = ComplexTensor::from_host_row_major(
+            &[2, 1],
+            &[Axis::GlobalBasis, Axis::Reduced],
+            vec![c(1.0, 0.0), c(0.0, 0.0)],
+        )
+        .unwrap();
+        let error = DenseEigenvectors::from_tensor(tensor).unwrap_err();
+        assert_eq!(
+            error,
+            TensorError::Axis {
+                index: 1,
+                expected: Axis::Band,
+                actual: Axis::Reduced,
+            }
+        );
     }
 
     #[test]
