@@ -1,5 +1,13 @@
 # Repository guidance
 
+## Rust MSRV
+
+- Keep the workspace `rust-version` at 1.85 (the edition 2024 floor).
+- Do not raise it for an optional backend.
+- `tenferro-einsum` 0.3.0 needs rustc 1.96. Document that in `README.md`.
+  Anyone enabling `backend-tenferro` raises `rust-version` locally to 1.96;
+  the default RSTSR+TBLIS path stays 1.85.
+
 ## Documentation mathematics
 
 - Write inline mathematics as `$...$`.

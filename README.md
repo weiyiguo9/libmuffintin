@@ -28,6 +28,11 @@ The current M-A through M-F implementation candidate provides:
 - `mt-io`: independently versioned, human-diffable TOML formats for physical
   snapshots and materialized grid artifacts. The FLEUR converter remains
   frozen;
+- `mt-tensor` M-Fb1: backend-neutral `einsum` layer for dense complex tensors.
+  The default backend is RSTSR 0.7.10 linked with TBLIS. tenferro-rs is the
+  planned second backend behind the same subscripts. Site muffin-tin
+  contributions are `einsum("ci,cd,dj->ij", [P^*, B, P])`. faer remains the
+  Hermitian eigensolver. Serialized artifacts stay backend-neutral;
 - `mt-lapw` M-D: SPEX-convention APW boundary matching, explicit Rayleigh and
   site phases, and dense complex overlap assembly through the empty-sphere
   $S=I$ regression;
@@ -50,7 +55,18 @@ the numbered formula derivations are under [`doc/`](doc/).
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test -p mt-grid --features rstsr
+cargo test -p mt-tensor
 ```
+
+The workspace MSRV is Rust 1.85. `mt-tensor` links TBLIS through `tblis-src`.
+First builds need a TBLIS git tree: set `TBLIS_SRC` to a clone with
+submodules, for example `/tmp/tblis.git`, or to
+`https://github.com/MatthewsResearchGroup/tblis.git`.
+
+The optional `backend-tenferro` feature uses `tenferro-einsum` 0.3.0, which
+requires rustc 1.96. Leave the workspace at 1.85 unless you enable that
+feature; if you do, raise `rust-version` to 1.96 in the root `Cargo.toml` or
+the tenferro backend will not compile.
 
 The implementation is cross-referenced against FLEUR conventions and
 the FlapwMBPT radial formalism.  Reference paths and exact source symbols are

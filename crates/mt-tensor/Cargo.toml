@@ -1,0 +1,24 @@
+[package]
+name = "mt-tensor"
+description = "Local tensor substrate with a backend-neutral einsum layer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["backend-rstsr"]
+backend-rstsr = ["dep:rstsr", "dep:tblis-src"]
+# Second local einsum backend. tenferro-einsum 0.3.0 needs rustc 1.96; the
+# workspace MSRV stays 1.85. Enable only after raising rust-version locally.
+backend-tenferro = []
+
+[dependencies]
+num-complex.workspace = true
+rstsr = { version = "0.7.10", optional = true, default-features = false, features = ["std", "faer", "row_major", "tblis"] }
+tblis-src = { version = "0.2.6", optional = true, features = ["build_from_source"] }
+thiserror.workspace = true
+
+[lints]
+workspace = true

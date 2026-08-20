@@ -3,6 +3,8 @@
 //! Plane waves use `exp(+i (k+G) dot r) / sqrt(Omega)`.  The Rayleigh
 //! coefficient and the site-translation phase are exposed separately so that
 //! neither convention is hidden inside the real, radial boundary solve.
+//! Site muffin-tin contributions are `einsum("ci,cd,dj->ij", [P^*, B, P])`
+//! in `mt-tensor`.
 
 #![forbid(unsafe_code)]
 
@@ -11,6 +13,7 @@ use mt_core::{
     complex_spherical_harmonics, lm_count, spherical_bessel_j, spherical_bessel_j_derivative,
 };
 use mt_radial::BoundaryData;
+use mt_tensor::{Axis, ComplexTensor, HermitianMatrix, TensorError, einsum};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use std::f64::consts::PI;
@@ -129,6 +132,8 @@ pub enum LapwError {
     InvalidReferenceTolerance(f64),
     #[error("at least one band reference is required")]
     MissingReferenceData,
+    #[error(transparent)]
+    Tensor(#[from] TensorError),
 }
 
 /// Solve the SPEX `2 x 2` boundary system for a fixed angular momentum.
@@ -580,7 +585,7 @@ pub fn assemble_eigenproblem(
             site,
             &site.overlap,
             layout,
-        );
+        )?;
         add_site_projection(
             &mut hamiltonian,
             dimension,
@@ -588,7 +593,7 @@ pub fn assemble_eigenproblem(
             site,
             &site.hamiltonian,
             layout,
-        );
+        )?;
     }
     Ok(LapwEigenproblem {
         overlap: DenseHermitianMatrix {
@@ -651,7 +656,7 @@ fn add_site_projection(
     site: &SiteOperatorBlocks,
     block: &DenseHermitianMatrix,
     layout: &LapwBasisLayout,
-) {
+) -> Result<(), LapwError> {
     let channels = site
         .plane_waves
         .first()
@@ -664,47 +669,57 @@ fn add_site_projection(
         .plane_wave_range()
         .chain(lo_range.clone())
         .collect::<Vec<_>>();
-    let projections = global_indices
-        .iter()
-        .map(|&global_index| {
-            let mut column = vec![Complex64::default(); block.dimension()];
-            if global_index < layout.plane_wave_count {
-                for (channel, coefficients) in site.plane_waves[global_index]
-                    .coefficients
-                    .iter()
-                    .enumerate()
-                {
-                    column[2 * channel] = coefficients[0];
-                    column[2 * channel + 1] = coefficients[1];
-                }
-            } else {
-                column[apw_dimension + global_index - lo_range.start] = Complex64::new(1.0, 0.0);
+    let n_coord = block.dimension();
+    let n_basis = global_indices.len();
+    if n_coord == 0 || n_basis == 0 {
+        return Ok(());
+    }
+
+    let mut projection = vec![Complex64::default(); n_coord * n_basis];
+    for (column, &global_index) in global_indices.iter().enumerate() {
+        if global_index < layout.plane_wave_count {
+            for (channel, coefficients) in site.plane_waves[global_index]
+                .coefficients
+                .iter()
+                .enumerate()
+            {
+                projection[(2 * channel) * n_basis + column] = coefficients[0];
+                projection[(2 * channel + 1) * n_basis + column] = coefficients[1];
             }
-            column
-        })
-        .collect::<Vec<_>>();
-    for left in 0..global_indices.len() {
-        for right in left..global_indices.len() {
-            let value = bilinear(&projections[left], block, &projections[right]);
+        } else {
+            let row = apw_dimension + global_index - lo_range.start;
+            projection[row * n_basis + column] = Complex64::new(1.0, 0.0);
+        }
+    }
+
+    let projection = ComplexTensor::from_host_row_major(
+        &[n_coord, n_basis],
+        &[Axis::SiteCoordinate, Axis::SiteBasis],
+        projection,
+    )?;
+    let local_block = HermitianMatrix::from_host_row_major(
+        n_coord,
+        Axis::SiteCoordinate,
+        block.as_slice().to_vec(),
+    )?;
+    let conjugated = projection.conjugate();
+    let site_matrix = HermitianMatrix::from_tensor(einsum(
+        "ci,cd,dj->ij",
+        &[&conjugated, local_block.as_tensor(), &projection],
+    )?)?;
+    let values = site_matrix.to_host_row_major();
+    for left in 0..n_basis {
+        for right in left..n_basis {
             add_hermitian(
                 global,
                 dimension,
                 global_indices[left],
                 global_indices[right],
-                value,
+                values[left * n_basis + right],
             );
         }
     }
-}
-
-fn bilinear(left: &[Complex64], block: &DenseHermitianMatrix, right: &[Complex64]) -> Complex64 {
-    let mut value = Complex64::default();
-    for row in 0..block.dimension() {
-        for column in 0..block.dimension() {
-            value += left[row].conj() * block[(row, column)] * right[column];
-        }
-    }
-    value
+    Ok(())
 }
 
 fn set_hermitian(
@@ -945,7 +960,9 @@ pub fn solve_collinear_eigenproblems(
     sites: Collinear<&[SiteOperatorBlocks]>,
     relative_overlap_threshold: f64,
 ) -> Result<Collinear<SolvedLapwEigenproblem>, LapwError> {
-    let solve_channel = |potential: &InterstitialPotential, site_blocks: &[SiteOperatorBlocks]| {
+    let solve_channel = |potential: &InterstitialPotential,
+                         site_blocks: &[SiteOperatorBlocks]|
+     -> Result<SolvedLapwEigenproblem, LapwError> {
         let eigenproblem =
             assemble_eigenproblem(plane_waves, geometry, layout, potential, site_blocks)?;
         let solution = solve_generalized_hermitian(
@@ -1383,10 +1400,96 @@ mod tests {
         let expected_s_apw_lo = a.conj() * site.overlap[(0, 2)] + b.conj() * site.overlap[(1, 2)];
         let expected_h_apw_lo =
             a.conj() * site.hamiltonian[(0, 2)] + b.conj() * site.hamiltonian[(1, 2)];
+        let expected_s_apw_apw = a.conj() * (site.overlap[(0, 0)] * a + site.overlap[(0, 1)] * b)
+            + b.conj() * (site.overlap[(1, 0)] * a + site.overlap[(1, 1)] * b);
+        let expected_h_apw_apw = a.conj()
+            * (site.hamiltonian[(0, 0)] * a + site.hamiltonian[(0, 1)] * b)
+            + b.conj() * (site.hamiltonian[(1, 0)] * a + site.hamiltonian[(1, 1)] * b);
+        let theta = geometry
+            .coefficient(std::array::from_fn(|_| InverseBohr(0.0)))
+            .unwrap();
+        assert!((problem.overlap[(0, 0)] - (theta + expected_s_apw_apw)).norm() < 1.0e-14);
+        assert!(
+            (problem.hamiltonian[(0, 0)]
+                - (0.5 * wave.q_norm.squared() * theta + expected_h_apw_apw))
+                .norm()
+                < 1.0e-14
+        );
         assert!((problem.overlap[(0, 1)] - expected_s_apw_lo).norm() < 1.0e-14);
         assert!((problem.hamiltonian[(0, 1)] - expected_h_apw_lo).norm() < 1.0e-14);
         assert_eq!(problem.overlap[(1, 1)], site.overlap[(2, 2)]);
         assert_eq!(problem.hamiltonian[(1, 1)], site.hamiltonian[(2, 2)]);
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!(
+                    (problem.overlap[(i, j)] - problem.overlap[(j, i)].conj()).norm() < 1.0e-14
+                );
+                assert!(
+                    (problem.hamiltonian[(i, j)] - problem.hamiltonian[(j, i)].conj()).norm()
+                        < 1.0e-14
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn no_lo_site_projection_reduces_to_apw_congruence() {
+        let wave = waves()[0];
+        let plane_waves = [wave];
+        let geometry = InterstitialGeometry::new(
+            VolumeBohr3(100.0),
+            vec![Sphere {
+                center: [Bohr(0.2), Bohr(-0.1), Bohr(0.3)],
+                radius: Bohr(0.7),
+            }],
+        )
+        .unwrap();
+        let a = Complex64::new(0.3, -0.2);
+        let b = Complex64::new(-0.1, 0.4);
+        let overlap =
+            DenseHermitianMatrix::from_upper_triangle(2, |row, column| match (row, column) {
+                (0, 0) => Complex64::new(1.1, 0.0),
+                (0, 1) => Complex64::new(0.2, 0.1),
+                (1, 1) => Complex64::new(0.9, 0.0),
+                _ => unreachable!(),
+            });
+        let hamiltonian =
+            DenseHermitianMatrix::from_upper_triangle(2, |row, column| match (row, column) {
+                (0, 0) => Complex64::new(0.8, 0.0),
+                (0, 1) => Complex64::new(-0.2, 0.05),
+                (1, 1) => Complex64::new(1.2, 0.0),
+                _ => unreachable!(),
+            });
+        let site = SiteOperatorBlocks {
+            plane_waves: vec![PlaneWaveAugmentation {
+                coefficients: vec![[a, b]],
+            }],
+            overlap,
+            hamiltonian,
+        };
+        let layout = LapwBasisLayout::new(1, vec![LocalOrbitalLayout::default()]);
+        let problem = assemble_eigenproblem(
+            &plane_waves,
+            &geometry,
+            &layout,
+            &InterstitialPotential::default(),
+            std::slice::from_ref(&site),
+        )
+        .unwrap();
+        let expected_s = a.conj() * (site.overlap[(0, 0)] * a + site.overlap[(0, 1)] * b)
+            + b.conj() * (site.overlap[(1, 0)] * a + site.overlap[(1, 1)] * b);
+        let expected_h = a.conj() * (site.hamiltonian[(0, 0)] * a + site.hamiltonian[(0, 1)] * b)
+            + b.conj() * (site.hamiltonian[(1, 0)] * a + site.hamiltonian[(1, 1)] * b);
+        let theta = geometry
+            .coefficient(std::array::from_fn(|_| InverseBohr(0.0)))
+            .unwrap();
+        assert!((problem.overlap[(0, 0)] - (theta + expected_s)).norm() < 1.0e-14);
+        assert!(
+            (problem.hamiltonian[(0, 0)] - (0.5 * wave.q_norm.squared() * theta + expected_h))
+                .norm()
+                < 1.0e-14
+        );
+        assert_eq!(problem.overlap.dimension(), 1);
     }
 
     #[test]

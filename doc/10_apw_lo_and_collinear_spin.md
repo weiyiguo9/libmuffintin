@@ -83,11 +83,11 @@ The interstitial matrices $S^I$ and $H^I_\sigma$ occupy only the PW--PW
 corner because every LO has zero value and slope at the sphere boundary. This
 single $P^\dagger X P$ rule is normative; separately coded block formulas
 must be equivalent to it and must not reorder one operator differently from
-the other. SPEX builds the interstitial PW corner at
-`hamilton.f:938-999`, the APW--APW projection at
-`hamilton.f:1023-1207`, the APW--LO blocks at
-`hamilton.f:1212-1393`, and the LO--LO blocks at
-`hamilton.f:1397-1510`.
+the other. The numerical evaluation of that congruence is the local tensor
+substrate in [11](11_tensorized_numerical_substrate.md). SPEX builds the
+interstitial PW corner at `hamilton.f:938-999`, the APW--APW projection at
+`hamilton.f:1023-1207`, the APW--LO blocks at `hamilton.f:1212-1393`, and
+the LO--LO blocks at `hamilton.f:1397-1510`.
 
 ## 4. Collinear spin without SOC
 
