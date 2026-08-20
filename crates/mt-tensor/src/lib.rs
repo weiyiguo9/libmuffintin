@@ -14,7 +14,11 @@
 mod backend;
 #[cfg(feature = "backend-rstsr")]
 mod rstsr_tblis;
+#[cfg(feature = "backend-tenferro")]
+mod tenferro;
 
+#[cfg(feature = "backend-tenferro")]
+pub use backend::einsum_tenferro;
 pub use backend::{EinsumBackend, active_backend_name, einsum};
 
 use num_complex::Complex64;
@@ -338,13 +342,13 @@ impl fmt::Display for Axis {
     }
 }
 
-/// Square Hermitian rank-2 tensor on a single repeated axis.
+/// Dense square Hermitian rank-2 tensor on a single repeated axis.
 #[derive(Clone, Debug, PartialEq)]
-pub struct HermitianMatrix {
+pub struct DenseHermitianMatrix {
     tensor: ComplexTensor,
 }
 
-impl HermitianMatrix {
+impl DenseHermitianMatrix {
     /// Validate a square rank-2 tensor and store it as Hermitian.
     pub fn from_tensor(tensor: ComplexTensor) -> Result<Self, TensorError> {
         if tensor.rank() != 2 {
@@ -429,6 +433,60 @@ impl HermitianMatrix {
     }
 }
 
+/// Dense eigenvector columns of a local generalized eigenproblem.
+///
+/// Axes are `[GlobalBasis, Band]`. This is a named dense layout, not a host
+/// `Vec` wrapper and not a sparse or distributed factor.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DenseEigenvectors {
+    tensor: ComplexTensor,
+}
+
+impl DenseEigenvectors {
+    pub fn from_tensor(tensor: ComplexTensor) -> Result<Self, TensorError> {
+        if tensor.rank() != 2 {
+            return Err(TensorError::Rank {
+                expected: 2,
+                actual: tensor.rank(),
+            });
+        }
+        if tensor.axes() != [Axis::GlobalBasis, Axis::Band] {
+            return Err(TensorError::Axis {
+                index: 0,
+                expected: Axis::GlobalBasis,
+                actual: tensor.axes()[0],
+            });
+        }
+        Ok(Self { tensor })
+    }
+
+    pub fn as_tensor(&self) -> &ComplexTensor {
+        &self.tensor
+    }
+
+    pub fn rows(&self) -> usize {
+        self.tensor.shape()[0]
+    }
+
+    pub fn columns(&self) -> usize {
+        self.tensor.shape()[1]
+    }
+
+    pub fn get(&self, row: usize, column: usize) -> Result<Complex64, TensorError> {
+        self.tensor.get(&[row, column])
+    }
+
+    /// In-bounds entry. Panics if the index is invalid.
+    pub fn at(&self, row: usize, column: usize) -> Complex64 {
+        self.get(row, column)
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    pub fn to_host_row_major(&self) -> Vec<Complex64> {
+        self.tensor.to_host_row_major()
+    }
+}
+
 /// Evaluate the site congruence $P^\dagger B P$ as
 /// `einsum("ci,cd,dj->ij", [P^*, B, P])`.
 ///
@@ -436,8 +494,8 @@ impl HermitianMatrix {
 /// contraction itself is the einsum layer.
 pub fn hermitian_congruence(
     projection: &ComplexTensor,
-    block: &HermitianMatrix,
-) -> Result<HermitianMatrix, TensorError> {
+    block: &DenseHermitianMatrix,
+) -> Result<DenseHermitianMatrix, TensorError> {
     if projection.rank() != 2 {
         return Err(TensorError::Rank {
             expected: 2,
@@ -473,7 +531,7 @@ pub fn hermitian_congruence(
             actual: projected.axes()[0],
         });
     }
-    HermitianMatrix::from_tensor(projected)
+    DenseHermitianMatrix::from_tensor(projected)
 }
 
 fn unravel(mut flat: usize, shape: &[usize]) -> Vec<usize> {
@@ -533,7 +591,7 @@ mod tests {
         Complex64::new(re, im)
     }
 
-    fn projection_and_block() -> (ComplexTensor, HermitianMatrix) {
+    fn projection_and_block() -> (ComplexTensor, DenseHermitianMatrix) {
         let p = ComplexTensor::from_host_row_major(
             &[3, 2],
             &[Axis::SiteCoordinate, Axis::SiteBasis],
@@ -547,7 +605,7 @@ mod tests {
             ],
         )
         .unwrap();
-        let b = HermitianMatrix::from_host_row_major(
+        let b = DenseHermitianMatrix::from_host_row_major(
             3,
             Axis::SiteCoordinate,
             vec![
@@ -566,7 +624,7 @@ mod tests {
         (p, b)
     }
 
-    fn analytic_congruence(p: &ComplexTensor, b: &HermitianMatrix) -> Vec<Complex64> {
+    fn analytic_congruence(p: &ComplexTensor, b: &DenseHermitianMatrix) -> Vec<Complex64> {
         let n_coord = p.shape()[0];
         let n_basis = p.shape()[1];
         let mut result = vec![Complex64::default(); n_basis * n_basis];
@@ -634,7 +692,7 @@ mod tests {
     fn axis_and_shape_mismatches_are_traceable() {
         let (p, b) = projection_and_block();
         let wrong_axis =
-            HermitianMatrix::from_host_row_major(3, Axis::GlobalBasis, b.to_host_row_major())
+            DenseHermitianMatrix::from_host_row_major(3, Axis::GlobalBasis, b.to_host_row_major())
                 .unwrap();
         let error = hermitian_congruence(&p, &wrong_axis).unwrap_err();
         assert_eq!(
@@ -667,7 +725,7 @@ mod tests {
 
     #[test]
     fn non_hermitian_host_data_is_rejected() {
-        let error = HermitianMatrix::from_host_row_major(
+        let error = DenseHermitianMatrix::from_host_row_major(
             2,
             Axis::SiteCoordinate,
             vec![c(1.0, 0.0), c(0.0, 1.0), c(0.0, 1.0), c(1.0, 0.0)],
@@ -684,7 +742,7 @@ mod tests {
             vec![c(0.3, -0.2), c(-0.1, 0.4)],
         )
         .unwrap();
-        let b = HermitianMatrix::from_host_row_major(
+        let b = DenseHermitianMatrix::from_host_row_major(
             2,
             Axis::SiteCoordinate,
             vec![c(1.2, 0.0), c(0.1, -0.2), c(0.1, 0.2), c(0.8, 0.0)],
@@ -714,7 +772,7 @@ mod tests {
         assert!((x.get(&[0, 0]).unwrap() - c(0.5, 0.0)).norm() < 1.0e-14);
         assert!((x.get(&[1, 1]).unwrap() - c(2.0, 0.0)).norm() < 1.0e-14);
 
-        let h = HermitianMatrix::from_host_row_major(
+        let h = DenseHermitianMatrix::from_host_row_major(
             2,
             Axis::GlobalBasis,
             vec![c(2.0, 0.0), c(0.0, 1.0), c(0.0, -1.0), c(3.0, 0.0)],
@@ -739,7 +797,7 @@ mod tests {
         assert!((c_mat.get(&[1, 0]).unwrap() - c(0.0, 0.0)).norm() < 1.0e-14);
 
         let hc = einsum("ij,jb->ib", &[h.as_tensor(), &c_mat]).unwrap();
-        let s = HermitianMatrix::from_host_row_major(
+        let s = DenseHermitianMatrix::from_host_row_major(
             2,
             Axis::GlobalBasis,
             vec![c(4.0, 0.0), c(0.0, 0.0), c(0.0, 0.0), c(1.0, 0.0)],
@@ -755,5 +813,23 @@ mod tests {
         assert_eq!(norm_sq.axes(), &[Axis::Band]);
         assert!(norm_sq.get(&[0]).unwrap().re >= 0.0);
         assert!(norm_sq.get(&[0]).unwrap().im.abs() < 1.0e-12);
+    }
+
+    #[cfg(feature = "backend-tenferro")]
+    #[test]
+    fn tenferro_einsum_matches_rstsr_tblis_site_congruence() {
+        let (p, b) = projection_and_block();
+        let conjugated = p.conjugate();
+        let operands = [&conjugated, b.as_tensor(), &p];
+        let rstsr = einsum("ci,cd,dj->ij", &operands).unwrap();
+        let tenferro = einsum_tenferro("ci,cd,dj->ij", &operands).unwrap();
+        for (left, right) in rstsr
+            .to_host_row_major()
+            .iter()
+            .zip(tenferro.to_host_row_major())
+        {
+            assert!((left - right).norm() < 1.0e-12);
+        }
+        assert_eq!(tenferro.axes(), rstsr.axes());
     }
 }
