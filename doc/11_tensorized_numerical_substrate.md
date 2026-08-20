@@ -113,13 +113,13 @@ for the eigenvalue scale, and `ib,ib->b` for the squared column norms.
 
 - M-Fb2 tensorizes $X$, $X^\dagger H X$, $C=XZ$, and the batched residual
   contraction. The filtering algorithm and faer Hermitian EVD stay in place.
-- M-Fb3 stores public LAPW $H$, $S$, and eigenvector columns as
-  `HermitianMatrix` / `ComplexTensor` with declared axes. There is no
-  `DenseHermitianMatrix` or `DenseEigenvectors` alias.
-- M-Fb4 adds the tenferro backend behind the same einsum subscripts only if
-  the current crate stays on CPU/faer without AD, GPU, or a runtime graph
-  stack. Compiling that feature requires rustc 1.96; the workspace MSRV
-  remains 1.85. A failed probe is not a commit.
+- M-Fb3 stores public LAPW $H$, $S$, and eigenvector columns as tensor-native
+  `DenseHermitianMatrix` and `DenseEigenvectors`. "Dense" is the local storage
+  kind; the old unnamed `Vec<Complex64>` buffers are gone.
+- M-Fb4 adds `einsum_tenferro` behind `backend-tenferro` using
+  tenferro-einsum on CPU/faer, without AD, GPU, or XLA. Compiling that
+  feature requires rustc 1.96; the workspace MSRV remains 1.85. RSTSR+TBLIS
+  stays the default `einsum` path.
 
 ## 6. Acceptance
 

@@ -16,7 +16,7 @@ use mt_core::{
 use mt_radial::BoundaryData;
 use mt_tensor::{Axis, TensorError, einsum};
 
-pub use mt_tensor::{ComplexTensor, HermitianMatrix};
+pub use mt_tensor::{ComplexTensor, DenseEigenvectors, DenseHermitianMatrix};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use std::f64::consts::PI;
@@ -416,15 +416,15 @@ impl InterstitialPotential {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SiteOperatorBlocks {
     pub plane_waves: Vec<PlaneWaveAugmentation>,
-    pub overlap: HermitianMatrix,
-    pub hamiltonian: HermitianMatrix,
+    pub overlap: DenseHermitianMatrix,
+    pub hamiltonian: DenseHermitianMatrix,
 }
 
 /// The two matrices of one generalized LAPW eigenproblem.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LapwEigenproblem {
-    pub overlap: HermitianMatrix,
-    pub hamiltonian: HermitianMatrix,
+    pub overlap: DenseHermitianMatrix,
+    pub hamiltonian: DenseHermitianMatrix,
 }
 
 /// Assemble `S` and `H` together in the global [`LapwBasisLayout`].
@@ -515,8 +515,8 @@ pub fn assemble_eigenproblem(
         )?;
     }
     Ok(LapwEigenproblem {
-        overlap: HermitianMatrix::from_host_row_major(dimension, Axis::GlobalBasis, overlap)?,
-        hamiltonian: HermitianMatrix::from_host_row_major(
+        overlap: DenseHermitianMatrix::from_host_row_major(dimension, Axis::GlobalBasis, overlap)?,
+        hamiltonian: DenseHermitianMatrix::from_host_row_major(
             dimension,
             Axis::GlobalBasis,
             hamiltonian,
@@ -577,7 +577,7 @@ fn add_site_projection(
     dimension: usize,
     site_index: usize,
     site: &SiteOperatorBlocks,
-    block: &HermitianMatrix,
+    block: &DenseHermitianMatrix,
     layout: &LapwBasisLayout,
 ) -> Result<(), LapwError> {
     let channels = site
@@ -621,7 +621,7 @@ fn add_site_projection(
         projection,
     )?;
     let conjugated = projection.conjugate();
-    let site_matrix = HermitianMatrix::from_tensor(einsum(
+    let site_matrix = DenseHermitianMatrix::from_tensor(einsum(
         "ci,cd,dj->ij",
         &[&conjugated, block.as_tensor(), &projection],
     )?)?;
@@ -674,9 +674,9 @@ fn add_hermitian(
 pub fn spex_spherical_radial_hamiltonian(
     linearization_energy: Hartree,
     overlap: RadialOverlapBlock,
-) -> HermitianMatrix {
+) -> DenseHermitianMatrix {
     let energy = linearization_energy.get();
-    HermitianMatrix::from_upper_triangle(2, Axis::SiteCoordinate, |row, column| {
+    DenseHermitianMatrix::from_upper_triangle(2, Axis::SiteCoordinate, |row, column| {
         let value = match (row, column) {
             (0, 0) => energy * overlap.uu,
             (0, 1) => energy * overlap.u_udot + 0.5 * overlap.uu,
@@ -703,8 +703,8 @@ pub struct EigenpairResidual {
 pub struct GeneralizedEigensolution {
     /// Eigenvalues in nondecreasing Hartree order.
     pub eigenvalues: Vec<Hartree>,
-    /// Eigenvector columns on axes `[GlobalBasis, Band]`.
-    pub eigenvectors: ComplexTensor,
+    /// Dense eigenvector columns on axes `[GlobalBasis, Band]`.
+    pub eigenvectors: DenseEigenvectors,
     pub retained_dimension: usize,
     pub filtered_dimension: usize,
     pub residuals: Vec<EigenpairResidual>,
@@ -714,8 +714,8 @@ pub struct GeneralizedEigensolution {
 /// directions.  An overlap eigenvalue is retained when it is positive and
 /// greater than `relative_overlap_threshold * max(eigenvalue(S))`.
 pub fn solve_generalized_hermitian(
-    hamiltonian: &HermitianMatrix,
-    overlap: &HermitianMatrix,
+    hamiltonian: &DenseHermitianMatrix,
+    overlap: &DenseHermitianMatrix,
     relative_overlap_threshold: f64,
 ) -> Result<GeneralizedEigensolution, LapwError> {
     use faer::{Mat, Side};
@@ -785,7 +785,7 @@ pub fn solve_generalized_hermitian(
     let x = einsum("ik,k->ik", &[&u_keep, &scales])?;
 
     let x_conj = x.conjugate();
-    let reduced = HermitianMatrix::from_tensor(einsum(
+    let reduced = DenseHermitianMatrix::from_tensor(einsum(
         "ir,ij,js->rs",
         &[&x_conj, hamiltonian.as_tensor(), &x],
     )?)?;
@@ -853,7 +853,7 @@ pub fn solve_generalized_hermitian(
 
     Ok(GeneralizedEigensolution {
         eigenvalues,
-        eigenvectors: vectors,
+        eigenvectors: DenseEigenvectors::from_tensor(vectors)?,
         retained_dimension: r,
         filtered_dimension: n - r,
         residuals,
@@ -1041,15 +1041,18 @@ mod tests {
             .collect()
     }
 
-    fn site_h(dimension: usize, element: impl FnMut(usize, usize) -> Complex64) -> HermitianMatrix {
-        HermitianMatrix::from_upper_triangle(dimension, Axis::SiteCoordinate, element).unwrap()
+    fn site_h(
+        dimension: usize,
+        element: impl FnMut(usize, usize) -> Complex64,
+    ) -> DenseHermitianMatrix {
+        DenseHermitianMatrix::from_upper_triangle(dimension, Axis::SiteCoordinate, element).unwrap()
     }
 
     fn global_h(
         dimension: usize,
         element: impl FnMut(usize, usize) -> Complex64,
-    ) -> HermitianMatrix {
-        HermitianMatrix::from_upper_triangle(dimension, Axis::GlobalBasis, element).unwrap()
+    ) -> DenseHermitianMatrix {
+        DenseHermitianMatrix::from_upper_triangle(dimension, Axis::GlobalBasis, element).unwrap()
     }
 
     #[test]
@@ -1515,9 +1518,9 @@ mod tests {
                 let mut value = Complex64::new(0.0, 0.0);
                 for i in 0..2 {
                     for j in 0..2 {
-                        value += solution.eigenvectors.at(&[i, left]).conj()
+                        value += solution.eigenvectors.at(i, left).conj()
                             * s.at(i, j)
-                            * solution.eigenvectors.at(&[j, right]);
+                            * solution.eigenvectors.at(j, right);
                     }
                 }
                 let expected = if left == right { 1.0 } else { 0.0 };
