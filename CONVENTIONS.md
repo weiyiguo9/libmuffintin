@@ -49,8 +49,8 @@ Real tesseral harmonics use the same signed $m$ label:
 ```math
 \begin{aligned}
 R_{l0} &= Y_{l0}, \\
-R_{lm} &= \sqrt{2}(-1)^m \operatorname{Re}Y_{lm}, && m>0, \\
-R_{l,-m} &= -\sqrt{2}\operatorname{Im}Y_{lm}, && m>0.
+R_{lm} &= \sqrt{2}(-1)^m \mathrm{Re}\,Y_{lm}, && m>0, \\
+R_{l,-m} &= -\sqrt{2}\mathrm{Im}\,Y_{lm}, && m>0.
 \end{aligned}
 ```
 

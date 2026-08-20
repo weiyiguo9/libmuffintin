@@ -48,7 +48,7 @@ Y_{lm_l}(\hat r)\chi_{m_s}.
 ```
 
 The opposite component has orbital angular momentum
-$\bar l=l-\operatorname{sgn}\kappa$.  With a fixed phase convention, write
+$\bar l=l-\mathrm{sgn}(\kappa)$.  With a fixed phase convention, write
 
 ```math
 \boxed{
@@ -88,7 +88,7 @@ q'=\frac\kappa rq+(V-\epsilon)P.
 
 These are the equations described at `src/dirac.f:638-657` and used by its
 core backends.  A public API should accept $\kappa$ directly; SPEX's legacy
-negative-$l$ sequence that encodes
+negative $l$ sequence that encodes
 $-1,+1,-2,+2,\ldots$ is an adapter detail, not a new quantum-number
 convention.
 

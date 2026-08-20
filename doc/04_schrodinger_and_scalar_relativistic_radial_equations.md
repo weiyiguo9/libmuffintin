@@ -133,7 +133,7 @@ $2M_E\widetilde Q=Q/c$.  SPEX uses exactly this representation in
 Differentiating a normalized family gives
 
 ```math
-2\operatorname{Re}\langle u|\dot u\rangle=0,
+2\mathrm{Re}\,\langle u|\dot u\rangle=0,
 ```
 
 but a direct inhomogeneous integration retains a homogeneous gauge freedom

@@ -150,7 +150,7 @@ A manifestly Hermitian primitive matrix is therefore
 ```
 
 For $i=j=2$, the final term is
-$\operatorname{Re}S_{12}=0$ in the projected gauge.  This identity avoids a
+$\mathrm{Re}\,S_{12}=0$ in the projected gauge.  This identity avoids a
 second numerical application of the radial differential operator and is the
 formula in SPEX `src/hamilton.f:396-458`.  The transformed spherical block is
 again $H^{(0)}=T^\dagger H^{(0),\rm raw}T$.
