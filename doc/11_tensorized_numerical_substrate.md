@@ -95,18 +95,21 @@ reduced ordinary problem
 H_{\mathrm{reduced}} Z = Z\varepsilon.
 ```
 
-M-Fb1 does not change overlap-spectrum filtering. The reductions
+M-Fb1 does not change overlap-spectrum filtering. M-Fb2 evaluates the
+reductions with the same einsum layer. faer still diagonalizes $S$ and the
+reduced $H$.
 
 ```math
 X = U_{\mathrm{keep}}\,\mathrm{diag}(s_{\mathrm{keep}}^{-1/2}),
 \qquad
 H_{\mathrm{reduced}} = X^\dagger H X,
 \qquad
-C = X Z,
+C = X Z.
 ```
 
-and the residual $HC-SC\varepsilon$ belong to later stages and will use the
-same einsum layer.
+In subscripts these are `ik,k->ik`, `ir,ij,js->rs`, and `ir,rb->ib`. The
+residual $HC-SC\varepsilon$ is `ij,jb->ib` for $HC$ and $SC$, `ib,b->ib`
+for the eigenvalue scale, and `ib,ib->b` for the squared column norms.
 
 - M-Fb2 tensorizes $X$, $X^\dagger H X$, $C=XZ$, and the batched residual
   contraction. The filtering algorithm and faer Hermitian EVD stay in place.

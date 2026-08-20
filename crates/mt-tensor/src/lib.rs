@@ -77,6 +77,11 @@ pub enum DType {
 pub enum TensorError {
     #[error("tensor rank is {actual}, expected {expected}")]
     Rank { expected: usize, actual: usize },
+    #[error("tensor shape {actual:?} does not match {expected:?}")]
+    Shape {
+        expected: Vec<usize>,
+        actual: Vec<usize>,
+    },
     #[error("declared {declared} axes for a rank-{rank} tensor")]
     AxisCount { declared: usize, rank: usize },
     #[error("axis {index} is {actual:?}, expected {expected:?}")]
@@ -250,6 +255,34 @@ impl ComplexTensor {
         #[cfg(feature = "backend-rstsr")]
         {
             rstsr_tblis::get_at(&self.data, indices)
+        }
+        #[cfg(not(feature = "backend-rstsr"))]
+        {
+            Err(TensorError::Backend("no tensor backend enabled".into()))
+        }
+    }
+
+    /// Element-wise difference. Axes and shape must match.
+    pub fn sub(&self, rhs: &Self) -> Result<Self, TensorError> {
+        if self.axes != rhs.axes {
+            return Err(TensorError::Axis {
+                index: 0,
+                expected: self.axes.first().copied().unwrap_or(Axis::GlobalBasis),
+                actual: rhs.axes.first().copied().unwrap_or(Axis::GlobalBasis),
+            });
+        }
+        if self.shape() != rhs.shape() {
+            return Err(TensorError::Shape {
+                expected: self.shape(),
+                actual: rhs.shape(),
+            });
+        }
+        #[cfg(feature = "backend-rstsr")]
+        {
+            Ok(Self {
+                data: rstsr_tblis::subtract(&self.data, &rhs.data),
+                axes: self.axes.clone(),
+            })
         }
         #[cfg(not(feature = "backend-rstsr"))]
         {
@@ -632,5 +665,67 @@ mod tests {
         let projected = hermitian_congruence(&p, &b).unwrap();
         let expected = analytic_congruence(&p, &b)[0];
         assert!((projected.get(0, 0).unwrap() - expected).norm() < 1.0e-13);
+    }
+
+    #[test]
+    fn eigensolver_einsums_match_direct_reductions() {
+        // X = U diag(s^{-1/2}), H_red = X^H H X, C = X Z, residual HC - S C ε.
+        let u = ComplexTensor::from_host_row_major(
+            &[2, 2],
+            &[Axis::GlobalBasis, Axis::Reduced],
+            vec![c(1.0, 0.0), c(0.0, 0.0), c(0.0, 0.0), c(1.0, 0.0)],
+        )
+        .unwrap();
+        let scale = ComplexTensor::from_host_row_major(
+            &[2],
+            &[Axis::Reduced],
+            vec![c(0.5, 0.0), c(2.0, 0.0)],
+        )
+        .unwrap();
+        let x = einsum("ik,k->ik", &[&u, &scale]).unwrap();
+        assert!((x.get(&[0, 0]).unwrap() - c(0.5, 0.0)).norm() < 1.0e-14);
+        assert!((x.get(&[1, 1]).unwrap() - c(2.0, 0.0)).norm() < 1.0e-14);
+
+        let h = HermitianMatrix::from_host_row_major(
+            2,
+            Axis::GlobalBasis,
+            vec![c(2.0, 0.0), c(0.0, 1.0), c(0.0, -1.0), c(3.0, 0.0)],
+        )
+        .unwrap();
+        let x_conj = x.conjugate();
+        let reduced = einsum("ir,ij,js->rs", &[&x_conj, h.as_tensor(), &x]).unwrap();
+        // X = diag(0.5, 2), H_red_00 = 0.25 * 2 = 0.5, H_red_11 = 4 * 3 = 12,
+        // H_red_01 = 0.5 * (0+i) * 2 = i.
+        assert!((reduced.get(&[0, 0]).unwrap() - c(0.5, 0.0)).norm() < 1.0e-13);
+        assert!((reduced.get(&[1, 1]).unwrap() - c(12.0, 0.0)).norm() < 1.0e-13);
+        assert!((reduced.get(&[0, 1]).unwrap() - c(0.0, 1.0)).norm() < 1.0e-13);
+
+        let z = ComplexTensor::from_host_row_major(
+            &[2, 1],
+            &[Axis::Reduced, Axis::Band],
+            vec![c(1.0, 0.0), c(0.0, 0.0)],
+        )
+        .unwrap();
+        let c_mat = einsum("ir,rb->ib", &[&x, &z]).unwrap();
+        assert!((c_mat.get(&[0, 0]).unwrap() - c(0.5, 0.0)).norm() < 1.0e-14);
+        assert!((c_mat.get(&[1, 0]).unwrap() - c(0.0, 0.0)).norm() < 1.0e-14);
+
+        let hc = einsum("ij,jb->ib", &[h.as_tensor(), &c_mat]).unwrap();
+        let s = HermitianMatrix::from_host_row_major(
+            2,
+            Axis::GlobalBasis,
+            vec![c(4.0, 0.0), c(0.0, 0.0), c(0.0, 0.0), c(1.0, 0.0)],
+        )
+        .unwrap();
+        let sc = einsum("ij,jb->ib", &[s.as_tensor(), &c_mat]).unwrap();
+        let eps =
+            ComplexTensor::from_host_row_major(&[1], &[Axis::Band], vec![c(0.5, 0.0)]).unwrap();
+        let sc_eps = einsum("ib,b->ib", &[&sc, &eps]).unwrap();
+        let residual = hc.sub(&sc_eps).unwrap();
+        let residual_conj = residual.conjugate();
+        let norm_sq = einsum("ib,ib->b", &[&residual_conj, &residual]).unwrap();
+        assert_eq!(norm_sq.axes(), &[Axis::Band]);
+        assert!(norm_sq.get(&[0]).unwrap().re >= 0.0);
+        assert!(norm_sq.get(&[0]).unwrap().im.abs() < 1.0e-12);
     }
 }

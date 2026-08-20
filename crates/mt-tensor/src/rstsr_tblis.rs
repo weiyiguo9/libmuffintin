@@ -45,6 +45,10 @@ pub fn conjugate(data: &RstsrTensor) -> RstsrTensor {
     rt::conj(data).into_owned()
 }
 
+pub fn subtract(left: &RstsrTensor, right: &RstsrTensor) -> RstsrTensor {
+    (left - right).into_owned()
+}
+
 pub fn layout_of(data: &RstsrTensor) -> MemoryLayout {
     let layout = data.layout();
     if layout.c_contig() {
