@@ -703,7 +703,7 @@ pub struct EigenpairResidual {
 pub struct GeneralizedEigensolution {
     /// Eigenvalues in nondecreasing Hartree order.
     pub eigenvalues: Vec<Hartree>,
-    /// Dense eigenvector columns on axes `[GlobalBasis, Band]`.
+    /// Column-major eigenvector columns on axes `[GlobalBasis, Band]`.
     pub eigenvectors: DenseEigenvectors,
     pub retained_dimension: usize,
     pub filtered_dimension: usize,
@@ -1535,6 +1535,14 @@ mod tests {
             _ => unreachable!(),
         });
         let solution = solve_generalized_hermitian(&h, &s, 1.0e-12).unwrap();
+        assert_eq!(
+            solution.eigenvectors.layout(),
+            mt_tensor::MemoryLayout::ColumnMajor
+        );
+        assert_eq!(
+            solution.eigenvectors.as_tensor().layout(),
+            mt_tensor::MemoryLayout::ColumnMajor
+        );
         for left in 0..2 {
             for right in 0..2 {
                 let mut value = Complex64::new(0.0, 0.0);

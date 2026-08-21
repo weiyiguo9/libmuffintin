@@ -41,12 +41,28 @@ pub fn asarray_row_major(
     }
 }
 
+pub fn asarray_column_major(
+    shape: &[usize],
+    values: Vec<Complex64>,
+) -> Result<RstsrTensor, TensorError> {
+    let device = device();
+    match *shape {
+        [n] => Ok(rt::asarray((values, [n].f(), &device))),
+        [rows, cols] => Ok(rt::asarray((values, [rows, cols].f(), &device))),
+        _ => Err(TensorError::UnsupportedRank { rank: shape.len() }),
+    }
+}
+
 pub fn conjugate(data: &RstsrTensor) -> RstsrTensor {
     rt::conj(data).into_owned()
 }
 
 pub fn subtract(left: &RstsrTensor, right: &RstsrTensor) -> RstsrTensor {
     (left - right).into_owned()
+}
+
+pub fn into_column_major(data: RstsrTensor) -> RstsrTensor {
+    data.to_contig(ColMajor).into_owned()
 }
 
 pub fn layout_of(data: &RstsrTensor) -> MemoryLayout {
@@ -78,6 +94,13 @@ pub fn to_host_row_major(data: &RstsrTensor) -> Vec<Complex64> {
     data.to_contig(RowMajor).into_owned().reshape(-1).to_vec()
 }
 
+pub fn to_host_column_major(data: &RstsrTensor) -> Vec<Complex64> {
+    data.to_contig(ColMajor)
+        .into_owned()
+        .into_shape_with_args(-1, ColMajor)
+        .into_vec()
+}
+
 fn tblis_einsum(subscripts: &str, operands: &[&ComplexTensor]) -> Result<RstsrTensor, TensorError> {
     let result = match operands {
         [a] => rt::tblis::einsum_f(subscripts, [a.rstsr()], true, None),
@@ -102,7 +125,8 @@ fn tblis_einsum(subscripts: &str, operands: &[&ComplexTensor]) -> Result<RstsrTe
 
 impl ComplexTensor {
     pub(crate) fn from_rstsr(data: RstsrTensor, axes: Vec<Axis>) -> Self {
-        Self { data, axes }
+        let layout = layout_of(&data);
+        Self { data, axes, layout }
     }
 
     pub(crate) fn rstsr(&self) -> &RstsrTensor {

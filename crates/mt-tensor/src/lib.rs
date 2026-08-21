@@ -7,7 +7,8 @@
 //! when it satisfies the workspace MSRV and dependency gate.
 //!
 //! Backend tensor handles stay private. Host snapshots remain ordinary
-//! `Vec<Complex64>` buffers. There is no scalar fallback runtime.
+//! `Vec<Complex64>` buffers with an explicit row- or column-major contract.
+//! There is no scalar fallback runtime.
 
 #![forbid(unsafe_code)]
 
@@ -147,6 +148,7 @@ pub struct ComplexTensor {
     #[cfg(feature = "backend-rstsr")]
     pub(crate) data: rstsr::prelude::Tensor<Complex64, rstsr::prelude::DeviceFaer>,
     pub(crate) axes: Vec<Axis>,
+    pub(crate) layout: MemoryLayout,
 }
 
 impl ComplexTensor {
@@ -155,6 +157,24 @@ impl ComplexTensor {
         shape: &[usize],
         axes: &[Axis],
         values: Vec<Complex64>,
+    ) -> Result<Self, TensorError> {
+        Self::from_host(shape, axes, values, MemoryLayout::RowMajor)
+    }
+
+    /// Copy a Fortran-contiguous host buffer into a local tensor in [`LocalWorld`].
+    pub fn from_host_column_major(
+        shape: &[usize],
+        axes: &[Axis],
+        values: Vec<Complex64>,
+    ) -> Result<Self, TensorError> {
+        Self::from_host(shape, axes, values, MemoryLayout::ColumnMajor)
+    }
+
+    fn from_host(
+        shape: &[usize],
+        axes: &[Axis],
+        values: Vec<Complex64>,
+        layout: MemoryLayout,
     ) -> Result<Self, TensorError> {
         if axes.len() != shape.len() {
             return Err(TensorError::AxisCount {
@@ -171,22 +191,27 @@ impl ComplexTensor {
                 expected,
                 actual: values.len(),
                 shape: shape.to_vec(),
-                layout: MemoryLayout::RowMajor,
+                layout,
             });
         }
         for (flat, value) in values.iter().enumerate() {
             if !value.re.is_finite() || !value.im.is_finite() {
                 return Err(TensorError::NonFinite {
-                    indices: unravel(flat, shape),
+                    indices: unravel(flat, shape, layout),
                 });
             }
         }
         #[cfg(feature = "backend-rstsr")]
         {
-            let data = rstsr_tblis::asarray_row_major(shape, values)?;
+            let data = match layout {
+                MemoryLayout::RowMajor => rstsr_tblis::asarray_row_major(shape, values)?,
+                MemoryLayout::ColumnMajor => rstsr_tblis::asarray_column_major(shape, values)?,
+                MemoryLayout::Strided => unreachable!("host constructors require contiguous data"),
+            };
             Ok(Self {
                 data,
                 axes: axes.to_vec(),
+                layout,
             })
         }
         #[cfg(not(feature = "backend-rstsr"))]
@@ -227,15 +252,8 @@ impl ComplexTensor {
         &self.axes
     }
 
-    pub fn layout(&self) -> MemoryLayout {
-        #[cfg(feature = "backend-rstsr")]
-        {
-            rstsr_tblis::layout_of(&self.data)
-        }
-        #[cfg(not(feature = "backend-rstsr"))]
-        {
-            MemoryLayout::RowMajor
-        }
+    pub const fn layout(&self) -> MemoryLayout {
+        self.layout
     }
 
     /// In-bounds entry. Panics if the index is invalid.
@@ -288,9 +306,12 @@ impl ComplexTensor {
         }
         #[cfg(feature = "backend-rstsr")]
         {
+            let data = rstsr_tblis::subtract(&self.data, &rhs.data);
+            let layout = rstsr_tblis::layout_of(&data);
             Ok(Self {
-                data: rstsr_tblis::subtract(&self.data, &rhs.data),
+                data,
                 axes: self.axes.clone(),
+                layout,
             })
         }
         #[cfg(not(feature = "backend-rstsr"))]
@@ -304,9 +325,12 @@ impl ComplexTensor {
     pub fn conjugate(&self) -> Self {
         #[cfg(feature = "backend-rstsr")]
         {
+            let data = rstsr_tblis::conjugate(&self.data);
+            let layout = rstsr_tblis::layout_of(&data);
             Self {
-                data: rstsr_tblis::conjugate(&self.data),
+                data,
                 axes: self.axes.clone(),
+                layout,
             }
         }
         #[cfg(not(feature = "backend-rstsr"))]
@@ -324,6 +348,33 @@ impl ComplexTensor {
         #[cfg(not(feature = "backend-rstsr"))]
         {
             Vec::new()
+        }
+    }
+
+    /// Copy into a Fortran-contiguous host buffer.
+    pub fn to_host_column_major(&self) -> Vec<Complex64> {
+        #[cfg(feature = "backend-rstsr")]
+        {
+            rstsr_tblis::to_host_column_major(&self.data)
+        }
+        #[cfg(not(feature = "backend-rstsr"))]
+        {
+            Vec::new()
+        }
+    }
+
+    fn into_column_major(self) -> Self {
+        #[cfg(feature = "backend-rstsr")]
+        {
+            Self {
+                data: rstsr_tblis::into_column_major(self.data),
+                axes: self.axes,
+                layout: MemoryLayout::ColumnMajor,
+            }
+        }
+        #[cfg(not(feature = "backend-rstsr"))]
+        {
+            self
         }
     }
 }
@@ -435,8 +486,9 @@ impl DenseHermitianMatrix {
 
 /// Dense eigenvector columns of a local generalized eigenproblem.
 ///
-/// Axes are `[GlobalBasis, Band]`. This is a named dense layout, not a host
-/// `Vec` wrapper and not a sparse or distributed factor.
+/// Axes are `[GlobalBasis, Band]` and storage is column-major, so every band's
+/// complete basis expansion is contiguous. This matches the native
+/// basis-by-band convention used by Fortran LAPW and plane-wave codes.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DenseEigenvectors {
     tensor: ComplexTensor,
@@ -459,7 +511,21 @@ impl DenseEigenvectors {
                 });
             }
         }
-        Ok(Self { tensor })
+        Ok(Self {
+            tensor: tensor.into_column_major(),
+        })
+    }
+
+    pub fn from_host_column_major(
+        basis_count: usize,
+        band_count: usize,
+        values: Vec<Complex64>,
+    ) -> Result<Self, TensorError> {
+        Self::from_tensor(ComplexTensor::from_host_column_major(
+            &[basis_count, band_count],
+            &[Axis::GlobalBasis, Axis::Band],
+            values,
+        )?)
     }
 
     pub fn as_tensor(&self) -> &ComplexTensor {
@@ -474,6 +540,10 @@ impl DenseEigenvectors {
         self.tensor.shape()[1]
     }
 
+    pub const fn layout(&self) -> MemoryLayout {
+        MemoryLayout::ColumnMajor
+    }
+
     pub fn get(&self, row: usize, column: usize) -> Result<Complex64, TensorError> {
         self.tensor.get(&[row, column])
     }
@@ -484,6 +554,11 @@ impl DenseEigenvectors {
             .unwrap_or_else(|error| panic!("{error}"))
     }
 
+    pub fn to_host_column_major(&self) -> Vec<Complex64> {
+        self.tensor.to_host_column_major()
+    }
+
+    /// Copy logical `[basis, band]` values into a C-contiguous host buffer.
     pub fn to_host_row_major(&self) -> Vec<Complex64> {
         self.tensor.to_host_row_major()
     }
@@ -536,12 +611,24 @@ pub fn hermitian_congruence(
     DenseHermitianMatrix::from_tensor(projected)
 }
 
-fn unravel(mut flat: usize, shape: &[usize]) -> Vec<usize> {
+fn unravel(mut flat: usize, shape: &[usize], layout: MemoryLayout) -> Vec<usize> {
     let mut indices = vec![0; shape.len()];
-    for axis in (0..shape.len()).rev() {
-        let extent = shape[axis].max(1);
-        indices[axis] = flat % extent;
-        flat /= extent;
+    match layout {
+        MemoryLayout::RowMajor => {
+            for axis in (0..shape.len()).rev() {
+                let extent = shape[axis].max(1);
+                indices[axis] = flat % extent;
+                flat /= extent;
+            }
+        }
+        MemoryLayout::ColumnMajor => {
+            for axis in 0..shape.len() {
+                let extent = shape[axis].max(1);
+                indices[axis] = flat % extent;
+                flat /= extent;
+            }
+        }
+        MemoryLayout::Strided => unreachable!("host constructors require contiguous data"),
     }
     indices
 }
@@ -742,6 +829,53 @@ mod tests {
                 actual: Axis::Reduced,
             }
         );
+    }
+
+    #[test]
+    fn dense_eigenvectors_are_column_major_basis_by_band() {
+        let row_major = vec![
+            c(1.0, 0.1),
+            c(2.0, 0.2),
+            c(3.0, 0.3),
+            c(4.0, 0.4),
+            c(5.0, 0.5),
+            c(6.0, 0.6),
+        ];
+        let tensor = ComplexTensor::from_host_row_major(
+            &[2, 3],
+            &[Axis::GlobalBasis, Axis::Band],
+            row_major.clone(),
+        )
+        .unwrap();
+        let eigenvectors = DenseEigenvectors::from_tensor(tensor).unwrap();
+        let column_major = vec![
+            c(1.0, 0.1),
+            c(4.0, 0.4),
+            c(2.0, 0.2),
+            c(5.0, 0.5),
+            c(3.0, 0.3),
+            c(6.0, 0.6),
+        ];
+
+        assert_eq!(eigenvectors.layout(), MemoryLayout::ColumnMajor);
+        assert_eq!(eigenvectors.as_tensor().layout(), MemoryLayout::ColumnMajor);
+        assert_eq!(eigenvectors.to_host_row_major(), row_major);
+        assert_eq!(eigenvectors.to_host_column_major(), column_major);
+        assert_eq!(eigenvectors.at(1, 2), c(6.0, 0.6));
+
+        let imported = DenseEigenvectors::from_host_column_major(2, 3, column_major).unwrap();
+        assert_eq!(imported, eigenvectors);
+
+        for (basis_count, band_count) in [(1, 3), (3, 1), (1, 1)] {
+            let degenerate = DenseEigenvectors::from_host_column_major(
+                basis_count,
+                band_count,
+                vec![c(1.0, 0.0); basis_count * band_count],
+            )
+            .unwrap();
+            assert_eq!(degenerate.layout(), MemoryLayout::ColumnMajor);
+            assert_eq!(degenerate.as_tensor().layout(), MemoryLayout::ColumnMajor);
+        }
     }
 
     #[test]
