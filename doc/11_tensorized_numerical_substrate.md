@@ -20,7 +20,7 @@ row-major or column-major contract. General contraction tensors use row-major
 host construction. [`DenseEigenvectors`](../crates/mt-tensor/src/lib.rs) has
 logical axes `[GlobalBasis, Band]` and canonical column-major storage, so all
 basis coefficients of one band are contiguous. Backend tensor handles stay
-private to `mt-tensor`. Serialized artifacts in `mt-io` are unchanged and must
+private to `libmuffintin-tensor`. Serialized artifacts in `libmuffintin-io` are unchanged and must
 not mention RSTSR, faer, or tenferro.
 
 ## 2. Einsum layer and backends

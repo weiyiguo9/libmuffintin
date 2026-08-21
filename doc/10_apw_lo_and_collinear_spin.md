@@ -4,7 +4,9 @@ This note fixes the M-F basis layout and assembly contract against SPEX
 `spex06.00pre36/src/hamilton.f`. It extends the APW-only conventions in
 [08](08_lapw_matching_and_overlap.md) and
 [09](09_hamiltonian_eigensolver_and_reference_reports.md); it does not add
-self-consistency or spin-orbit coupling.
+self-consistency or spin-orbit coupling. After M-G the `[PW][site LO]` layout
+is `libmuffintin-basis::BasisLayout`; the LAPW facade re-exports it as
+`LapwBasisLayout`. See [12](12_anonymous_basis_and_lapw_facade.md).
 
 ## 1. Global basis order
 

@@ -1,4 +1,4 @@
-use mt_core::{
+use libmuffintin_core::{
     complex_spherical_harmonic, complex_spherical_harmonics, gaunt, lm_from_index, lm_index,
     real_gaunt, real_spherical_harmonics, wigner_3j,
 };

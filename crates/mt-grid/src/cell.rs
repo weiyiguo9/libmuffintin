@@ -1,7 +1,7 @@
 //! Direct-lattice cell geometry and periodic nearest-image distances.
 
 use crate::GridError;
-use mt_core::{Bohr, VolumeBohr3};
+use libmuffintin_core::{Bohr, VolumeBohr3};
 
 /// A validated direct-lattice unit cell with its origin at Cartesian zero.
 #[derive(Clone, Copy, Debug, PartialEq)]

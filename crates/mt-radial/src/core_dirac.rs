@@ -7,7 +7,7 @@
 
 use std::borrow::Borrow;
 
-use mt_core::{Bohr, ExponentialMesh, Hartree};
+use libmuffintin_core::{Bohr, ExponentialMesh, Hartree};
 use thiserror::Error;
 
 use crate::valence::SPEX_SPEED_OF_LIGHT;

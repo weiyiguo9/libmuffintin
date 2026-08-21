@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
-use mt_core::Bohr;
-use mt_grid::{Cell, Grid, UniformGrid};
-use mt_io::{
+use libmuffintin_core::Bohr;
+use libmuffintin_grid::{Cell, Grid, UniformGrid};
+use libmuffintin_io::{
     AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1,
     ExponentialMeshSpecV1, FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1,
     GeometryV1, GridArtifactV1, InterstitialV1, InverseLengthUnitV1, IoError, LatticeV1,
@@ -110,7 +110,7 @@ fn grid_artifact_round_trips_independently() {
 }
 
 #[test]
-fn grid_artifact_preserves_mt_grid_order_and_units() {
+fn grid_artifact_preserves_libmuffintin_grid_order_and_units() {
     let cell = Cell::new([
         [Bohr(2.0), Bohr(0.0), Bohr(0.0)],
         [Bohr(0.0), Bohr(3.0), Bohr(0.0)],

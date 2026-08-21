@@ -3,6 +3,8 @@
 This note fixes the M-D LAPW conventions against SPEX
 `src/hamilton.f:105-123,248-264,938-954`.  M-D stops at the overlap matrix;
 Hamiltonian blocks and eigensolving are introduced separately in M-E.
+Crate ownership after the M-G split is recorded in
+[12](12_anonymous_basis_and_lapw_facade.md).
 
 ## 1. Plane waves
 
@@ -14,7 +16,7 @@ The normalized interstitial basis function is
  \qquad \mathbf q=\mathbf k+\mathbf G.
 ```
 
-Direct and reciprocal vectors retain the `mt-core` convention
+Direct and reciprocal vectors retain the `libmuffintin-core` convention
 $\mathbf a_i\cdot\mathbf b_j=2\pi\delta_{ij}$.  `PlaneWave` stores `k`, the
 integer-labelled reciprocal vector `G`, Cartesian `q`, and $|q|$; no code may
 reconstruct a Cartesian cutoff from integer components.
@@ -90,7 +92,7 @@ The dense complex overlap is
  c^a_{j,lm,\beta}.
 ```
 
-$\Theta_I$ is the cell-normalized interstitial coefficient from `mt-core`, so
+$\Theta_I$ is the cell-normalized interstitial coefficient from `libmuffintin-core`, so
 the first term is exactly SPEX `cstep`.  The upper triangle is evaluated and
 the lower triangle filled by conjugation.  Local orbitals do not enter M-D.
 

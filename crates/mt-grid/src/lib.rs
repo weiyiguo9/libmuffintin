@@ -1,6 +1,6 @@
 //! Canonical real-space quadrature grids for muffin-tin methods.
 //!
-//! Coordinates and volume weights use the strong Bohr units from `mt-core`.
+//! Coordinates and volume weights use the strong Bohr units from `libmuffintin-core`.
 //! Point order is deterministic: atom grids use radial-shell then angular-rule
 //! order, uniform grids use lexicographic fractional-cell order, and composite
 //! grids use atom index followed by the interstitial region.

@@ -1,5 +1,5 @@
-use mt_core::{Bohr, ExponentialMesh, Hartree};
-use mt_radial::{
+use libmuffintin_core::{Bohr, ExponentialMesh, Hartree};
+use libmuffintin_radial::{
     CoreDiracSpec, CoreState, EnergyBracket, Kappa, KappaError, RelativisticRole,
     SPEX_SPEED_OF_LIGHT, ValenceDiracSpec, solve_core_dirac, solve_valence_dirac,
 };

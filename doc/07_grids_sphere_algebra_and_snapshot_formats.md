@@ -27,7 +27,7 @@ refer to the same physical point without coordinate matching.
 
 ## 2. Atom and interstitial quadrature
 
-For the exponential radial mesh $r_i=r_0e^{ih}$, `mt-core` supplies SPEX
+For the exponential radial mesh $r_i=r_0e^{ih}$, `libmuffintin-core` supplies SPEX
 `intgr_init` weights $w_i^{(r)}$ for integration over $dr$.  Crossing it
 with an angular rule $(\hat{\mathbf r}_a,w_a^{(\Omega)})$, normalized by
 $\sum_a w_a^{(\Omega)}=4\pi$, gives
@@ -48,7 +48,7 @@ any muffin-tin centre is smaller than that sphere's radius.  The nearest-image
 search is performed in the full direct-lattice metric, rather than by rounding
 three Cartesian components, so skew cells remain valid.  The retained midpoint
 weights converge to the analytic interstitial volume represented by
-`mt_core::InterstitialGeometry`; boundary correction is a measured later
+`libmuffintin_core::InterstitialGeometry`; boundary correction is a measured later
 optimization, not part of the M-C contract.
 
 ## 3. Sphere fields and orbitals
@@ -73,8 +73,8 @@ the field matrix element is
  \int dr\,[p_1p_2+Q_1Q_2]F_{LM}(r).
 ```
 
-`mt-sphere` evaluates the angular factor with the `mt-core` complex or real
-Gaunt convention and the radial factor with `mt-radial::radial_integral`.
+`libmuffintin-sphere` evaluates the angular factor with the `libmuffintin-core` complex or real
+Gaunt convention and the radial factor with `libmuffintin-radial::radial_integral`.
 This is the common primitive for non-spherical muffin-tin potentials, density
 synthesis, and later Coulomb multipoles.  SPEX performs the same separation in
 `src/hamilton.f:461-488`.
@@ -116,9 +116,9 @@ consumes; no producer-specific parser is part of M-C.
 ## 5. Optional tensor boundary
 
 The canonical grid storage is the typed Rust point sequence above.  With the
-`mt-grid/rstsr` feature, callers may materialize positions as an $(N,3)$
+`libmuffintin-grid/rstsr` feature, callers may materialize positions as an $(N,3)$
 RSTSR tensor and weights as an $N$-vector.  This conversion is an optional
-consumer boundary only: `mt-core`, `mt-radial`, `mt-sphere`, and `mt-io` do not
+consumer boundary only: `libmuffintin-core`, `libmuffintin-radial`, `libmuffintin-sphere`, and `libmuffintin-io` do not
 depend on a tensor implementation.  LAPW dense linear algebra uses `faer`
 directly.  A later tensor backend can consequently replace RSTSR without
 changing the physical or grid schemas.

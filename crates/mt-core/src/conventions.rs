@@ -39,7 +39,7 @@ impl KineticOperatorConvention {
 /// Convert an expansion coefficient multiplying `Y_00` to the actual constant
 /// spherical potential `V(r)` used by radial equations.
 ///
-/// `mt-core` and `mt-radial` use the actual value. This conversion is only for
+/// `libmuffintin-core` and `libmuffintin-radial` use the actual value. This conversion is only for
 /// input formats that store `V(r) = v_00(r) Y_00`.
 pub fn spherical_value_from_y00_coefficient(coefficient: Hartree) -> Hartree {
     Hartree(coefficient.0 / (4.0 * PI).sqrt())

@@ -4,6 +4,10 @@ This note fixes the M-E implementation against SPEX
 `src/hamilton.f:396-488,938-980` and `src/wrapper.f:2433-2474`.  It covers the
 Hamiltonian and numerical comparison machinery.  It does not claim a Cu
 cross-code result unless a complete external reference fixture is supplied.
+Generic operator containers and the filtered eigensolver now live in
+`libmuffintin-operators`; the LAPW interstitial kinetic convention stays in
+the `libmuffintin-lapw` facade. See
+[12](12_anonymous_basis_and_lapw_facade.md).
 
 ## 1. One kinetic convention
 
@@ -35,7 +39,7 @@ and then $\alpha=(u,\dot u)$, the site contribution is
 
 The supplied site block $h^a$ is a full complex Hermitian matrix.  It may
 therefore contain both the spherical radial Hamiltonian and the non-spherical
-$v_{LM}$ matrix elements produced by `mt-sphere`; the assembly code does not
+$v_{LM}$ matrix elements produced by `libmuffintin-sphere`; the assembly code does not
 special-case a harmonic channel.
 
 For the spherical part, SPEX uses the radial-equation identity
