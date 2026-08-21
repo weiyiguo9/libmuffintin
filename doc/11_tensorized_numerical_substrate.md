@@ -15,9 +15,13 @@ A dense local tensor carries:
 - a one-process [`LocalWorld`](../crates/mt-tensor/src/lib.rs);
 - placement intent [`Placement::Auto`](../crates/mt-tensor/src/lib.rs).
 
-Host snapshots remain ordinary row-major `Vec<Complex64>` buffers. Backend
-tensor handles stay private to `mt-tensor`. Serialized artifacts in `mt-io`
-are unchanged and must not mention RSTSR, faer, or tenferro.
+Host snapshots remain ordinary `Vec<Complex64>` buffers with an explicit
+row-major or column-major contract. General contraction tensors use row-major
+host construction. [`DenseEigenvectors`](../crates/mt-tensor/src/lib.rs) has
+logical axes `[GlobalBasis, Band]` and canonical column-major storage, so all
+basis coefficients of one band are contiguous. Backend tensor handles stay
+private to `mt-tensor`. Serialized artifacts in `mt-io` are unchanged and must
+not mention RSTSR, faer, or tenferro.
 
 ## 2. Einsum layer and backends
 
@@ -114,8 +118,10 @@ for the eigenvalue scale, and `ib,ib->b` for the squared column norms.
 - M-Fb2 tensorizes $X$, $X^\dagger H X$, $C=XZ$, and the batched residual
   contraction. The filtering algorithm and faer Hermitian EVD stay in place.
 - M-Fb3 stores public LAPW $H$, $S$, and eigenvector columns as tensor-native
-  `DenseHermitianMatrix` and `DenseEigenvectors`. "Dense" is the local storage
-  kind; the old unnamed `Vec<Complex64>` buffers are gone.
+  `DenseHermitianMatrix` and `DenseEigenvectors`. Eigenvectors use the
+  column-major `[basis, band]` convention, matching SPEX, FLEUR, ELK, and QE;
+  a fixed band is one contiguous basis-expansion column. "Dense" is the local
+  storage kind; the old unnamed `Vec<Complex64>` buffers are gone.
 - M-Fb4 adds `einsum_tenferro` behind `backend-tenferro` using
   tenferro-einsum on CPU/faer, without AD, GPU, or XLA. Compiling that
   feature requires rustc 1.96; the workspace MSRV remains 1.85. RSTSR+TBLIS
@@ -129,5 +135,6 @@ conjugation and a nonzero $k$ site phase; a no-LO site must reduce to the
 APW-only congruence; the scattered global matrices remain Hermitian; axis and
 shape errors are traceable; and every existing M-F $H$, $S$, retained rank,
 eigenvalue, eigenvector, and residual regression stays within its previous
-tolerance. This document does not claim CTF, MPI, tenferro parity, or the
-Cu/SPEX one-meV gate.
+tolerance. `DenseEigenvectors` must preserve logical `(basis, band)` indexing
+while exporting the linear offset `basis + basis_count * band`. This document
+does not claim CTF, MPI, tenferro parity, or the Cu/SPEX one-meV gate.

@@ -30,7 +30,8 @@ The current M-A through M-F implementation candidate provides:
   frozen;
 - `mt-tensor` M-Fb1: backend-neutral `einsum` layer for dense complex tensors.
   The default backend is RSTSR 0.7.10 linked with TBLIS. tenferro-rs is the
-  planned second backend behind the same subscripts. Site muffin-tin
+  optional second engine behind the same subscripts. LAPW eigenvectors use
+  column-major `[basis, band]` storage, with each band column contiguous. Site muffin-tin
   contributions are `einsum("ci,cd,dj->ij", [P^*, B, P])`. faer remains the
   Hermitian eigensolver. Serialized artifacts stay backend-neutral;
 - `mt-lapw` M-D: SPEX-convention APW boundary matching, explicit Rayleigh and
