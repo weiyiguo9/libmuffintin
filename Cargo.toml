@@ -12,6 +12,8 @@ members = [
     "crates/libmuffintin-basis",
     "crates/libmuffintin-operators",
     "crates/libmuffintin-recipes",
+    "crates/libmuffintin-product",
+    "crates/libmuffintin-mpb",
 ]
 
 [workspace.package]

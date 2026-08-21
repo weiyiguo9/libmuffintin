@@ -7,7 +7,8 @@ mod eigensolve;
 
 pub use assemble::{OperatorSet, SiteOperatorBlocks, add_site_contributions};
 pub use eigensolve::{
-    Collinear, EigenpairResidual, GeneralizedEigensolution, solve_generalized_hermitian,
+    Collinear, EigenpairResidual, GeneralizedEigensolution, RealSymmetricEigensolution,
+    solve_generalized_hermitian, solve_real_symmetric,
 };
 
 use libmuffintin_tensor::TensorError;
@@ -162,5 +163,23 @@ mod tests {
                 .iter()
                 .all(|residual| residual.absolute < 1.0e-12)
         );
+    }
+
+    #[test]
+    fn real_symmetric_eigensolver_returns_real_columns() {
+        let solution = solve_real_symmetric(2, |row, column| match (row, column) {
+            (0, 0) => 2.0,
+            (0, 1) => 0.5,
+            (1, 1) => 1.0,
+            _ => unreachable!(),
+        })
+        .unwrap();
+        assert_eq!(solution.dimension, 2);
+        assert!(solution.eigenvalues[0] <= solution.eigenvalues[1]);
+        let left = solution.eigenvectors[0];
+        let right = solution.eigenvectors[1];
+        let residual0 = 2.0 * left + 0.5 * right - solution.eigenvalues[0] * left;
+        let residual1 = 0.5 * left + 1.0 * right - solution.eigenvalues[0] * right;
+        assert!(residual0.abs() + residual1.abs() < 1.0e-12);
     }
 }

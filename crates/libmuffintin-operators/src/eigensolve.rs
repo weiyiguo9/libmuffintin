@@ -198,3 +198,57 @@ pub fn solve_generalized_hermitian(
         residuals,
     })
 }
+
+/// Real-symmetric eigendecomposition of a host matrix.
+///
+/// `element(row, column)` is queried for the upper triangle, including the
+/// diagonal. Eigenvalues are nondecreasing. Eigenvectors are real and
+/// column-major.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RealSymmetricEigensolution {
+    pub eigenvalues: Vec<f64>,
+    pub eigenvectors: Vec<f64>,
+    pub dimension: usize,
+}
+
+/// Diagonalize a real symmetric matrix without an overlap cutoff.
+pub fn solve_real_symmetric(
+    dimension: usize,
+    mut element: impl FnMut(usize, usize) -> f64,
+) -> Result<RealSymmetricEigensolution, OperatorError> {
+    use faer::{Mat, Side};
+
+    if dimension == 0 {
+        return Err(OperatorError::EmptyOverlapSubspace);
+    }
+    let mut values = vec![0.0; dimension * dimension];
+    for row in 0..dimension {
+        for column in row..dimension {
+            let value = element(row, column);
+            if !value.is_finite() {
+                return Err(OperatorError::Eigensolver);
+            }
+            values[row * dimension + column] = value;
+            values[column * dimension + row] = value;
+        }
+    }
+    let packed = Mat::<f64>::from_fn(dimension, dimension, |row, column| {
+        values[row * dimension + column]
+    });
+    let eigen = packed
+        .self_adjoint_eigen(Side::Lower)
+        .map_err(|_| OperatorError::Eigensolver)?;
+    let mut eigenvalues = Vec::with_capacity(dimension);
+    let mut eigenvectors = vec![0.0; dimension * dimension];
+    for column in 0..dimension {
+        eigenvalues.push(eigen.S()[column]);
+        for row in 0..dimension {
+            eigenvectors[row + column * dimension] = eigen.U()[(row, column)];
+        }
+    }
+    Ok(RealSymmetricEigensolution {
+        eigenvalues,
+        eigenvectors,
+        dimension,
+    })
+}
