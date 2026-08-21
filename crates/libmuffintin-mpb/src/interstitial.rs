@@ -40,12 +40,3 @@ pub fn auxiliary_interstitial_support(
     }
     Ok(AuxiliaryInterstitialSupport { q, g_cut, waves })
 }
-
-/// Plane-wave view of [`auxiliary_interstitial_support`].
-pub fn interstitial_plane_waves(
-    lattice: &ReciprocalLattice,
-    q: TransferQ,
-    g_cut: InverseBohr,
-) -> Result<Vec<AuxiliaryInterstitialWave>, MpbError> {
-    Ok(auxiliary_interstitial_support(lattice, q, g_cut)?.waves)
-}

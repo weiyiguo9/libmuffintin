@@ -1,8 +1,7 @@
 //! Canonical-q / Umklapp pair-matrix regressions from the scratch scripts.
 
 use libmuffintin_thc::{
-    BlochOrbitals, KMesh, PairColumnLayout, UmklappGauge, evaluate_pair_block, pair_density_oracle,
-    umklapp_phase,
+    BlochOrbitals, KMesh, PairColumnLayout, UmklappGauge, evaluate_pair_block, umklapp_phase,
 };
 use num_complex::Complex64;
 
@@ -77,7 +76,7 @@ fn lapw_iq1_constant_orbitals_are_minus_i() {
 }
 
 #[test]
-fn pair_block_matches_independent_oracle_for_every_column() {
+fn pair_block_column_layout_matches_the_canonical_product_expression() {
     let mesh = KMesh::gamma_centred([2, 2, 1], 6.0).unwrap();
     let points = [
         [0.1, 0.2, 0.3],
@@ -105,18 +104,10 @@ fn pair_block_matches_independent_oracle_for_every_column() {
         for (p, point) in points.iter().enumerate() {
             for column in 0..layout.n_columns().unwrap() {
                 let (ik, i, j) = layout.decode(column);
-                let want = pair_density_oracle(
-                    &orbitals,
-                    *point,
-                    p,
-                    &mesh,
-                    iq,
-                    ik,
-                    i,
-                    j,
-                    UmklappGauge::Canonical,
-                )
-                .unwrap();
+                let (left, shift) = mesh.kminus(ik, iq).unwrap();
+                let want = umklapp_phase(*point, shift, mesh.lattice_constant())
+                    * orbitals.at(p, left, i).conj()
+                    * orbitals.at(p, ik, j);
                 let got = block.at(p, column);
                 assert!(
                     (got - want).norm() < 1.0e-12,

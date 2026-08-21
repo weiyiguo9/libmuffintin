@@ -137,6 +137,47 @@ fn ewald_kernel_reports_successive_residual_and_rejects_tight_unmet_tolerance() 
         too_tight,
         Err(CoulombError::EwaldNotConverged { .. })
     ));
+    assert!(matches!(
+        converged_ewald_point_kernel(
+            request.cell(),
+            request.reciprocal(),
+            q,
+            r1,
+            r2,
+            EwaldScan {
+                tolerance: EWALD_SUCCESSIVE_TOLERANCE,
+                max_steps: 1,
+            },
+        ),
+        Err(CoulombError::InvalidEwaldSteps(1))
+    ));
+}
+
+#[test]
+fn coincident_gamma_kernel_includes_the_regular_ewald_self_limit() {
+    let request = CoulombRequest::cubic(1.0, 0).unwrap();
+    let q = libmuffintin_product::TransferQ::from_cartesian([InverseBohr(0.0); 3]).unwrap();
+    let origin = [Bohr(0.0); 3];
+    let value = ewald_point_kernel(
+        request.cell(),
+        request.reciprocal(),
+        q,
+        origin,
+        origin,
+        EwaldSummation {
+            eta: PI,
+            real_cutoff: Bohr(8.0),
+            recip_cutoff: InverseBohr(16.0 * PI),
+        },
+    )
+    .unwrap();
+    let simple_cubic_madelung = -2.837_297_479_480_619;
+    assert!(value.im.abs() < 1.0e-12);
+    assert!(
+        (value.re - simple_cubic_madelung).abs() < 2.0e-6,
+        "regular self value {} vs {simple_cubic_madelung}",
+        value.re
+    );
 }
 
 #[test]

@@ -248,29 +248,3 @@ pub fn evaluate_pair_block(
     }
     PairBlock::new(iq, orbitals.n_points, layout, values)
 }
-
-/// Independent single-column oracle used to prove the Umklapp gauge.
-#[allow(clippy::too_many_arguments)]
-pub fn pair_density_oracle(
-    orbitals: &BlochOrbitals,
-    point: [f64; 3],
-    point_index: usize,
-    mesh: &KMesh,
-    iq: usize,
-    ik: usize,
-    i: usize,
-    j: usize,
-    gauge: UmklappGauge,
-) -> Result<Complex64, ThcError> {
-    let (left, shift) = mesh.kminus(ik, iq)?;
-    let phase = match gauge {
-        UmklappGauge::Canonical => umklapp_phase(point, shift, mesh.lattice_constant()),
-        UmklappGauge::Omit => Complex64::new(1.0, 0.0),
-        UmklappGauge::SignFlip => umklapp_phase(point, shift, mesh.lattice_constant()).conj(),
-        UmklappGauge::DoubleCount => {
-            let once = umklapp_phase(point, shift, mesh.lattice_constant());
-            once * once
-        }
-    };
-    Ok(phase * orbitals.at(point_index, left, i).conj() * orbitals.at(point_index, ik, j))
-}

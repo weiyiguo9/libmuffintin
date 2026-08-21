@@ -2,13 +2,13 @@
 
 mod common;
 
-use libmuffintin_core::{Bohr, InverseBohr, VolumeBohr3};
+use libmuffintin_core::{Bohr, ExponentialMesh, InverseBohr, VolumeBohr3};
 use libmuffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombRequest, InterpolationProjection,
-    SampledAuxiliaryFunctions, assemble_coulomb, assemble_point_charge_oracle,
+    SampledAuxiliaryFunctions, SampledPointSupport, assemble_coulomb, assemble_point_charge_oracle,
     assemble_sampled_coulomb,
 };
-use libmuffintin_product::{AuxiliaryLayout, TransferQ};
+use libmuffintin_product::{AuxiliaryLayout, InterpolationRegion, TransferQ};
 use libmuffintin_thc::toy::{
     mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
     mt_reference_grid,
@@ -53,7 +53,7 @@ fn mixed_product_and_sampled_zeta_share_no_privileged_input_type() {
 }
 
 #[test]
-fn identity_zeta_on_nodes_matches_point_charge_oracle() {
+fn identity_zeta_and_point_charge_routes_share_expansion_plumbing() {
     let q = common::transfer_q([0.5, 0.0, 0.0]);
     let request = CoulombRequest::cubic(common::LATTICE, 2)
         .unwrap()
@@ -73,8 +73,69 @@ fn identity_zeta_on_nodes_matches_point_charge_oracle() {
     }
     assert!(
         worst < 1.0e-10,
-        "identity ζ on the node grid must reproduce the point-charge oracle, worst {worst}"
+        "the two explicit plumbing routes disagree, worst {worst}"
     );
+}
+
+#[test]
+fn sampled_mt_projection_uses_declared_shells_without_coordinate_snapping() {
+    let q = common::transfer_q([0.5, 0.0, 0.0]);
+    let auxiliary = common::interpolation_auxiliary(q);
+    let request = CoulombRequest::cubic(common::LATTICE, 2)
+        .unwrap()
+        .with_interpolation(InterpolationProjection::new(InverseBohr(1.6), 0).unwrap())
+        .unwrap();
+    let first: f64 = 2.0e-2;
+    let count = 13;
+    let increment = (common::RADIUS / first).ln() / (count - 1) as f64;
+    let radial_mesh = ExponentialMesh::new(Bohr(first), increment, count).unwrap();
+    let make_sampled = |radial_index: usize, radius: f64| {
+        let mut zeta = vec![Complex64::default(); auxiliary.dimension()];
+        zeta[0] = Complex64::new(1.0, 0.0);
+        SampledAuxiliaryFunctions::new(
+            auxiliary.layout(),
+            vec![radial_mesh.clone()],
+            vec![[
+                Bohr(common::POSITION[0].get() + radius),
+                common::POSITION[1],
+                common::POSITION[2],
+            ]],
+            vec![VolumeBohr3(0.05)],
+            vec![SampledPointSupport::MuffinTin {
+                site: 0,
+                radial_index,
+            }],
+            zeta,
+        )
+        .unwrap()
+    };
+    let left_index = 5;
+    let right_index = 6;
+    let left = make_sampled(left_index, radial_mesh.radii()[left_index].get());
+    let right = make_sampled(right_index, radial_mesh.radii()[right_index].get());
+    let left_value = assemble_sampled_coulomb(&auxiliary, &request, &left)
+        .unwrap()
+        .element(0, 0)
+        .unwrap();
+    let right_value = assemble_sampled_coulomb(&auxiliary, &request, &right)
+        .unwrap()
+        .element(0, 0)
+        .unwrap();
+    assert!(
+        (left_value - right_value).norm() > 1.0e-6,
+        "different declared shells must not collapse to one radial node"
+    );
+
+    let mismatched = make_sampled(left_index, radial_mesh.radii()[right_index].get());
+    assert!(matches!(
+        assemble_sampled_coulomb(&auxiliary, &request, &mismatched),
+        Err(CoulombError::SampledCoordinateShellMismatch { .. })
+    ));
+    let centre = make_sampled(left_index, 0.0);
+    assert!(matches!(
+        assemble_sampled_coulomb(&auxiliary, &request, &centre),
+        Err(CoulombError::SampledCoordinateShellMismatch { .. })
+    ));
 }
 
 #[test]
@@ -82,7 +143,9 @@ fn thc_zeta_assembles_and_rejects_layout_mismatch() {
     assert_eq!(libmuffintin_thc::DEFAULT_SELECTOR, SelectorStrategy::AllQL2);
     let mesh = mt_kmesh();
     let partition = mt_partition();
-    let grid = mt_adaptive_grid(6, 8, 4);
+    let nrad = 73;
+    let nang = 8;
+    let grid = mt_adaptive_grid(nrad, nang, 4);
     let reference = mt_reference_grid();
     let norms = mt_orbital_norms(&reference);
     let orbitals = mt_bloch_orbitals(&grid, &norms, &mesh).unwrap();
@@ -98,8 +161,8 @@ fn thc_zeta_assembles_and_rejects_layout_mismatch() {
             pool_factor: 2,
             engine: L2Engine::StructuredSketch { rows: 32 },
             grid_path: GridPath::Adaptive {
-                nrad: 6,
-                nang: 8,
+                nrad,
+                nang,
                 ninter: 4,
             },
         },
@@ -115,8 +178,26 @@ fn thc_zeta_assembles_and_rejects_layout_mismatch() {
     assert_eq!(fit.n_mu, auxiliary.dimension());
     assert_eq!(fit.n_points, grid.len());
     assert_eq!(fit.q, auxiliary.q);
+    let first_radius: f64 = 2.0e-3;
+    let increment = (libmuffintin_thc::toy::MT_RADIUS / first_radius).ln() / (nrad - 1) as f64;
+    let radial_mesh = ExponentialMesh::new(Bohr(first_radius), increment, nrad).unwrap();
+    let mut mt_counts = vec![0usize; partition.site_count()];
+    let sampled_supports = grid
+        .regions
+        .iter()
+        .map(|region| match *region {
+            InterpolationRegion::MuffinTin { site } => {
+                let radial_index = mt_counts[site] / nang;
+                mt_counts[site] += 1;
+                SampledPointSupport::MuffinTin { site, radial_index }
+            }
+            InterpolationRegion::Interstitial => SampledPointSupport::Interstitial,
+            InterpolationRegion::Uniform => SampledPointSupport::Uniform,
+        })
+        .collect();
     let sampled = SampledAuxiliaryFunctions::new(
         auxiliary.layout(),
+        vec![radial_mesh],
         grid.points
             .iter()
             .map(|point| [Bohr(point[0]), Bohr(point[1]), Bohr(point[2])])
@@ -125,7 +206,7 @@ fn thc_zeta_assembles_and_rejects_layout_mismatch() {
             .iter()
             .map(|weight| VolumeBohr3(*weight))
             .collect(),
-        grid.regions.clone(),
+        sampled_supports,
         fit.zeta.clone(),
     )
     .unwrap();
@@ -159,9 +240,10 @@ fn thc_zeta_assembles_and_rejects_layout_mismatch() {
     regions.reverse();
     let bad = SampledAuxiliaryFunctions::new(
         AuxiliaryLayout::from_regions(auxiliary.q, regions),
+        sampled.site_meshes().to_vec(),
         sampled.points().to_vec(),
         sampled.weights().to_vec(),
-        sampled.regions().to_vec(),
+        sampled.supports().to_vec(),
         sampled.zeta().to_vec(),
     )
     .unwrap();
@@ -173,9 +255,10 @@ fn thc_zeta_assembles_and_rejects_layout_mismatch() {
         TransferQ::from_cartesian([InverseBohr(0.1), InverseBohr(0.0), InverseBohr(0.0)]).unwrap();
     let bad_q = SampledAuxiliaryFunctions::new(
         AuxiliaryLayout::from_regions(other_q, auxiliary.regions()),
+        sampled.site_meshes().to_vec(),
         sampled.points().to_vec(),
         sampled.weights().to_vec(),
-        sampled.regions().to_vec(),
+        sampled.supports().to_vec(),
         sampled.zeta().to_vec(),
     )
     .unwrap();
@@ -189,9 +272,10 @@ fn thc_zeta_assembles_and_rejects_layout_mismatch() {
     let zeta_short = vec![Complex64::new(1.0, 0.0); n_grid * n_mu];
     let bad_dim = SampledAuxiliaryFunctions::new(
         AuxiliaryLayout::from_regions(auxiliary.q, short),
+        sampled.site_meshes().to_vec(),
         sampled.points().to_vec(),
         sampled.weights().to_vec(),
-        sampled.regions().to_vec(),
+        sampled.supports().to_vec(),
         zeta_short,
     )
     .unwrap();

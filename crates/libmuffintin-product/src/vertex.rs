@@ -52,7 +52,11 @@ pub struct MtPairSpec {
 
 /// Analytic interstitial pair expansion at canonical $q$.
 ///
-/// The pair density is `amplitude * Θ_I(r) exp(+i (q + G_rel)·r)`.
+/// The unfolded pair density is
+/// $A\Theta_I(r)\exp(+i(q+G_{\mathrm{wrap}}+G_{\mathrm{rel}})\cdot r)$,
+/// where $q$ is the canonical transfer and $G_{\mathrm{wrap}}$ is
+/// [`TransferQ::umklapp`]. Per-column $k-q$ wrapping is already included in
+/// `g_relative`; the global transfer wrap is not.
 /// `g_relative` must name a component of the raw interstitial pair support.
 /// Umklapp stored on [`TransferQ`] shifts the Fourier argument.
 #[derive(Clone, Copy, Debug, PartialEq)]

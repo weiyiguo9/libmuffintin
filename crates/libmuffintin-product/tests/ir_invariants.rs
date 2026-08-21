@@ -30,11 +30,11 @@ fn partition_follows_interstitial_spheres() {
     let partition = ProductPartition::from_interstitial(interstitial.clone());
     assert_eq!(partition.site_count(), 1);
     assert_eq!(
-        partition.sites[0].position,
+        partition.sites()[0].position,
         [Bohr(0.1), Bohr(0.0), Bohr(0.0)]
     );
     assert_eq!(
-        partition.interstitial.cell_volume(),
+        partition.interstitial().cell_volume(),
         interstitial.cell_volume()
     );
 }
@@ -99,7 +99,7 @@ fn product_source_does_not_carry_compiled_basis_fields() {
     )
     .unwrap();
     assert_eq!(source.radials.len(), 1);
-    assert!(source.partition.sites[0].radius.get() > 0.0);
+    assert!(source.partition.sites()[0].radius.get() > 0.0);
     assert!(source.interstitial_pair_support.components.is_empty());
 }
 

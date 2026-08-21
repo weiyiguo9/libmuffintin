@@ -14,6 +14,8 @@ use std::f64::consts::PI;
 const CONVPARAM1: f64 = 1.0e-10;
 /// SPEX `CONVPARAM2 = CONVPARAM1*10` for $L\ge 8$.
 const CONVPARAM2: f64 = CONVPARAM1 * 10.0;
+/// Fixed SPEX `EWALD_SCALE` used by this implementation.
+const EWALD_SCALE: f64 = 1.0;
 
 /// Structure constants $S_{LM}(a,b;q)$ in `lm_index` order through $2 L_{\mathrm{exp}}$.
 #[derive(Clone, Debug, PartialEq)]
@@ -73,12 +75,12 @@ pub fn structure_constants(
     }
     let vol = cell.volume().get();
     let latcon = vol.cbrt();
-    let ewald_scale = auto_ewald_scale();
+    let ewald_scale = EWALD_SCALE;
     let scale = ewald_scale / latcon;
     let factor_real = 4.0 * PI / scale.powi(2) / latcon.powi(2);
-    let real_cut = real_space_cutoff(scale, l_max, latcon, ewald_scale, factor_real);
-    let recip_cut = reciprocal_cutoff(scale, vol, latcon, ewald_scale);
-    let positions: Vec<[Bohr; 3]> = partition.sites.iter().map(|site| site.position).collect();
+    let real_cut = real_space_cutoff(scale, l_max, latcon, ewald_scale, factor_real)?;
+    let recip_cut = reciprocal_cutoff(scale, vol, latcon, ewald_scale)?;
+    let positions: Vec<[Bohr; 3]> = partition.sites().iter().map(|site| site.position).collect();
 
     let real_points = enumerate_direct(cell, Bohr(real_cut))?;
     let recip_points = reciprocal.enumerate(InverseBohr(recip_cut))?;
@@ -203,18 +205,21 @@ pub fn structure_constants(
     Ok(constants)
 }
 
-fn auto_ewald_scale() -> f64 {
-    1.0
-}
-
 fn convpar(l: u32, ew: f64) -> f64 {
     let param = if l <= 7 { CONVPARAM1 } else { CONVPARAM2 };
     param / ew.powi(l as i32 + 1) * 4.0 * PI
 }
 
-fn real_space_cutoff(scale: f64, l_max: u32, latcon: f64, ew: f64, factor: f64) -> f64 {
+fn real_space_cutoff(
+    scale: f64,
+    l_max: u32,
+    latcon: f64,
+    ew: f64,
+    factor: f64,
+) -> Result<f64, CoulombError> {
     let mut a = 1.0;
     let mut da = 1.0;
+    let mut converged = false;
     for _ in 0..20_000 {
         let mut all_small = true;
         for l in 0..=7u32.min(l_max) {
@@ -225,6 +230,7 @@ fn real_space_cutoff(scale: f64, l_max: u32, latcon: f64, ew: f64, factor: f64) 
         }
         if all_small {
             if da < 5.0e-5 {
+                converged = true;
                 break;
             }
             a -= da;
@@ -234,24 +240,29 @@ fn real_space_cutoff(scale: f64, l_max: u32, latcon: f64, ew: f64, factor: f64) 
         if a > 120.0 {
             break;
         }
+    }
+    if !converged {
+        return Err(CoulombError::RealSpaceCutoffNotConverged);
     }
     let mut rad = a / scale;
     if l_max >= 8 {
         let high_l = (1.0 / CONVPARAM2).powf(1.0 / 7.0) * latcon;
         rad = rad.max(high_l);
     }
-    rad
+    Ok(rad)
 }
 
-fn reciprocal_cutoff(scale: f64, vol: f64, latcon: f64, ew: f64) -> f64 {
+fn reciprocal_cutoff(scale: f64, vol: f64, latcon: f64, ew: f64) -> Result<f64, CoulombError> {
     let pref = 4.0 * PI / (scale.powi(3) * vol);
     let factor = 4.0 * PI * scale.powi(2) / latcon.powi(2);
     let mut a = 1.0;
     let mut da = 1.0;
+    let mut converged = false;
     for _ in 0..20_000 {
         let g0 = recip_g(0, a, pref);
         if (g0 * factor * a * a).abs() < convpar(0, ew) {
             if da < 5.0e-5 {
+                converged = true;
                 break;
             }
             a -= da;
@@ -262,7 +273,10 @@ fn reciprocal_cutoff(scale: f64, vol: f64, latcon: f64, ew: f64) -> f64 {
             break;
         }
     }
-    a * scale
+    if !converged {
+        return Err(CoulombError::ReciprocalSpaceCutoffNotConverged);
+    }
+    Ok(a * scale)
 }
 
 /// SPEX real-space $g_L(a)$ (`coulombmatrix.f:2430-2442`).

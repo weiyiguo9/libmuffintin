@@ -3,7 +3,8 @@
 use crate::CoulombError;
 use crate::spec::{CoulombRequest, InterpolationProjection};
 use libmuffintin_core::{
-    Bohr, ExponentialMesh, InverseBohr, VolumeBohr3, complex_spherical_harmonics, lm_index,
+    Bohr, ExponentialMesh, InverseBohr, VolumeBohr3, complex_spherical_harmonics, lm_count,
+    lm_index,
 };
 use libmuffintin_product::{
     AuxiliaryInterstitialWave, AuxiliaryLayout, AuxiliaryRegion, CompiledAuxiliaryBasis,
@@ -18,30 +19,43 @@ use num_complex::Complex64;
 #[derive(Clone, Debug, PartialEq)]
 pub struct SampledAuxiliaryFunctions {
     layout: AuxiliaryLayout,
+    site_meshes: Vec<ExponentialMesh>,
     points: Vec<[Bohr; 3]>,
     weights: Vec<VolumeBohr3>,
-    regions: Vec<InterpolationRegion>,
+    supports: Vec<SampledPointSupport>,
     zeta: Vec<Complex64>,
+}
+
+/// Exact radial/interstitial support of one sampled parent-grid point.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SampledPointSupport {
+    /// Point on an explicit radial shell of muffin-tin `site`.
+    MuffinTin { site: usize, radial_index: usize },
+    /// Point in the partitioned interstitial.
+    Interstitial,
+    /// Point on an unpartitioned uniform grid.
+    Uniform,
 }
 
 impl SampledAuxiliaryFunctions {
     /// Construct after checking layout, grid lengths, weights, and $\zeta$ shape.
     pub fn new(
         layout: AuxiliaryLayout,
+        site_meshes: Vec<ExponentialMesh>,
         points: Vec<[Bohr; 3]>,
         weights: Vec<VolumeBohr3>,
-        regions: Vec<InterpolationRegion>,
+        supports: Vec<SampledPointSupport>,
         zeta: Vec<Complex64>,
     ) -> Result<Self, CoulombError> {
         let n_grid = points.len();
         if n_grid == 0 {
             return Err(CoulombError::EmptySampledGrid);
         }
-        if weights.len() != n_grid || regions.len() != n_grid {
+        if weights.len() != n_grid || supports.len() != n_grid {
             return Err(CoulombError::SampledGridLength {
                 points: n_grid,
                 weights: weights.len(),
-                regions: regions.len(),
+                supports: supports.len(),
             });
         }
         let n_mu = layout.dimension();
@@ -81,6 +95,29 @@ impl SampledAuxiliaryFunctions {
         if !any_positive {
             return Err(CoulombError::NoPositiveSampledWeight);
         }
+        for (site, mesh) in site_meshes.iter().enumerate() {
+            if mesh.increment() <= 0.0 {
+                return Err(CoulombError::SampledMeshNotOutward {
+                    site,
+                    increment: mesh.increment(),
+                });
+            }
+        }
+        for (point, support) in supports.iter().enumerate() {
+            if let SampledPointSupport::MuffinTin { site, radial_index } = *support {
+                let mesh = site_meshes
+                    .get(site)
+                    .ok_or(CoulombError::SampledPointSite { site })?;
+                if radial_index >= mesh.len() {
+                    return Err(CoulombError::SampledRadialIndex {
+                        point,
+                        site,
+                        index: radial_index,
+                        count: mesh.len(),
+                    });
+                }
+            }
+        }
         for (index, value) in zeta.iter().enumerate() {
             if !value.re.is_finite() || !value.im.is_finite() {
                 return Err(CoulombError::NonFiniteZeta(index));
@@ -88,9 +125,10 @@ impl SampledAuxiliaryFunctions {
         }
         Ok(Self {
             layout,
+            site_meshes,
             points,
             weights,
-            regions,
+            supports,
             zeta,
         })
     }
@@ -125,9 +163,14 @@ impl SampledAuxiliaryFunctions {
         &self.weights
     }
 
-    /// Parent-grid region tags.
-    pub fn regions(&self) -> &[InterpolationRegion] {
-        &self.regions
+    /// Per-site radial meshes in site-index order.
+    pub fn site_meshes(&self) -> &[ExponentialMesh] {
+        &self.site_meshes
+    }
+
+    /// Exact support of every parent-grid point.
+    pub fn supports(&self) -> &[SampledPointSupport] {
+        &self.supports
     }
 }
 
@@ -165,6 +208,14 @@ pub(crate) struct SiteSupport {
     pub mesh: ExponentialMesh,
 }
 
+#[derive(Clone)]
+struct SampledMtChannel {
+    site: usize,
+    l: u32,
+    m: i32,
+    radial: Vec<Complex64>,
+}
+
 pub(crate) fn mixed_product_support(
     auxiliary: &CompiledAuxiliaryBasis,
     payload: &MixedProductAuxiliary,
@@ -173,7 +224,7 @@ pub(crate) fn mixed_product_support(
     for (index, block) in payload.sites.iter().enumerate() {
         let partition = auxiliary
             .partition
-            .sites
+            .sites()
             .get(index)
             .ok_or(CoulombError::MissingSite(index))?;
         sites.push(SiteSupport {
@@ -183,7 +234,7 @@ pub(crate) fn mixed_product_support(
         });
     }
     Ok(ExpansionSupport {
-        volume: auxiliary.partition.interstitial.cell_volume().get(),
+        volume: auxiliary.partition.interstitial().cell_volume().get(),
         sites,
         waves: payload.interstitial.waves.clone(),
     })
@@ -195,6 +246,7 @@ pub(crate) fn mixed_product_densities(
 ) -> Result<Vec<ChargeDensity>, CoulombError> {
     let n_pw = payload.interstitial.waves.len();
     let mut densities = Vec::with_capacity(auxiliary.dimension());
+    let mut next_pw = 0;
     for region in auxiliary.regions() {
         match region {
             AuxiliaryRegion::MuffinTin { site, l, m, n } => {
@@ -218,16 +270,10 @@ pub(crate) fn mixed_product_densities(
                     pw: vec![Complex64::default(); n_pw],
                 });
             }
-            AuxiliaryRegion::Interstitial { g } => {
+            AuxiliaryRegion::Interstitial { .. } => {
                 let mut pw = vec![Complex64::default(); n_pw];
-                if let Some(index) = payload
-                    .interstitial
-                    .waves
-                    .iter()
-                    .position(|wave| wave.g.index == g.index)
-                {
-                    pw[index] = Complex64::new(1.0, 0.0);
-                }
+                pw[next_pw] = Complex64::new(1.0, 0.0);
+                next_pw += 1;
                 densities.push(ChargeDensity { mt: Vec::new(), pw });
             }
             AuxiliaryRegion::InterpolationPoint { .. } => {
@@ -240,35 +286,96 @@ pub(crate) fn mixed_product_densities(
     Ok(densities)
 }
 
-pub(crate) fn interpolation_support(
+pub(crate) fn sampled_interpolation_support(
     auxiliary: &CompiledAuxiliaryBasis,
     request: &CoulombRequest,
-    projection: InterpolationProjection,
+    projection: &InterpolationProjection,
+    sampled: &SampledAuxiliaryFunctions,
 ) -> Result<ExpansionSupport, CoulombError> {
+    if sampled.site_meshes.len() != auxiliary.partition.site_count() {
+        return Err(CoulombError::SampledMeshCount {
+            expected: auxiliary.partition.site_count(),
+            actual: sampled.site_meshes.len(),
+        });
+    }
     let mut sites = Vec::with_capacity(auxiliary.partition.site_count());
-    for site in &auxiliary.partition.sites {
+    for (site_index, (site, mesh)) in auxiliary
+        .partition
+        .sites()
+        .iter()
+        .zip(&sampled.site_meshes)
+        .enumerate()
+    {
+        let mesh_radius = mesh.last().get();
+        let sphere_radius = site.radius.get();
+        if (mesh_radius - sphere_radius).abs() > 1.0e-10 * sphere_radius.max(1.0) {
+            return Err(CoulombError::SampledMeshRadius {
+                site: site_index,
+                mesh: mesh_radius,
+                sphere: sphere_radius,
+            });
+        }
         sites.push(SiteSupport {
             position: site.position,
             radius: site.radius,
-            mesh: site_mesh(site.radius)?,
+            mesh: mesh.clone(),
         });
+    }
+    for (point, support) in sampled.supports.iter().enumerate() {
+        if let SampledPointSupport::MuffinTin { site, radial_index } = *support {
+            let site_support = &sites[site];
+            let rel: [f64; 3] = std::array::from_fn(|axis| {
+                sampled.points[point][axis].get() - site_support.position[axis].get()
+            });
+            let coordinate_radius = rel.iter().map(|value| value * value).sum::<f64>().sqrt();
+            let shell_radius = site_support.mesh.radii()[radial_index].get();
+            if (coordinate_radius - shell_radius).abs() > 1.0e-10 * shell_radius.max(1.0) {
+                return Err(CoulombError::SampledCoordinateShellMismatch {
+                    point,
+                    site,
+                    coordinate: coordinate_radius,
+                    shell: shell_radius,
+                });
+            }
+        }
     }
     let waves = auxiliary_waves(request, auxiliary.q, projection.pw_cutoff)?;
     Ok(ExpansionSupport {
-        volume: auxiliary.partition.interstitial.cell_volume().get(),
+        volume: auxiliary.partition.interstitial().cell_volume().get(),
         sites,
         waves,
+    })
+}
+
+pub(crate) fn point_charge_support(
+    auxiliary: &CompiledAuxiliaryBasis,
+    request: &CoulombRequest,
+    projection: &InterpolationProjection,
+) -> Result<ExpansionSupport, CoulombError> {
+    let mut sites = Vec::with_capacity(auxiliary.partition.site_count());
+    for site in auxiliary.partition.sites() {
+        sites.push(SiteSupport {
+            position: site.position,
+            radius: site.radius,
+            mesh: point_charge_mesh(site.radius)?,
+        });
+    }
+    Ok(ExpansionSupport {
+        volume: auxiliary.partition.interstitial().cell_volume().get(),
+        sites,
+        waves: auxiliary_waves(request, auxiliary.q, projection.pw_cutoff)?,
     })
 }
 
 pub(crate) fn sampled_zeta_densities(
     sampled: &SampledAuxiliaryFunctions,
     support: &ExpansionSupport,
-    projection: InterpolationProjection,
+    projection: &InterpolationProjection,
 ) -> Result<Vec<ChargeDensity>, CoulombError> {
     let n_mu = sampled.n_mu();
     let n_grid = sampled.n_grid();
     let n_pw = support.waves.len();
+    let channels_per_site = lm_count(projection.l_max);
     let mut densities = vec![
         ChargeDensity {
             mt: Vec::new(),
@@ -276,6 +383,22 @@ pub(crate) fn sampled_zeta_densities(
         };
         n_mu
     ];
+    let channel_template = support
+        .sites
+        .iter()
+        .enumerate()
+        .flat_map(|(site, site_support)| {
+            (0..=projection.l_max).flat_map(move |l| {
+                (-(l as i32)..=l as i32).map(move |m| SampledMtChannel {
+                    site,
+                    l,
+                    m,
+                    radial: vec![Complex64::default(); site_support.mesh.len()],
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut mt_channels = vec![channel_template; n_mu];
     for p in 0..n_grid {
         let weight = sampled.weights[p].get();
         if weight == 0.0 {
@@ -286,15 +409,61 @@ pub(crate) fn sampled_zeta_densities(
             if zeta.norm() == 0.0 {
                 continue;
             }
-            accumulate_sample(
-                density,
-                support,
-                sampled.points[p],
-                sampled.regions[p],
-                zeta * weight,
-                projection.l_max,
-                p,
-            )?;
+            let charge = zeta * weight;
+            match sampled.supports[p] {
+                SampledPointSupport::MuffinTin { site, radial_index } => {
+                    let site_support = &support.sites[site];
+                    let rel: [f64; 3] = std::array::from_fn(|axis| {
+                        sampled.points[p][axis].get() - site_support.position[axis].get()
+                    });
+                    let harmonics = complex_spherical_harmonics(projection.l_max, rel);
+                    let radial_scale = 1.0
+                        / (site_support.mesh.weights()[radial_index]
+                            * site_support.mesh.radii()[radial_index].get());
+                    for l in 0..=projection.l_max {
+                        for m in -(l as i32)..=l as i32 {
+                            let lm = lm_index(l, m)?;
+                            mt_channels[mu][site * channels_per_site + lm].radial[radial_index] +=
+                                harmonics[lm].conj() * charge * radial_scale;
+                        }
+                    }
+                }
+                SampledPointSupport::Interstitial | SampledPointSupport::Uniform => {
+                    accumulate_interstitial(density, support, sampled.points[p], charge);
+                }
+            }
+        }
+    }
+    for (density, channels) in densities.iter_mut().zip(mt_channels) {
+        for channel in channels {
+            let real = channel
+                .radial
+                .iter()
+                .map(|value| value.re)
+                .collect::<Vec<_>>();
+            if real.iter().any(|value| *value != 0.0) {
+                density.mt.push(MtPiece {
+                    site: channel.site,
+                    l: channel.l,
+                    m: channel.m,
+                    radial: real,
+                    amplitude: Complex64::new(1.0, 0.0),
+                });
+            }
+            let imaginary = channel
+                .radial
+                .iter()
+                .map(|value| value.im)
+                .collect::<Vec<_>>();
+            if imaginary.iter().any(|value| *value != 0.0) {
+                density.mt.push(MtPiece {
+                    site: channel.site,
+                    l: channel.l,
+                    m: channel.m,
+                    radial: imaginary,
+                    amplitude: Complex64::new(0.0, 1.0),
+                });
+            }
         }
     }
     Ok(densities)
@@ -306,7 +475,7 @@ pub(crate) fn sampled_zeta_densities(
 pub(crate) fn point_charge_densities(
     auxiliary: &CompiledAuxiliaryBasis,
     support: &ExpansionSupport,
-    projection: InterpolationProjection,
+    projection: &InterpolationProjection,
 ) -> Result<Vec<ChargeDensity>, CoulombError> {
     let points = auxiliary.require_interpolation_points()?;
     let mut densities = Vec::with_capacity(points.len());
@@ -315,7 +484,7 @@ pub(crate) fn point_charge_densities(
             mt: Vec::new(),
             pw: vec![Complex64::default(); support.waves.len()],
         };
-        accumulate_sample(
+        accumulate_point_charge(
             &mut density,
             support,
             point.coordinate,
@@ -329,7 +498,7 @@ pub(crate) fn point_charge_densities(
     Ok(densities)
 }
 
-fn accumulate_sample(
+fn accumulate_point_charge(
     density: &mut ChargeDensity,
     support: &ExpansionSupport,
     coordinate: [Bohr; 3],
@@ -340,52 +509,84 @@ fn accumulate_sample(
 ) -> Result<(), CoulombError> {
     match region {
         InterpolationRegion::MuffinTin { site } => {
-            if site >= support.sites.len() {
-                return Err(CoulombError::SampledPointSite { site });
-            }
             let site_support = support
                 .sites
                 .get(site)
-                .ok_or(CoulombError::MissingSite(site))?;
+                .ok_or(CoulombError::SampledPointSite { site })?;
             let rel: [f64; 3] = std::array::from_fn(|axis| {
                 coordinate[axis].get() - site_support.position[axis].get()
             });
-            let r0 = rel.iter().map(|c| c * c).sum::<f64>().sqrt();
-            if r0 > site_support.radius.get() * (1.0 + 1.0e-8) {
-                return Err(CoulombError::InterpolationPointOutsideSphere(index));
-            }
-            let harmonics = complex_spherical_harmonics(l_max, rel);
-            let spike = radial_delta(&site_support.mesh, r0);
-            for l in 0..=l_max {
-                for m in -(l as i32)..=l as i32 {
-                    let y = harmonics[lm_index(l, m)?].conj();
-                    density.mt.push(MtPiece {
-                        site,
-                        l,
-                        m,
-                        radial: spike.clone(),
-                        amplitude: y * charge,
-                    });
-                }
-            }
+            let radius = rel.iter().map(|value| value * value).sum::<f64>().sqrt();
+            let spike = nearest_radial_delta(&site_support.mesh, radius);
+            accumulate_muffin_tin(
+                density,
+                site_support,
+                site,
+                coordinate,
+                spike,
+                charge,
+                l_max,
+                index,
+            )?;
         }
         InterpolationRegion::Interstitial | InterpolationRegion::Uniform => {
-            let svol = support.volume.sqrt();
-            for (local, wave) in support.waves.iter().enumerate() {
-                let phase = wave
-                    .q_plus_g
-                    .iter()
-                    .zip(coordinate)
-                    .map(|(q, r)| q.get() * r.get())
-                    .sum::<f64>();
-                density.pw[local] += charge * Complex64::from_polar(1.0, -phase) / svol;
-            }
+            accumulate_interstitial(density, support, coordinate, charge);
         }
     }
     Ok(())
 }
 
-fn radial_delta(mesh: &ExponentialMesh, r0: f64) -> Vec<f64> {
+#[allow(clippy::too_many_arguments)]
+fn accumulate_muffin_tin(
+    density: &mut ChargeDensity,
+    site_support: &SiteSupport,
+    site: usize,
+    coordinate: [Bohr; 3],
+    spike: Vec<f64>,
+    charge: Complex64,
+    l_max: u32,
+    index: usize,
+) -> Result<(), CoulombError> {
+    let rel: [f64; 3] =
+        std::array::from_fn(|axis| coordinate[axis].get() - site_support.position[axis].get());
+    let radius = rel.iter().map(|value| value * value).sum::<f64>().sqrt();
+    if radius > site_support.radius.get() * (1.0 + 1.0e-8) {
+        return Err(CoulombError::InterpolationPointOutsideSphere(index));
+    }
+    let harmonics = complex_spherical_harmonics(l_max, rel);
+    for l in 0..=l_max {
+        for m in -(l as i32)..=l as i32 {
+            density.mt.push(MtPiece {
+                site,
+                l,
+                m,
+                radial: spike.clone(),
+                amplitude: harmonics[lm_index(l, m)?].conj() * charge,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn accumulate_interstitial(
+    density: &mut ChargeDensity,
+    support: &ExpansionSupport,
+    coordinate: [Bohr; 3],
+    charge: Complex64,
+) {
+    let svol = support.volume.sqrt();
+    for (local, wave) in support.waves.iter().enumerate() {
+        let phase = wave
+            .q_plus_g
+            .iter()
+            .zip(coordinate)
+            .map(|(q, r)| q.get() * r.get())
+            .sum::<f64>();
+        density.pw[local] += charge * Complex64::from_polar(1.0, -phase) / svol;
+    }
+}
+
+fn nearest_radial_delta(mesh: &ExponentialMesh, r0: f64) -> Vec<f64> {
     let mut best = 0usize;
     let mut best_d = f64::MAX;
     for (index, radius) in mesh.radii().iter().enumerate() {
@@ -404,8 +605,12 @@ fn radial_delta(mesh: &ExponentialMesh, r0: f64) -> Vec<f64> {
     samples
 }
 
-fn site_mesh(radius: Bohr) -> Result<ExponentialMesh, CoulombError> {
-    let first = 1.0e-5;
+fn point_charge_mesh(radius: Bohr) -> Result<ExponentialMesh, CoulombError> {
+    let first = if radius.get() > 1.0e-5 {
+        1.0e-5
+    } else {
+        radius.get() * 1.0e-5
+    };
     let number = 73;
     let increment = (radius.get() / first).ln() / (number as f64 - 1.0);
     Ok(ExponentialMesh::new(Bohr(first), increment, number)?)

@@ -38,6 +38,8 @@ pub enum CoulombError {
     ReciprocalMismatch,
     #[error("auxiliary interstitial G={index:?} does not match the request reciprocal lattice")]
     WaveLatticeMismatch { index: [i32; 3] },
+    #[error("auxiliary interstitial G={index:?} has zero |q+G| outside the Gamma head")]
+    ZeroQPlusG { index: [i32; 3] },
     #[error("site {site} muffin-tin radius {found} does not match the partition radius {expected}")]
     SiteRadiusMismatch {
         site: usize,
@@ -56,6 +58,10 @@ pub enum CoulombError {
     InvalidEwaldRealCutoff(f64),
     #[error("Ewald reciprocal cutoff must be finite and nonnegative, got {0}")]
     InvalidEwaldRecipCutoff(f64),
+    #[error("Ewald convergence tolerance must be finite and positive, got {0}")]
+    InvalidEwaldTolerance(f64),
+    #[error("Ewald convergence scan needs at least two steps, got {0}")]
+    InvalidEwaldSteps(usize),
     #[error(
         "Ewald kernel did not reach successive residual {tolerance} in {steps} steps (last residual {residual})"
     )]
@@ -64,6 +70,10 @@ pub enum CoulombError {
         tolerance: f64,
         steps: usize,
     },
+    #[error("real-space structure-constant cutoff search did not converge")]
+    RealSpaceCutoffNotConverged,
+    #[error("reciprocal-space structure-constant cutoff search did not converge")]
+    ReciprocalSpaceCutoffNotConverged,
     #[error("pair vertex transfer q does not match the Coulomb operator")]
     VertexTransferQ,
     #[error(
@@ -89,11 +99,11 @@ pub enum CoulombError {
     },
     #[error("sampled zeta has {n_mu} functions, expected auxiliary dimension {expected}")]
     SampledZetaDimension { n_mu: usize, expected: usize },
-    #[error("sampled grid has {points} points, {weights} weights, {regions} regions")]
+    #[error("sampled grid has {points} points, {weights} weights, {supports} support labels")]
     SampledGridLength {
         points: usize,
         weights: usize,
-        regions: usize,
+        supports: usize,
     },
     #[error("sampled grid is empty")]
     EmptySampledGrid,
@@ -111,10 +121,36 @@ pub enum CoulombError {
     MatrixIndex { index: usize, dimension: usize },
     #[error("radial sample at index {index} is not finite")]
     NonFiniteRadial { index: usize },
+    #[error("Coulomb matrix entry ({row}, {column}) is not finite")]
+    NonFiniteMatrix { row: usize, column: usize },
     #[error("interpolation point {0} lies outside its tagged muffin-tin sphere")]
     InterpolationPointOutsideSphere(usize),
     #[error("sampled muffin-tin site {site} is outside the partition")]
     SampledPointSite { site: usize },
+    #[error("sampled radial mesh {site} is not outward (increment {increment})")]
+    SampledMeshNotOutward { site: usize, increment: f64 },
+    #[error("sampled input has {actual} site meshes, expected {expected}")]
+    SampledMeshCount { expected: usize, actual: usize },
+    #[error("sampled mesh {site} ends at {mesh}, but the partition sphere ends at {sphere}")]
+    SampledMeshRadius { site: usize, mesh: f64, sphere: f64 },
+    #[error(
+        "sampled point {point} names radial index {index} outside site {site} mesh of length {count}"
+    )]
+    SampledRadialIndex {
+        point: usize,
+        site: usize,
+        index: usize,
+        count: usize,
+    },
+    #[error(
+        "sampled point {point} radius {coordinate} does not match site {site} shell radius {shell}"
+    )]
+    SampledCoordinateShellMismatch {
+        point: usize,
+        site: usize,
+        coordinate: f64,
+        shell: f64,
+    },
     #[error("site {0} is missing from the product partition")]
     MissingSite(usize),
     #[error("compiled auxiliary basis has dimension 0")]

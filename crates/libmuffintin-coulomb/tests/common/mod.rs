@@ -5,7 +5,7 @@ use libmuffintin_basis::Provenance;
 use libmuffintin_core::{
     Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3,
 };
-use libmuffintin_coulomb::SampledAuxiliaryFunctions;
+use libmuffintin_coulomb::{SampledAuxiliaryFunctions, SampledPointSupport};
 use libmuffintin_mpb::spex_mixed_product_basis;
 use libmuffintin_product::{
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationAuxiliaryPoint,
@@ -140,10 +140,15 @@ pub fn mixed_product_auxiliary(q: TransferQ) -> (ProductSource, CompiledAuxiliar
 }
 
 pub fn interpolation_auxiliary(q: TransferQ) -> CompiledAuxiliaryBasis {
+    let first_shell = mesh().first().get();
     let mut points = vec![
         InterpolationAuxiliaryPoint {
             id: 0,
-            coordinate: POSITION,
+            coordinate: [
+                Bohr(POSITION[0].get() + first_shell),
+                POSITION[1],
+                POSITION[2],
+            ],
             weight: VolumeBohr3(0.05),
             region: InterpolationRegion::MuffinTin { site: 0 },
         },
@@ -192,9 +197,20 @@ pub fn identity_zeta(auxiliary: &CompiledAuxiliaryBasis) -> SampledAuxiliaryFunc
     }
     SampledAuxiliaryFunctions::new(
         auxiliary.layout(),
+        vec![mesh()],
         points.iter().map(|point| point.coordinate).collect(),
         points.iter().map(|point| point.weight).collect(),
-        points.iter().map(|point| point.region).collect(),
+        points
+            .iter()
+            .map(|point| match point.region {
+                InterpolationRegion::MuffinTin { site } => SampledPointSupport::MuffinTin {
+                    site,
+                    radial_index: 0,
+                },
+                InterpolationRegion::Interstitial => SampledPointSupport::Interstitial,
+                InterpolationRegion::Uniform => SampledPointSupport::Uniform,
+            })
+            .collect(),
         zeta,
     )
     .unwrap()

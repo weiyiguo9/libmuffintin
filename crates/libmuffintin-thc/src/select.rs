@@ -157,7 +157,11 @@ pub struct SelectionProvenance {
 /// Shared interpolation-point set.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Selection {
+    /// Point indices in QRCP rank order. This order is diagnostic and does not
+    /// define the emitted auxiliary layout.
     pub pivots: Vec<usize>,
+    /// Selected points in canonical muffin-tin-then-interstitial layout order.
+    /// THC fitting and emitted auxiliary objects use this ordering.
     pub points: Vec<InterpolationAuxiliaryPoint>,
     pub provenance: SelectionProvenance,
 }
@@ -289,6 +293,18 @@ pub fn select_points(
     if request.pool_factor == 0 {
         return Err(ThcError::InvalidPoolFactor(request.pool_factor));
     }
+    if let (
+        RankPolicy::Exact { .. },
+        L2Engine::StructuredSketch { rows },
+        SelectorStrategy::Q0L2 | SelectorStrategy::AllQL2,
+    ) = (request.rank, request.engine, request.strategy)
+        && rows < n_mu_cap
+    {
+        return Err(ThcError::SketchRankExceedsRows {
+            rows,
+            required: n_mu_cap,
+        });
+    }
     let (pivots, n_pool) = match request.strategy {
         SelectorStrategy::Q0L2 => {
             let pivots = l2_pivots(
@@ -319,6 +335,14 @@ pub fn select_points(
         SelectorStrategy::AllQCoulombPool => {
             let grams = grams.ok_or(ThcError::MissingCoulombGrams)?;
             let n_pool = (request.pool_factor.saturating_mul(n_mu_cap)).min(points.len());
+            if let L2Engine::StructuredSketch { rows } = request.engine
+                && rows < n_pool
+            {
+                return Err(ThcError::SketchRankExceedsRows {
+                    rows,
+                    required: n_pool,
+                });
+            }
             let pool = l2_pivots(
                 orbitals,
                 points,

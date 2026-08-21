@@ -6,7 +6,7 @@ use libmuffintin_core::{
 };
 use libmuffintin_envelope::site_translation_phase;
 use libmuffintin_mpb::{
-    DEFAULT_TOLERANCE, apply_overlap_cutoff, interstitial_plane_waves, pair_vertex,
+    DEFAULT_TOLERANCE, apply_overlap_cutoff, auxiliary_interstitial_support, pair_vertex,
     spex_mixed_product_basis,
 };
 use libmuffintin_operators::solve_real_symmetric;
@@ -204,19 +204,40 @@ fn theta_i_oracle(
         .iter()
         .map(|wave| {
             let argument = std::array::from_fn(|axis| {
-                InverseBohr(
-                    spec.g_relative.cartesian[axis].get() + wrap.cartesian[axis].get()
-                        - wave.g.cartesian[axis].get(),
-                )
+                wave.g.cartesian[axis].get()
+                    - wrap.cartesian[axis].get()
+                    - spec.g_relative.cartesian[axis].get()
             });
-            spec.amplitude
-                * auxiliary
-                    .partition
-                    .interstitial
-                    .coefficient(argument)
-                    .unwrap()
+            spec.amplitude * analytic_interstitial_coefficient(auxiliary, argument)
         })
         .collect()
+}
+
+fn analytic_interstitial_coefficient(auxiliary: &CompiledAuxiliaryBasis, k: [f64; 3]) -> Complex64 {
+    let volume = auxiliary.partition.interstitial().cell_volume().get();
+    let norm = k.iter().map(|value| value * value).sum::<f64>().sqrt();
+    let mut value = if norm <= 1.0e-14 {
+        Complex64::new(1.0, 0.0)
+    } else {
+        Complex64::default()
+    };
+    for sphere in auxiliary.partition.interstitial().spheres() {
+        let radius = sphere.radius.get();
+        let sphere_volume = 4.0 * std::f64::consts::PI * radius.powi(3) / 3.0;
+        let radial = if norm <= 1.0e-14 {
+            1.0
+        } else {
+            let x = norm * radius;
+            3.0 * (x.sin() - x * x.cos()) / x.powi(3)
+        };
+        let phase = -k
+            .iter()
+            .zip(sphere.center)
+            .map(|(component, coordinate)| component * coordinate.get())
+            .sum::<f64>();
+        value -= Complex64::from_polar(sphere_volume / volume * radial, phase);
+    }
+    value
 }
 
 #[test]
@@ -471,9 +492,13 @@ fn finite_q_interstitial_support_uses_q_plus_g() {
     let q =
         TransferQ::from_cartesian([InverseBohr(0.15), InverseBohr(0.0), InverseBohr(0.0)]).unwrap();
     let g_cut = InverseBohr(0.9);
-    let waves = interstitial_plane_waves(&lattice, q, g_cut).unwrap();
+    let waves = auxiliary_interstitial_support(&lattice, q, g_cut)
+        .unwrap()
+        .waves;
     let zero = TransferQ::from_cartesian([InverseBohr(0.0); 3]).unwrap();
-    let gamma = interstitial_plane_waves(&lattice, zero, g_cut).unwrap();
+    let gamma = auxiliary_interstitial_support(&lattice, zero, g_cut)
+        .unwrap()
+        .waves;
     assert_eq!(
         gamma.iter().map(|wave| wave.g.index).collect::<Vec<_>>(),
         lattice
@@ -527,6 +552,26 @@ fn interstitial_pair_vertex_matches_independent_theta_i_oracle_including_umklapp
         assert!((got - want).norm() < 1.0e-12);
     }
     assert_ne!(vertex.interstitial(), shifted.interstitial());
+    let wrong_sign = mixed_product(&auxiliary_u)
+        .interstitial
+        .waves
+        .iter()
+        .map(|wave| {
+            let k = std::array::from_fn(|axis| {
+                auxiliary_u.q.umklapp.cartesian[axis].get()
+                    + spec.interstitial.unwrap().g_relative.cartesian[axis].get()
+                    - wave.g.cartesian[axis].get()
+            });
+            analytic_interstitial_coefficient(&auxiliary_u, k)
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        expected_u
+            .iter()
+            .zip(wrong_sign)
+            .any(|(right, wrong)| (*right - wrong).norm() > 1.0e-8),
+        "off-centre sphere must distinguish the Fourier-sign convention"
+    );
 }
 
 #[test]
@@ -565,10 +610,12 @@ fn muffin_tin_pair_vertex_carries_site_phase() {
     let phased = pair_vertex(&phased_source, &raw_q, &auxiliary_q, spec).unwrap();
     let expected_phase = site_translation_phase(q.cartesian, POSITION);
     let index = auxiliary_q.mt_index(0, 0, 0, 0).unwrap();
-    if vertex.coefficients()[index].norm() > 1.0e-14 {
-        let ratio = phased.coefficients()[index] / vertex.coefficients()[index];
-        assert!((ratio - expected_phase).norm() < 1.0e-10);
-    }
+    assert!(
+        vertex.coefficients()[index].norm() > 1.0e-14,
+        "fixture must exercise a nonzero MT coefficient"
+    );
+    let ratio = phased.coefficients()[index] / vertex.coefficients()[index];
+    assert!((ratio - expected_phase).norm() < 1.0e-10);
 }
 
 #[test]

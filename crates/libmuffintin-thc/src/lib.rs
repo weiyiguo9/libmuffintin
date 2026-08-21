@@ -29,10 +29,7 @@ pub use fit::{
 };
 pub use gram::{CoulombGramSet, GRAM_HERMITIAN_TOLERANCE, GRAM_PSD_TOLERANCE, InjectedCoulombGram};
 pub use kmesh::{KMesh, umklapp_phase};
-pub use pair::{
-    BlochOrbitals, PairBlock, PairColumnLayout, UmklappGauge, evaluate_pair_block,
-    pair_density_oracle,
-};
+pub use pair::{BlochOrbitals, PairBlock, PairColumnLayout, UmklappGauge, evaluate_pair_block};
 pub use run::{
     StrategyDiagnostics, ThcResult, bloch_pair_vertices, compare_strategies,
     interpolation_auxiliary, run_thc,
