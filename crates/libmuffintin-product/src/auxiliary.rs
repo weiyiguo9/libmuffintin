@@ -1,8 +1,8 @@
-//! Retained auxiliary basis shared by mixed-product and later THC paths.
+//! Retained auxiliary basis shared by mixed-product and interpolation-point paths.
 
 use crate::{ProductError, ProductPartition, ProductSource, TransferQ};
 use libmuffintin_basis::Provenance;
-use libmuffintin_core::{ExponentialMesh, GVector, InverseBohr};
+use libmuffintin_core::{Bohr, ExponentialMesh, GVector, InverseBohr, VolumeBohr3};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
@@ -58,6 +58,54 @@ pub struct AuxiliaryInterstitialSupport {
     pub waves: Vec<AuxiliaryInterstitialWave>,
 }
 
+/// Region of an interpolation-point auxiliary function.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum InterpolationRegion {
+    /// Point inside muffin-tin site `site`.
+    MuffinTin { site: usize },
+    /// Point in the partitioned interstitial.
+    Interstitial,
+    /// Point on an unpartitioned uniform grid.
+    Uniform,
+}
+
+/// One real-space interpolation point of a THC/ISDF auxiliary basis.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct InterpolationAuxiliaryPoint {
+    /// Stable parent-grid index.
+    pub id: usize,
+    pub coordinate: [Bohr; 3],
+    pub weight: VolumeBohr3,
+    pub region: InterpolationRegion,
+}
+
+/// Mixed-product payload: retained muffin-tin modes plus $|q+G|$ plane waves.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MixedProductAuxiliary {
+    pub sites: Vec<SiteAuxiliaryBlock>,
+    pub interstitial: AuxiliaryInterstitialSupport,
+    pub cutoff: Option<CutoffRecord>,
+}
+
+/// Interpolation-point payload shared by k-point ISDF/THC.
+///
+/// Points are stored in muffin-tin (by site, then id), then interstitial id,
+/// then uniform id. This is not an empty mixed-product block.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InterpolationPointAuxiliary {
+    pub points: Vec<InterpolationAuxiliaryPoint>,
+}
+
+/// Typed auxiliary representation. Not a trait family and not a compatibility
+/// shim around a fake mixed-product payload.
+#[derive(Clone, Debug, PartialEq)]
+pub enum AuxiliaryRepresentation {
+    /// SPEX-style mixed product basis.
+    MixedProduct(MixedProductAuxiliary),
+    /// Real-space interpolation points (ISDF/THC).
+    InterpolationPoints(InterpolationPointAuxiliary),
+}
+
 /// Region of a compiled auxiliary function in global flatten order.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AuxiliaryRegion {
@@ -70,36 +118,97 @@ pub enum AuxiliaryRegion {
     },
     /// Interstitial auxiliary plane wave labelled by $G$ at the stored $q$.
     Interstitial { g: GVector },
+    /// Interpolation point in muffin-tin / interstitial / uniform order.
+    InterpolationPoint {
+        id: usize,
+        region: InterpolationRegion,
+    },
 }
 
 /// Retained auxiliary basis at one transfer $q$.
 ///
-/// A consumer can integrate muffin-tin modes using each site's mesh without
-/// a [`crate::ProductSource`]. Interstitial support is the MPB $|q+G|$ view,
-/// not raw orbital-pair reciprocal support.
+/// Mixed-product consumers use muffin-tin meshes and $|q+G|$ waves.
+/// Interpolation-point consumers use the selected real-space points. Pair
+/// vertices stay muffin-tin then interstitial: mixed-product $M$-expanded
+/// modes then plane waves, or muffin-tin-tagged points then
+/// interstitial/uniform points.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CompiledAuxiliaryBasis {
     pub partition: ProductPartition,
     pub q: TransferQ,
-    pub sites: Vec<SiteAuxiliaryBlock>,
-    pub interstitial: AuxiliaryInterstitialSupport,
-    pub cutoff: Option<CutoffRecord>,
+    pub representation: AuxiliaryRepresentation,
     pub provenance: Provenance,
 }
 
 impl CompiledAuxiliaryBasis {
-    /// Global muffin-tin auxiliary dimension, expanding $M = -L,\ldots,L$.
-    pub fn mt_dimension(&self) -> usize {
-        self.sites
-            .iter()
-            .flat_map(|block| block.modes.iter())
-            .map(|mode| 2 * mode.l as usize + 1)
-            .sum()
+    /// Mixed-product payload, if this basis is not interpolation points.
+    pub fn mixed_product(&self) -> Option<&MixedProductAuxiliary> {
+        match &self.representation {
+            AuxiliaryRepresentation::MixedProduct(payload) => Some(payload),
+            AuxiliaryRepresentation::InterpolationPoints(_) => None,
+        }
     }
 
-    /// Number of interstitial $|q+G|$ plane waves.
+    /// Mutable mixed-product payload.
+    pub fn mixed_product_mut(&mut self) -> Option<&mut MixedProductAuxiliary> {
+        match &mut self.representation {
+            AuxiliaryRepresentation::MixedProduct(payload) => Some(payload),
+            AuxiliaryRepresentation::InterpolationPoints(_) => None,
+        }
+    }
+
+    /// Interpolation-point payload, if this basis is not mixed-product.
+    pub fn interpolation_points(&self) -> Option<&[InterpolationAuxiliaryPoint]> {
+        match &self.representation {
+            AuxiliaryRepresentation::InterpolationPoints(payload) => Some(&payload.points),
+            AuxiliaryRepresentation::MixedProduct(_) => None,
+        }
+    }
+
+    /// Require a mixed-product payload.
+    pub fn require_mixed_product(&self) -> Result<&MixedProductAuxiliary, ProductError> {
+        self.mixed_product()
+            .ok_or(ProductError::ExpectedMixedProduct)
+    }
+
+    /// Require interpolation points.
+    pub fn require_interpolation_points(
+        &self,
+    ) -> Result<&[InterpolationAuxiliaryPoint], ProductError> {
+        self.interpolation_points()
+            .ok_or(ProductError::ExpectedInterpolationPoints)
+    }
+
+    /// Global muffin-tin auxiliary dimension.
+    ///
+    /// Mixed product: expand $M=-L,\ldots,L$. Interpolation points: muffin-tin
+    /// tagged points only.
+    pub fn mt_dimension(&self) -> usize {
+        match &self.representation {
+            AuxiliaryRepresentation::MixedProduct(payload) => payload
+                .sites
+                .iter()
+                .flat_map(|block| block.modes.iter())
+                .map(|mode| 2 * mode.l as usize + 1)
+                .sum(),
+            AuxiliaryRepresentation::InterpolationPoints(payload) => payload
+                .points
+                .iter()
+                .filter(|point| matches!(point.region, InterpolationRegion::MuffinTin { .. }))
+                .count(),
+        }
+    }
+
+    /// Interstitial (or uniform) auxiliary dimension.
     pub fn interstitial_dimension(&self) -> usize {
-        self.interstitial.waves.len()
+        match &self.representation {
+            AuxiliaryRepresentation::MixedProduct(payload) => payload.interstitial.waves.len(),
+            AuxiliaryRepresentation::InterpolationPoints(payload) => payload
+                .points
+                .iter()
+                .filter(|point| !matches!(point.region, InterpolationRegion::MuffinTin { .. }))
+                .count(),
+        }
     }
 
     /// Total auxiliary dimension: muffin-tin block then interstitial block.
@@ -107,39 +216,23 @@ impl CompiledAuxiliaryBasis {
         self.mt_dimension() + self.interstitial_dimension()
     }
 
-    /// Combined regions in SPEX muffin-tin order, then interstitial $G$.
+    /// Combined regions in muffin-tin then interstitial order.
     ///
-    /// Muffin-tin flatten is $site \to L \to M=-L..L \to n$.
+    /// Mixed product flatten is $site \to L \to M=-L..L \to n$, then $G$.
+    /// Interpolation points are muffin-tin (site, then id), interstitial id,
+    /// then uniform id.
     pub fn regions(&self) -> Vec<AuxiliaryRegion> {
-        let mut regions = Vec::with_capacity(self.dimension());
-        for block in &self.sites {
-            let mut angular = block.modes.iter().map(|mode| mode.l).collect::<Vec<_>>();
-            angular.sort_unstable();
-            angular.dedup();
-            for l in angular {
-                let mut radial = block
-                    .modes
-                    .iter()
-                    .filter(|mode| mode.l == l)
-                    .collect::<Vec<_>>();
-                radial.sort_by_key(|mode| mode.n);
-                let l_i = l as i32;
-                for m in -l_i..=l_i {
-                    for mode in &radial {
-                        regions.push(AuxiliaryRegion::MuffinTin {
-                            site: block.site,
-                            l,
-                            m,
-                            n: mode.n,
-                        });
-                    }
-                }
-            }
+        match &self.representation {
+            AuxiliaryRepresentation::MixedProduct(payload) => mixed_product_regions(payload),
+            AuxiliaryRepresentation::InterpolationPoints(payload) => payload
+                .points
+                .iter()
+                .map(|point| AuxiliaryRegion::InterpolationPoint {
+                    id: point.id,
+                    region: point.region,
+                })
+                .collect(),
         }
-        for wave in &self.interstitial.waves {
-            regions.push(AuxiliaryRegion::Interstitial { g: wave.g });
-        }
-        regions
     }
 
     /// Deterministic muffin-tin index: $site \to L \to M \to n$.
@@ -157,32 +250,91 @@ impl CompiledAuxiliaryBasis {
         })
     }
 
-    /// Mesh of one muffin-tin site.
+    /// Mesh of one muffin-tin site (mixed product only).
     pub fn site_mesh(&self, site: usize) -> Option<&ExponentialMesh> {
-        self.sites
-            .iter()
-            .find(|block| block.site == site)
-            .map(|block| &block.mesh)
+        self.mixed_product().and_then(|payload| {
+            payload
+                .sites
+                .iter()
+                .find(|block| block.site == site)
+                .map(|block| &block.mesh)
+        })
     }
 
-    /// Retained radial mode $(site, L, n)$.
+    /// Retained radial mode $(site, L, n)$ (mixed product only).
     pub fn mt_mode(&self, site: usize, l: u32, n: usize) -> Option<&MtAuxiliaryMode> {
-        self.sites
-            .iter()
-            .find(|block| block.site == site)
-            .and_then(|block| block.modes.iter().find(|mode| mode.l == l && mode.n == n))
+        self.mixed_product().and_then(|payload| {
+            payload
+                .sites
+                .iter()
+                .find(|block| block.site == site)
+                .and_then(|block| block.modes.iter().find(|mode| mode.l == l && mode.n == n))
+        })
     }
 
-    /// Reject inconsistent site identity, mode lengths, duplicates, and waves.
+    /// Mixed-product cutoff, if recorded.
+    pub fn cutoff(&self) -> Option<CutoffRecord> {
+        self.mixed_product().and_then(|payload| payload.cutoff)
+    }
+
+    /// Reject inconsistent payloads.
     pub fn validate(&self) -> Result<(), ProductError> {
-        if self.sites.len() != self.partition.site_count() {
+        match &self.representation {
+            AuxiliaryRepresentation::MixedProduct(payload) => self.validate_mixed_product(payload),
+            AuxiliaryRepresentation::InterpolationPoints(payload) => {
+                self.validate_interpolation_points(payload)
+            }
+        }
+    }
+
+    /// Site meshes must equal the source meshes used to build mixed-product modes.
+    ///
+    /// Interpolation-point auxiliaries check partition identity and transfer $q$
+    /// only; they do not invent empty muffin-tin radial blocks.
+    pub fn validate_against_source(&self, source: &ProductSource) -> Result<(), ProductError> {
+        self.validate()?;
+        if self.q != source.q {
+            return Err(ProductError::AuxiliarySupportTransferQ);
+        }
+        if self.partition != source.partition {
+            return Err(ProductError::AuxiliarySiteCount {
+                expected: source.partition.site_count(),
+                actual: self.partition.site_count(),
+            });
+        }
+        match &self.representation {
+            AuxiliaryRepresentation::MixedProduct(payload) => {
+                if payload.interstitial.q != source.q {
+                    return Err(ProductError::AuxiliarySupportTransferQ);
+                }
+                if payload.sites.len() != source.radials.len() {
+                    return Err(ProductError::AuxiliarySiteCount {
+                        expected: source.radials.len(),
+                        actual: payload.sites.len(),
+                    });
+                }
+                for (site, (block, radials)) in
+                    payload.sites.iter().zip(&source.radials).enumerate()
+                {
+                    if block.mesh != radials.mesh {
+                        return Err(ProductError::AuxiliaryMeshMismatch { site });
+                    }
+                }
+            }
+            AuxiliaryRepresentation::InterpolationPoints(_) => {}
+        }
+        Ok(())
+    }
+
+    fn validate_mixed_product(&self, payload: &MixedProductAuxiliary) -> Result<(), ProductError> {
+        if payload.sites.len() != self.partition.site_count() {
             return Err(ProductError::AuxiliarySiteCount {
                 expected: self.partition.site_count(),
-                actual: self.sites.len(),
+                actual: payload.sites.len(),
             });
         }
         let mut seen_sites = BTreeSet::new();
-        for (expected, block) in self.sites.iter().enumerate() {
+        for (expected, block) in payload.sites.iter().enumerate() {
             let partition_index = self.partition.sites.get(expected).map(|site| site.index);
             if block.site != expected || partition_index != Some(block.site) {
                 return Err(ProductError::AuxiliarySiteIdentity {
@@ -217,64 +369,139 @@ impl CompiledAuxiliaryBasis {
                 }
             }
         }
-        self.validate_interstitial()?;
-        Ok(())
+        validate_interstitial(self.q, &payload.interstitial)
     }
 
-    /// Site meshes must equal the source meshes used to build the modes.
-    pub fn validate_against_source(&self, source: &ProductSource) -> Result<(), ProductError> {
-        self.validate()?;
-        if self.q != source.q || self.interstitial.q != source.q {
-            return Err(ProductError::AuxiliarySupportTransferQ);
+    fn validate_interpolation_points(
+        &self,
+        payload: &InterpolationPointAuxiliary,
+    ) -> Result<(), ProductError> {
+        if payload.points.is_empty() {
+            return Err(ProductError::EmptyInterpolationPoints);
         }
-        if self.sites.len() != source.radials.len() {
-            return Err(ProductError::AuxiliarySiteCount {
-                expected: source.radials.len(),
-                actual: self.sites.len(),
+        let mut seen = BTreeSet::new();
+        let mut any_positive = false;
+        for (index, point) in payload.points.iter().enumerate() {
+            if !seen.insert(point.id) {
+                return Err(ProductError::DuplicateInterpolationPoint(point.id));
+            }
+            if point
+                .coordinate
+                .iter()
+                .any(|component| !component.get().is_finite())
+                || !point.weight.get().is_finite()
+            {
+                return Err(ProductError::NonFiniteInterpolationPoint(index));
+            }
+            if point.weight.get() < 0.0 {
+                return Err(ProductError::NegativeInterpolationWeight(index));
+            }
+            if point.weight.get() > 0.0 {
+                any_positive = true;
+            }
+            if let InterpolationRegion::MuffinTin { site } = point.region {
+                if site >= self.partition.site_count() {
+                    return Err(ProductError::InterpolationPointSite { site });
+                }
+            }
+        }
+        if !any_positive {
+            return Err(ProductError::NoPositiveInterpolationWeight);
+        }
+        if !interpolation_point_order(&payload.points) {
+            return Err(ProductError::InterpolationPointOrder);
+        }
+        Ok(())
+    }
+}
+
+fn mixed_product_regions(payload: &MixedProductAuxiliary) -> Vec<AuxiliaryRegion> {
+    let mut regions = Vec::new();
+    for block in &payload.sites {
+        let mut angular = block.modes.iter().map(|mode| mode.l).collect::<Vec<_>>();
+        angular.sort_unstable();
+        angular.dedup();
+        for l in angular {
+            let mut radial = block
+                .modes
+                .iter()
+                .filter(|mode| mode.l == l)
+                .collect::<Vec<_>>();
+            radial.sort_by_key(|mode| mode.n);
+            let l_i = l as i32;
+            for m in -l_i..=l_i {
+                for mode in &radial {
+                    regions.push(AuxiliaryRegion::MuffinTin {
+                        site: block.site,
+                        l,
+                        m,
+                        n: mode.n,
+                    });
+                }
+            }
+        }
+    }
+    for wave in &payload.interstitial.waves {
+        regions.push(AuxiliaryRegion::Interstitial { g: wave.g });
+    }
+    regions
+}
+
+/// Sort interpolation points into the IR flatten order.
+pub fn sort_interpolation_points(points: &mut [InterpolationAuxiliaryPoint]) {
+    points.sort_by_key(interpolation_order_key);
+}
+
+fn interpolation_order_key(point: &InterpolationAuxiliaryPoint) -> (u8, usize, usize) {
+    match point.region {
+        InterpolationRegion::MuffinTin { site } => (0, site, point.id),
+        InterpolationRegion::Interstitial => (1, 0, point.id),
+        InterpolationRegion::Uniform => (2, 0, point.id),
+    }
+}
+
+fn interpolation_point_order(points: &[InterpolationAuxiliaryPoint]) -> bool {
+    points
+        .windows(2)
+        .all(|pair| interpolation_order_key(&pair[0]) <= interpolation_order_key(&pair[1]))
+}
+
+fn validate_interstitial(
+    q: TransferQ,
+    interstitial: &AuxiliaryInterstitialSupport,
+) -> Result<(), ProductError> {
+    if interstitial.q != q {
+        return Err(ProductError::AuxiliarySupportTransferQ);
+    }
+    let g_cut = interstitial.g_cut.get();
+    if !g_cut.is_finite() || g_cut < 0.0 {
+        return Err(ProductError::AuxiliaryWaveCutoff { index: 0 });
+    }
+    let cutoff_squared = g_cut * g_cut;
+    let cutoff_tolerance = 64.0 * f64::EPSILON * cutoff_squared.max(1.0);
+    let mut seen = BTreeSet::new();
+    for (index, wave) in interstitial.waves.iter().enumerate() {
+        if !seen.insert(wave.g.index) {
+            return Err(ProductError::DuplicateAuxiliaryWave {
+                index: wave.g.index,
             });
         }
-        for (site, (block, radials)) in self.sites.iter().zip(&source.radials).enumerate() {
-            if block.mesh != radials.mesh {
-                return Err(ProductError::AuxiliaryMeshMismatch { site });
-            }
+        if !wave_kinematics_match(q, wave) {
+            return Err(ProductError::AuxiliaryWaveKinematics { index });
         }
-        Ok(())
+        let qg_squared = wave
+            .q_plus_g
+            .iter()
+            .map(|component| component.get().powi(2))
+            .sum::<f64>();
+        if qg_squared > cutoff_squared + cutoff_tolerance {
+            return Err(ProductError::AuxiliaryWaveCutoff { index });
+        }
     }
-
-    fn validate_interstitial(&self) -> Result<(), ProductError> {
-        if self.interstitial.q != self.q {
-            return Err(ProductError::AuxiliarySupportTransferQ);
-        }
-        let g_cut = self.interstitial.g_cut.get();
-        if !g_cut.is_finite() || g_cut < 0.0 {
-            return Err(ProductError::AuxiliaryWaveCutoff { index: 0 });
-        }
-        let cutoff_squared = g_cut * g_cut;
-        let cutoff_tolerance = 64.0 * f64::EPSILON * cutoff_squared.max(1.0);
-        let mut seen = BTreeSet::new();
-        for (index, wave) in self.interstitial.waves.iter().enumerate() {
-            if !seen.insert(wave.g.index) {
-                return Err(ProductError::DuplicateAuxiliaryWave {
-                    index: wave.g.index,
-                });
-            }
-            if !wave_kinematics_match(self.q, wave) {
-                return Err(ProductError::AuxiliaryWaveKinematics { index });
-            }
-            let qg_squared = wave
-                .q_plus_g
-                .iter()
-                .map(|component| component.get().powi(2))
-                .sum::<f64>();
-            if qg_squared > cutoff_squared + cutoff_tolerance {
-                return Err(ProductError::AuxiliaryWaveCutoff { index });
-            }
-        }
-        if !spex_g_order(&self.interstitial.waves) {
-            return Err(ProductError::AuxiliaryWaveOrder);
-        }
-        Ok(())
+    if !spex_g_order(&interstitial.waves) {
+        return Err(ProductError::AuxiliaryWaveOrder);
     }
+    Ok(())
 }
 
 fn wave_kinematics_match(q: TransferQ, wave: &AuxiliaryInterstitialWave) -> bool {

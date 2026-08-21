@@ -98,6 +98,7 @@ fn fill_muffin_tin(
     let phase = site_translation_phase(source.q.cartesian, source.partition.sites[site].position);
     let m = spec.right_m - spec.left_m;
     let block = auxiliary
+        .require_mixed_product()?
         .sites
         .iter()
         .find(|block| block.site == site)
@@ -163,7 +164,8 @@ fn fill_interstitial(
     }
     let wrap = auxiliary.q.umklapp;
     let offset = auxiliary.mt_dimension();
-    for (local, wave) in auxiliary.interstitial.waves.iter().enumerate() {
+    let payload = auxiliary.require_mixed_product()?;
+    for (local, wave) in payload.interstitial.waves.iter().enumerate() {
         let argument = std::array::from_fn(|axis| {
             InverseBohr(
                 spec.g_relative.cartesian[axis].get() + wrap.cartesian[axis].get()

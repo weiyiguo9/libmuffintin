@@ -1,8 +1,9 @@
 # 13. Product-space IR and the SPEX mixed product basis
 
-This note records the M-H public contract. It does not add THC, a Coulomb
-assembler, SCF, an umbrella crate, or a distributed tensor runtime. The
-one-particle facade remains [12](12_anonymous_basis_and_lapw_facade.md).
+This note records the M-H public contract. Toy k-point ISDF/THC is [14](14_toy_kpoint_isdf_thc.md).
+It does not add a Coulomb assembler, SCF, an umbrella crate, or a
+distributed tensor runtime. The one-particle facade remains
+[12](12_anonymous_basis_and_lapw_facade.md).
 Tensor axes remain [11](11_tensorized_numerical_substrate.md). SPEX Gaunt
 and the exponential mesh remain [02](02_angular_reciprocal_and_step_function.md)
 and [03](03_exponential_mesh_and_radial_quadrature.md).
@@ -13,16 +14,18 @@ and [03](03_exponential_mesh_and_radial_quadrature.md).
 |---|---|
 | `crates/libmuffintin-product` | `libmuffintin-product` |
 | `crates/libmuffintin-mpb` | `libmuffintin-mpb` |
+| `crates/libmuffintin-thc` | `libmuffintin-thc` (M-I; interpolation-point payload) |
 
-There is no `libmuffintin-mbp` alias. Neither crate depends on
-`libmuffintin-lapw`, THC, or Coulomb. `libmuffintin-product` does not own
-`CompiledBasis`.
+There is no `libmuffintin-mbp` alias. `libmuffintin-product` and
+`libmuffintin-mpb` do not depend on `libmuffintin-lapw`, THC, or Coulomb.
+`libmuffintin-product` does not own `CompiledBasis`.
 
 ## 2. Dependency DAG
 
 ```text
 product  → core, radial, basis
 mpb      → product, operators, core, radial, basis, envelope
+thc      → product, core, basis, faer
 ```
 
 `libmuffintin-product` owns no solver. Channel overlap diagonalization uses
@@ -45,9 +48,13 @@ RawProductSpace                         # before TOL
   interstitial_pair_support: raw pair-G, copied from the source
 
 CompiledAuxiliaryBasis
-  per-site mesh + retained MT modes
-  AuxiliaryInterstitialSupport: MPB |q+G| ≤ g_cut
-  optional CutoffRecord
+  AuxiliaryRepresentation::MixedProduct
+    per-site mesh + retained MT modes
+    AuxiliaryInterstitialSupport: MPB |q+G| ≤ g_cut
+    optional CutoffRecord
+  AuxiliaryRepresentation::InterpolationPoints
+    real-space interpolation points (M-I THC)
+    muffin-tin tagged points, then interstitial/uniform
 
 PairVertex
   OrbitalPair identity (MT, interstitial G, or composite of both)

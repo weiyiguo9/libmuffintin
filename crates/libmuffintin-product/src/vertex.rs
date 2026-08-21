@@ -33,6 +33,12 @@ pub enum OrbitalPair {
         muffin_tin: (PairOrbital, PairOrbital),
         interstitial: GVector,
     },
+    /// Periodic Bloch orbital pair at one $k$, used by k-point ISDF/THC.
+    Bloch {
+        k_index: usize,
+        left: usize,
+        right: usize,
+    },
 }
 
 /// Muffin-tin radial-factor pair used by the mixed-product constructor.
@@ -104,9 +110,11 @@ impl PairVertexSpec {
 /// Expansion of one orbital pair onto the combined auxiliary basis.
 ///
 /// Coefficients are muffin-tin then interstitial, matching
-/// [`crate::CompiledAuxiliaryBasis::regions`]. This is not a Coulomb matrix
-/// element. Fields are private so a caller cannot forge dimensions that
-/// panic on [`Self::mt`] / [`Self::interstitial`].
+/// [`crate::CompiledAuxiliaryBasis::regions`]. Interpolation-point
+/// auxiliaries use muffin-tin-tagged points then interstitial/uniform
+/// points. This is not a Coulomb matrix element. Fields are private so a
+/// caller cannot forge dimensions that panic on [`Self::mt`] /
+/// [`Self::interstitial`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct PairVertex {
     q: TransferQ,

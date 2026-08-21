@@ -11,10 +11,10 @@ use libmuffintin_mpb::{
 };
 use libmuffintin_operators::solve_real_symmetric;
 use libmuffintin_product::{
-    AuxiliaryRegion, InterstitialPairSpec, MtPairSpec, OrbitalPair, PairVertexSpec, ProductError,
-    ProductOrbitalKind, ProductPartition, ProductRadial, ProductRadialId, ProductSource,
-    RadialSamples, RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet,
-    TransferQ,
+    AuxiliaryRegion, CompiledAuxiliaryBasis, InterstitialPairSpec, MixedProductAuxiliary,
+    MtPairSpec, OrbitalPair, PairVertexSpec, ProductError, ProductOrbitalKind, ProductPartition,
+    ProductRadial, ProductRadialId, ProductSource, RadialSamples, RawInterstitialPairComponent,
+    RawInterstitialPairSupport, SiteRadialSet, TransferQ,
 };
 use num_complex::Complex64;
 
@@ -189,12 +189,16 @@ fn gamma_interstitial_spec(lattice: &ReciprocalLattice) -> InterstitialPairSpec 
     }
 }
 
+fn mixed_product(auxiliary: &CompiledAuxiliaryBasis) -> &MixedProductAuxiliary {
+    auxiliary.mixed_product().expect("mixed-product auxiliary")
+}
+
 fn theta_i_oracle(
-    auxiliary: &libmuffintin_product::CompiledAuxiliaryBasis,
+    auxiliary: &CompiledAuxiliaryBasis,
     spec: InterstitialPairSpec,
 ) -> Vec<Complex64> {
     let wrap = auxiliary.q.umklapp;
-    auxiliary
+    mixed_product(auxiliary)
         .interstitial
         .waves
         .iter()
@@ -226,7 +230,7 @@ fn valence_valence_unordered_count_is_independent_of_tol() {
         raw.interstitial_pair_support,
         source.interstitial_pair_support
     );
-    assert!(!auxiliary.interstitial.waves.is_empty());
+    assert!(!mixed_product(&auxiliary).interstitial.waves.is_empty());
     let spectrum = raw.spectrum(0, 0).unwrap().eigenvalues.clone();
     let _retained =
         apply_overlap_cutoff(&raw, &source, DEFAULT_TOLERANCE, 1.0, &lattice, g_cut).unwrap();
@@ -264,7 +268,7 @@ fn l0_constant_is_the_first_retained_mode() {
     let source = source_vv_cv(false, false);
     let (_, auxiliary) =
         spex_mixed_product_basis(&source, 0, InverseBohr(0.5), &cubic_lattice()).unwrap();
-    let mode = &auxiliary.sites[0].modes[0];
+    let mode = &mixed_product(&auxiliary).sites[0].modes[0];
     assert_eq!(mode.l, 0);
     assert_eq!(mode.n, 0);
     let mesh = auxiliary.site_mesh(0).unwrap();
@@ -307,7 +311,7 @@ fn mt_flatten_is_site_l_m_then_n() {
     let source = source_vv_cv(false, true);
     let (_, auxiliary) =
         spex_mixed_product_basis(&source, 1, InverseBohr(0.5), &cubic_lattice()).unwrap();
-    let l1: Vec<_> = auxiliary.sites[0]
+    let l1: Vec<_> = mixed_product(&auxiliary).sites[0]
         .modes
         .iter()
         .filter(|mode| mode.l == 1)
@@ -414,7 +418,7 @@ fn nonzero_cutoff_matches_independent_retained_projector() {
         }
     }
     let auxiliary = apply_overlap_cutoff(&raw, &source, threshold, 1.0, &lattice, g_cut).unwrap();
-    let compiled: Vec<Vec<f64>> = auxiliary.sites[0]
+    let compiled: Vec<Vec<f64>> = mixed_product(&auxiliary).sites[0]
         .modes
         .iter()
         .filter(|mode| mode.l == 0 && mode.n > 0)
@@ -422,7 +426,7 @@ fn nonzero_cutoff_matches_independent_retained_projector() {
         .collect();
     assert_eq!(compiled.len(), kept_fns.len());
     assert_eq!(
-        auxiliary.sites[0]
+        mixed_product(&auxiliary).sites[0]
             .modes
             .iter()
             .filter(|mode| mode.l == 0)
@@ -456,7 +460,7 @@ fn nonzero_cutoff_matches_independent_retained_projector() {
         }
     }
     assert!(matches!(
-        auxiliary.cutoff,
+        mixed_product(&auxiliary).cutoff,
         Some(record) if record.value == threshold
     ));
 }
@@ -684,7 +688,12 @@ fn pair_vertex_rejects_permuted_or_relabelled_raw_pair_support() {
         Err(libmuffintin_mpb::MpbError::InterstitialPairSupportMismatch)
     ));
     let mut auxiliary_perm = auxiliary.clone();
-    auxiliary_perm.interstitial.waves.swap(0, 1);
+    auxiliary_perm
+        .mixed_product_mut()
+        .unwrap()
+        .interstitial
+        .waves
+        .swap(0, 1);
     assert!(matches!(
         pair_vertex(&source, &raw, &auxiliary_perm, spec),
         Err(libmuffintin_mpb::MpbError::Product(
@@ -699,7 +708,9 @@ fn pair_vertex_rejects_mismatched_mesh_and_mode_length() {
     let lattice = cubic_lattice();
     let (raw, mut auxiliary) =
         spex_mixed_product_basis(&source, 0, InverseBohr(0.5), &lattice).unwrap();
-    auxiliary.sites[0].modes[0].radial.pop();
+    auxiliary.mixed_product_mut().unwrap().sites[0].modes[0]
+        .radial
+        .pop();
     let spec = PairVertexSpec {
         muffin_tin: Some(MtPairSpec {
             left: radial_id(ProductOrbitalKind::Valence, 0, 0),
@@ -763,14 +774,14 @@ fn raw_pair_support_survives_independent_auxiliary_g_cut() {
     );
     assert!(raw.interstitial_pair_support.find(&g_out).is_some());
     assert!(
-        auxiliary
+        mixed_product(&auxiliary)
             .interstitial
             .waves
             .iter()
             .all(|wave| wave.g.index != [2, 0, 0])
     );
     assert!(
-        auxiliary
+        mixed_product(&auxiliary)
             .interstitial
             .waves
             .iter()

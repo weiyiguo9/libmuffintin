@@ -154,3 +154,155 @@ fn product_source_rejects_pair_support_at_a_different_q() {
     .unwrap_err();
     assert!(matches!(error, ProductError::PairSupportTransferQ));
 }
+
+#[test]
+fn interpolation_points_are_not_empty_mixed_product_payloads() {
+    use libmuffintin_core::{Bohr, VolumeBohr3};
+    use libmuffintin_product::{
+        AuxiliaryRegion, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
+        InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
+        MixedProductAuxiliary, OrbitalPair, PairVertex,
+    };
+    use num_complex::Complex64;
+
+    let partition = ProductPartition::from_interstitial(geometry());
+    let q = q_gamma();
+    let points = vec![
+        InterpolationAuxiliaryPoint {
+            id: 2,
+            coordinate: [Bohr(0.1), Bohr(0.0), Bohr(0.0)],
+            weight: VolumeBohr3(0.01),
+            region: InterpolationRegion::MuffinTin { site: 0 },
+        },
+        InterpolationAuxiliaryPoint {
+            id: 0,
+            coordinate: [Bohr(1.5), Bohr(0.0), Bohr(0.0)],
+            weight: VolumeBohr3(0.02),
+            region: InterpolationRegion::Interstitial,
+        },
+        InterpolationAuxiliaryPoint {
+            id: 1,
+            coordinate: [Bohr(2.0), Bohr(0.0), Bohr(0.0)],
+            weight: VolumeBohr3(0.03),
+            region: InterpolationRegion::Uniform,
+        },
+    ];
+    let mut ordered = points.clone();
+    libmuffintin_product::sort_interpolation_points(&mut ordered);
+    let auxiliary = CompiledAuxiliaryBasis {
+        partition: partition.clone(),
+        q,
+        representation: AuxiliaryRepresentation::InterpolationPoints(InterpolationPointAuxiliary {
+            points: ordered,
+        }),
+        provenance: Provenance::default(),
+    };
+    auxiliary.validate().unwrap();
+    assert!(auxiliary.mixed_product().is_none());
+    assert_eq!(auxiliary.mt_dimension(), 1);
+    assert_eq!(auxiliary.interstitial_dimension(), 2);
+    assert_eq!(
+        auxiliary.regions(),
+        vec![
+            AuxiliaryRegion::InterpolationPoint {
+                id: 2,
+                region: InterpolationRegion::MuffinTin { site: 0 },
+            },
+            AuxiliaryRegion::InterpolationPoint {
+                id: 0,
+                region: InterpolationRegion::Interstitial,
+            },
+            AuxiliaryRegion::InterpolationPoint {
+                id: 1,
+                region: InterpolationRegion::Uniform,
+            },
+        ]
+    );
+    let vertex = PairVertex::new(
+        q,
+        OrbitalPair::Bloch {
+            k_index: 0,
+            left: 1,
+            right: 2,
+        },
+        auxiliary.mt_dimension(),
+        auxiliary.interstitial_dimension(),
+        vec![Complex64::new(1.0, 0.0); 3],
+        Provenance::default(),
+    )
+    .unwrap();
+    assert_eq!(vertex.mt().len(), 1);
+    assert_eq!(vertex.interstitial().len(), 2);
+    assert!(matches!(
+        vertex.pair(),
+        OrbitalPair::Bloch {
+            k_index: 0,
+            left: 1,
+            right: 2
+        }
+    ));
+    let mixed = CompiledAuxiliaryBasis {
+        partition,
+        q,
+        representation: AuxiliaryRepresentation::MixedProduct(MixedProductAuxiliary {
+            sites: Vec::new(),
+            interstitial: libmuffintin_product::AuxiliaryInterstitialSupport {
+                q,
+                g_cut: InverseBohr(0.0),
+                waves: Vec::new(),
+            },
+            cutoff: None,
+        }),
+        provenance: Provenance::default(),
+    };
+    assert!(matches!(
+        mixed.require_interpolation_points(),
+        Err(ProductError::ExpectedInterpolationPoints)
+    ));
+}
+
+#[test]
+fn interpolation_points_reject_negative_and_all_zero_weights() {
+    use libmuffintin_core::{Bohr, VolumeBohr3};
+    use libmuffintin_product::{
+        AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationAuxiliaryPoint,
+        InterpolationPointAuxiliary, InterpolationRegion,
+    };
+
+    let partition = ProductPartition::from_interstitial(geometry());
+    let q = q_gamma();
+    let negative = CompiledAuxiliaryBasis {
+        partition: partition.clone(),
+        q,
+        representation: AuxiliaryRepresentation::InterpolationPoints(InterpolationPointAuxiliary {
+            points: vec![InterpolationAuxiliaryPoint {
+                id: 0,
+                coordinate: [Bohr(0.1), Bohr(0.0), Bohr(0.0)],
+                weight: VolumeBohr3(-0.01),
+                region: InterpolationRegion::Uniform,
+            }],
+        }),
+        provenance: Provenance::default(),
+    };
+    assert!(matches!(
+        negative.validate(),
+        Err(ProductError::NegativeInterpolationWeight(0))
+    ));
+    let zeros = CompiledAuxiliaryBasis {
+        partition,
+        q,
+        representation: AuxiliaryRepresentation::InterpolationPoints(InterpolationPointAuxiliary {
+            points: vec![InterpolationAuxiliaryPoint {
+                id: 0,
+                coordinate: [Bohr(0.1), Bohr(0.0), Bohr(0.0)],
+                weight: VolumeBohr3(0.0),
+                region: InterpolationRegion::Uniform,
+            }],
+        }),
+        provenance: Provenance::default(),
+    };
+    assert!(matches!(
+        zeros.validate(),
+        Err(ProductError::NoPositiveInterpolationWeight)
+    ));
+}

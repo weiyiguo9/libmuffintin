@@ -9,7 +9,7 @@ muffin-tin electronic-structure methods.  The long-term target includes
 FP-KKR, (L)APW(+lo), and the LMTO/EMTO/NMTO family; the v0.1 route is LAPW
 first. Note that this library is not for production DFT calculations, and the API is subject to further changes.  The library is intended to be used as experiments to unify the foudamental muffin-tin basis in electronic structure methods and abstrct the common/heavy relyed functions. Apparantly named after libxc, libpaw, libcint.
 
-The current M-A through M-H implementation candidate provides:
+The current M-A through M-I implementation candidate provides:
 
 - `libmuffintin-core`: Hartree/Bohr units, complex and real spherical harmonics,
   SPEX-convention complex Gaunt coefficients, real Gaunt coefficients,
@@ -58,7 +58,15 @@ The current M-A through M-H implementation candidate provides:
   support. `TOL` is recorded on the retained auxiliary basis only.
   Finite-$q$ kinematics, Umklapp, and analytic interstitial pair vertices
   are included. There is no Coulomb assembler and no live SPEX untruncated
-  numerical dump.
+  numerical dump. `CompiledAuxiliaryBasis` stores a typed mixed-product or
+  interpolation-point payload;
+- `libmuffintin-thc` M-I: k-point ISDF/THC on a finite periodic toy basis.
+  Pair columns use the canonical-$q$ / Umklapp gauge. Selectors `q0_l2`,
+  `allq_l2`, and `allq_coulomb_pool` are compared at identical $N_\mu$. The
+  production L2 default is `allq_l2`. Coulomb-aware ranking consumes
+  injected pair-pair Grams; the crate does not assemble Weinert or SPEX
+  $V^q$. Recorded Python finite-cutoff numbers are candidate-oracle
+  evidence, not a real-material accuracy claim.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.
