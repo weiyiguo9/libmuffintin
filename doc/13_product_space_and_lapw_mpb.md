@@ -1,7 +1,8 @@
 # 13. Product-space IR and the SPEX mixed product basis
 
 This note records the M-H public contract. Toy k-point ISDF/THC is [14](14_toy_kpoint_isdf_thc.md).
-It does not add a Coulomb assembler, SCF, an umbrella crate, or a
+The finite-$q$ Weinert/SPEX Coulomb operator is [15](15_weinert_coulomb_metric.md).
+It does not add SCF, an umbrella crate, or a
 distributed tensor runtime. The one-particle facade remains
 [12](12_anonymous_basis_and_lapw_facade.md).
 Tensor axes remain [11](11_tensorized_numerical_substrate.md). SPEX Gaunt
@@ -26,6 +27,8 @@ There is no `libmuffintin-mbp` alias. `libmuffintin-product` and
 product  → core, radial, basis
 mpb      → product, operators, core, radial, basis, envelope
 thc      → product, core, basis, faer
+coulomb  → product, core, basis, grid
+         (dev: mpb, thc)
 ```
 
 `libmuffintin-product` owns no solver. Channel overlap diagonalization uses
@@ -140,7 +143,7 @@ signs are not a SPEX convention; retained spans are compared as projectors
 
 Finite-$q$ kinematics (canonical $q$, Umklapp, site phase, $|q+G|$
 auxiliary completeness, $\Theta_I$ pair vertices) belong to M-H. The $1/r$
-Coulomb kernel and Weinert $V^q$ do not.
+Coulomb kernel and Weinert $V^q$ belong to [15](15_weinert_coulomb_metric.md).
 
 ## 5. Acceptance
 

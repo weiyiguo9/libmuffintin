@@ -9,7 +9,7 @@ muffin-tin electronic-structure methods.  The long-term target includes
 FP-KKR, (L)APW(+lo), and the LMTO/EMTO/NMTO family; the v0.1 route is LAPW
 first. Note that this library is not for production DFT calculations, and the API is subject to further changes.  The library is intended to be used as experiments to unify the foudamental muffin-tin basis in electronic structure methods and abstrct the common/heavy relyed functions. Apparantly named after libxc, libpaw, libcint.
 
-The current M-A through M-I implementation candidate provides:
+The current M-A through M-J implementation candidate provides:
 
 - `libmuffintin-core`: Hartree/Bohr units, complex and real spherical harmonics,
   SPEX-convention complex Gaunt coefficients, real Gaunt coefficients,
@@ -57,16 +57,25 @@ The current M-A through M-I implementation candidate provides:
   constructed separately in `libmuffintin-mpb` and is not the raw pair
   support. `TOL` is recorded on the retained auxiliary basis only.
   Finite-$q$ kinematics, Umklapp, and analytic interstitial pair vertices
-  are included. There is no Coulomb assembler and no live SPEX untruncated
-  numerical dump. `CompiledAuxiliaryBasis` stores a typed mixed-product or
-  interpolation-point payload;
+  are included. There is no live SPEX untruncated numerical dump.
+  `CompiledAuxiliaryBasis` stores a typed mixed-product or
+  interpolation-point payload. Production $V^q$ is M-J;
 - `libmuffintin-thc` M-I: k-point ISDF/THC on a finite periodic toy basis.
   Pair columns use the canonical-$q$ / Umklapp gauge. Selectors `q0_l2`,
   `allq_l2`, and `allq_coulomb_pool` are compared at identical $N_\mu$. The
   production L2 default is `allq_l2`. Coulomb-aware ranking consumes
   injected pair-pair Grams; the crate does not assemble Weinert or SPEX
   $V^q$. Recorded Python finite-cutoff numbers are candidate-oracle
-  evidence, not a real-material accuracy claim.
+  evidence, not a real-material accuracy claim;
+- `libmuffintin-coulomb` M-J: a representation-neutral finite-$q$
+  Weinert/SPEX Coulomb operator over `CompiledAuxiliaryBasis`. Mixed-product
+  auxiliaries use `assemble_coulomb`. Interpolation-point auxiliaries use
+  `assemble_sampled_coulomb` with parent-grid $\zeta^q$ samples (not
+  interpolation-node point charges). Pair vertices carry an exact
+  `AuxiliaryLayout`. The public assembler does not take
+  `libmuffintin-mpb` or `libmuffintin-thc` types. Direct Ewald-summed
+  $1/r$ is a toy oracle only. There is no live SPEX $V^q$ dump and no
+  Coulomb/THC/GW production consumer.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.

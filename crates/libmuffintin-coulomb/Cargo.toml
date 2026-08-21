@@ -1,0 +1,24 @@
+[package]
+name = "libmuffintin-coulomb"
+description = "Representation-neutral finite-q Weinert/SPEX Coulomb operator over the product IR"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+libmuffintin-basis = { path = "../libmuffintin-basis" }
+libmuffintin-core = { path = "../mt-core" }
+libmuffintin-grid = { path = "../mt-grid" }
+libmuffintin-product = { path = "../libmuffintin-product" }
+num-complex.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
+libmuffintin-mpb = { path = "../libmuffintin-mpb" }
+libmuffintin-thc = { path = "../libmuffintin-thc" }
+
+[lints]
+workspace = true

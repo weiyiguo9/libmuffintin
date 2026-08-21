@@ -15,6 +15,7 @@ members = [
     "crates/libmuffintin-product",
     "crates/libmuffintin-mpb",
     "crates/libmuffintin-thc",
+    "crates/libmuffintin-coulomb",
 ]
 
 [workspace.package]

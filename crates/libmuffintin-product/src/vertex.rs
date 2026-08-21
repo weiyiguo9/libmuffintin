@@ -1,6 +1,6 @@
 //! Pair vertices onto a compiled auxiliary basis.
 
-use crate::{ProductError, ProductRadialId, TransferQ};
+use crate::{AuxiliaryLayout, CompiledAuxiliaryBasis, ProductError, ProductRadialId, TransferQ};
 use libmuffintin_basis::Provenance;
 use libmuffintin_core::GVector;
 use num_complex::Complex64;
@@ -110,59 +110,62 @@ impl PairVertexSpec {
 /// Expansion of one orbital pair onto the combined auxiliary basis.
 ///
 /// Coefficients are muffin-tin then interstitial, matching
-/// [`crate::CompiledAuxiliaryBasis::regions`]. Interpolation-point
-/// auxiliaries use muffin-tin-tagged points then interstitial/uniform
-/// points. This is not a Coulomb matrix element. Fields are private so a
-/// caller cannot forge dimensions that panic on [`Self::mt`] /
-/// [`Self::interstitial`].
+/// [`AuxiliaryLayout::regions`]. The layout is the exact $q$ plus region
+/// sequence, not a count split that could be forged. Fields are private so a
+/// caller cannot panic on [`Self::mt`] / [`Self::interstitial`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct PairVertex {
-    q: TransferQ,
+    layout: AuxiliaryLayout,
     pair: OrbitalPair,
-    mt_dimension: usize,
-    interstitial_dimension: usize,
     coefficients: Vec<Complex64>,
     provenance: Provenance,
 }
 
 impl PairVertex {
-    /// Construct after checking that the coefficient vector matches the
-    /// validated muffin-tin then interstitial split.
+    /// Construct from a layout after checking coefficient length.
     pub fn new(
-        q: TransferQ,
+        layout: AuxiliaryLayout,
         pair: OrbitalPair,
-        mt_dimension: usize,
-        interstitial_dimension: usize,
         coefficients: Vec<Complex64>,
         provenance: Provenance,
     ) -> Result<Self, ProductError> {
-        let expected = mt_dimension.checked_add(interstitial_dimension).ok_or(
-            ProductError::PairVertexDimension {
-                actual: coefficients.len(),
-                mt: mt_dimension,
-                interstitial: interstitial_dimension,
-            },
-        )?;
-        if coefficients.len() != expected {
+        if coefficients.len() != layout.dimension() {
             return Err(ProductError::PairVertexDimension {
                 actual: coefficients.len(),
-                mt: mt_dimension,
-                interstitial: interstitial_dimension,
+                mt: layout.mt_dimension(),
+                interstitial: layout.interstitial_dimension(),
             });
         }
         Ok(Self {
-            q,
+            layout,
             pair,
-            mt_dimension,
-            interstitial_dimension,
             coefficients,
             provenance,
         })
     }
 
+    /// Construct from a compiled auxiliary's layout and provenance.
+    pub fn from_auxiliary(
+        auxiliary: &CompiledAuxiliaryBasis,
+        pair: OrbitalPair,
+        coefficients: Vec<Complex64>,
+    ) -> Result<Self, ProductError> {
+        Self::new(
+            auxiliary.layout(),
+            pair,
+            coefficients,
+            auxiliary.provenance.clone(),
+        )
+    }
+
+    /// Exact auxiliary layout stored on the vertex.
+    pub const fn layout(&self) -> &AuxiliaryLayout {
+        &self.layout
+    }
+
     /// Canonical transfer q stored on the vertex.
     pub const fn q(&self) -> TransferQ {
-        self.q
+        self.layout.q()
     }
 
     /// Representation-neutral pair identity, including both arms when present.
@@ -172,12 +175,12 @@ impl PairVertex {
 
     /// Muffin-tin coefficient count.
     pub const fn mt_dimension(&self) -> usize {
-        self.mt_dimension
+        self.layout.mt_dimension()
     }
 
     /// Interstitial coefficient count.
     pub const fn interstitial_dimension(&self) -> usize {
-        self.interstitial_dimension
+        self.layout.interstitial_dimension()
     }
 
     /// Combined coefficients in muffin-tin then interstitial order.
@@ -192,11 +195,11 @@ impl PairVertex {
 
     /// Muffin-tin coefficient block.
     pub fn mt(&self) -> &[Complex64] {
-        &self.coefficients[..self.mt_dimension]
+        &self.coefficients[..self.layout.mt_dimension()]
     }
 
     /// Interstitial coefficient block.
     pub fn interstitial(&self) -> &[Complex64] {
-        &self.coefficients[self.mt_dimension..]
+        &self.coefficients[self.layout.mt_dimension()..]
     }
 }
