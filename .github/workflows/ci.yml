@@ -10,8 +10,11 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      TBLIS_SRC: https://github.com/MatthewsResearchGroup/tblis.git
+      TBLIS_VER: eb719e718976572e0ab53975f4e0c799faeb35f2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
