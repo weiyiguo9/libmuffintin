@@ -9,7 +9,7 @@ muffin-tin electronic-structure methods.  The long-term target includes
 FP-KKR, (L)APW(+lo), and the LMTO/EMTO/NMTO family; the v0.1 route is LAPW
 first. Note that this library is not for production DFT calculations, and the API is subject to further changes.  The library is intended to be used as experiments to unify the foudamental muffin-tin basis in electronic structure methods and abstrct the common/heavy relyed functions. Apparantly named after libxc, libpaw, libcint.
 
-The current M-A through M-G implementation candidate provides:
+The current M-A through M-H implementation candidate provides:
 
 - `libmuffintin-core`: Hartree/Bohr units, complex and real spherical harmonics,
   SPEX-convention complex Gaunt coefficients, real Gaunt coefficients,
@@ -47,7 +47,18 @@ The current M-A through M-G implementation candidate provides:
   keeps SPEX APW matching, explicit Rayleigh and site phases, the SPEX
   symmetric-Laplacian interstitial kinetic convention, collinear spin
   channels without SOC, and $(k,\mathrm{band})$ reference reports. An
-  explicit `BasisSpec` route must not call `recipes::lapw()`.
+  explicit `BasisSpec` route must not call `recipes::lapw()`;
+- `libmuffintin-product` and `libmuffintin-mpb` M-H: a historical-method-name-free
+  product-space IR (`ProductPartition`, `ProductSource` without a compiled
+  one-particle basis, untruncated muffin-tin products, capability-supplied
+  raw interstitial orbital-pair reciprocal support, `CompiledAuxiliaryBasis`
+  with per-site meshes, and `PairVertex` in SPEX $site\to L\to M\to n$ then
+  interstitial order). The MPB auxiliary $|q+G|\le g_{\mathrm{cut}}$ set is
+  constructed separately in `libmuffintin-mpb` and is not the raw pair
+  support. `TOL` is recorded on the retained auxiliary basis only.
+  Finite-$q$ kinematics, Umklapp, and analytic interstitial pair vertices
+  are included. There is no Coulomb assembler and no live SPEX untruncated
+  numerical dump.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.

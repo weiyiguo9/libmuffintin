@@ -45,6 +45,8 @@ basis             → core, envelope, radial
 operators         → core, tensor, basis, faer
 recipes           → core, basis, envelope
 lapw              → recipes, operators, basis, envelope, core, radial, tensor
+product           → core, radial, basis
+mpb               → product, operators, core, radial, basis, envelope
 ```
 
 `libmuffintin-basis` stores host augmentation coefficients only. Backend
