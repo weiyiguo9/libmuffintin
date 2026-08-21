@@ -2,9 +2,10 @@
 //!
 //! v0.2 stores a non-overlapping muffin-tin plus interstitial partition, raw
 //! muffin-tin products, capability-supplied raw interstitial orbital-pair
-//! reciprocal support, a retained auxiliary basis with per-site meshes, and
-//! pair vertices. There is no MPB `TOL`, ISDF threshold, Coulomb assembler,
-//! or trait family. Raw pair support is not the MPB auxiliary $|q+G|$ set.
+//! reciprocal support, a retained auxiliary basis, and pair vertices. The
+//! auxiliary payload is a typed mixed-product or interpolation-point variant.
+//! There is no MPB `TOL`, ISDF threshold, Coulomb assembler, or trait family.
+//! Raw pair support is not the MPB auxiliary $|q+G|$ set.
 
 #![forbid(unsafe_code)]
 
@@ -16,7 +17,9 @@ mod vertex;
 
 pub use auxiliary::{
     AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryRegion,
-    CompiledAuxiliaryBasis, CutoffKind, CutoffRecord, MtAuxiliaryMode, SiteAuxiliaryBlock,
+    AuxiliaryRepresentation, CompiledAuxiliaryBasis, CutoffKind, CutoffRecord,
+    InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
+    MixedProductAuxiliary, MtAuxiliaryMode, SiteAuxiliaryBlock, sort_interpolation_points,
 };
 pub use partition::{PartitionSite, ProductPartition};
 pub use raw::{
@@ -106,6 +109,24 @@ pub enum ProductError {
         mt: usize,
         interstitial: usize,
     },
+    #[error("compiled auxiliary basis is interpolation points, not mixed-product")]
+    ExpectedMixedProduct,
+    #[error("compiled auxiliary basis is mixed-product, not interpolation points")]
+    ExpectedInterpolationPoints,
+    #[error("duplicate interpolation point id {0}")]
+    DuplicateInterpolationPoint(usize),
+    #[error("interpolation point {0} has a non-finite coordinate or weight")]
+    NonFiniteInterpolationPoint(usize),
+    #[error("interpolation point {0} has a negative quadrature weight")]
+    NegativeInterpolationWeight(usize),
+    #[error("interpolation auxiliary has no strictly positive quadrature weight")]
+    NoPositiveInterpolationWeight,
+    #[error("interpolation point region site {site} is outside the partition")]
+    InterpolationPointSite { site: usize },
+    #[error("interpolation auxiliary has no points")]
+    EmptyInterpolationPoints,
+    #[error("interpolation points are not in muffin-tin/interstitial/uniform id order")]
+    InterpolationPointOrder,
     #[error(transparent)]
     Geometry(#[from] StepFunctionError),
     #[error(transparent)]

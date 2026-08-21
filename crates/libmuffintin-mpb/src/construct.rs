@@ -5,9 +5,10 @@ use libmuffintin_basis::Provenance;
 use libmuffintin_core::{ExponentialMesh, InverseBohr, ReciprocalLattice};
 use libmuffintin_operators::solve_real_symmetric;
 use libmuffintin_product::{
-    ChannelSpectrum, CompiledAuxiliaryBasis, CoupledChannel, CutoffKind, CutoffRecord,
-    MtAuxiliaryMode, PairChannel, ProductOrbitalKind, ProductRadial, ProductRadialId,
-    ProductSource, RawProductSpace, RawRadialProduct, SiteAuxiliaryBlock, SiteRadialSet,
+    AuxiliaryRepresentation, ChannelSpectrum, CompiledAuxiliaryBasis, CoupledChannel, CutoffKind,
+    CutoffRecord, MixedProductAuxiliary, MtAuxiliaryMode, PairChannel, ProductOrbitalKind,
+    ProductRadial, ProductRadialId, ProductSource, RawProductSpace, RawRadialProduct,
+    SiteAuxiliaryBlock, SiteRadialSet,
 };
 use libmuffintin_radial::RadialComponents;
 use std::collections::BTreeSet;
@@ -107,7 +108,8 @@ pub(crate) fn require_matching_context(
 ) -> Result<(), MpbError> {
     require_matching_source_and_raw(source, raw)?;
     auxiliary.validate_against_source(source)?;
-    if auxiliary.q != source.q || auxiliary.interstitial.q != source.q {
+    let payload = auxiliary.require_mixed_product()?;
+    if auxiliary.q != source.q || payload.interstitial.q != source.q {
         return Err(MpbError::TransferQMismatch);
     }
     if auxiliary.partition != source.partition || auxiliary.partition != raw.partition {
@@ -415,9 +417,11 @@ fn retained_auxiliary(
     let auxiliary = CompiledAuxiliaryBasis {
         partition: raw.partition.clone(),
         q: raw.q,
-        sites,
-        interstitial: auxiliary_interstitial_support(lattice, raw.q, product_g_max)?,
-        cutoff,
+        representation: AuxiliaryRepresentation::MixedProduct(MixedProductAuxiliary {
+            sites,
+            interstitial: auxiliary_interstitial_support(lattice, raw.q, product_g_max)?,
+            cutoff,
+        }),
         provenance: spex_provenance(cutoff.as_ref()),
     };
     auxiliary.validate_against_source(source)?;

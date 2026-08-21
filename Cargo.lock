@@ -1023,6 +1023,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "libmuffintin-thc"
+version = "0.1.0"
+dependencies = [
+ "faer 0.22.6",
+ "libmuffintin-basis",
+ "libmuffintin-core",
+ "libmuffintin-product",
+ "num-complex",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
