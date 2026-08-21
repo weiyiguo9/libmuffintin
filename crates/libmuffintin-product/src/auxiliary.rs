@@ -125,6 +125,76 @@ pub enum AuxiliaryRegion {
     },
 }
 
+impl AuxiliaryRegion {
+    /// Whether this channel belongs to the muffin-tin block of the flatten.
+    pub const fn is_mt_block(self) -> bool {
+        match self {
+            Self::MuffinTin { .. } => true,
+            Self::InterpolationPoint {
+                region: InterpolationRegion::MuffinTin { .. },
+                ..
+            } => true,
+            Self::Interstitial { .. }
+            | Self::InterpolationPoint {
+                region: InterpolationRegion::Interstitial | InterpolationRegion::Uniform,
+                ..
+            } => false,
+        }
+    }
+}
+
+/// Stable auxiliary layout: transfer $q$, exact region sequence, and MT/I split.
+///
+/// This is the identity compared by pair vertices and the Coulomb operator.
+/// Recipe strings are not part of the identity.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AuxiliaryLayout {
+    q: TransferQ,
+    regions: Vec<AuxiliaryRegion>,
+    mt_dimension: usize,
+    interstitial_dimension: usize,
+}
+
+impl AuxiliaryLayout {
+    /// Build from an explicit region list. The muffin-tin count follows
+    /// [`AuxiliaryRegion::is_mt_block`].
+    pub fn from_regions(q: TransferQ, regions: Vec<AuxiliaryRegion>) -> Self {
+        let mt_dimension = regions.iter().filter(|region| region.is_mt_block()).count();
+        let interstitial_dimension = regions.len() - mt_dimension;
+        Self {
+            q,
+            regions,
+            mt_dimension,
+            interstitial_dimension,
+        }
+    }
+
+    /// Canonical transfer $q$.
+    pub const fn q(&self) -> TransferQ {
+        self.q
+    }
+
+    /// Combined regions in flatten order.
+    pub fn regions(&self) -> &[AuxiliaryRegion] {
+        &self.regions
+    }
+
+    /// Muffin-tin block length.
+    pub const fn mt_dimension(&self) -> usize {
+        self.mt_dimension
+    }
+
+    /// Interstitial (or uniform interpolation-point) block length.
+    pub const fn interstitial_dimension(&self) -> usize {
+        self.interstitial_dimension
+    }
+
+    /// Total dimension: muffin-tin then interstitial.
+    pub fn dimension(&self) -> usize {
+        self.regions.len()
+    }
+}
+
 /// Retained auxiliary basis at one transfer $q$.
 ///
 /// Mixed-product consumers use muffin-tin meshes and $|q+G|$ waves.
@@ -214,6 +284,11 @@ impl CompiledAuxiliaryBasis {
     /// Total auxiliary dimension: muffin-tin block then interstitial block.
     pub fn dimension(&self) -> usize {
         self.mt_dimension() + self.interstitial_dimension()
+    }
+
+    /// Layout identity: $q$, exact regions, and the muffin-tin/interstitial split.
+    pub fn layout(&self) -> AuxiliaryLayout {
+        AuxiliaryLayout::from_regions(self.q, self.regions())
     }
 
     /// Combined regions in muffin-tin then interstitial order.

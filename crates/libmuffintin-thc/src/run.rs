@@ -205,6 +205,11 @@ pub fn bloch_pair_vertices(
             actual: selected_rows.len(),
         });
     }
+    if q != auxiliary.q {
+        return Err(ThcError::Product(
+            libmuffintin_product::ProductError::AuxiliarySupportTransferQ,
+        ));
+    }
     let mt = auxiliary.mt_dimension();
     let interstitial = auxiliary.interstitial_dimension();
     if mt + interstitial != n_mu {
@@ -223,17 +228,14 @@ pub fn bloch_pair_vertices(
         for mu in 0..n_mu {
             coefficients.push(selected_rows[mu * n_col + column]);
         }
-        vertices.push(PairVertex::new(
-            q,
+        vertices.push(PairVertex::from_auxiliary(
+            auxiliary,
             OrbitalPair::Bloch {
                 k_index,
                 left,
                 right,
             },
-            mt,
-            interstitial,
             coefficients,
-            auxiliary.provenance.clone(),
         )?);
     }
     Ok(vertices)

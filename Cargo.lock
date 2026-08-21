@@ -901,6 +901,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "libmuffintin-coulomb"
+version = "0.1.0"
+dependencies = [
+ "faer 0.22.6",
+ "libmuffintin-basis",
+ "libmuffintin-core",
+ "libmuffintin-grid",
+ "libmuffintin-mpb",
+ "libmuffintin-product",
+ "libmuffintin-thc",
+ "num-complex",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "libmuffintin-envelope"
 version = "0.1.0"
 dependencies = [

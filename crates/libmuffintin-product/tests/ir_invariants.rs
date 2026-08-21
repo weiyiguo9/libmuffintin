@@ -218,17 +218,14 @@ fn interpolation_points_are_not_empty_mixed_product_payloads() {
             },
         ]
     );
-    let vertex = PairVertex::new(
-        q,
+    let vertex = PairVertex::from_auxiliary(
+        &auxiliary,
         OrbitalPair::Bloch {
             k_index: 0,
             left: 1,
             right: 2,
         },
-        auxiliary.mt_dimension(),
-        auxiliary.interstitial_dimension(),
         vec![Complex64::new(1.0, 0.0); 3],
-        Provenance::default(),
     )
     .unwrap();
     assert_eq!(vertex.mt().len(), 1);

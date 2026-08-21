@@ -15,7 +15,8 @@ interpolation vectors $\zeta^q$. The crate consumes the M-H product IR
 `CompiledAuxiliaryBasis` interpolation-point payloads.
 
 This is toy finite-cutoff selector evidence. It is not a physical Coulomb
-assembler and not a real-material accuracy claim.
+assembler and not a real-material accuracy claim. Production $V^q$ is
+[15](15_weinert_coulomb_metric.md).
 
 ## 2. Packages
 
@@ -95,7 +96,14 @@ cutoff $10^{-12}$, matching NumPy `lstsq(..., rcond=1e-12)`; unpivoted QR
 is not used. Action error is
 $\max_i\lVert\Delta V x_i\rVert/\lVert V_{\mathrm{ref}} x_i\rVert$ over eight
 complex Gaussians with seed 19. This is candidate-oracle evidence, not a
-production Coulomb assembler. Production $V^q$ is M-J.
+production Coulomb assembler. Production $V^q$ is
+[15](15_weinert_coulomb_metric.md): `assemble_sampled_coulomb` consumes
+`ThcResult.fits[iq].zeta` on the parent grid as `SampledAuxiliaryFunctions`
+(row-major $n_{\mathrm{grid}}\times n_\mu$, quadrature weights, region tags,
+and the exact `AuxiliaryLayout`). Interpolation *nodes* are not the
+production $\zeta$ functions; a weighted point-charge Gram is only the
+explicit toy Ewald oracle. M-J does not claim elementwise
+$V^{\mathrm{MPB}}=V^{\mathrm{THC}}$ when the spans differ.
 
 Every injected Gram used for a Coulomb residual is checked for q-index,
 exact `TransferQ`, exact `PairColumnLayout`, and resulting dimension before

@@ -16,7 +16,7 @@ mod source;
 mod vertex;
 
 pub use auxiliary::{
-    AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryRegion,
+    AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryLayout, AuxiliaryRegion,
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, CutoffKind, CutoffRecord,
     InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
     MixedProductAuxiliary, MtAuxiliaryMode, SiteAuxiliaryBlock, sort_interpolation_points,

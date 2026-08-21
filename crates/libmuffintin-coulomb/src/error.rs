@@ -1,0 +1,124 @@
+//! Coulomb construction, assembly, and context errors.
+
+use libmuffintin_core::{LatticeError, LmError, MeshError, StepFunctionError};
+use libmuffintin_grid::GridError;
+use libmuffintin_product::ProductError;
+use thiserror::Error;
+
+/// Coulomb operator construction or application error.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum CoulombError {
+    #[error(transparent)]
+    Product(#[from] ProductError),
+    #[error(transparent)]
+    Lattice(#[from] LatticeError),
+    #[error(transparent)]
+    Mesh(#[from] MeshError),
+    #[error(transparent)]
+    StepFunction(#[from] StepFunctionError),
+    #[error(transparent)]
+    Grid(#[from] GridError),
+    #[error(transparent)]
+    Angular(#[from] LmError),
+    #[error("Weinert LEXP must be finite and at most 12, got {0}")]
+    InvalidLexp(u32),
+    #[error("interpolation-point Coulomb assembly requires sampled zeta functions")]
+    MissingSampledFunctions,
+    #[error("sampled zeta functions are not used for mixed-product Coulomb assembly")]
+    UnexpectedSampledFunctions,
+    #[error("interpolation-point Coulomb assembly requires an interpolation projection spec")]
+    MissingInterpolationProjection,
+    #[error("interpolation PW cutoff must be finite and nonnegative, got {0}")]
+    InvalidPwCutoff(f64),
+    #[error("interpolation angular cutoff exceeds Weinert LEXP ({l_max} > {lexp})")]
+    InterpolationLmax { l_max: u32, lexp: u32 },
+    #[error("cell volume {cell} does not match the product partition volume {partition}")]
+    CellVolumeMismatch { cell: f64, partition: f64 },
+    #[error("Coulomb request reciprocal lattice does not match the direct cell")]
+    ReciprocalMismatch,
+    #[error("auxiliary interstitial G={index:?} does not match the request reciprocal lattice")]
+    WaveLatticeMismatch { index: [i32; 3] },
+    #[error("site {site} muffin-tin radius {found} does not match the partition radius {expected}")]
+    SiteRadiusMismatch {
+        site: usize,
+        expected: f64,
+        found: f64,
+    },
+    #[error("auxiliary muffin-tin L={l} exceeds Weinert LEXP={lexp}")]
+    AuxiliaryLExceedsLexp { l: u32, lexp: u32 },
+    #[error("factorial table overflow at n={0} (reduce LEXP)")]
+    FactorialOverflow(usize),
+    #[error("structure-constant angular index {index} is outside 0..{count}")]
+    StructureIndex { index: usize, count: usize },
+    #[error("Ewald splitting parameter must be finite and positive, got {0}")]
+    InvalidEwaldEta(f64),
+    #[error("Ewald real-space cutoff must be finite and nonnegative, got {0}")]
+    InvalidEwaldRealCutoff(f64),
+    #[error("Ewald reciprocal cutoff must be finite and nonnegative, got {0}")]
+    InvalidEwaldRecipCutoff(f64),
+    #[error(
+        "Ewald kernel did not reach successive residual {tolerance} in {steps} steps (last residual {residual})"
+    )]
+    EwaldNotConverged {
+        residual: f64,
+        tolerance: f64,
+        steps: usize,
+    },
+    #[error("pair vertex transfer q does not match the Coulomb operator")]
+    VertexTransferQ,
+    #[error(
+        "pair vertex dimensions mt={vertex_mt}+I={vertex_interstitial} do not match the Coulomb operator mt={operator_mt}+I={operator_interstitial}"
+    )]
+    VertexDimension {
+        vertex_mt: usize,
+        vertex_interstitial: usize,
+        operator_mt: usize,
+        operator_interstitial: usize,
+    },
+    #[error("pair vertex auxiliary layout does not match the Coulomb operator")]
+    VertexLayout,
+    #[error("sampled zeta layout does not match the compiled auxiliary")]
+    SampledLayoutMismatch,
+    #[error(
+        "sampled zeta has {actual} values, expected {n_grid} grid points times {n_mu} functions"
+    )]
+    SampledZetaLength {
+        actual: usize,
+        n_grid: usize,
+        n_mu: usize,
+    },
+    #[error("sampled zeta has {n_mu} functions, expected auxiliary dimension {expected}")]
+    SampledZetaDimension { n_mu: usize, expected: usize },
+    #[error("sampled grid has {points} points, {weights} weights, {regions} regions")]
+    SampledGridLength {
+        points: usize,
+        weights: usize,
+        regions: usize,
+    },
+    #[error("sampled grid is empty")]
+    EmptySampledGrid,
+    #[error("sampled weight {0} is not finite")]
+    NonFiniteSampledWeight(usize),
+    #[error("sampled weight {0} is negative")]
+    NegativeSampledWeight(usize),
+    #[error("sampled grid has no strictly positive quadrature weight")]
+    NoPositiveSampledWeight,
+    #[error("sampled point {0} has a non-finite coordinate")]
+    NonFiniteSampledPoint(usize),
+    #[error("sampled zeta entry {0} is not finite")]
+    NonFiniteZeta(usize),
+    #[error("Coulomb matrix index {index} is outside 0..{dimension}")]
+    MatrixIndex { index: usize, dimension: usize },
+    #[error("radial sample at index {index} is not finite")]
+    NonFiniteRadial { index: usize },
+    #[error("interpolation point {0} lies outside its tagged muffin-tin sphere")]
+    InterpolationPointOutsideSphere(usize),
+    #[error("sampled muffin-tin site {site} is outside the partition")]
+    SampledPointSite { site: usize },
+    #[error("site {0} is missing from the product partition")]
+    MissingSite(usize),
+    #[error("compiled auxiliary basis has dimension 0")]
+    EmptyAuxiliary,
+    #[error("point-charge oracle requires an interpolation-point auxiliary")]
+    ExpectedInterpolationPoints,
+}

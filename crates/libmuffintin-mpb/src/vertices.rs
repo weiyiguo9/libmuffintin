@@ -32,14 +32,7 @@ pub fn pair_vertex(
     if let Some(interstitial) = spec.interstitial {
         fill_interstitial(raw, auxiliary, interstitial, &mut coefficients)?;
     }
-    Ok(PairVertex::new(
-        auxiliary.q,
-        pair,
-        auxiliary.mt_dimension(),
-        auxiliary.interstitial_dimension(),
-        coefficients,
-        auxiliary.provenance.clone(),
-    )?)
+    Ok(PairVertex::from_auxiliary(auxiliary, pair, coefficients)?)
 }
 
 fn fill_muffin_tin(
