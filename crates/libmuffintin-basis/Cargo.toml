@@ -1,5 +1,6 @@
 [package]
-name = "libmuffintin-radial"
+name = "libmuffintin-basis"
+description = "Anonymous basis specification, layout, and APW augmentation"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +9,9 @@ rust-version.workspace = true
 
 [dependencies]
 libmuffintin-core = { path = "../mt-core" }
+libmuffintin-envelope = { path = "../libmuffintin-envelope" }
+libmuffintin-radial = { path = "../mt-radial" }
+num-complex.workspace = true
 thiserror.workspace = true
 
 [lints]

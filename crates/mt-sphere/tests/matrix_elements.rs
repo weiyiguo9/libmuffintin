@@ -1,6 +1,6 @@
-use mt_core::{Bohr, ExponentialMesh};
-use mt_radial::{RadialComponents, RadialIntegralKernel, radial_integral};
-use mt_sphere::{
+use libmuffintin_core::{Bohr, ExponentialMesh};
+use libmuffintin_radial::{RadialComponents, RadialIntegralKernel, radial_integral};
+use libmuffintin_sphere::{
     HarmonicConvention, MatrixElementError, SphereField, SphereFieldError, SphereOrbital,
     SphereOrbitalError, matrix_element,
 };
@@ -126,6 +126,6 @@ fn length_and_convention_errors_identify_the_bad_input() {
         Err(MatrixElementError::OrbitalMeshLength { actual, .. }) if actual == mesh.len() - 1
     ));
 
-    // Ensure the public orbital is directly usable by mt-radial consumers.
+    // Ensure the public orbital is directly usable by libmuffintin-radial consumers.
     assert_eq!(valid.large_component().len(), mesh.len());
 }

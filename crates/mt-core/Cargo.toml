@@ -1,5 +1,5 @@
 [package]
-name = "mt-core"
+name = "libmuffintin-core"
 description = "Conventions and closed-form numerical primitives for muffin-tin methods"
 version.workspace = true
 edition.workspace = true

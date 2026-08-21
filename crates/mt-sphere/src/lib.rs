@@ -3,13 +3,15 @@
 //! A [`SphereField`] stores radial expansion coefficients by `(L,M)`
 //! channel.  A [`SphereOrbital`] combines an angular channel with reduced
 //! large and optional small radial components.  [`matrix_element`] composes
-//! the Gaunt coefficients from `mt-core` with the radial quadrature from
-//! `mt-radial`.
+//! the Gaunt coefficients from `libmuffintin-core` with the radial quadrature from
+//! `libmuffintin-radial`.
 
 #![forbid(unsafe_code)]
 
-use mt_core::{ExponentialMesh, Lm, gaunt, real_gaunt};
-use mt_radial::{RadialComponents, RadialIntegralError, RadialIntegralKernel, radial_integral};
+use libmuffintin_core::{ExponentialMesh, Lm, gaunt, real_gaunt};
+use libmuffintin_radial::{
+    RadialComponents, RadialIntegralError, RadialIntegralKernel, radial_integral,
+};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -22,7 +24,7 @@ use thiserror::Error;
 pub enum HarmonicConvention {
     /// Complex Condon--Shortley `Y_lm` harmonics.
     Complex,
-    /// Real tesseral `R_lm` harmonics in the `mt-core` convention.
+    /// Real tesseral `R_lm` harmonics in the `libmuffintin-core` convention.
     Real,
 }
 
@@ -235,7 +237,7 @@ pub fn matrix_element(
 }
 
 fn complex_matrix_gaunt(left: Lm, field: Lm, right: Lm) -> f64 {
-    // mt-core's SPEX coefficient is
+    // libmuffintin-core's SPEX coefficient is
     //   integral conj(Y_left) Y_field conj(Y_third).
     // conj(Y_l,-m) = (-1)^m Y_lm, hence the phase below converts its third
     // argument into the unconjugated right orbital required by <left|V|right>.

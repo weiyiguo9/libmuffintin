@@ -1,6 +1,6 @@
 # libmuffintin conventions
 
-This file and `mt-core` are the single source of truth for conventions that
+This file and `libmuffintin-core` are the single source of truth for conventions that
 affect cross-code numerical comparisons. Internal floating-point values are
 `f64`; no implicit unit or basis conversion is permitted.
 
@@ -222,7 +222,7 @@ The forms coincide on the diagonal but are not interchangeable off diagonal.
 The SPEX-named enum variant records the production reference; the gradient
 variant records the formula written in the v0.1 plan. Surface-discontinuity
 handling remains private to the LAPW assembly strategy as required by A7.
-The `mt-lapw` M-E assembler explicitly selects the SPEX symmetric-Laplacian
+The `libmuffintin-lapw` M-E assembler explicitly selects the SPEX symmetric-Laplacian
 form and combines it only with the matching SPEX radial Hamiltonian identity.
 
 ## LAPW radial Hamiltonian and overlap filtering
@@ -257,14 +257,14 @@ is ordered as every $\mathrm{lm}$ channel's $(u,\dot u)$ pair followed by those
 LOs.
 
 Overlap and Hamiltonian use the same site projection $P^\dagger(\text{block})P$,
-evaluated as `einsum("ci,cd,dj->ij", [P^*, B, P])` in `mt-tensor`. The
+evaluated as `einsum("ci,cd,dj->ij", [P^*, B, P])` in `libmuffintin-tensor`. The
 coefficient tensor $P$ has axes $[\text{site coordinates}][\text{site basis}]$.
 Each site remains a separate tensor; sites are not padded into one rectangle.
 The einsum layer may run on RSTSR+TBLIS or, later, tenferro-rs; the subscripts
 are the contract. Interstitial terms occupy only the plane-wave corner. An APW
 coefficient already contains $\exp(i\mathbf q\cdot\mathbf R_a)$; APW--LO terms
 inherit its conjugate from $P^*$ and must not receive a second site phase.
-LO--LO terms have no interstitial contribution. Host snapshots and `mt-io`
+LO--LO terms have no interstitial contribution. Host snapshots and `libmuffintin-io`
 artifacts stay backend-neutral.
 
 Collinear spin without SOC is two independent generalized eigenproblems that

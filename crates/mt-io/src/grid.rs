@@ -1,4 +1,4 @@
-use mt_grid::{Grid, RegionTag};
+use libmuffintin_grid::{Grid, RegionTag};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{IoError, ValidationError, finite, nonempty};
@@ -43,7 +43,7 @@ impl GridArtifactV1 {
         }
     }
 
-    /// Materialize an `mt-grid` point sequence without changing its order.
+    /// Materialize a `libmuffintin-grid` point sequence without changing its order.
     pub fn from_grid(grid: &impl Grid) -> Self {
         let points = grid
             .points()

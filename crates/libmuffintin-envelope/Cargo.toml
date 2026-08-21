@@ -1,5 +1,6 @@
 [package]
-name = "libmuffintin-radial"
+name = "libmuffintin-envelope"
+description = "Plane-wave envelope evaluation for muffin-tin methods"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 libmuffintin-core = { path = "../mt-core" }
+num-complex.workspace = true
 thiserror.workspace = true
 
 [lints]

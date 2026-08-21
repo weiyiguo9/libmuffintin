@@ -1,5 +1,5 @@
 [package]
-name = "mt-tensor"
+name = "libmuffintin-tensor"
 description = "Local tensor substrate with a backend-neutral einsum layer"
 version.workspace = true
 edition.workspace = true
