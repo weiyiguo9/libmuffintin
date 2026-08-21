@@ -71,14 +71,16 @@ interstitial label or invent a left/right plane-wave pair from one arm.
 
 An analytic [`InterstitialPairSpec`] names a component of the raw pair
 support and expands it as
-`amplitude * Θ_I(G_{\mathrm{rel}}+G_{\mathrm{wrap}}-G_{\mathrm{aux}})`.
+$A\Theta_I(G_{\mathrm{aux}}-G_{\mathrm{wrap}}-G_{\mathrm{rel}})$.
 A G label absent from that support is an error, even if it happens to lie
 in the MPB auxiliary $|q+G|$ set. A muffin-tin-only spec leaves interstitial
 coefficients zero because no interstitial expansion was requested. A muffin-tin
 pair absent from the raw products is an error, not an all-zero MT block.
 
 `TransferQ::fold_by_reciprocal_vector` stores $q_{\mathrm{in}}-G$ and the
-Umklapp vector $G$. Site phases use $\exp(+i q\cdot R_a)$.
+global Umklapp vector $G_{\mathrm{wrap}}$. The raw $G_{\mathrm{rel}}$ already
+contains any per-column $k-q$ wrap and excludes this global transfer wrap.
+Site phases use $\exp(+i q\cdot R_a)$.
 
 Raw muffin-tin products keep radial samples
 
@@ -158,7 +160,7 @@ M-H requires:
 - valence–valence plus selected core–valence provenance;
 - $|q+G|$ auxiliary completeness and a nonzero analytic interstitial
   pair vertex whose every coefficient matches
-  $\Theta_I(G_{\mathrm{raw}}+G_{\mathrm{wrap}}-G_{\mathrm{aux}})$, including
+  $\Theta_I(G_{\mathrm{aux}}-G_{\mathrm{wrap}}-G_{\mathrm{raw}})$, including
   Umklapp;
 - muffin-tin flatten $site\to L\to M\to n$ with $L>0$ and at least two $n$;
 - complete context matching (partition including cell volume, exact wave

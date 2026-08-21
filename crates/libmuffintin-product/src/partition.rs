@@ -16,9 +16,9 @@ pub struct PartitionSite {
 /// v0.2 implements only the non-overlapping LAPW/full-potential geometry.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProductPartition {
-    pub sites: Vec<PartitionSite>,
-    pub interstitial: InterstitialGeometry,
-    pub provenance: Provenance,
+    sites: Vec<PartitionSite>,
+    interstitial: InterstitialGeometry,
+    provenance: Provenance,
 }
 
 impl ProductPartition {
@@ -44,5 +44,25 @@ impl ProductPartition {
     /// Number of muffin-tin sites.
     pub fn site_count(&self) -> usize {
         self.sites.len()
+    }
+
+    /// Muffin-tin regions derived from the interstitial spheres.
+    pub fn sites(&self) -> &[PartitionSite] {
+        &self.sites
+    }
+
+    /// One muffin-tin region by stable site index.
+    pub fn site(&self, index: usize) -> Option<&PartitionSite> {
+        self.sites.get(index)
+    }
+
+    /// Interstitial geometry from which the site list was derived.
+    pub const fn interstitial(&self) -> &InterstitialGeometry {
+        &self.interstitial
+    }
+
+    /// Construction provenance.
+    pub const fn provenance(&self) -> &Provenance {
+        &self.provenance
     }
 }

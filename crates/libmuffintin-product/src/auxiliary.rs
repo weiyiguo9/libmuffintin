@@ -410,7 +410,7 @@ impl CompiledAuxiliaryBasis {
         }
         let mut seen_sites = BTreeSet::new();
         for (expected, block) in payload.sites.iter().enumerate() {
-            let partition_index = self.partition.sites.get(expected).map(|site| site.index);
+            let partition_index = self.partition.site(expected).map(|site| site.index);
             if block.site != expected || partition_index != Some(block.site) {
                 return Err(ProductError::AuxiliarySiteIdentity {
                     expected,

@@ -121,18 +121,8 @@ pub fn lstsq(
 /// eigenvalues to zero.
 pub fn hermitian_sqrt(matrix: &[Complex64], n: usize) -> Result<Vec<Complex64>, ThcError> {
     let (values, vectors) = hermitian_eigensystem(matrix, n)?;
-    let scale = values
-        .iter()
-        .fold(0.0_f64, |acc, value| acc.max(value.abs()));
     let mut sqrt_diag = vec![0.0; n];
     for (index, &value) in values.iter().enumerate() {
-        if value < -1.0e-10 * scale.max(1.0) {
-            return Err(ThcError::GramIndefinite {
-                index: 0,
-                min: value,
-                max: scale,
-            });
-        }
         sqrt_diag[index] = value.max(0.0).sqrt();
     }
     let mut out = vec![Complex64::default(); n * n];

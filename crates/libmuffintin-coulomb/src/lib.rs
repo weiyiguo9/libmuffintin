@@ -31,7 +31,7 @@ pub use ewald::{
     EwaldConvergence, EwaldScan, EwaldSummation, converged_ewald_point_kernel, erfc,
     ewald_point_kernel,
 };
-pub use expansion::SampledAuxiliaryFunctions;
+pub use expansion::{SampledAuxiliaryFunctions, SampledPointSupport};
 pub use math::weinert_gmat;
 pub use moments::{
     bessel_overlap, bessel_weinert_integral, multipole_moment, second_moment,

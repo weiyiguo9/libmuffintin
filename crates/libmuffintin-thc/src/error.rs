@@ -85,6 +85,8 @@ pub enum ThcError {
     LinearAlgebra(&'static str),
     #[error("sketch row count must be positive")]
     EmptySketch,
+    #[error("structured sketch has {rows} rows but exact selection requires {required}")]
+    SketchRankExceedsRows { rows: usize, required: usize },
     #[error("lattice constant must be finite and positive, got {0}")]
     InvalidLattice(f64),
     #[error("interpolation point {0} is outside the parent grid")]

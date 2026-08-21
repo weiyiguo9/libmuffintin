@@ -88,12 +88,15 @@ is representation-neutral and lives in `libmuffintin-coulomb`:
 
 - exact $q$ and `AuxiliaryLayout` (checked $n_\mu=$ `auxiliary.dimension`);
 - parent-grid points, strictly-positive-capable quadrature weights, and
-  region tags;
+  `SampledPointSupport` labels;
+- one explicit `ExponentialMesh` per muffin-tin site; each muffin-tin sample
+  names its exact radial shell index and its coordinate is checked against
+  that shell;
 - row-major $\zeta$ samples $n_{\mathrm{grid}}\times n_\mu$.
 
 Each $\zeta$ column is projected by quadrature onto the common expansion:
 muffin-tin samples accumulate $w_p\zeta_\mu(r_p)Y_{LM}^*(\hat r_p)$ on the
-site radial mesh; interstitial/uniform samples accumulate
+declared site radial shell, without nearest-node snapping; interstitial/uniform samples accumulate
 $w_p\zeta_\mu(r_p)e^{-i(q+G)\cdot r_p}/\sqrt{\Omega}$. This is not a
 delta at the interpolation *node*. Use `assemble_sampled_coulomb`.
 $q$, point/order, and dimension mismatches are rejected.
@@ -316,8 +319,9 @@ Mixed-product auxiliaries use `assemble_coulomb`. Interpolation-point
 auxiliaries use `assemble_sampled_coulomb` with parent-grid $\zeta$.
 Dev-only THC integration uses `run_thc` (default `allq_l2`) and
 `ThcResult.fits[iq].zeta`. Spans differ. Tests compare kinds, layouts,
-PSD/actions, and conventionally equivalent toy charges (identity $\zeta$
-on the node grid versus the point-charge oracle). They do **not** claim
+PSD/actions, and exercise the shared expansion plumbing with identity $\zeta$
+on the node grid versus the explicit point-charge route. That equality is
+not an independent physics oracle. The tests do **not** claim
 elementwise $V^{\mathrm{MPB}}=V^{\mathrm{THC}}$.
 
 ## 10. Limitations

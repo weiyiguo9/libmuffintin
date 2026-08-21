@@ -2,8 +2,9 @@
 
 use crate::CoulombError;
 use crate::expansion::{
-    ChargeDensity, ExpansionSupport, SampledAuxiliaryFunctions, interpolation_support,
-    mixed_product_densities, mixed_product_support, point_charge_densities, sampled_zeta_densities,
+    ChargeDensity, ExpansionSupport, SampledAuxiliaryFunctions, mixed_product_densities,
+    mixed_product_support, point_charge_densities, point_charge_support,
+    sampled_interpolation_support, sampled_zeta_densities,
 };
 use crate::math::{
     i_pow, inverse_norm, is_gamma, is_zero_norm, parity, plane_wave_phase, sfac_table, weinert_gmat,
@@ -118,16 +119,16 @@ fn assemble_kind(
             let projection = request
                 .interpolation()
                 .ok_or(CoulombError::MissingInterpolationProjection)?;
-            let support = interpolation_support(auxiliary, request, projection)?;
-            let densities = sampled_zeta_densities(sampled, &support, projection)?;
+            let support = sampled_interpolation_support(auxiliary, request, &projection, sampled)?;
+            let densities = sampled_zeta_densities(sampled, &support, &projection)?;
             (support, densities)
         }
         AuxiliaryKind::PointChargeOracle => {
             let projection = request
                 .interpolation()
                 .ok_or(CoulombError::MissingInterpolationProjection)?;
-            let support = interpolation_support(auxiliary, request, projection)?;
-            let densities = point_charge_densities(auxiliary, &support, projection)?;
+            let support = point_charge_support(auxiliary, request, &projection)?;
+            let densities = point_charge_densities(auxiliary, &support, &projection)?;
             (support, densities)
         }
     };
@@ -184,9 +185,12 @@ fn assemble_kind(
             constant_coefficients: vectors.coeff,
         });
     }
-    for value in &matrix {
+    for (index, value) in matrix.iter().enumerate() {
         if !value.re.is_finite() || !value.im.is_finite() {
-            return Err(CoulombError::NonFiniteRadial { index: 0 });
+            return Err(CoulombError::NonFiniteMatrix {
+                row: index / n,
+                column: index % n,
+            });
         }
     }
     Ok(CoulombOperator {
@@ -208,7 +212,7 @@ fn require_cell_and_reciprocal(
     request: &CoulombRequest,
 ) -> Result<(), CoulombError> {
     let cell_volume = request.cell().volume().get();
-    let partition_volume = auxiliary.partition.interstitial.cell_volume().get();
+    let partition_volume = auxiliary.partition.interstitial().cell_volume().get();
     if (cell_volume - partition_volume).abs() > 1.0e-8 * cell_volume.max(partition_volume) {
         return Err(CoulombError::CellVolumeMismatch {
             cell: cell_volume,
@@ -429,7 +433,9 @@ fn mt_pw_element(
         }
         z + (-cdum / (2.0 * f64::from(l) + 1.0) * integral + csum * moment) / svol
     } else if is_zero_norm(qnorm) {
-        Complex64::default()
+        return Err(CoulombError::ZeroQPlusG {
+            index: wave.g.index,
+        });
     } else {
         (cdum * olap / (qnorm * qnorm) - cdum / (2.0 * f64::from(l) + 1.0) * integral
             + csum * moment)
@@ -734,7 +740,7 @@ fn gamma_vectors(
                 * prepared
                     .auxiliary
                     .partition
-                    .interstitial
+                    .interstitial()
                     .coefficient(neg_g)?;
         }
     }

@@ -47,7 +47,9 @@ pub struct ChannelSpectrum {
 /// One relative reciprocal label of a raw interstitial orbital-pair product.
 ///
 /// This is not an MPB auxiliary plane wave and is not filtered by
-/// `product_g_max`.
+/// `product_g_max`. It includes any per-column $k-q$ wrap supplied by the
+/// orbital-pair capability, but excludes the global transfer wrap stored on
+/// [`TransferQ`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RawInterstitialPairComponent {
     pub g_relative: GVector,

@@ -14,7 +14,7 @@ mod interstitial;
 mod vertices;
 
 pub use construct::{apply_overlap_cutoff, spex_mixed_product_basis};
-pub use interstitial::{auxiliary_interstitial_support, interstitial_plane_waves};
+pub use interstitial::auxiliary_interstitial_support;
 pub use vertices::pair_vertex;
 
 use libmuffintin_core::{LatticeError, MeshError, StepFunctionError};

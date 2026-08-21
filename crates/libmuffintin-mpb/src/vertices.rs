@@ -14,7 +14,7 @@ use num_complex::Complex64;
 ///
 /// Muffin-tin coefficients are Gaunt-weighted radial overlaps times
 /// $\exp(+i q\cdot R_a)$. Interstitial coefficients are
-/// `amplitude * Θ_I(G_rel + G_wrap - G_aux)` using the partition step
+/// $A\Theta_I(G_{\mathrm{aux}}-G_{\mathrm{wrap}}-G_{\mathrm{rel}})$ using the partition step
 /// function. The interstitial G label must exist on the raw pair support.
 /// Missing spec arms stay zero. This is not a Coulomb kernel.
 pub fn pair_vertex(
@@ -88,7 +88,8 @@ fn fill_muffin_tin(
         n: spec.left.n,
         spin: spec.left.spin,
     })?;
-    let phase = site_translation_phase(source.q.cartesian, source.partition.sites[site].position);
+    let position = source.partition.sites()[site].position;
+    let phase = site_translation_phase(source.q.cartesian, position);
     let m = spec.right_m - spec.left_m;
     let block = auxiliary
         .require_mixed_product()?
@@ -161,11 +162,12 @@ fn fill_interstitial(
     for (local, wave) in payload.interstitial.waves.iter().enumerate() {
         let argument = std::array::from_fn(|axis| {
             InverseBohr(
-                spec.g_relative.cartesian[axis].get() + wrap.cartesian[axis].get()
-                    - wave.g.cartesian[axis].get(),
+                wave.g.cartesian[axis].get()
+                    - wrap.cartesian[axis].get()
+                    - spec.g_relative.cartesian[axis].get(),
             )
         });
-        let theta = auxiliary.partition.interstitial.coefficient(argument)?;
+        let theta = auxiliary.partition.interstitial().coefficient(argument)?;
         coefficients[offset + local] = spec.amplitude * theta;
     }
     Ok(())

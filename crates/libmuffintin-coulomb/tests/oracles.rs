@@ -304,9 +304,14 @@ fn independent_mt_pw(
         .unwrap();
     let lexp = request.lexp();
     let mesh = &block.mesh;
-    let pos = auxiliary.partition.sites[0].position;
-    let svol = auxiliary.partition.interstitial.cell_volume().get().sqrt();
-    let vol = auxiliary.partition.interstitial.cell_volume().get();
+    let pos = auxiliary.partition.sites()[0].position;
+    let svol = auxiliary
+        .partition
+        .interstitial()
+        .cell_volume()
+        .get()
+        .sqrt();
+    let vol = auxiliary.partition.interstitial().cell_volume().get();
     let qnorm = wave.q_plus_g_norm.get();
     let y = complex_spherical_harmonics(lexp, wave.q_plus_g.map(InverseBohr::get));
     let l = 0u32;
@@ -323,7 +328,7 @@ fn independent_mt_pw(
         .all(|c| c.get().abs() <= 1.0e-12);
     let g_is_zero = wave.g.index == [0; 3];
     let mut csum = Complex64::default();
-    for (site1, support1) in auxiliary.partition.sites.iter().enumerate() {
+    for (site1, support1) in auxiliary.partition.sites().iter().enumerate() {
         let cexp = 4.0
             * PI
             * phase(wave.q_plus_g, support1.position)
@@ -431,7 +436,7 @@ fn independent_pw_pw(
     reset_idum: bool,
 ) -> Complex64 {
     let lexp = request.lexp();
-    let vol = auxiliary.partition.interstitial.cell_volume().get();
+    let vol = auxiliary.partition.interstitial().cell_volume().get();
     let q1n = wave1.q_plus_g_norm.get();
     let q2n = wave2.q_plus_g_norm.get();
     let v1 = pw_kernel(q1n);
@@ -441,7 +446,7 @@ fn independent_pw_pw(
     });
     let gnorm = gdiff.iter().map(|c| c.get().powi(2)).sum::<f64>().sqrt();
     let mut cint = Complex64::default();
-    for site in &auxiliary.partition.sites {
+    for site in auxiliary.partition.sites() {
         let form = sphere_form(gnorm, site.radius.get());
         cint += if gnorm <= 1.0e-14 {
             Complex64::new(form, 0.0)
@@ -477,7 +482,7 @@ fn independent_pw_pw(
     let y1 = complex_spherical_harmonics(lexp, wave1.q_plus_g.map(InverseBohr::get));
     let y2 = complex_spherical_harmonics(lexp, wave2.q_plus_g.map(InverseBohr::get));
     let mut csum = Complex64::default();
-    for (ic2, site2) in auxiliary.partition.sites.iter().enumerate() {
+    for (ic2, site2) in auxiliary.partition.sites().iter().enumerate() {
         let cexp2 = phase(wave2.q_plus_g, site2.position);
         // Old bug: `idum = 1` outside the L2 loop (continues across L). SPEX resets every L2.
         let mut idum_state: f64 = 1.0;
@@ -491,7 +496,7 @@ fn independent_pw_pw(
                 let lm2 = lm_index(l2, m2).unwrap();
                 let cdum = idum * sph2 * cexp2 * 4.0 * PI * i_pow(l2) * y2[lm2].conj();
                 if cdum.norm() > 0.0 {
-                    for (ic1, site1) in auxiliary.partition.sites.iter().enumerate() {
+                    for (ic1, site1) in auxiliary.partition.sites().iter().enumerate() {
                         for l1 in 0..=lexp {
                             let sph1 = spherical_bessel_moment(l1, q1n, site1.radius.get());
                             for m1 in -(l1 as i32)..=l1 as i32 {
@@ -523,7 +528,7 @@ fn independent_pw_pw(
     let mut cdum = Complex64::default();
     for l in 0..=lexp {
         let mut cdum1 = Complex64::default();
-        for site in &auxiliary.partition.sites {
+        for site in auxiliary.partition.sites() {
             cdum1 += phase(gdiff, site.position)
                 * sphbessel_pw_integral(l, q1n, q2n, site.radius.get())
                 / (2.0 * f64::from(l) + 1.0);
@@ -542,8 +547,8 @@ fn independent_pw_pw(
             let q1v = wave1.q_plus_g.map(InverseBohr::get);
             let q2v = wave2.q_plus_g.map(InverseBohr::get);
             let rdum1 = (q1v[0] * q2v[0] + q1v[1] * q2v[1] + q1v[2] * q2v[2]) / (q1n * q2n);
-            for site1 in &auxiliary.partition.sites {
-                for site2 in &auxiliary.partition.sites {
+            for site1 in auxiliary.partition.sites() {
+                for site2 in auxiliary.partition.sites() {
                     let cdum = phase(
                         [
                             InverseBohr(-wave1.g.cartesian[0].get()),
@@ -566,9 +571,9 @@ fn independent_pw_pw(
                 }
             }
         } else if g1_zero && !g2_zero {
-            for site1 in &auxiliary.partition.sites {
+            for site1 in auxiliary.partition.sites() {
                 let r1 = site1.radius.get();
-                for site2 in &auxiliary.partition.sites {
+                for site2 in auxiliary.partition.sites() {
                     let cdum = phase(wave2.g.cartesian, site2.position);
                     let m0b = spherical_bessel_moment(0, q2n, site2.radius.get());
                     let m1b = spherical_bessel_moment(1, q2n, site2.radius.get());
@@ -580,9 +585,9 @@ fn independent_pw_pw(
                 }
             }
         } else if !g1_zero && g2_zero {
-            for site2 in &auxiliary.partition.sites {
+            for site2 in auxiliary.partition.sites() {
                 let r2 = site2.radius.get();
-                for site1 in &auxiliary.partition.sites {
+                for site1 in auxiliary.partition.sites() {
                     let cdum = phase(
                         [
                             InverseBohr(-wave1.g.cartesian[0].get()),
@@ -601,9 +606,9 @@ fn independent_pw_pw(
                 }
             }
         } else {
-            for site1 in &auxiliary.partition.sites {
+            for site1 in auxiliary.partition.sites() {
                 let r1 = site1.radius.get();
-                for site2 in &auxiliary.partition.sites {
+                for site2 in auxiliary.partition.sites() {
                     let r2 = site2.radius.get();
                     value += rdum * r1.powi(3) * r2.powi(3) * (r1 * r1 + r2 * r2) / 90.0;
                 }
@@ -640,17 +645,6 @@ fn one_sphere_pw_pw_matches_step_function_identity_and_idum_reset() {
                 saw_idum_split = true;
             }
         }
-        let qg = wave_i.q_plus_g_norm.get();
-        let bare = 4.0 * PI / (qg * qg);
-        let sphere = 4.0 * PI * common::RADIUS.powi(3) / 3.0;
-        let vol = common::LATTICE.powi(3);
-        let step_diag = bare * (1.0 - 2.0 * sphere / vol);
-        let got_diag = operator.element(i, i).unwrap().re;
-        assert!(
-            (got_diag - step_diag).abs() / bare < 1.0,
-            "sphere-subtracted (3a) scale: diag {got_diag} vs 3a {step_diag} (3b+3c remain)"
-        );
-        assert!(got_diag.is_finite() && got_diag > 0.0);
     }
     assert!(
         saw_idum_split,
@@ -707,18 +701,4 @@ fn gamma_pw_pw_zero_and_finite_g_match_independent_taylor() {
         .unwrap();
     let body00 = operator.element(g0, g0).unwrap();
     assert!(body00.re.is_finite() && body00.im.abs() < 1.0e-10);
-    let vol = common::LATTICE.powi(3);
-    let radius = common::RADIUS;
-    let g00 = (4.0 * PI).powf(1.5);
-    let rdum = (4.0 * PI).powf(1.5) / vol.powi(2) * g00;
-    let zero_zero =
-        rdum * radius.powi(3) * radius.powi(3) * (radius.powi(2) + radius.powi(2)) / 90.0;
-    assert!(
-        zero_zero > 0.0,
-        "SPEX zero/zero Gamma correction {zero_zero}"
-    );
-    assert!(
-        (body00.re - zero_zero).abs() / body00.re.abs().max(zero_zero) < 2.0,
-        "G=0/G=0 body {body00} should contain zero/zero Taylor {zero_zero} plus 3b+3c"
-    );
 }

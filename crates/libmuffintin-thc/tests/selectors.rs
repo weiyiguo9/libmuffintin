@@ -7,7 +7,7 @@ use libmuffintin_thc::toy::{
 };
 use libmuffintin_thc::{
     DEFAULT_SELECTOR, DEFAULT_SKETCH_ROWS, GridPath, HEADLINE_SEED, L2Engine, PairBlock,
-    PairColumnLayout, RankPolicy, SelectionRequest, SelectorStrategy, UniformShift,
+    PairColumnLayout, RankPolicy, SelectionRequest, SelectorStrategy, ThcError, UniformShift,
     compare_strategies, pivots_from_pair_blocks, run_thc,
 };
 use num_complex::Complex64;
@@ -123,6 +123,44 @@ fn selection_is_deterministic_under_fixed_seed_and_column_order() {
     assert_eq!(a.provenance.seed, HEADLINE_SEED);
     assert_eq!(a.provenance.q_set, "allq");
     assert_eq!(a.provenance.strategy.as_str(), "allq_l2");
+}
+
+#[test]
+fn exact_structured_sketch_rejects_more_points_than_ranked_rows() {
+    let mesh = mt_kmesh();
+    let grid = mt_adaptive_grid(4, 6, 3);
+    let reference = mt_reference_grid();
+    let norms = mt_orbital_norms(&reference);
+    let orbitals = mt_bloch_orbitals(&grid, &norms, &mesh).unwrap();
+    let request = SelectionRequest {
+        strategy: SelectorStrategy::AllQL2,
+        rank: RankPolicy::Exact { n_mu: 3 },
+        seed: HEADLINE_SEED,
+        pool_factor: 2,
+        engine: L2Engine::StructuredSketch { rows: 1 },
+        grid_path: GridPath::Adaptive {
+            nrad: 4,
+            nang: 6,
+            ninter: 3,
+        },
+    };
+    assert_eq!(
+        libmuffintin_thc::select_points(
+            &orbitals,
+            &grid.points,
+            &grid.weights,
+            &grid.regions,
+            &mesh,
+            &request,
+            None,
+            Some(0),
+        )
+        .unwrap_err(),
+        ThcError::SketchRankExceedsRows {
+            rows: 1,
+            required: 3,
+        }
+    );
 }
 
 #[test]

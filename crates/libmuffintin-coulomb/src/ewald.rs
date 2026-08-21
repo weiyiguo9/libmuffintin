@@ -52,7 +52,9 @@ pub struct EwaldConvergence {
 ///   e^{i q\cdot T}
 /// ```
 ///
-/// The $q+G=0$ term is omitted. This is a toy oracle, not SPEX `coulombmatrix`.
+/// The $q+G=0$ term is omitted. When a real-space image coincides with the
+/// source, the singular $1/r$ term is replaced by the regular Ewald self limit
+/// $-2\sqrt{\eta/\pi}$. This is a toy oracle, not SPEX `coulombmatrix`.
 pub fn ewald_point_kernel(
     cell: &Cell,
     reciprocal: &ReciprocalLattice,
@@ -100,6 +102,7 @@ pub fn ewald_point_kernel(
         .basis()
         .map(|vector| vector.map(|c| InverseBohr(c.get())));
     let fake = ReciprocalLattice::new(basis)?;
+    let mut self_correction = Complex64::default();
     for t in fake.enumerate(InverseBohr(real_cutoff.get()))? {
         let t_cart = t.cartesian.map(InverseBohr::get);
         let r = [
@@ -109,6 +112,10 @@ pub fn ewald_point_kernel(
         ];
         let dist = r.iter().map(|c| c * c).sum::<f64>().sqrt();
         if dist <= 1.0e-14 {
+            self_correction += plane_wave_phase(
+                q.cartesian,
+                [Bohr(t_cart[0]), Bohr(t_cart[1]), Bohr(t_cart[2])],
+            );
             continue;
         }
         let phase = plane_wave_phase(
@@ -117,6 +124,7 @@ pub fn ewald_point_kernel(
         );
         acc += phase * (erfc(eta.sqrt() * dist) / dist);
     }
+    acc -= self_correction * (2.0 * (eta / PI).sqrt());
 
     if crate::math::is_gamma(q.cartesian) {
         acc -= PI / (eta * vol);
@@ -162,9 +170,14 @@ pub fn converged_ewald_point_kernel(
     let mut real = vol.cbrt() * 2.0;
     let mut recip = 2.0 * PI / vol.cbrt();
     let mut previous = Complex64::default();
-    let max_steps = scan.max_steps.max(2);
     let tolerance = scan.tolerance;
-    for step in 0..max_steps {
+    if !tolerance.is_finite() || tolerance <= 0.0 {
+        return Err(CoulombError::InvalidEwaldTolerance(tolerance));
+    }
+    if scan.max_steps < 2 {
+        return Err(CoulombError::InvalidEwaldSteps(scan.max_steps));
+    }
+    for step in 0..scan.max_steps {
         real *= if step == 0 { 1.0 } else { 1.5 };
         recip *= if step == 0 { 1.0 } else { 1.5 };
         let value = ewald_point_kernel(
@@ -191,11 +204,11 @@ pub fn converged_ewald_point_kernel(
                     steps: step + 1,
                 });
             }
-            if step + 1 == max_steps {
+            if step + 1 == scan.max_steps {
                 return Err(CoulombError::EwaldNotConverged {
                     residual,
                     tolerance,
-                    steps: max_steps,
+                    steps: scan.max_steps,
                 });
             }
         }
@@ -204,6 +217,6 @@ pub fn converged_ewald_point_kernel(
     Err(CoulombError::EwaldNotConverged {
         residual: f64::INFINITY,
         tolerance,
-        steps: max_steps,
+        steps: scan.max_steps,
     })
 }

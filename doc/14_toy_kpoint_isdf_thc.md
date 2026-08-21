@@ -99,8 +99,9 @@ complex Gaussians with seed 19. This is candidate-oracle evidence, not a
 production Coulomb assembler. Production $V^q$ is
 [15](15_weinert_coulomb_metric.md): `assemble_sampled_coulomb` consumes
 `ThcResult.fits[iq].zeta` on the parent grid as `SampledAuxiliaryFunctions`
-(row-major $n_{\mathrm{grid}}\times n_\mu$, quadrature weights, region tags,
-and the exact `AuxiliaryLayout`). Interpolation *nodes* are not the
+(row-major $n_{\mathrm{grid}}\times n_\mu$, quadrature weights, exact
+`SampledPointSupport` labels, per-site radial meshes, and the exact
+`AuxiliaryLayout`). Interpolation *nodes* are not the
 production $\zeta$ functions; a weighted point-charge Gram is only the
 explicit toy Ewald oracle. M-J does not claim elementwise
 $V^{\mathrm{MPB}}=V^{\mathrm{THC}}$ when the spans differ.
