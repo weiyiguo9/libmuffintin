@@ -18,6 +18,7 @@ mod assemble;
 mod error;
 pub mod ewald;
 mod expansion;
+mod hartree;
 mod math;
 mod moments;
 mod operator;
@@ -32,6 +33,12 @@ pub use ewald::{
     ewald_point_kernel,
 };
 pub use expansion::{SampledAuxiliaryFunctions, SampledPointSupport};
+pub use hartree::{
+    ComplexHartree, HartreeError, HartreeGauge, InterstitialHartreePotential,
+    MuffinTinChargeDensity, MuffinTinHartreePotential, PeriodicChargeTreatment,
+    RawElectrostaticPotential, RawHartreePotential, RawNuclearPotential, WeinertChargeDensity,
+    WeinertHartreeSpec, solve_periodic_nuclear_potential, solve_weinert_hartree,
+};
 pub use math::weinert_gmat;
 pub use moments::{
     bessel_overlap, bessel_weinert_integral, multipole_moment, second_moment,
