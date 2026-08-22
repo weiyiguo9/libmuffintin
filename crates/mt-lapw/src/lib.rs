@@ -12,7 +12,9 @@ use libmuffintin_core::{
     Bohr, Hartree, InterstitialGeometry, InverseBohr, KineticOperatorConvention,
 };
 use libmuffintin_envelope::EnvelopeError;
-use libmuffintin_operators::{OperatorError, add_site_contributions};
+use libmuffintin_operators::{
+    OperatorError, add_site_contributions, add_spinor_site_contributions,
+};
 use libmuffintin_tensor::{Axis, TensorError};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
@@ -22,14 +24,16 @@ pub use libmuffintin_basis::BasisLayout as LapwBasisLayout;
 pub use libmuffintin_basis::{
     ApwBoundaryBasis, ApwMatch, ApwSiteAugmentation, ApwSiteGeometry, BasisBlock, BasisLayout,
     BasisSpec, CompiledBasis, LocalOrbitalLayout, PlaneWaveAugmentation, Provenance,
-    augmentation_coefficients, compile, match_apw_boundary,
+    SpinorApwMatch, SpinorBasisLayout, SpinorCompiledBasis, SpinorPlaneWaveAugmentation,
+    SpinorSiteLayout, augmentation_coefficients, compile, match_apw_boundary,
+    spinor_augmentation_coefficients,
 };
 pub use libmuffintin_envelope::{
     PlaneWave, PlaneWaveEnvelope, rayleigh_coefficient, site_translation_phase,
 };
 pub use libmuffintin_operators::{
     Collinear, EigenpairResidual, GeneralizedEigensolution, OperatorSet as LapwEigenproblem,
-    SiteOperatorBlocks, solve_generalized_hermitian,
+    SiteOperatorBlocks, SpinorSiteOperatorBlocks, solve_generalized_hermitian,
 };
 pub use libmuffintin_recipes::{LapwSiteInput, lapw};
 pub use libmuffintin_tensor::{ComplexTensor, DenseEigenvectors, DenseHermitianMatrix};
@@ -131,6 +135,37 @@ pub struct RadialOverlapBlock {
     pub udot_udot: f64,
 }
 
+/// One angular-channel boundary trace used by the SRA variational surface term.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SraSurfaceTrace {
+    pub value: Complex64,
+    /// Derivative along the outward normal of the muffin-tin sphere.
+    pub outward_derivative: Complex64,
+}
+
+/// Schlosser--Marcus surface correction for one normalized angular channel.
+///
+/// `interstitial` and `muffin_tin` traces are kept separate on each side of
+/// the matrix element. The factor is `-1/4` in this crate's Hartree convention
+/// (`T = -1/2 laplacian`); Kutepov's Appendix A writes `-1/2` in Rydberg
+/// units. A continuous value and derivative make the correction vanish.
+pub fn sra_schlosser_marcus_surface_correction(
+    radius: Bohr,
+    left_interstitial: SraSurfaceTrace,
+    left_muffin_tin: SraSurfaceTrace,
+    right_interstitial: SraSurfaceTrace,
+    right_muffin_tin: SraSurfaceTrace,
+) -> Result<Complex64, LapwError> {
+    if !radius.get().is_finite() || radius.get() <= 0.0 {
+        return Err(BasisError::InvalidRadius(radius.get()).into());
+    }
+    let bracket = left_muffin_tin.value.conj() * right_interstitial.outward_derivative
+        - left_muffin_tin.outward_derivative.conj() * right_interstitial.value
+        - left_interstitial.value.conj() * right_muffin_tin.outward_derivative
+        + left_interstitial.outward_derivative.conj() * right_muffin_tin.value;
+    Ok(-0.25 * radius.get().powi(2) * bracket)
+}
+
 /// Matrices and eigensolution for one spin channel.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SolvedLapwEigenproblem {
@@ -212,6 +247,86 @@ pub fn assemble_compiled(
         }
     }
     Ok(add_site_contributions(
+        &mut overlap,
+        &mut hamiltonian,
+        dimension,
+        compiled,
+        sites,
+    )?)
+}
+
+/// Assemble the first-variation SRA spinor problem from a typed spinor basis.
+///
+/// The interstitial has two Pauli components ordered as `spin * n_g + g`.
+/// Its overlap, kinetic energy, and collinear scalar potentials are lifted
+/// into equal-spin blocks. All spin mixing and large/small component physics
+/// inside muffin tins enters through the typed site projection; there is no
+/// interstitial small-component fallback.
+pub fn assemble_sra_spinor_compiled(
+    compiled: &SpinorCompiledBasis,
+    geometry: &InterstitialGeometry,
+    potentials: Collinear<&InterstitialPotential>,
+    sites: &[SpinorSiteOperatorBlocks],
+) -> Result<LapwEigenproblem, LapwError> {
+    let plane_waves = &compiled.plane_waves;
+    validate_plane_wave_norms(plane_waves)?;
+    if let Some(first) = plane_waves.first() {
+        if plane_waves.iter().any(|wave| wave.k != first.k) {
+            return Err(LapwError::MixedKPoints);
+        }
+    }
+    validate_spinor_compiled_geometry(compiled, geometry)?;
+    if sites.len() != geometry.spheres().len() {
+        return Err(OperatorError::SiteCount {
+            expected: geometry.spheres().len(),
+            actual: sites.len(),
+        }
+        .into());
+    }
+
+    let layout = &compiled.layout;
+    let dimension = layout.dimension();
+    let mut overlap = vec![Complex64::default(); dimension * dimension];
+    let mut hamiltonian = vec![Complex64::default(); dimension * dimension];
+    for spin in 0..2 {
+        let potential = if spin == 0 {
+            potentials.up
+        } else {
+            potentials.down
+        };
+        for i in 0..plane_waves.len() {
+            for j in i..plane_waves.len() {
+                let cartesian_difference = std::array::from_fn(|axis| {
+                    InverseBohr(
+                        plane_waves[i].g.cartesian[axis].get()
+                            - plane_waves[j].g.cartesian[axis].get(),
+                    )
+                });
+                let integer_difference = std::array::from_fn(|axis| {
+                    plane_waves[i].g.index[axis] - plane_waves[j].g.index[axis]
+                });
+                let theta = geometry
+                    .coefficient(cartesian_difference)
+                    .map_err(|error| LapwError::StepFunction(error.to_string()))?;
+                let kinetic = INTERSTITIAL_KINETIC.prefactor(plane_waves[i].q, plane_waves[j].q);
+                let left = layout
+                    .plane_wave_index(spin, i)
+                    .expect("loop bounds and Pauli spin are valid");
+                let right = layout
+                    .plane_wave_index(spin, j)
+                    .expect("loop bounds and Pauli spin are valid");
+                set_hermitian(&mut overlap, dimension, left, right, theta);
+                set_hermitian(
+                    &mut hamiltonian,
+                    dimension,
+                    left,
+                    right,
+                    theta * kinetic.get() + potential.coefficient(integer_difference),
+                );
+            }
+        }
+    }
+    Ok(add_spinor_site_contributions(
         &mut overlap,
         &mut hamiltonian,
         dimension,
@@ -395,6 +510,46 @@ fn validate_compiled_geometry(
     Ok(())
 }
 
+fn validate_spinor_compiled_geometry(
+    compiled: &SpinorCompiledBasis,
+    geometry: &InterstitialGeometry,
+) -> Result<(), LapwError> {
+    if compiled.site_geometry.len() != compiled.site_count() {
+        return Err(LapwError::CompiledSiteGeometryCount {
+            expected: compiled.site_count(),
+            actual: compiled.site_geometry.len(),
+        });
+    }
+    if compiled.site_geometry.len() != geometry.spheres().len() {
+        return Err(LapwError::SiteGeometryCount {
+            compiled: compiled.site_geometry.len(),
+            geometry: geometry.spheres().len(),
+        });
+    }
+    for (index, (site, sphere)) in compiled
+        .site_geometry
+        .iter()
+        .zip(geometry.spheres())
+        .enumerate()
+    {
+        if site.position != sphere.center {
+            return Err(LapwError::SitePositionMismatch {
+                site: index,
+                compiled: site.position,
+                geometry: sphere.center,
+            });
+        }
+        if site.radius != sphere.radius {
+            return Err(LapwError::SiteRadiusMismatch {
+                site: index,
+                compiled: site.radius,
+                geometry: sphere.radius,
+            });
+        }
+    }
+    Ok(())
+}
+
 fn validate_plane_wave_norms(plane_waves: &[PlaneWave]) -> Result<(), LapwError> {
     if let Some(q_norm) = plane_waves
         .iter()
@@ -420,7 +575,7 @@ fn set_hermitian(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libmuffintin_core::{Bohr, ReciprocalLattice, Sphere, VolumeBohr3};
+    use libmuffintin_core::{Bohr, Kappa, ReciprocalLattice, Sphere, VolumeBohr3};
     use libmuffintin_radial::BoundaryData;
     use num_complex::Complex64;
 
@@ -956,6 +1111,183 @@ mod tests {
         assert_eq!(
             compare_band_references(&calculated, &[], None),
             Err(LapwError::MissingReferenceData)
+        );
+    }
+
+    #[test]
+    fn sra_surface_term_is_hermitian_and_vanishes_for_continuous_traces() {
+        let trace = SraSurfaceTrace {
+            value: Complex64::new(0.8, -0.2),
+            outward_derivative: Complex64::new(-0.3, 0.4),
+        };
+        assert_eq!(
+            sra_schlosser_marcus_surface_correction(Bohr(1.7), trace, trace, trace, trace,)
+                .unwrap(),
+            Complex64::default()
+        );
+
+        let li = SraSurfaceTrace {
+            value: Complex64::new(0.3, 0.1),
+            outward_derivative: Complex64::new(-0.2, 0.4),
+        };
+        let lt = SraSurfaceTrace {
+            value: Complex64::new(0.7, -0.3),
+            outward_derivative: Complex64::new(0.1, 0.2),
+        };
+        let ri = SraSurfaceTrace {
+            value: Complex64::new(-0.4, 0.2),
+            outward_derivative: Complex64::new(0.6, -0.1),
+        };
+        let rt = SraSurfaceTrace {
+            value: Complex64::new(0.2, 0.5),
+            outward_derivative: Complex64::new(-0.3, -0.2),
+        };
+        let left_right =
+            sra_schlosser_marcus_surface_correction(Bohr(2.0), li, lt, ri, rt).unwrap();
+        let right_left =
+            sra_schlosser_marcus_surface_correction(Bohr(2.0), ri, rt, li, lt).unwrap();
+        assert!((left_right - right_left.conj()).norm() < 2.0e-15);
+    }
+
+    #[test]
+    fn sra_interstitial_is_two_spin_slow_blocks() {
+        let waves = waves();
+        let n_g = waves.len();
+        let compiled = SpinorCompiledBasis {
+            layout: SpinorBasisLayout::new(n_g, Vec::new()),
+            plane_waves: waves,
+            site_augmentations: Vec::new(),
+            site_geometry: Vec::new(),
+            provenance: Provenance::default(),
+        };
+        let geometry = InterstitialGeometry::new(VolumeBohr3(100.0), Vec::new()).unwrap();
+        let up = InterstitialPotential::default();
+        let down = InterstitialPotential::new([([0; 3], Complex64::new(0.25, 0.0))]).unwrap();
+        let problem = assemble_sra_spinor_compiled(
+            &compiled,
+            &geometry,
+            Collinear {
+                up: &up,
+                down: &down,
+            },
+            &[],
+        )
+        .unwrap();
+        for i in 0..n_g {
+            for j in 0..n_g {
+                let up_i = compiled.layout.plane_wave_index(0, i).unwrap();
+                let up_j = compiled.layout.plane_wave_index(0, j).unwrap();
+                let down_i = compiled.layout.plane_wave_index(1, i).unwrap();
+                let down_j = compiled.layout.plane_wave_index(1, j).unwrap();
+                assert_eq!(
+                    problem.overlap.at(up_i, up_j),
+                    problem.overlap.at(down_i, down_j)
+                );
+                assert_eq!(problem.overlap.at(up_i, down_j), Complex64::default());
+                assert_eq!(problem.hamiltonian.at(up_i, down_j), Complex64::default());
+                let expected_shift = if i == j { 0.25 } else { 0.0 };
+                assert!(
+                    (problem.hamiltonian.at(down_i, down_j)
+                        - problem.hamiltonian.at(up_i, up_j)
+                        - expected_shift)
+                        .norm()
+                        < 2.0e-14
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn typed_spinor_site_projection_can_mix_pauli_blocks_and_remains_hermitian() {
+        let wave = waves()[0];
+        let position = [Bohr(0.0); 3];
+        let radius = Bohr(0.8);
+        let kappa = Kappa::new(-1).unwrap();
+        let channels = kappa.channels().collect::<Vec<_>>();
+        let zero = [Complex64::default(); 2];
+        let up = [Complex64::new(0.4, -0.1), Complex64::new(0.1, 0.0)];
+        let down = [Complex64::new(-0.2, 0.3), Complex64::new(0.0, 0.05)];
+        let compiled = SpinorCompiledBasis {
+            layout: SpinorBasisLayout::new(1, vec![SpinorSiteLayout::default()]),
+            plane_waves: vec![wave],
+            site_augmentations: vec![vec![SpinorPlaneWaveAugmentation {
+                channels,
+                coefficients: [vec![zero, up], vec![down, zero]],
+            }]],
+            site_geometry: vec![ApwSiteGeometry { position, radius }],
+            provenance: Provenance::default(),
+        };
+        let geometry = InterstitialGeometry::new(
+            VolumeBohr3(100.0),
+            vec![Sphere {
+                center: position,
+                radius,
+            }],
+        )
+        .unwrap();
+        let overlap = site_h(4, |row, column| {
+            Complex64::new(if row == column { 0.2 } else { 0.0 }, 0.0)
+        });
+        let hamiltonian = site_h(4, |row, column| match (row, column) {
+            (0, 0) | (2, 2) => Complex64::new(0.7, 0.0),
+            (1, 1) | (3, 3) => Complex64::new(0.4, 0.0),
+            (0, 2) => Complex64::new(0.1, 0.2),
+            _ => Complex64::default(),
+        });
+        let site = SpinorSiteOperatorBlocks {
+            channels: kappa.channels().collect(),
+            overlap,
+            hamiltonian,
+        };
+        let potential = InterstitialPotential::default();
+        let problem = assemble_sra_spinor_compiled(
+            &compiled,
+            &geometry,
+            Collinear {
+                up: &potential,
+                down: &potential,
+            },
+            std::slice::from_ref(&site),
+        )
+        .unwrap();
+        assert!(problem.hamiltonian.at(0, 1).norm() > 1.0e-6);
+        for i in 0..problem.hamiltonian.dimension() {
+            for j in 0..problem.hamiltonian.dimension() {
+                assert!(
+                    (problem.hamiltonian.at(i, j) - problem.hamiltonian.at(j, i).conj()).norm()
+                        < 2.0e-14
+                );
+            }
+        }
+        let solution =
+            solve_generalized_hermitian(&problem.hamiltonian, &problem.overlap, 1.0e-12).unwrap();
+        assert_eq!(solution.retained_dimension, 2);
+        assert!(
+            solution
+                .residuals
+                .iter()
+                .all(|residual| residual.absolute < 1.0e-11)
+        );
+
+        let wrong_channels = SpinorSiteOperatorBlocks {
+            channels: Kappa::new(1).unwrap().channels().collect(),
+            overlap: site.overlap.clone(),
+            hamiltonian: site.hamiltonian.clone(),
+        };
+        assert_eq!(
+            assemble_sra_spinor_compiled(
+                &compiled,
+                &geometry,
+                Collinear {
+                    up: &potential,
+                    down: &potential,
+                },
+                &[wrong_channels],
+            ),
+            Err(LapwError::Operator(OperatorError::SpinorChannelLayout {
+                site: 0,
+                plane_wave: 0,
+            }))
         );
     }
 }

@@ -1,7 +1,10 @@
 use libmuffintin_core::ExponentialMesh;
 use thiserror::Error;
 
-use crate::core_dirac::CoreDiracSolution;
+use crate::core_dirac::{
+    CoreDiracSolution, DiracEnergyDerivative, DiracLocalOrbital, DiracSecondEnergyDerivative,
+    ValenceDiracSolution,
+};
 use crate::valence::{EnergyDerivative, LocalOrbital, RadialSolution};
 
 /// Borrowed large and optional physical-small radial components.
@@ -44,6 +47,46 @@ impl RadialComponents for LocalOrbital {
 }
 
 impl RadialComponents for CoreDiracSolution {
+    fn large_component(&self) -> &[f64] {
+        &self.p
+    }
+
+    fn small_component(&self) -> Option<&[f64]> {
+        Some(&self.q)
+    }
+}
+
+impl RadialComponents for ValenceDiracSolution {
+    fn large_component(&self) -> &[f64] {
+        &self.p
+    }
+
+    fn small_component(&self) -> Option<&[f64]> {
+        Some(&self.q)
+    }
+}
+
+impl RadialComponents for DiracEnergyDerivative {
+    fn large_component(&self) -> &[f64] {
+        &self.p
+    }
+
+    fn small_component(&self) -> Option<&[f64]> {
+        Some(&self.q)
+    }
+}
+
+impl RadialComponents for DiracSecondEnergyDerivative {
+    fn large_component(&self) -> &[f64] {
+        &self.p
+    }
+
+    fn small_component(&self) -> Option<&[f64]> {
+        Some(&self.q)
+    }
+}
+
+impl RadialComponents for DiracLocalOrbital {
     fn large_component(&self) -> &[f64] {
         &self.p
     }

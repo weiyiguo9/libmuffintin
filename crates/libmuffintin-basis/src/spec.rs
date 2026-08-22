@@ -2,7 +2,7 @@
 
 use crate::{
     ApwBoundaryBasis, BasisError, BasisLayout, LocalOrbitalLayout, PlaneWaveAugmentation,
-    augmentation_coefficients, match_apw_boundary,
+    SpinorBasisLayout, SpinorPlaneWaveAugmentation, augmentation_coefficients, match_apw_boundary,
 };
 use libmuffintin_core::{Bohr, VolumeBohr3};
 use libmuffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
@@ -77,6 +77,27 @@ pub struct CompiledBasis {
 }
 
 impl CompiledBasis {
+    pub fn site_count(&self) -> usize {
+        self.layout.site_count()
+    }
+}
+
+/// Host-side compiled spinor layout and SRA plane-wave augmentations.
+///
+/// `plane_waves` contains the spatial `G` list once.  The two global
+/// plane-wave columns for each entry are addressed by [`SpinorBasisLayout`]
+/// as `spin * n_g + g`.  `site_augmentations[site][g]` stores both Pauli-spin
+/// columns for direct construction of a site projection.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpinorCompiledBasis {
+    pub layout: SpinorBasisLayout,
+    pub plane_waves: Vec<PlaneWave>,
+    pub site_augmentations: Vec<Vec<SpinorPlaneWaveAugmentation>>,
+    pub site_geometry: Vec<ApwSiteGeometry>,
+    pub provenance: Provenance,
+}
+
+impl SpinorCompiledBasis {
     pub fn site_count(&self) -> usize {
         self.layout.site_count()
     }

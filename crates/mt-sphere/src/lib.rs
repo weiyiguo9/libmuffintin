@@ -2,13 +2,17 @@
 //!
 //! A [`SphereField`] stores radial expansion coefficients by `(L,M)`
 //! channel.  A [`SphereOrbital`] combines an angular channel with reduced
-//! large and optional small radial components.  [`matrix_element`] composes
-//! the Gaunt coefficients from `libmuffintin-core` with the radial quadrature from
+//! large and optional small radial components, while a [`SpinorSphereOrbital`]
+//! carries an explicit `(kappa,mu)` channel and separate `P` and `Q` radial
+//! components.  [`matrix_element`] and [`spinor_matrix_element`] compose the
+//! Gaunt coefficients from `libmuffintin-core` with the radial quadrature from
 //! `libmuffintin-radial`.
 
 #![forbid(unsafe_code)]
 
-use libmuffintin_core::{ExponentialMesh, Lm, gaunt, real_gaunt};
+use libmuffintin_core::{
+    ExponentialMesh, Lm, RelativisticChannel, gaunt, real_gaunt, spinor_gaunt,
+};
 use libmuffintin_radial::{
     RadialComponents, RadialIntegralError, RadialIntegralKernel, radial_integral,
 };
@@ -181,6 +185,50 @@ impl RadialComponents for SphereOrbital {
     }
 }
 
+/// A four-component spherical orbital with explicit spin-angular channel.
+///
+/// In the Dirac convention the angular factors are `Omega_kappa` for `P` and
+/// `Omega_-kappa` for `Q`.  Both reduced radial components are required and
+/// sampled on the same mesh.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpinorSphereOrbital {
+    channel: RelativisticChannel,
+    p: Vec<f64>,
+    q: Vec<f64>,
+}
+
+impl SpinorSphereOrbital {
+    /// Construct a spinor orbital with equally sized `P` and `Q` components.
+    pub fn new(
+        channel: RelativisticChannel,
+        p: Vec<f64>,
+        q: Vec<f64>,
+    ) -> Result<Self, SphereOrbitalError> {
+        if q.len() != p.len() {
+            return Err(SphereOrbitalError::SmallComponentLength {
+                expected: p.len(),
+                actual: q.len(),
+            });
+        }
+        Ok(Self { channel, p, q })
+    }
+
+    /// Validated `(kappa,mu)` spin-angular channel.
+    pub const fn channel(&self) -> RelativisticChannel {
+        self.channel
+    }
+
+    /// Reduced large radial component `P`.
+    pub fn p(&self) -> &[f64] {
+        &self.p
+    }
+
+    /// Physical reduced small radial component `Q`.
+    pub fn q(&self) -> &[f64] {
+        &self.q
+    }
+}
+
 /// Compose angular Gaunt factors and radial integrals for a sphere matrix element.
 ///
 /// The field and both orbitals must be sampled on `mesh`.  Complex-harmonic
@@ -234,6 +282,126 @@ pub fn matrix_element(
         result += Complex64::new(real, imaginary) * angular;
     }
     Ok(result)
+}
+
+/// Scalar-field matrix element between spherical Dirac spinors.
+///
+/// This evaluates
+/// `P_left P_right <Omega_kappa_left|V|Omega_kappa_right>` and
+/// `Q_left Q_right <Omega_-kappa_left|V|Omega_-kappa_right>` as two separate
+/// radial integrals.  In particular, it does not use the combined `PP + QQ`
+/// radial-integral path.  Non-diagonal `(kappa,mu)` angular blocks are allowed.
+pub fn spinor_matrix_element(
+    mesh: &ExponentialMesh,
+    left: &SpinorSphereOrbital,
+    field: &SphereField,
+    right: &SpinorSphereOrbital,
+) -> Result<Complex64, MatrixElementError> {
+    validate_spinor_orbital_length(mesh, left, Operand::Left)?;
+    validate_spinor_orbital_length(mesh, right, Operand::Right)?;
+    if let Some(actual) = field.sample_count {
+        if actual != mesh.len() {
+            return Err(MatrixElementError::FieldMeshLength {
+                expected: mesh.len(),
+                actual,
+            });
+        }
+    }
+
+    let mut result = Complex64::new(0.0, 0.0);
+    for (&channel, values) in &field.channels {
+        let large_angular =
+            spinor_matrix_gaunt(field.convention, left.channel, channel, right.channel);
+        let small_angular = spinor_matrix_gaunt(
+            field.convention,
+            left.channel.opposite_kappa(),
+            channel,
+            right.channel.opposite_kappa(),
+        );
+        if large_angular == Complex64::new(0.0, 0.0) && small_angular == Complex64::new(0.0, 0.0) {
+            continue;
+        }
+
+        let pp = spinor_component_integral(mesh, &left.p, &right.p, channel, values)?;
+        let qq = spinor_component_integral(mesh, &left.q, &right.q, channel, values)?;
+        result += large_angular * pp + small_angular * qq;
+    }
+    Ok(result)
+}
+
+fn spinor_matrix_gaunt(
+    convention: HarmonicConvention,
+    left: RelativisticChannel,
+    field: Lm,
+    right: RelativisticChannel,
+) -> Complex64 {
+    if convention == HarmonicConvention::Complex || field.m == 0 {
+        return Complex64::new(spinor_gaunt(left, field, right), 0.0);
+    }
+
+    let q = i32::try_from(field.m.unsigned_abs()).expect("validated field m fits i32");
+    let positive = spinor_gaunt(
+        left,
+        Lm::new(field.l, q).expect("absolute validated field m remains valid"),
+        right,
+    );
+    let negative = spinor_gaunt(
+        left,
+        Lm::new(field.l, -q).expect("negated validated field m remains valid"),
+        right,
+    );
+    let inv_sqrt_two = 1.0 / 2.0_f64.sqrt();
+    if field.m > 0 {
+        Complex64::new(
+            (magnetic_phase(q) * positive + negative) * inv_sqrt_two,
+            0.0,
+        )
+    } else {
+        Complex64::new(
+            0.0,
+            (positive - magnetic_phase(q) * negative) * inv_sqrt_two,
+        )
+    }
+}
+
+fn spinor_component_integral(
+    mesh: &ExponentialMesh,
+    left: &[f64],
+    right: &[f64],
+    channel: Lm,
+    values: &[Complex64],
+) -> Result<Complex64, MatrixElementError> {
+    let mut real_integrand = Vec::with_capacity(mesh.len());
+    let mut imaginary_integrand = Vec::with_capacity(mesh.len());
+    for (index, ((&left_value, &right_value), &field_value)) in
+        left.iter().zip(right).zip(values).enumerate()
+    {
+        let product = left_value * right_value;
+        let real = product * field_value.re;
+        let imaginary = product * field_value.im;
+        if !real.is_finite() || !imaginary.is_finite() {
+            return Err(MatrixElementError::RadialIntegral {
+                l: channel.l,
+                m: channel.m,
+                source: RadialIntegralError::NonFiniteProduct { index },
+            });
+        }
+        real_integrand.push(real);
+        imaginary_integrand.push(imaginary);
+    }
+
+    let integrate = |integrand: &[f64]| {
+        mesh.integrate(integrand)
+            .map_err(|error| MatrixElementError::RadialIntegral {
+                l: channel.l,
+                m: channel.m,
+                source: RadialIntegralError::Quadrature(error.to_string()),
+            })
+    };
+    Ok(Complex64::new(
+        integrate(&real_integrand)?,
+        integrate(&imaginary_integrand)?,
+    ))
 }
 
 fn complex_matrix_gaunt(left: Lm, field: Lm, right: Lm) -> f64 {
@@ -295,6 +463,31 @@ fn validate_orbital_length(
                 actual: small.len(),
             });
         }
+    }
+    Ok(())
+}
+
+fn validate_spinor_orbital_length(
+    mesh: &ExponentialMesh,
+    orbital: &SpinorSphereOrbital,
+    operand: Operand,
+) -> Result<(), MatrixElementError> {
+    let expected = mesh.len();
+    if orbital.p.len() != expected {
+        return Err(MatrixElementError::OrbitalMeshLength {
+            operand,
+            component: Component::Large,
+            expected,
+            actual: orbital.p.len(),
+        });
+    }
+    if orbital.q.len() != expected {
+        return Err(MatrixElementError::OrbitalMeshLength {
+            operand,
+            component: Component::Small,
+            expected,
+            actual: orbital.q.len(),
+        });
     }
     Ok(())
 }

@@ -4,12 +4,14 @@
 
 mod assemble;
 mod eigensolve;
+mod spinor;
 
 pub use assemble::{OperatorSet, SiteOperatorBlocks, add_site_contributions};
 pub use eigensolve::{
     Collinear, EigenpairResidual, GeneralizedEigensolution, RealSymmetricEigensolution,
     solve_generalized_hermitian, solve_real_symmetric,
 };
+pub use spinor::{SpinorSiteOperatorBlocks, add_spinor_site_contributions};
 
 use libmuffintin_tensor::TensorError;
 use thiserror::Error;
@@ -25,12 +27,16 @@ pub enum OperatorError {
     BasisPlaneWaveCount { expected: usize, actual: usize },
     #[error("basis layout has {actual} sites, expected {expected}")]
     BasisSiteCount { expected: usize, actual: usize },
+    #[error("spinor basis layout has {actual} spatial plane waves, expected {expected}")]
+    SpinorBasisPlaneWaveCount { expected: usize, actual: usize },
     #[error("site plane wave {plane_wave} has {actual} lm channels, expected {expected}")]
     ChannelCount {
         plane_wave: usize,
         expected: usize,
         actual: usize,
     },
+    #[error("site {site} plane wave {plane_wave} has a different spinor channel layout")]
+    SpinorChannelLayout { site: usize, plane_wave: usize },
     #[error("site {site} {matrix} block has dimension {actual}, expected {expected}")]
     SiteBlockDimension {
         site: usize,

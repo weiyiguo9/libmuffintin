@@ -7,10 +7,10 @@
 
 use std::borrow::Borrow;
 
-use libmuffintin_core::{Bohr, ExponentialMesh, Hartree};
+use libmuffintin_core::{Bohr, DiracAngularContract, ExponentialMesh, Hartree, Kappa};
 use thiserror::Error;
 
-use crate::valence::SPEX_SPEED_OF_LIGHT;
+use crate::valence::{BoundaryData, LocalOrbitalCoefficients, SPEX_SPEED_OF_LIGHT};
 
 const C_SQUARED: f64 = SPEX_SPEED_OF_LIGHT * SPEX_SPEED_OF_LIGHT;
 
@@ -19,115 +19,8 @@ const C_SQUARED: f64 = SPEX_SPEED_OF_LIGHT * SPEX_SPEED_OF_LIGHT;
 pub enum RelativisticRole {
     /// A normalizable bound core state on an extended radial domain.
     Core,
-    /// The reserved (not yet implemented) four-component valence basis.
+    /// A regular fixed-energy four-component valence radial basis.
     Valence,
-}
-
-/// A nonzero Dirac spin-angular quantum number.
-///
-/// `kappa = -(l + 1)` labels `j = l + 1/2`, while `kappa = l` labels
-/// `j = l - 1/2`.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[repr(transparent)]
-pub struct Kappa(i32);
-
-impl Kappa {
-    /// Construct a direct Dirac `kappa` label.
-    pub fn new(value: i32) -> Result<Self, KappaError> {
-        match value {
-            0 => Err(KappaError::Zero),
-            i32::MIN => Err(KappaError::OutOfRange(value)),
-            _ => Ok(Self(value)),
-        }
-    }
-
-    /// Return the signed integer label.
-    pub const fn get(self) -> i32 {
-        self.0
-    }
-
-    /// Orbital angular momentum of the large component `P`.
-    pub const fn orbital_angular_momentum(self) -> u32 {
-        if self.0 < 0 {
-            self.0.unsigned_abs() - 1
-        } else {
-            self.0 as u32
-        }
-    }
-
-    /// Short alias for [`Self::orbital_angular_momentum`].
-    pub const fn l(self) -> u32 {
-        self.orbital_angular_momentum()
-    }
-
-    /// Orbital angular momentum of the small component `Q`.
-    pub const fn small_component_angular_momentum(self) -> u32 {
-        if self.0 < 0 {
-            self.0.unsigned_abs()
-        } else {
-            self.0 as u32 - 1
-        }
-    }
-
-    /// `2j`, represented exactly as an integer.
-    pub const fn twice_j(self) -> u32 {
-        2 * self.0.unsigned_abs() - 1
-    }
-
-    /// Total angular momentum `j`.
-    pub fn j(self) -> f64 {
-        f64::from(self.0.unsigned_abs()) - 0.5
-    }
-
-    /// Magnetic degeneracy `2j + 1 = 2 |kappa|`.
-    pub const fn degeneracy(self) -> u32 {
-        2 * self.0.unsigned_abs()
-    }
-
-    /// Materialize the complete angular contract for this channel.
-    pub const fn angular_contract(self) -> DiracAngularContract {
-        DiracAngularContract {
-            kappa: self,
-            large_l: self.orbital_angular_momentum(),
-            small_l: self.small_component_angular_momentum(),
-            twice_j: self.twice_j(),
-            degeneracy: self.degeneracy(),
-        }
-    }
-}
-
-impl TryFrom<i32> for Kappa {
-    type Error = KappaError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
-impl From<Kappa> for i32 {
-    fn from(value: Kappa) -> Self {
-        value.get()
-    }
-}
-
-/// Explicit mapping between `kappa` and both spinor spherical harmonics.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DiracAngularContract {
-    pub kappa: Kappa,
-    /// Orbital angular momentum multiplying `P` (`Omega_kappa`).
-    pub large_l: u32,
-    /// Orbital angular momentum multiplying `Q` (`Omega_-kappa`).
-    pub small_l: u32,
-    /// Twice the half-integer total angular momentum.
-    pub twice_j: u32,
-    /// Number of allowed `m_j` values.
-    pub degeneracy: u32,
-}
-
-impl From<Kappa> for DiracAngularContract {
-    fn from(kappa: Kappa) -> Self {
-        kappa.angular_contract()
-    }
 }
 
 /// Quantum numbers identifying a spherical bound-core channel.
@@ -140,10 +33,13 @@ pub struct CoreState {
 
 impl CoreState {
     /// Construct a state and require `n >= l + 1`.
-    pub fn new(n: u32, kappa: Kappa) -> Result<Self, KappaError> {
-        let minimum = kappa.l() + 1;
+    pub fn new(n: u32, kappa: Kappa) -> Result<Self, DiracError> {
+        let minimum = kappa.large_l() + 1;
         if n < minimum {
-            Err(KappaError::InvalidPrincipalQuantumNumber { n, l: kappa.l() })
+            Err(DiracError::InvalidPrincipalQuantumNumber {
+                n,
+                l: kappa.large_l(),
+            })
         } else {
             Ok(Self { n, kappa })
         }
@@ -151,7 +47,7 @@ impl CoreState {
 
     /// Expected nonrelativistic radial node count `n - l - 1`.
     pub const fn expected_nodes(self) -> u32 {
-        self.n - self.kappa.l() - 1
+        self.n - self.kappa.large_l() - 1
     }
 }
 
@@ -164,14 +60,14 @@ pub struct EnergyBracket {
 
 impl EnergyBracket {
     /// Construct a finite, increasing bracket.
-    pub fn new(lower: Hartree, upper: Hartree) -> Result<Self, KappaError> {
+    pub fn new(lower: Hartree, upper: Hartree) -> Result<Self, DiracError> {
         let bracket = Self { lower, upper };
         bracket.validate()?;
         Ok(bracket)
     }
 
     /// Convenience constructor from raw Hartree values.
-    pub fn from_values(lower: f64, upper: f64) -> Result<Self, KappaError> {
+    pub fn from_values(lower: f64, upper: f64) -> Result<Self, DiracError> {
         Self::new(Hartree(lower), Hartree(upper))
     }
 
@@ -180,12 +76,12 @@ impl EnergyBracket {
         (self.lower.get(), self.upper.get())
     }
 
-    fn validate(self) -> Result<(), KappaError> {
+    fn validate(self) -> Result<(), DiracError> {
         let (lower, upper) = self.values();
         if lower.is_finite() && upper.is_finite() && lower < upper {
             Ok(())
         } else {
-            Err(KappaError::InvalidEnergyBracket { lower, upper })
+            Err(DiracError::InvalidEnergyBracket { lower, upper })
         }
     }
 }
@@ -206,21 +102,36 @@ pub struct CoreDiracSpec {
     pub max_iterations: usize,
 }
 
-/// Input contract for the deliberately reserved four-component valence path.
+/// Input contract for the regular fixed-energy four-component valence path.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ValenceDiracSpec {
     pub kappa: Kappa,
     /// Rest-energy-subtracted trial energy in Hartree.
     pub energy: Hartree,
+    /// Speed of light in Hartree atomic units.
+    pub speed_of_light: f64,
 }
 
 impl ValenceDiracSpec {
-    pub fn new(kappa: Kappa, energy: Hartree) -> Result<Self, KappaError> {
+    pub fn new(kappa: Kappa, energy: Hartree) -> Result<Self, DiracError> {
         if energy.get().is_finite() {
-            Ok(Self { kappa, energy })
+            Ok(Self {
+                kappa,
+                energy,
+                speed_of_light: SPEX_SPEED_OF_LIGHT,
+            })
         } else {
-            Err(KappaError::NonFiniteEnergy(energy.get()))
+            Err(DiracError::NonFiniteEnergy(energy.get()))
         }
+    }
+
+    /// Override the default SPEX speed of light.
+    pub fn with_speed_of_light(mut self, speed_of_light: f64) -> Result<Self, DiracError> {
+        if !speed_of_light.is_finite() || speed_of_light <= 0.0 {
+            return Err(DiracError::InvalidSpeedOfLight(speed_of_light));
+        }
+        self.speed_of_light = speed_of_light;
+        Ok(self)
     }
 }
 
@@ -277,14 +188,176 @@ pub struct CoreDiracSolution {
     pub matching_residual: f64,
 }
 
-/// Reserved result type for a future four-component valence implementation.
+/// Exact first-order trace of a physical reduced Dirac radial spinor.
+///
+/// The derivatives are evaluated from the Dirac equations at the same radius;
+/// they are not finite differences of sampled arrays.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DiracBoundaryTrace<T = f64> {
+    pub radius: Bohr,
+    pub p: T,
+    pub q: T,
+    pub p_derivative: T,
+    pub q_derivative: T,
+}
+
+impl DiracBoundaryTrace<f64> {
+    /// Project the large component onto the scalar/SRA LAPW boundary pair.
+    ///
+    /// With `U=P/r`, this returns `U(R)` and `dU/dr|_R`.
+    pub fn sra_large_component(self) -> BoundaryData {
+        let r = self.radius.get();
+        BoundaryData::new(self.p / r, self.p_derivative / r - self.p / (r * r), r)
+    }
+}
+
+/// Analytic fixed-potential energy derivative of a normalized valence spinor.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DiracEnergyDerivative {
+    /// `dP/dE` in Hartree⁻¹.
+    pub p: Vec<f64>,
+    /// Physical `dQ/dE` in Hartree⁻¹.
+    pub q: Vec<f64>,
+    pub boundary: DiracBoundaryTrace,
+    /// Norm after imposing the parallel-transport gauge.
+    pub norm_squared: f64,
+}
+
+/// Analytic fixed-potential second energy derivative of a normalized spinor.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DiracSecondEnergyDerivative {
+    /// `d²P/dE²` in Hartree⁻².
+    pub p: Vec<f64>,
+    /// Physical `d²Q/dE²` in Hartree⁻².
+    pub q: Vec<f64>,
+    pub boundary: DiracBoundaryTrace,
+    pub norm_squared: f64,
+}
+
+/// A normalized SRA-HDLO with both large-component boundary data zero.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DiracLocalOrbital {
+    pub energy: Hartree,
+    pub kappa: Kappa,
+    pub p: Vec<f64>,
+    /// Physical small reduced component; never the internal `cQ`.
+    pub q: Vec<f64>,
+    pub coefficients: LocalOrbitalCoefficients,
+    pub boundary: BoundaryData,
+}
+
+/// Normalized regular four-component valence radial solution at fixed energy.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValenceDiracSolution {
     pub role: RelativisticRole,
     pub kappa: Kappa,
+    pub angular: DiracAngularContract,
     pub energy: Hartree,
+    pub speed_of_light: f64,
+    /// Physical large reduced radial component `P`.
     pub p: Vec<f64>,
+    /// Physical small reduced radial component `Q` (never the internal `cQ`).
     pub q: Vec<f64>,
+    pub boundary: DiracBoundaryTrace,
+    pub energy_derivative: DiracEnergyDerivative,
+    pub second_energy_derivative: DiracSecondEnergyDerivative,
+    pub norm_total: f64,
+}
+
+impl ValenceDiracSolution {
+    pub fn large(&self) -> &[f64] {
+        &self.p
+    }
+
+    pub fn small(&self) -> &[f64] {
+        &self.q
+    }
+
+    /// The established scalar/SRA value-and-slope boundary adapter.
+    pub fn sra_boundary(&self) -> BoundaryData {
+        self.boundary.sra_large_component()
+    }
+
+    /// Build the confined SRA-HDLO from the normalized second derivative.
+    ///
+    /// Only the large component is used for the value-and-slope boundary
+    /// match.  The same coefficients are applied to both physical Dirac
+    /// components before normalizing the complete spinor.
+    pub fn sra_hdlo(&self, mesh: &ExponentialMesh) -> Result<DiracLocalOrbital, DiracError> {
+        let expected = self.p.len();
+        for actual in [
+            self.q.len(),
+            self.energy_derivative.p.len(),
+            self.energy_derivative.q.len(),
+            self.second_energy_derivative.p.len(),
+            self.second_energy_derivative.q.len(),
+            mesh.len(),
+        ] {
+            if actual != expected {
+                return Err(DiracError::ArrayLength { expected, actual });
+            }
+        }
+
+        let base = self.boundary.sra_large_component();
+        let first = self.energy_derivative.boundary.sra_large_component();
+        let raw = self.second_energy_derivative.boundary.sra_large_component();
+        let determinant = base.value * first.derivative - first.value * base.derivative;
+        let determinant_scale = (base.value.abs() * first.derivative.abs())
+            .max(first.value.abs() * base.derivative.abs())
+            .max(1.0);
+        if determinant.abs() <= 256.0 * f64::EPSILON * determinant_scale {
+            return Err(DiracError::SingularLocalOrbital { determinant });
+        }
+        let a = (-raw.value * first.derivative + first.value * raw.derivative) / determinant;
+        let b = (-base.value * raw.derivative + raw.value * base.derivative) / determinant;
+
+        let mut p: Vec<f64> = self
+            .second_energy_derivative
+            .p
+            .iter()
+            .zip(&self.p)
+            .zip(&self.energy_derivative.p)
+            .map(|((&raw, &base), &first)| raw + a * base + b * first)
+            .collect();
+        let mut q: Vec<f64> = self
+            .second_energy_derivative
+            .q
+            .iter()
+            .zip(&self.q)
+            .zip(&self.energy_derivative.q)
+            .map(|((&raw, &base), &first)| raw + a * base + b * first)
+            .collect();
+        let density: Vec<f64> = p
+            .iter()
+            .zip(&q)
+            .map(|(&large, &small)| large * large + small * small)
+            .collect();
+        let norm_squared = mesh
+            .integrate(&density)
+            .map_err(|error| DiracError::Quadrature(error.to_string()))?;
+        if !norm_squared.is_finite() || norm_squared <= f64::MIN_POSITIVE {
+            return Err(DiracError::SingularNorm { norm_squared });
+        }
+        let normalization_scale = norm_squared.sqrt().recip();
+        p.iter_mut().for_each(|value| *value *= normalization_scale);
+        q.iter_mut().for_each(|value| *value *= normalization_scale);
+        let value = normalization_scale * (raw.value + a * base.value + b * first.value);
+        let derivative =
+            normalization_scale * (raw.derivative + a * base.derivative + b * first.derivative);
+
+        Ok(DiracLocalOrbital {
+            energy: self.energy,
+            kappa: self.kappa,
+            p,
+            q,
+            coefficients: LocalOrbitalCoefficients {
+                a,
+                b,
+                normalization_scale,
+            },
+            boundary: BoundaryData::new(value, derivative, mesh.last().get()),
+        })
+    }
 }
 
 impl CoreDiracSolution {
@@ -301,11 +374,7 @@ impl CoreDiracSolution {
 
 /// Diagnosable input, shooting, and feature-boundary errors.
 #[derive(Clone, Debug, Error, PartialEq)]
-pub enum KappaError {
-    #[error("Dirac kappa cannot be zero")]
-    Zero,
-    #[error("Dirac kappa is outside the supported range: {0}")]
-    OutOfRange(i32),
+pub enum DiracError {
     #[error("principal quantum number n={n} is invalid for l={l}")]
     InvalidPrincipalQuantumNumber { n: u32, l: u32 },
     #[error("energy bracket is invalid: [{lower}, {upper}] Ha")]
@@ -316,6 +385,10 @@ pub enum KappaError {
     NonFinitePotential { index: usize, value: f64 },
     #[error("energy is not finite: {0}")]
     NonFiniteEnergy(f64),
+    #[error("speed of light must be finite and positive, got {0}")]
+    InvalidSpeedOfLight(f64),
+    #[error("radial array has {actual} samples, but expected {expected}")]
+    ArrayLength { expected: usize, actual: usize },
     #[error("bound-core shooting requires an outward positive radial mesh")]
     InvalidMeshDirection,
     #[error("muffin-tin radius {radius} bohr is not strictly inside mesh [{first}, {last}]")]
@@ -326,6 +399,8 @@ pub enum KappaError {
     NonCoulombicOrigin(f64),
     #[error("point-Coulomb origin is supercritical: kappa^2-(Z/c)^2={radicand}")]
     SupercriticalOrigin { radicand: f64 },
+    #[error("Dirac mass factor at index {index} is non-positive or non-finite: {mass}")]
+    InvalidRelativisticMass { index: usize, mass: f64 },
     #[error("outer boundary does not support exponential decay: V-E={delta} Ha")]
     NonDecayingOuterBoundary { delta: f64 },
     #[error("radial integration overflowed at mesh index {index}")]
@@ -353,10 +428,10 @@ pub enum KappaError {
     NodeCountMismatch { expected: u32, actual: u32 },
     #[error("solution norm is singular or non-finite: {norm_squared}")]
     SingularNorm { norm_squared: f64 },
+    #[error("Dirac local-orbital boundary system is singular (determinant {determinant})")]
+    SingularLocalOrbital { determinant: f64 },
     #[error("mesh quadrature failed: {0}")]
     Quadrature(String),
-    #[error("four-component {role:?} radial solving is not supported")]
-    Unsupported { role: RelativisticRole },
 }
 
 /// Solve one normalizable spherical four-component Dirac core state.
@@ -364,12 +439,12 @@ pub enum KappaError {
 /// `potential` is the total physical spherical potential `V(r)` in Hartree
 /// on every point of the extended positive `mesh`. The energy bracket must
 /// isolate the requested root; a converged root with a different radial node
-/// count is rejected with [`KappaError::NodeCountMismatch`].
+/// count is rejected with [`DiracError::NodeCountMismatch`].
 pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
     mesh: &ExponentialMesh,
     potential: &[f64],
     spec: S,
-) -> Result<CoreDiracSolution, KappaError> {
+) -> Result<CoreDiracSolution, DiracError> {
     let spec = spec.borrow();
     validate_inputs(mesh, potential, spec)?;
 
@@ -383,7 +458,7 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
         return assemble_solution(mesh, potential, spec, upper, upper_shot.match_index);
     }
     if lower_shot.residual.signum() == upper_shot.residual.signum() {
-        return Err(KappaError::RootNotBracketed {
+        return Err(DiracError::RootNotBracketed {
             lower,
             upper,
             f_lower: lower_shot.residual,
@@ -407,22 +482,323 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
         }
     }
 
-    Err(KappaError::RootDidNotConverge {
+    Err(DiracError::RootDidNotConverge {
         iterations: spec.max_iterations,
     })
 }
 
-/// Reserved four-component valence entry point.
+/// Integrate the regular spherical Dirac solution outward at fixed real energy.
 ///
-/// This deliberately never falls back to the scalar Koelling--Harmon solver.
+/// The potential is held fixed when differentiating with respect to energy.
+/// Both the solution and its analytic first energy derivative are normalized,
+/// with the phase fixed by positive `P` at the first mesh point and the
+/// derivative in the parallel-transport gauge `⟨R|Ṙ⟩ = 0`.
 pub fn solve_valence_dirac<S: Borrow<ValenceDiracSpec>>(
-    _mesh: &ExponentialMesh,
-    _potential: &[f64],
-    _spec: S,
-) -> Result<ValenceDiracSolution, KappaError> {
-    Err(KappaError::Unsupported {
+    mesh: &ExponentialMesh,
+    potential: &[f64],
+    spec: S,
+) -> Result<ValenceDiracSolution, DiracError> {
+    let spec = spec.borrow();
+    validate_dirac_potential(mesh, potential)?;
+    let energy = spec.energy.get();
+    if !energy.is_finite() {
+        return Err(DiracError::NonFiniteEnergy(energy));
+    }
+    let speed_of_light = spec.speed_of_light;
+    if !speed_of_light.is_finite() || speed_of_light <= 0.0 {
+        return Err(DiracError::InvalidSpeedOfLight(speed_of_light));
+    }
+    let c_squared = speed_of_light * speed_of_light;
+    for (index, &value) in potential.iter().enumerate() {
+        let mass = 2.0 + (energy - value) / c_squared;
+        if !mass.is_finite() || mass <= 0.0 {
+            return Err(DiracError::InvalidRelativisticMass { index, mass });
+        }
+    }
+
+    let n = mesh.len();
+    let mut p = vec![0.0; n];
+    let mut q_hat = vec![0.0; n];
+    let mut p_dot = vec![0.0; n];
+    let mut q_hat_dot = vec![0.0; n];
+    let mut p_second = vec![0.0; n];
+    let mut q_hat_second = vec![0.0; n];
+    let initial =
+        regular_valence_initial_state(mesh, potential, spec.kappa, energy, speed_of_light)?;
+    let [p0, q0, p_dot0, q_dot0, p_second0, q_second0] = initial;
+    p[0] = p0;
+    q_hat[0] = q0;
+    p_dot[0] = p_dot0;
+    q_hat_dot[0] = q_dot0;
+    p_second[0] = p_second0;
+    q_hat_second[0] = q_second0;
+
+    let kappa = f64::from(spec.kappa.get());
+    for i in 0..n - 1 {
+        let next = rk4_energy_derivatives_interval(
+            mesh.radii()[i].get(),
+            mesh.radii()[i + 1].get(),
+            potential[i],
+            potential[i + 1],
+            [
+                p[i],
+                q_hat[i],
+                p_dot[i],
+                q_hat_dot[i],
+                p_second[i],
+                q_hat_second[i],
+            ],
+            kappa,
+            energy,
+            c_squared,
+        );
+        ensure_finite_state(next[0], next[1], i + 1)?;
+        ensure_finite_state(next[2], next[3], i + 1)?;
+        ensure_finite_state(next[4], next[5], i + 1)?;
+        p[i + 1] = next[0];
+        q_hat[i + 1] = next[1];
+        p_dot[i + 1] = next[2];
+        q_hat_dot[i + 1] = next[3];
+        p_second[i + 1] = next[4];
+        q_hat_second[i + 1] = next[5];
+    }
+
+    let density: Vec<f64> = p
+        .iter()
+        .zip(&q_hat)
+        .map(|(&large, &small)| large * large + small * small / c_squared)
+        .collect();
+    let norm_squared = mesh
+        .integrate(&density)
+        .map_err(|error| DiracError::Quadrature(error.to_string()))?;
+    if !norm_squared.is_finite() || norm_squared <= f64::MIN_POSITIVE {
+        return Err(DiracError::SingularNorm { norm_squared });
+    }
+    let cross_density: Vec<f64> = p
+        .iter()
+        .zip(&q_hat)
+        .zip(&p_dot)
+        .zip(&q_hat_dot)
+        .map(|(((&large, &small), &large_dot), &small_dot)| {
+            large * large_dot + small * small_dot / c_squared
+        })
+        .collect();
+    let raw_cross = mesh
+        .integrate(&cross_density)
+        .map_err(|error| DiracError::Quadrature(error.to_string()))?;
+    let first_norm_density: Vec<f64> = p_dot
+        .iter()
+        .zip(&q_hat_dot)
+        .map(|(&large, &small)| large * large + small * small / c_squared)
+        .collect();
+    let solution_second_density: Vec<f64> = p
+        .iter()
+        .zip(&q_hat)
+        .zip(&p_second)
+        .zip(&q_hat_second)
+        .map(|(((&large, &small), &large_second), &small_second)| {
+            large * large_second + small * small_second / c_squared
+        })
+        .collect();
+    let d = mesh
+        .integrate(&first_norm_density)
+        .map_err(|error| DiracError::Quadrature(error.to_string()))?
+        + mesh
+            .integrate(&solution_second_density)
+            .map_err(|error| DiracError::Quadrature(error.to_string()))?;
+    let a = raw_cross / norm_squared;
+    let scale = norm_squared.sqrt().recip();
+    let second_solution_coefficient = 3.0 * a * a - d / norm_squared;
+    for i in 0..n {
+        let raw_p = p[i];
+        let raw_q = q_hat[i];
+        let raw_p_dot = p_dot[i];
+        let raw_q_dot = q_hat_dot[i];
+        p[i] = scale * raw_p;
+        q_hat[i] = scale * raw_q;
+        p_dot[i] = scale * (raw_p_dot - a * raw_p);
+        q_hat_dot[i] = scale * (raw_q_dot - a * raw_q);
+        p_second[i] =
+            scale * (p_second[i] - 2.0 * a * raw_p_dot + second_solution_coefficient * raw_p);
+        q_hat_second[i] =
+            scale * (q_hat_second[i] - 2.0 * a * raw_q_dot + second_solution_coefficient * raw_q);
+    }
+
+    let q: Vec<f64> = q_hat.iter().map(|&value| value / speed_of_light).collect();
+    let q_dot: Vec<f64> = q_hat_dot
+        .iter()
+        .map(|&value| value / speed_of_light)
+        .collect();
+    let q_second: Vec<f64> = q_hat_second
+        .iter()
+        .map(|&value| value / speed_of_light)
+        .collect();
+    let radius = mesh.last().get();
+    let potential_boundary = potential[n - 1];
+    let (p_prime, q_hat_prime) = dirac_rhs(
+        radius,
+        potential_boundary,
+        p[n - 1],
+        q_hat[n - 1],
+        kappa,
+        energy,
+        c_squared,
+    );
+    let derivatives = dirac_energy_derivatives_rhs(
+        radius,
+        potential_boundary,
+        [
+            p[n - 1],
+            q_hat[n - 1],
+            p_dot[n - 1],
+            q_hat_dot[n - 1],
+            p_second[n - 1],
+            q_hat_second[n - 1],
+        ],
+        kappa,
+        energy,
+        c_squared,
+    );
+    let [
+        p_dot_prime,
+        q_hat_dot_prime,
+        p_second_prime,
+        q_hat_second_prime,
+    ] = derivatives;
+    let boundary = DiracBoundaryTrace {
+        radius: mesh.last(),
+        p: p[n - 1],
+        q: q[n - 1],
+        p_derivative: p_prime,
+        q_derivative: q_hat_prime / speed_of_light,
+    };
+    let derivative_boundary = DiracBoundaryTrace {
+        radius: mesh.last(),
+        p: p_dot[n - 1],
+        q: q_dot[n - 1],
+        p_derivative: p_dot_prime,
+        q_derivative: q_hat_dot_prime / speed_of_light,
+    };
+    let second_derivative_boundary = DiracBoundaryTrace {
+        radius: mesh.last(),
+        p: p_second[n - 1],
+        q: q_second[n - 1],
+        p_derivative: p_second_prime,
+        q_derivative: q_hat_second_prime / speed_of_light,
+    };
+    let derivative_density: Vec<f64> = p_dot
+        .iter()
+        .zip(&q_dot)
+        .map(|(&large, &small)| large * large + small * small)
+        .collect();
+    let derivative_norm_squared = mesh
+        .integrate(&derivative_density)
+        .map_err(|error| DiracError::Quadrature(error.to_string()))?;
+    let second_derivative_density: Vec<f64> = p_second
+        .iter()
+        .zip(&q_second)
+        .map(|(&large, &small)| large * large + small * small)
+        .collect();
+    let second_derivative_norm_squared = mesh
+        .integrate(&second_derivative_density)
+        .map_err(|error| DiracError::Quadrature(error.to_string()))?;
+    let physical_density: Vec<f64> = p
+        .iter()
+        .zip(&q)
+        .map(|(&large, &small)| large * large + small * small)
+        .collect();
+    let norm_total = mesh
+        .integrate(&physical_density)
+        .map_err(|error| DiracError::Quadrature(error.to_string()))?;
+
+    Ok(ValenceDiracSolution {
         role: RelativisticRole::Valence,
+        kappa: spec.kappa,
+        angular: spec.kappa.angular_contract(),
+        energy: spec.energy,
+        speed_of_light,
+        p,
+        q,
+        boundary,
+        energy_derivative: DiracEnergyDerivative {
+            p: p_dot,
+            q: q_dot,
+            boundary: derivative_boundary,
+            norm_squared: derivative_norm_squared,
+        },
+        second_energy_derivative: DiracSecondEnergyDerivative {
+            p: p_second,
+            q: q_second,
+            boundary: second_derivative_boundary,
+            norm_squared: second_derivative_norm_squared,
+        },
+        norm_total,
     })
+}
+
+fn validate_dirac_potential(mesh: &ExponentialMesh, potential: &[f64]) -> Result<(), DiracError> {
+    if potential.len() != mesh.len() {
+        return Err(DiracError::PotentialLength {
+            expected: mesh.len(),
+            actual: potential.len(),
+        });
+    }
+    if let Some((index, &value)) = potential
+        .iter()
+        .enumerate()
+        .find(|(_, value)| !value.is_finite())
+    {
+        return Err(DiracError::NonFinitePotential { index, value });
+    }
+    if mesh.increment() <= 0.0 {
+        return Err(DiracError::InvalidMeshDirection);
+    }
+    Ok(())
+}
+
+fn regular_valence_initial_state(
+    mesh: &ExponentialMesh,
+    potential: &[f64],
+    kappa: Kappa,
+    energy: f64,
+    speed_of_light: f64,
+) -> Result<[f64; 6], DiracError> {
+    let sample_count = mesh.len().min(4);
+    let z = mesh.radii()[..sample_count]
+        .iter()
+        .zip(&potential[..sample_count])
+        .map(|(r, &v)| -r.get() * v)
+        .sum::<f64>()
+        / sample_count as f64;
+    let r = mesh.first().get();
+    let k = f64::from(kappa.get());
+    let c_squared = speed_of_light * speed_of_light;
+    let mass = 2.0 + (energy - potential[0]) / c_squared;
+    debug_assert!(mass.is_finite() && mass > 0.0);
+    let p = 1.0;
+    let p_dot = 0.0;
+    if z > 1.0e-8 {
+        let radicand = k * k - (z / speed_of_light).powi(2);
+        if !radicand.is_finite() || radicand <= 0.0 {
+            return Err(DiracError::SupercriticalOrigin { radicand });
+        }
+        let gamma = radicand.sqrt();
+        let q_hat = p * (gamma + k) / (mass * r);
+        let q_hat_dot = -q_hat / (mass * c_squared);
+        let q_hat_second = 2.0 * q_hat / (mass * mass * c_squared * c_squared);
+        Ok([p, q_hat, p_dot, q_hat_dot, 0.0, q_hat_second])
+    } else if k > 0.0 {
+        let q_hat = p * (2.0 * k + 1.0) / (mass * r);
+        let q_hat_dot = -q_hat / (mass * c_squared);
+        let q_hat_second = 2.0 * q_hat / (mass * mass * c_squared * c_squared);
+        Ok([p, q_hat, p_dot, q_hat_dot, 0.0, q_hat_second])
+    } else {
+        let l = f64::from(kappa.large_l());
+        let denominator = 2.0 * l + 3.0;
+        let q_hat = (potential[0] - energy) * p * r / denominator;
+        let q_hat_dot = -p * r / denominator;
+        Ok([p, q_hat, p_dot, q_hat_dot, 0.0, 0.0])
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -435,10 +811,10 @@ fn validate_inputs(
     mesh: &ExponentialMesh,
     potential: &[f64],
     spec: &CoreDiracSpec,
-) -> Result<(), KappaError> {
+) -> Result<(), DiracError> {
     spec.bracket.validate()?;
     if potential.len() != mesh.len() {
-        return Err(KappaError::PotentialLength {
+        return Err(DiracError::PotentialLength {
             expected: mesh.len(),
             actual: potential.len(),
         });
@@ -448,16 +824,16 @@ fn validate_inputs(
         .enumerate()
         .find(|(_, value)| !value.is_finite())
     {
-        return Err(KappaError::NonFinitePotential { index, value });
+        return Err(DiracError::NonFinitePotential { index, value });
     }
     if mesh.increment() <= 0.0 {
-        return Err(KappaError::InvalidMeshDirection);
+        return Err(DiracError::InvalidMeshDirection);
     }
     let first = mesh.first().get();
     let last = mesh.last().get();
     let radius = spec.muffin_tin_radius.get();
     if !radius.is_finite() || radius < first || radius >= last {
-        return Err(KappaError::InvalidMuffinTinRadius {
+        return Err(DiracError::InvalidMuffinTinRadius {
             radius,
             first,
             last,
@@ -470,17 +846,17 @@ fn validate_inputs(
         || spec.matching_tolerance <= 0.0
         || spec.max_iterations == 0
     {
-        return Err(KappaError::InvalidTolerance {
+        return Err(DiracError::InvalidTolerance {
             energy: spec.energy_tolerance,
             matching: spec.matching_tolerance,
             iterations: spec.max_iterations,
         });
     }
-    let minimum = spec.state.kappa.l() + 1;
+    let minimum = spec.state.kappa.large_l() + 1;
     if spec.state.n < minimum {
-        return Err(KappaError::InvalidPrincipalQuantumNumber {
+        return Err(DiracError::InvalidPrincipalQuantumNumber {
             n: spec.state.n,
-            l: spec.state.kappa.l(),
+            l: spec.state.kappa.large_l(),
         });
     }
     Ok(())
@@ -492,7 +868,7 @@ fn shoot(
     kappa: Kappa,
     energy: f64,
     keep_arrays: bool,
-) -> Result<Shot, KappaError> {
+) -> Result<Shot, DiracError> {
     let match_index = select_match_index(mesh, potential, energy);
     let outward = integrate_outward(mesh, potential, kappa, energy, match_index, keep_arrays)?;
     let inward = integrate_inward(mesh, potential, kappa, energy, match_index, keep_arrays)?;
@@ -501,11 +877,11 @@ fn shoot(
     let out_norm = po.hypot(qo);
     let in_norm = pi.hypot(qi);
     if out_norm <= f64::MIN_POSITIVE || in_norm <= f64::MIN_POSITIVE {
-        return Err(KappaError::SingularMatch { index: match_index });
+        return Err(DiracError::SingularMatch { index: match_index });
     }
     let residual = (po * qi - qo * pi) / (out_norm * in_norm);
     if !residual.is_finite() {
-        return Err(KappaError::SingularMatch { index: match_index });
+        return Err(DiracError::SingularMatch { index: match_index });
     }
     Ok(Shot {
         residual,
@@ -537,7 +913,7 @@ fn integrate_outward(
     energy: f64,
     stop: usize,
     keep_arrays: bool,
-) -> Result<Branch, KappaError> {
+) -> Result<Branch, DiracError> {
     let n = mesh.len();
     let mut p = if keep_arrays {
         vec![0.0; n]
@@ -559,12 +935,12 @@ fn integrate_outward(
         .sum::<f64>()
         / sample_count as f64;
     if !z.is_finite() || z <= 1.0e-12 {
-        return Err(KappaError::NonCoulombicOrigin(z));
+        return Err(DiracError::NonCoulombicOrigin(z));
     }
     let k = f64::from(kappa.get());
     let radicand = k * k - (z / SPEX_SPEED_OF_LIGHT).powi(2);
     if !radicand.is_finite() || radicand <= 0.0 {
-        return Err(KappaError::SupercriticalOrigin { radicand });
+        return Err(DiracError::SupercriticalOrigin { radicand });
     }
     let gamma = radicand.sqrt();
     // The arbitrary common amplitude avoids underflow for large |kappa|.
@@ -608,7 +984,7 @@ fn integrate_inward(
     energy: f64,
     stop: usize,
     keep_arrays: bool,
-) -> Result<Branch, KappaError> {
+) -> Result<Branch, DiracError> {
     let n = mesh.len();
     let mut p = if keep_arrays {
         vec![0.0; n]
@@ -624,7 +1000,7 @@ fn integrate_inward(
     let mass_factor = 2.0 - delta / C_SQUARED;
     let decay_squared = mass_factor * delta;
     if !decay_squared.is_finite() || decay_squared <= 0.0 {
-        return Err(KappaError::NonDecayingOuterBoundary { delta });
+        return Err(DiracError::NonDecayingOuterBoundary { delta });
     }
     let decay = decay_squared.sqrt();
     let mut current_p = 1.0;
@@ -673,7 +1049,7 @@ fn rk4_interval(
     let dr = rc - ra;
     // Interpolating rV is exact for a Coulomb singularity.
     let vb = (ra * va + rc * vc) / (ra + rc);
-    let (k1, l1) = dirac_rhs(ra, va, p, q_hat, kappa, energy);
+    let (k1, l1) = dirac_rhs(ra, va, p, q_hat, kappa, energy, C_SQUARED);
     let (k2, l2) = dirac_rhs(
         rb,
         vb,
@@ -681,6 +1057,7 @@ fn rk4_interval(
         q_hat + 0.5 * dr * l1,
         kappa,
         energy,
+        C_SQUARED,
     );
     let (k3, l3) = dirac_rhs(
         rb,
@@ -689,8 +1066,17 @@ fn rk4_interval(
         q_hat + 0.5 * dr * l2,
         kappa,
         energy,
+        C_SQUARED,
     );
-    let (k4, l4) = dirac_rhs(rc, vc, p + dr * k3, q_hat + dr * l3, kappa, energy);
+    let (k4, l4) = dirac_rhs(
+        rc,
+        vc,
+        p + dr * k3,
+        q_hat + dr * l3,
+        kappa,
+        energy,
+        C_SQUARED,
+    );
     (
         p + dr * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0,
         q_hat + dr * (l1 + 2.0 * l2 + 2.0 * l3 + l4) / 6.0,
@@ -704,19 +1090,89 @@ fn dirac_rhs(
     q_hat: f64,
     kappa: f64,
     energy: f64,
+    c_squared: f64,
 ) -> (f64, f64) {
-    let mass_factor = 2.0 + (energy - potential) / C_SQUARED;
+    let mass_factor = 2.0 + (energy - potential) / c_squared;
     (
         mass_factor * q_hat - kappa * p / radius,
         (potential - energy) * p + kappa * q_hat / radius,
     )
 }
 
-fn ensure_finite_state(p: f64, q_hat: f64, index: usize) -> Result<(), KappaError> {
+fn dirac_energy_derivatives_rhs(
+    radius: f64,
+    potential: f64,
+    state: [f64; 6],
+    kappa: f64,
+    energy: f64,
+    c_squared: f64,
+) -> [f64; 4] {
+    let [p, q_hat, p_dot, q_hat_dot, p_second, q_hat_second] = state;
+    let mass_factor = 2.0 + (energy - potential) / c_squared;
+    [
+        mass_factor * q_hat_dot + q_hat / c_squared - kappa * p_dot / radius,
+        (potential - energy) * p_dot - p + kappa * q_hat_dot / radius,
+        mass_factor * q_hat_second + 2.0 * q_hat_dot / c_squared - kappa * p_second / radius,
+        (potential - energy) * p_second - 2.0 * p_dot + kappa * q_hat_second / radius,
+    ]
+}
+
+#[allow(clippy::too_many_arguments)]
+fn rk4_energy_derivatives_interval(
+    ra: f64,
+    rc: f64,
+    va: f64,
+    vc: f64,
+    state: [f64; 6],
+    kappa: f64,
+    energy: f64,
+    c_squared: f64,
+) -> [f64; 6] {
+    let rb = 0.5 * (ra + rc);
+    let dr = rc - ra;
+    let vb = (ra * va + rc * vc) / (ra + rc);
+    let rhs = |radius: f64, potential: f64, x: [f64; 6]| {
+        let (p_prime, q_prime) = dirac_rhs(radius, potential, x[0], x[1], kappa, energy, c_squared);
+        let [p_dot_prime, q_dot_prime, p_second_prime, q_second_prime] =
+            dirac_energy_derivatives_rhs(radius, potential, x, kappa, energy, c_squared);
+        [
+            p_prime,
+            q_prime,
+            p_dot_prime,
+            q_dot_prime,
+            p_second_prime,
+            q_second_prime,
+        ]
+    };
+    let add = |x: [f64; 6], a: f64, dx: [f64; 6]| {
+        [
+            x[0] + a * dx[0],
+            x[1] + a * dx[1],
+            x[2] + a * dx[2],
+            x[3] + a * dx[3],
+            x[4] + a * dx[4],
+            x[5] + a * dx[5],
+        ]
+    };
+    let k1 = rhs(ra, va, state);
+    let k2 = rhs(rb, vb, add(state, 0.5 * dr, k1));
+    let k3 = rhs(rb, vb, add(state, 0.5 * dr, k2));
+    let k4 = rhs(rc, vc, add(state, dr, k3));
+    [
+        state[0] + dr * (k1[0] + 2.0 * k2[0] + 2.0 * k3[0] + k4[0]) / 6.0,
+        state[1] + dr * (k1[1] + 2.0 * k2[1] + 2.0 * k3[1] + k4[1]) / 6.0,
+        state[2] + dr * (k1[2] + 2.0 * k2[2] + 2.0 * k3[2] + k4[2]) / 6.0,
+        state[3] + dr * (k1[3] + 2.0 * k2[3] + 2.0 * k3[3] + k4[3]) / 6.0,
+        state[4] + dr * (k1[4] + 2.0 * k2[4] + 2.0 * k3[4] + k4[4]) / 6.0,
+        state[5] + dr * (k1[5] + 2.0 * k2[5] + 2.0 * k3[5] + k4[5]) / 6.0,
+    ]
+}
+
+fn ensure_finite_state(p: f64, q_hat: f64, index: usize) -> Result<(), DiracError> {
     if p.is_finite() && q_hat.is_finite() && p.abs() <= 1.0e200 && q_hat.abs() <= 1.0e200 {
         Ok(())
     } else {
-        Err(KappaError::IntegrationOverflow { index })
+        Err(DiracError::IntegrationOverflow { index })
     }
 }
 
@@ -737,7 +1193,7 @@ fn select_match_index(mesh: &ExponentialMesh, potential: &[f64], energy: f64) ->
 fn locate_muffin_tin_index(
     mesh: &ExponentialMesh,
     muffin_tin_radius: Bohr,
-) -> Result<usize, KappaError> {
+) -> Result<usize, DiracError> {
     let requested = muffin_tin_radius.get();
     let (index, actual) = mesh
         .radii()
@@ -751,7 +1207,7 @@ fn locate_muffin_tin_index(
         .expect("a constructed exponential mesh is nonempty");
     let tolerance = 128.0 * f64::EPSILON * requested.abs().max(1.0);
     if index < 6 || (actual.get() - requested).abs() > tolerance {
-        Err(KappaError::MuffinTinRadiusNotOnMesh { radius: requested })
+        Err(DiracError::MuffinTinRadiusNotOnMesh { radius: requested })
     } else {
         Ok(index)
     }
@@ -763,7 +1219,7 @@ fn assemble_solution(
     spec: &CoreDiracSpec,
     energy: f64,
     match_index: usize,
-) -> Result<CoreDiracSolution, KappaError> {
+) -> Result<CoreDiracSolution, DiracError> {
     let outward = integrate_outward(mesh, potential, spec.state.kappa, energy, match_index, true)?;
     let inward = integrate_inward(mesh, potential, spec.state.kappa, energy, match_index, true)?;
     let po = outward.p[match_index];
@@ -772,7 +1228,7 @@ fn assemble_solution(
     let qi = inward.q_hat[match_index];
     let denominator = po.hypot(qo) * pi.hypot(qi);
     if !denominator.is_finite() || denominator <= f64::MIN_POSITIVE {
-        return Err(KappaError::SingularMatch { index: match_index });
+        return Err(DiracError::SingularMatch { index: match_index });
     }
     let residual = (po * qi - qo * pi) / denominator;
     // Enforce P continuity using one common scale for both inward components.
@@ -781,7 +1237,7 @@ fn assemble_solution(
     } else if qi.abs() > 64.0 * f64::EPSILON * pi.hypot(qi) {
         qo / qi
     } else {
-        return Err(KappaError::SingularMatch { index: match_index });
+        return Err(DiracError::SingularMatch { index: match_index });
     };
 
     let mut p = outward.p;
@@ -797,9 +1253,9 @@ fn assemble_solution(
         .collect();
     let norm_squared = mesh
         .integrate(&density)
-        .map_err(|error| KappaError::Quadrature(error.to_string()))?;
+        .map_err(|error| DiracError::Quadrature(error.to_string()))?;
     if !norm_squared.is_finite() || norm_squared <= f64::MIN_POSITIVE {
-        return Err(KappaError::SingularNorm { norm_squared });
+        return Err(DiracError::SingularNorm { norm_squared });
     }
     let scale = norm_squared.sqrt().recip();
     p.iter_mut().for_each(|value| *value *= scale);
@@ -815,21 +1271,21 @@ fn assemble_solution(
         .collect();
     let norm_total = mesh
         .integrate(&normalized_density)
-        .map_err(|error| KappaError::Quadrature(error.to_string()))?;
+        .map_err(|error| DiracError::Quadrature(error.to_string()))?;
     let muffin_tin_index = locate_muffin_tin_index(mesh, spec.muffin_tin_radius)?;
     let muffin_tin_mesh =
         ExponentialMesh::new(mesh.first(), mesh.increment(), muffin_tin_index + 1)
-            .map_err(|error| KappaError::Quadrature(error.to_string()))?;
+            .map_err(|error| DiracError::Quadrature(error.to_string()))?;
     let norm_mt = muffin_tin_mesh
         .integrate(&normalized_density[..=muffin_tin_index])
-        .map_err(|error| KappaError::Quadrature(error.to_string()))?;
+        .map_err(|error| DiracError::Quadrature(error.to_string()))?;
     // The outside is the complement of the independently integrated prefix;
     // no cutoff sample is double counted.
     let norm_outside = norm_total - norm_mt;
     let nodes = count_nodes(&p);
     let expected_nodes = spec.state.expected_nodes();
     if nodes != expected_nodes {
-        return Err(KappaError::NodeCountMismatch {
+        return Err(DiracError::NodeCountMismatch {
             expected: expected_nodes,
             actual: nodes,
         });
@@ -896,7 +1352,7 @@ mod tests {
             assert_eq!(angular.twice_j, twice_j);
             assert_eq!(angular.degeneracy, degeneracy);
         }
-        assert_eq!(Kappa::new(0), Err(KappaError::Zero));
+        assert!(Kappa::new(0).is_err());
     }
 
     #[test]

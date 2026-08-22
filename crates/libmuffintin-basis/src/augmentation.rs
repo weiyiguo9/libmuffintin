@@ -2,7 +2,8 @@
 
 use crate::BasisError;
 use libmuffintin_core::{
-    Bohr, InverseBohr, Lm, VolumeBohr3, lm_count, spherical_bessel_j, spherical_bessel_j_derivative,
+    Bohr, InverseBohr, Kappa, Lm, RelativisticChannel, SpinProjection, VolumeBohr3, lm_count,
+    spherical_bessel_j, spherical_bessel_j_derivative,
 };
 use libmuffintin_envelope::{PlaneWave, rayleigh_coefficient, site_translation_phase};
 use libmuffintin_radial::BoundaryData;
@@ -32,6 +33,57 @@ pub struct ApwMatch {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlaneWaveAugmentation {
     pub coefficients: Vec<[Complex64; 2]>,
+}
+
+/// One `kappa`-resolved SRA value/slope match used by spinor augmentation.
+///
+/// The match must already have been formed from the large-component boundary
+/// pair `(U, U_r)`.  This type deliberately contains no Dirac `(P, Q)` trace,
+/// preventing a four-component trace from being passed to the scalar
+/// value/slope matcher by accident.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpinorApwMatch {
+    pub kappa: Kappa,
+    pub apw: ApwMatch,
+}
+
+/// SRA augmentation of one spatial plane wave for both Pauli-spin columns.
+///
+/// `channels` is in canonical `(kappa, twice_mu)` order.  For each spin
+/// (`0`, then `1`), `coefficients[spin][channel]` stores the two coefficients
+/// multiplying that `kappa` channel's radial `(u, udot)` columns.  A compiled
+/// site projection therefore traverses global columns as `spin`, then `g`,
+/// and reads `site_augmentations[site][g].coefficient(spin, channel)`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpinorPlaneWaveAugmentation {
+    pub channels: Vec<RelativisticChannel>,
+    pub coefficients: [Vec<[Complex64; 2]>; 2],
+}
+
+impl SpinorPlaneWaveAugmentation {
+    pub fn channel_count(&self) -> usize {
+        self.channels.len()
+    }
+
+    pub fn augmented_site_coordinate_count(&self) -> usize {
+        2 * self.channel_count()
+    }
+
+    pub fn coefficient(&self, spin: usize, channel: usize) -> &[Complex64; 2] {
+        &self.coefficients[spin][channel]
+    }
+
+    /// Row index in a site's augmented radial coordinate block.
+    ///
+    /// Rows use `(channel, radial_column)` order with `radial_column` fastest:
+    /// `2 * channel + radial_column`.  Explicit local orbitals follow this
+    /// entire `0..2*channel_count` block in a site projection.
+    pub fn site_coordinate_index(&self, channel: usize, radial_column: usize) -> Option<usize> {
+        if channel >= self.channel_count() || radial_column >= 2 {
+            return None;
+        }
+        Some(2 * channel + radial_column)
+    }
 }
 
 /// Solve the SPEX `2 x 2` boundary system for a fixed angular momentum.
@@ -109,4 +161,73 @@ pub fn augmentation_coefficients(
         }
     }
     Ok(PlaneWaveAugmentation { coefficients })
+}
+
+/// Build the SRA spinor augmentation of one spatial plane wave.
+///
+/// Each `SpinorApwMatch` is the result of matching the large-component SRA
+/// boundary pair `(U, U_r)` for one `kappa`; a Dirac `(P, Q)` trace is not an
+/// accepted input.  Output channels are ordered by increasing signed `kappa`
+/// and then increasing exact `twice_mu`.  For every channel and incident
+/// Pauli spin, the coefficient is
+/// `site phase * Rayleigh(l,m_l) * CG * [a_kappa,b_kappa]`.
+pub fn spinor_augmentation_coefficients(
+    plane_wave: &PlaneWave,
+    site: [Bohr; 3],
+    cell_volume: VolumeBohr3,
+    matches: &[SpinorApwMatch],
+) -> Result<SpinorPlaneWaveAugmentation, BasisError> {
+    let mut matches = matches.to_vec();
+    matches.sort_unstable_by_key(|matched| matched.kappa.get());
+    for pair in matches.windows(2) {
+        if pair[0].kappa == pair[1].kappa {
+            return Err(BasisError::DuplicateSpinorMatch {
+                kappa: pair[0].kappa.get(),
+            });
+        }
+    }
+
+    let phase = site_translation_phase(plane_wave.q, site);
+    let channel_count = matches
+        .iter()
+        .map(|matched| matched.kappa.degeneracy() as usize)
+        .sum();
+    let mut channels = Vec::with_capacity(channel_count);
+    let mut coefficients = [
+        Vec::with_capacity(channel_count),
+        Vec::with_capacity(channel_count),
+    ];
+    for matched in matches {
+        let expected_l = matched.kappa.large_l();
+        if matched.apw.l != expected_l {
+            return Err(BasisError::SpinorMatchAngularMomentum {
+                kappa: matched.kappa.get(),
+                expected: expected_l,
+                actual: matched.apw.l,
+            });
+        }
+        for channel in matched.kappa.channels() {
+            let mut channel_coefficients = [[Complex64::default(); 2]; 2];
+            for term in channel.spinor_harmonic_terms().into_iter().flatten() {
+                let spin = match term.spin {
+                    SpinProjection::Up => 0,
+                    SpinProjection::Down => 1,
+                };
+                let angular = phase
+                    * rayleigh_coefficient(term.orbital, plane_wave.q, cell_volume)?
+                    * term.coefficient;
+                channel_coefficients[spin] = [
+                    angular * matched.apw.coefficients[0],
+                    angular * matched.apw.coefficients[1],
+                ];
+            }
+            channels.push(channel);
+            coefficients[0].push(channel_coefficients[0]);
+            coefficients[1].push(channel_coefficients[1]);
+        }
+    }
+    Ok(SpinorPlaneWaveAugmentation {
+        channels,
+        coefficients,
+    })
 }
