@@ -9,6 +9,7 @@
 
 pub mod bessel;
 pub mod conventions;
+pub mod fourier_field;
 pub mod gaunt;
 pub mod harmonics;
 pub mod mesh;
@@ -22,6 +23,7 @@ pub use bessel::{
     spherical_bessel_y_derivative,
 };
 pub use conventions::{KineticOperatorConvention, spherical_value_from_y00_coefficient};
+pub use fourier_field::{FourierFieldError, FourierLayout, HermitianFourierField};
 pub use gaunt::{gaunt, real_gaunt, wigner_3j};
 pub use harmonics::{
     Lm, LmError, complex_spherical_harmonic, complex_spherical_harmonics, lm_count, lm_from_index,
