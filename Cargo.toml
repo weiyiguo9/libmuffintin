@@ -17,6 +17,7 @@ members = [
     "crates/mt-thc",
     "crates/mt-coulomb",
     "crates/mt-dft",
+    "crates/mt-runtime",
 ]
 
 [workspace.package]
