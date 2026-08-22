@@ -1,8 +1,8 @@
 //! Retained auxiliary basis shared by mixed-product and interpolation-point paths.
 
 use crate::{ProductError, ProductPartition, ProductSource, TransferQ};
-use libmuffintin_basis::Provenance;
-use libmuffintin_core::{Bohr, ExponentialMesh, GVector, InverseBohr, VolumeBohr3};
+use muffintin_basis::Provenance;
+use muffintin_core::{Bohr, ExponentialMesh, GVector, InverseBohr, VolumeBohr3};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 

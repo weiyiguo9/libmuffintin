@@ -1,8 +1,8 @@
 //! Overlap-filtered generalized Hermitian eigensolver.
 
 use crate::OperatorError;
-use libmuffintin_core::Hartree;
-use libmuffintin_tensor::{
+use muffintin_core::Hartree;
+use muffintin_tensor::{
     Axis, ComplexTensor, DenseEigenvectors, DenseHermitianMatrix, TensorError, einsum,
 };
 use num_complex::Complex64;

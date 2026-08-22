@@ -3,8 +3,8 @@
 //! Enumeration, triangle/parity coupling, overlap spectra, the L=0 constant
 //! function, and $|q+G|$ interstitial auxiliary support follow `mixedbasis.f`.
 //! `TOL` is constructor policy recorded on the retained auxiliary basis, not
-//! on [`libmuffintin_product::RawProductSpace`]. Raw interstitial orbital-pair
-//! reciprocal support is supplied by [`libmuffintin_product::ProductSource`]
+//! on [`muffintin_product::RawProductSpace`]. Raw interstitial orbital-pair
+//! reciprocal support is supplied by [`muffintin_product::ProductSource`]
 //! and is not the MPB auxiliary plane-wave set.
 
 #![forbid(unsafe_code)]
@@ -17,9 +17,9 @@ pub use construct::{apply_overlap_cutoff, spex_mixed_product_basis};
 pub use interstitial::auxiliary_interstitial_support;
 pub use vertices::pair_vertex;
 
-use libmuffintin_core::{LatticeError, MeshError, StepFunctionError};
-use libmuffintin_operators::OperatorError;
-use libmuffintin_product::{ProductError, ProductRadialId};
+use muffintin_core::{LatticeError, MeshError, StepFunctionError};
+use muffintin_operators::OperatorError;
+use muffintin_product::{ProductError, ProductRadialId};
 use thiserror::Error;
 
 /// Default SPEX `MBASIS` `TOL` (`mixedbasis.f:106`).
@@ -51,7 +51,7 @@ pub enum MpbError {
     #[error("orbital ({kind:?}, l={l}, n={n}, spin={spin}) is not on site {site}")]
     UnknownOrbital {
         site: usize,
-        kind: libmuffintin_product::ProductOrbitalKind,
+        kind: muffintin_product::ProductOrbitalKind,
         l: u32,
         n: usize,
         spin: u8,

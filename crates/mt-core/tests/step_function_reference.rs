@@ -1,4 +1,4 @@
-use libmuffintin_core::{
+use muffintin_core::{
     Bohr, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3,
     sphere_form_factor, step_function_coefficient_cutoff,
 };

@@ -2,8 +2,8 @@
 //!
 //! This crate selects a q-independent interpolation-point set on a finite
 //! periodic toy basis, fits per-q interpolation vectors, and emits
-//! representation-neutral [`libmuffintin_product::CompiledAuxiliaryBasis`]
-//! interpolation-point payloads and [`libmuffintin_product::PairVertex`]
+//! representation-neutral [`muffintin_product::CompiledAuxiliaryBasis`]
+//! interpolation-point payloads and [`muffintin_product::PairVertex`]
 //! Bloch pair vertices.
 //!
 //! It does **not** assemble Weinert or SPEX $V^q$. Coulomb-aware ranking

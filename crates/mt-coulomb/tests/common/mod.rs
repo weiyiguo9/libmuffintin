@@ -1,13 +1,13 @@
 //! Shared toy fixtures for Coulomb integration tests.
 #![allow(dead_code)]
 
-use libmuffintin_basis::Provenance;
-use libmuffintin_core::{
+use muffintin_basis::Provenance;
+use muffintin_core::{
     Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3,
 };
-use libmuffintin_coulomb::{SampledAuxiliaryFunctions, SampledPointSupport};
-use libmuffintin_mpb::spex_mixed_product_basis;
-use libmuffintin_product::{
+use muffintin_coulomb::{SampledAuxiliaryFunctions, SampledPointSupport};
+use muffintin_mpb::spex_mixed_product_basis;
+use muffintin_product::{
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationAuxiliaryPoint,
     InterpolationPointAuxiliary, InterpolationRegion, OrbitalPair, PairOrbital, PairVertex,
     ProductOrbitalKind, ProductPartition, ProductRadial, ProductRadialId, ProductSource,
@@ -21,11 +21,11 @@ pub const LATTICE: f64 = 8.0;
 pub const RADIUS: f64 = 0.8;
 pub const POSITION: [Bohr; 3] = [Bohr(0.25), Bohr(0.0), Bohr(0.0)];
 
-pub fn mesh() -> libmuffintin_core::ExponentialMesh {
+pub fn mesh() -> muffintin_core::ExponentialMesh {
     let first = 1.0e-5;
     let number = 73;
     let increment = (RADIUS / first).ln() / (number - 1) as f64;
-    libmuffintin_core::ExponentialMesh::new(Bohr(first), increment, number).unwrap()
+    muffintin_core::ExponentialMesh::new(Bohr(first), increment, number).unwrap()
 }
 
 pub fn samples(kind: u8) -> RadialSamples {
@@ -171,7 +171,7 @@ pub fn interpolation_auxiliary(q: TransferQ) -> CompiledAuxiliaryBasis {
             region: InterpolationRegion::Uniform,
         },
     ];
-    libmuffintin_product::sort_interpolation_points(&mut points);
+    muffintin_product::sort_interpolation_points(&mut points);
     let auxiliary = CompiledAuxiliaryBasis {
         partition: partition(),
         q,

@@ -1,7 +1,7 @@
 //! Non-overlapping muffin-tin plus interstitial product partition.
 
-use libmuffintin_basis::Provenance;
-use libmuffintin_core::{Bohr, InterstitialGeometry};
+use muffintin_basis::Provenance;
+use muffintin_core::{Bohr, InterstitialGeometry};
 
 /// One muffin-tin region of a [`ProductPartition`].
 #[derive(Clone, Copy, Debug, PartialEq)]

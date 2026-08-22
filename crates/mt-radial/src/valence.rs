@@ -1,4 +1,4 @@
-use libmuffintin_core::{ExponentialMesh, Hartree, InverseBohr};
+use muffintin_core::{ExponentialMesh, Hartree, InverseBohr};
 use thiserror::Error;
 
 use crate::core_dirac::EnergyBracket;
@@ -743,7 +743,7 @@ pub(crate) fn component_norm_squared(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libmuffintin_core::Bohr;
+    use muffintin_core::Bohr;
 
     fn mesh(first: f64, last: f64, increment: f64) -> ExponentialMesh {
         let number = ((last / first).ln() / increment).ceil() as usize + 1;

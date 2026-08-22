@@ -1,16 +1,16 @@
 //! SPEX-convention mixed-product core path without a live SPEX dump.
 
-use libmuffintin_basis::Provenance;
-use libmuffintin_core::{
+use muffintin_basis::Provenance;
+use muffintin_core::{
     Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3, gaunt,
 };
-use libmuffintin_envelope::site_translation_phase;
-use libmuffintin_mpb::{
+use muffintin_envelope::site_translation_phase;
+use muffintin_mpb::{
     DEFAULT_TOLERANCE, apply_overlap_cutoff, auxiliary_interstitial_support, pair_vertex,
     spex_mixed_product_basis,
 };
-use libmuffintin_operators::solve_real_symmetric;
-use libmuffintin_product::{
+use muffintin_operators::solve_real_symmetric;
+use muffintin_product::{
     AuxiliaryRegion, CompiledAuxiliaryBasis, InterstitialPairSpec, MixedProductAuxiliary,
     MtPairSpec, OrbitalPair, PairVertexSpec, ProductError, ProductOrbitalKind, ProductPartition,
     ProductRadial, ProductRadialId, ProductSource, RadialSamples, RawInterstitialPairComponent,
@@ -21,11 +21,11 @@ use num_complex::Complex64;
 const RADIUS: f64 = 0.8;
 const POSITION: [Bohr; 3] = [Bohr(0.25), Bohr(0.0), Bohr(0.0)];
 
-fn mesh() -> libmuffintin_core::ExponentialMesh {
+fn mesh() -> muffintin_core::ExponentialMesh {
     let first = 1.0e-5;
     let number = 73;
     let increment = (RADIUS / first).ln() / (number - 1) as f64;
-    libmuffintin_core::ExponentialMesh::new(Bohr(first), increment, number).unwrap()
+    muffintin_core::ExponentialMesh::new(Bohr(first), increment, number).unwrap()
 }
 
 fn samples(kind: u8) -> RadialSamples {
@@ -675,7 +675,7 @@ fn pair_vertex_rejects_mismatched_transfer_q() {
     };
     assert!(matches!(
         pair_vertex(&other, &raw, &auxiliary, spec),
-        Err(libmuffintin_mpb::MpbError::TransferQMismatch)
+        Err(muffintin_mpb::MpbError::TransferQMismatch)
     ));
 }
 
@@ -708,7 +708,7 @@ fn pair_vertex_rejects_same_sites_with_different_cell_volume() {
     };
     assert!(matches!(
         pair_vertex(&volume_source, &raw, &auxiliary, spec),
-        Err(libmuffintin_mpb::MpbError::PartitionMismatch)
+        Err(muffintin_mpb::MpbError::PartitionMismatch)
     ));
 }
 
@@ -726,13 +726,13 @@ fn pair_vertex_rejects_permuted_or_relabelled_raw_pair_support() {
     permuted.interstitial_pair_support.components.swap(0, 1);
     assert!(matches!(
         pair_vertex(&source, &permuted, &auxiliary, spec),
-        Err(libmuffintin_mpb::MpbError::InterstitialPairSupportMismatch)
+        Err(muffintin_mpb::MpbError::InterstitialPairSupportMismatch)
     ));
     let mut relabelled = raw.clone();
     relabelled.interstitial_pair_support.components[0].g_relative = g_vector(&lattice, [3, 0, 0]);
     assert!(matches!(
         pair_vertex(&source, &relabelled, &auxiliary, spec),
-        Err(libmuffintin_mpb::MpbError::InterstitialPairSupportMismatch)
+        Err(muffintin_mpb::MpbError::InterstitialPairSupportMismatch)
     ));
     let mut auxiliary_perm = auxiliary.clone();
     auxiliary_perm
@@ -743,7 +743,7 @@ fn pair_vertex_rejects_permuted_or_relabelled_raw_pair_support() {
         .swap(0, 1);
     assert!(matches!(
         pair_vertex(&source, &raw, &auxiliary_perm, spec),
-        Err(libmuffintin_mpb::MpbError::Product(
+        Err(muffintin_mpb::MpbError::Product(
             ProductError::AuxiliaryWaveOrder
         ))
     ));
@@ -769,7 +769,7 @@ fn pair_vertex_rejects_mismatched_mesh_and_mode_length() {
     };
     assert!(matches!(
         pair_vertex(&source, &raw, &auxiliary, spec),
-        Err(libmuffintin_mpb::MpbError::Product(
+        Err(muffintin_mpb::MpbError::Product(
             ProductError::AuxiliaryModeLength { .. }
         ))
     ));
@@ -793,7 +793,7 @@ fn pair_vertex_rejects_absent_mt_pair() {
     };
     assert!(matches!(
         pair_vertex(&source, &raw, &auxiliary, spec),
-        Err(libmuffintin_mpb::MpbError::UnknownMtPair { .. })
+        Err(muffintin_mpb::MpbError::UnknownMtPair { .. })
     ));
 }
 
@@ -870,6 +870,6 @@ fn raw_pair_support_survives_independent_auxiliary_g_cut() {
                 }),
             }
         ),
-        Err(libmuffintin_mpb::MpbError::UnknownInterstitialPair { g }) if g == [1, 0, 0]
+        Err(muffintin_mpb::MpbError::UnknownInterstitialPair { g }) if g == [1, 0, 0]
     ));
 }

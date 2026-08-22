@@ -1,7 +1,7 @@
 //! Multipole moments and spherical-Bessel radial integrals (`coulombmatrix.f:242-309`, `1331-1391`).
 
 use crate::CoulombError;
-use libmuffintin_core::{ExponentialMesh, spherical_bessel_j};
+use muffintin_core::{ExponentialMesh, spherical_bessel_j};
 use std::f64::consts::PI;
 
 /// $\int r^{L+1} b(r)\,\mathrm{d}r$ (`coulombmatrix.f:247`).

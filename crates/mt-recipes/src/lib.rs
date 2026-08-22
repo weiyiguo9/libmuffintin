@@ -6,7 +6,7 @@ mod lapw;
 
 pub use lapw::{LapwSiteInput, lapw};
 
-use libmuffintin_basis::Provenance;
+use muffintin_basis::Provenance;
 
 pub(crate) fn lapw_provenance() -> Provenance {
     Provenance {
@@ -18,12 +18,12 @@ pub(crate) fn lapw_provenance() -> Provenance {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libmuffintin_basis::{
+    use muffintin_basis::{
         ApwBoundaryBasis, ApwSiteAugmentation, BasisBlock, BasisSpec, LocalOrbitalLayout, compile,
     };
-    use libmuffintin_core::{Bohr, InverseBohr, ReciprocalLattice, VolumeBohr3};
-    use libmuffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
-    use libmuffintin_radial::BoundaryData;
+    use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, VolumeBohr3};
+    use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
+    use muffintin_radial::BoundaryData;
 
     fn boundary(value: f64, derivative: f64) -> BoundaryData {
         BoundaryData {

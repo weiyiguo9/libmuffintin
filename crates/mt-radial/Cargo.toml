@@ -6,6 +6,9 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "muffintin_radial"
+
 [dependencies]
 libmuffintin-core = { path = "../mt-core" }
 thiserror.workspace = true

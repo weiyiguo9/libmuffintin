@@ -3,11 +3,11 @@
 mod common;
 
 use faer::{Mat, Side};
-use libmuffintin_core::InverseBohr;
-use libmuffintin_coulomb::{
+use muffintin_core::InverseBohr;
+use muffintin_coulomb::{
     CoulombRequest, InterpolationProjection, assemble_coulomb, assemble_sampled_coulomb,
 };
-use libmuffintin_product::TransferQ;
+use muffintin_product::TransferQ;
 use num_complex::Complex64;
 
 fn hermiticity_residual(matrix: &[Complex64], n: usize) -> f64 {
@@ -101,7 +101,7 @@ fn sampled_interpolation_is_hermitian_and_nearly_psd() {
     let operator = assemble_sampled_coulomb(&auxiliary, &request, &sampled).unwrap();
     assert_eq!(
         operator.kind(),
-        libmuffintin_coulomb::AuxiliaryKind::InterpolationPoints
+        muffintin_coulomb::AuxiliaryKind::InterpolationPoints
     );
     let residual = hermiticity_residual(operator.matrix(), operator.dimension());
     assert!(residual < 1.0e-8, "sampled Hermitian residual {residual}");

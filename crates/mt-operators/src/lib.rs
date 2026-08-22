@@ -13,7 +13,7 @@ pub use eigensolve::{
 };
 pub use spinor::{SpinorSiteOperatorBlocks, add_spinor_site_contributions};
 
-use libmuffintin_tensor::TensorError;
+use muffintin_tensor::TensorError;
 use thiserror::Error;
 
 /// Operator assembly or generalized-eigensolver error.
@@ -63,7 +63,7 @@ pub enum OperatorError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libmuffintin_tensor::{Axis, DenseHermitianMatrix, MemoryLayout, TensorError};
+    use muffintin_tensor::{Axis, DenseHermitianMatrix, MemoryLayout, TensorError};
     use num_complex::Complex64;
 
     fn site_h(

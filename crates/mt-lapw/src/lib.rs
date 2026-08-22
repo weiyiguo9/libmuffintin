@@ -7,36 +7,32 @@
 
 #![forbid(unsafe_code)]
 
-use libmuffintin_basis::BasisError;
-use libmuffintin_core::{
-    Bohr, Hartree, InterstitialGeometry, InverseBohr, KineticOperatorConvention,
-};
-use libmuffintin_envelope::EnvelopeError;
-use libmuffintin_operators::{
-    OperatorError, add_site_contributions, add_spinor_site_contributions,
-};
-use libmuffintin_tensor::{Axis, TensorError};
+use muffintin_basis::BasisError;
+use muffintin_core::{Bohr, Hartree, InterstitialGeometry, InverseBohr, KineticOperatorConvention};
+use muffintin_envelope::EnvelopeError;
+use muffintin_operators::{OperatorError, add_site_contributions, add_spinor_site_contributions};
+use muffintin_tensor::{Axis, TensorError};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use thiserror::Error;
 
-pub use libmuffintin_basis::BasisLayout as LapwBasisLayout;
-pub use libmuffintin_basis::{
+pub use muffintin_basis::BasisLayout as LapwBasisLayout;
+pub use muffintin_basis::{
     ApwBoundaryBasis, ApwMatch, ApwSiteAugmentation, ApwSiteGeometry, BasisBlock, BasisLayout,
     BasisSpec, CompiledBasis, LocalOrbitalLayout, PlaneWaveAugmentation, Provenance,
     SpinorApwMatch, SpinorBasisLayout, SpinorCompiledBasis, SpinorPlaneWaveAugmentation,
     SpinorSiteLayout, augmentation_coefficients, compile, match_apw_boundary,
     spinor_augmentation_coefficients,
 };
-pub use libmuffintin_envelope::{
+pub use muffintin_envelope::{
     PlaneWave, PlaneWaveEnvelope, rayleigh_coefficient, site_translation_phase,
 };
-pub use libmuffintin_operators::{
+pub use muffintin_operators::{
     Collinear, EigenpairResidual, GeneralizedEigensolution, OperatorSet as LapwEigenproblem,
     SiteOperatorBlocks, SpinorSiteOperatorBlocks, solve_generalized_hermitian,
 };
-pub use libmuffintin_recipes::{LapwSiteInput, lapw};
-pub use libmuffintin_tensor::{ComplexTensor, DenseEigenvectors, DenseHermitianMatrix};
+pub use muffintin_recipes::{LapwSiteInput, lapw};
+pub use muffintin_tensor::{ComplexTensor, DenseEigenvectors, DenseHermitianMatrix};
 
 const INTERSTITIAL_KINETIC: KineticOperatorConvention =
     KineticOperatorConvention::SpexSymmetricLaplacian;
@@ -194,7 +190,7 @@ pub fn assemble_eigenproblem(
 /// Assemble `S` and `H` from a compiled basis and local site operator blocks.
 ///
 /// This is the shared LAPW interstitial + site-projection path used by both
-/// the facade and an explicit [`libmuffintin_basis::BasisSpec`] route. Every
+/// the facade and an explicit [`muffintin_basis::BasisSpec`] route. Every
 /// compiled APW site position and radius is checked against
 /// [`InterstitialGeometry::spheres`].
 pub fn assemble_compiled(
@@ -575,8 +571,8 @@ fn set_hermitian(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libmuffintin_core::{Bohr, Kappa, ReciprocalLattice, Sphere, VolumeBohr3};
-    use libmuffintin_radial::BoundaryData;
+    use muffintin_core::{Bohr, Kappa, ReciprocalLattice, Sphere, VolumeBohr3};
+    use muffintin_radial::BoundaryData;
     use num_complex::Complex64;
 
     fn boundary(value: f64, derivative: f64) -> BoundaryData {

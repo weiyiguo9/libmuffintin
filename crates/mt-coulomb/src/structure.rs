@@ -2,11 +2,11 @@
 
 use crate::CoulombError;
 use crate::math::{parity, plane_wave_phase, structure_lm};
-use libmuffintin_core::{
+use muffintin_core::{
     Bohr, InverseBohr, ReciprocalLattice, complex_spherical_harmonics, lm_count, lm_index,
 };
-use libmuffintin_grid::Cell;
-use libmuffintin_product::{ProductPartition, TransferQ};
+use muffintin_grid::Cell;
+use muffintin_product::{ProductPartition, TransferQ};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 

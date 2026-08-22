@@ -8,27 +8,35 @@ convention, and APW+lo layout remain in [08](08_lapw_matching_and_overlap.md),
 [10](10_apw_lo_and_collinear_spin.md). The tensor substrate remains
 [11](11_tensorized_numerical_substrate.md).
 
-## 1. Package names and directories
+## 1. Package, crate-target, and directory names
 
 Workspace directories uniformly use the `crates/mt-*` prefix, while published
-Cargo package names use `libmuffintin-*`.
+Cargo package names use `libmuffintin-*`. Explicit Rust library targets omit
+the platform-supplied `lib` prefix and use `muffintin_*`.
 
-| Directory | Package |
-|---|---|
-| `crates/mt-core` | `libmuffintin-core` |
-| `crates/mt-radial` | `libmuffintin-radial` |
-| `crates/mt-sphere` | `libmuffintin-sphere` |
-| `crates/mt-grid` | `libmuffintin-grid` |
-| `crates/mt-io` | `libmuffintin-io` |
-| `crates/mt-tensor` | `libmuffintin-tensor` |
-| `crates/mt-envelope` | `libmuffintin-envelope` |
-| `crates/mt-basis` | `libmuffintin-basis` |
-| `crates/mt-operators` | `libmuffintin-operators` |
-| `crates/mt-recipes` | `libmuffintin-recipes` |
-| `crates/mt-lapw` | `libmuffintin-lapw` |
+| Directory | Cargo package | Rust crate target |
+|---|---|---|
+| `crates/mt-core` | `libmuffintin-core` | `muffintin_core` |
+| `crates/mt-radial` | `libmuffintin-radial` | `muffintin_radial` |
+| `crates/mt-sphere` | `libmuffintin-sphere` | `muffintin_sphere` |
+| `crates/mt-grid` | `libmuffintin-grid` | `muffintin_grid` |
+| `crates/mt-io` | `libmuffintin-io` | `muffintin_io` |
+| `crates/mt-tensor` | `libmuffintin-tensor` | `muffintin_tensor` |
+| `crates/mt-envelope` | `libmuffintin-envelope` | `muffintin_envelope` |
+| `crates/mt-basis` | `libmuffintin-basis` | `muffintin_basis` |
+| `crates/mt-operators` | `libmuffintin-operators` | `muffintin_operators` |
+| `crates/mt-recipes` | `libmuffintin-recipes` | `muffintin_recipes` |
+| `crates/mt-lapw` | `libmuffintin-lapw` | `muffintin_lapw` |
+| `crates/mt-product` | `libmuffintin-product` | `muffintin_product` |
+| `crates/mt-mpb` | `libmuffintin-mpb` | `muffintin_mpb` |
+| `crates/mt-thc` | `libmuffintin-thc` | `muffintin_thc` |
+| `crates/mt-coulomb` | `libmuffintin-coulomb` | `muffintin_coulomb` |
 
 There is no compatibility package named `mt-*`. Rust imports use underscores,
-for example `libmuffintin_core`.
+for example `muffintin_core`. Rust artifacts therefore start with a single
+platform prefix, such as `libmuffintin_core.rlib`. A system-facing target named
+`muffintin` maps conventionally to `libmuffintin.so` or `libmuffintin.a` on
+Linux.
 
 ## 2. Dependency DAG
 

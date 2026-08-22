@@ -1,7 +1,7 @@
 //! SPEX `primitive` / `primitivef` radial primitives and the intra-sphere Poisson kernel.
 
 use crate::CoulombError;
-use libmuffintin_core::ExponentialMesh;
+use muffintin_core::ExponentialMesh;
 use std::f64::consts::PI;
 
 const LAGRANGE: [[f64; 7]; 6] = [
@@ -35,7 +35,7 @@ pub fn radial_primitive(
 ) -> Result<Vec<f64>, CoulombError> {
     if values.len() != mesh.len() {
         return Err(CoulombError::from(
-            libmuffintin_core::MeshError::LengthMismatch {
+            muffintin_core::MeshError::LengthMismatch {
                 mesh: mesh.len(),
                 values: values.len(),
             },
@@ -130,7 +130,7 @@ pub fn intra_sphere_poisson(
     let n = mesh.len();
     if left.len() != n || right.len() != n {
         return Err(CoulombError::from(
-            libmuffintin_core::MeshError::LengthMismatch {
+            muffintin_core::MeshError::LengthMismatch {
                 mesh: n,
                 values: left.len().min(right.len()),
             },

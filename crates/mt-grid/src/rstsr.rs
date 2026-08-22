@@ -35,7 +35,7 @@ impl<T: Grid + ?Sized> RstsrGridExt for T {}
 mod tests {
     use super::*;
     use crate::{Cell, UniformGrid};
-    use libmuffintin_core::Bohr;
+    use muffintin_core::Bohr;
 
     #[test]
     fn grid_tensors_preserve_shapes_and_point_order() {

@@ -20,7 +20,7 @@ pub use spec::{
     SpinorCompiledBasis, compile,
 };
 
-use libmuffintin_envelope::EnvelopeError;
+use muffintin_envelope::EnvelopeError;
 use thiserror::Error;
 
 /// Basis construction, matching, or compilation error.
@@ -57,13 +57,11 @@ pub enum BasisError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libmuffintin_core::{
-        Bohr, InverseBohr, Kappa, Lm, ReciprocalLattice, TwiceMu, VolumeBohr3,
-    };
-    use libmuffintin_envelope::{
+    use muffintin_core::{Bohr, InverseBohr, Kappa, Lm, ReciprocalLattice, TwiceMu, VolumeBohr3};
+    use muffintin_envelope::{
         PlaneWave, PlaneWaveEnvelope, rayleigh_coefficient, site_translation_phase,
     };
-    use libmuffintin_radial::BoundaryData;
+    use muffintin_radial::BoundaryData;
 
     fn boundary(value: f64, derivative: f64) -> BoundaryData {
         BoundaryData {

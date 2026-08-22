@@ -1,6 +1,6 @@
 //! Canonical-q / Umklapp pair-matrix regressions from the scratch scripts.
 
-use libmuffintin_thc::{
+use muffintin_thc::{
     BlochOrbitals, KMesh, PairColumnLayout, UmklappGauge, evaluate_pair_block, umklapp_phase,
 };
 use num_complex::Complex64;

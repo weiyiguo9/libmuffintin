@@ -1,8 +1,8 @@
 //! Injected Coulomb Gram contract and allq_coulomb_pool rerank.
 
-use libmuffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
-use libmuffintin_product::{InterpolationRegion, ProductPartition, TransferQ};
-use libmuffintin_thc::{
+use muffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
+use muffintin_product::{InterpolationRegion, ProductPartition, TransferQ};
+use muffintin_thc::{
     BlochOrbitals, CoulombGramSet, GridPath, HEADLINE_SEED, InjectedCoulombGram, KMesh, L2Engine,
     PairColumnLayout, RankPolicy, SelectionRequest, SelectorStrategy, ThcError, run_thc,
 };
@@ -25,7 +25,7 @@ fn tiny_partition() -> ProductPartition {
     )
 }
 
-fn tiny_grid() -> libmuffintin_thc::toy::ToyGrid {
+fn tiny_grid() -> muffintin_thc::toy::ToyGrid {
     let points = vec![
         [0.0, 0.0, 0.0],
         [0.4, 0.0, 0.0],
@@ -35,7 +35,7 @@ fn tiny_grid() -> libmuffintin_thc::toy::ToyGrid {
         [3.0, 0.0, 0.0],
     ];
     let n = points.len();
-    libmuffintin_thc::toy::ToyGrid {
+    muffintin_thc::toy::ToyGrid {
         name: "tiny".to_owned(),
         points,
         weights: vec![1.0; n],
@@ -43,7 +43,7 @@ fn tiny_grid() -> libmuffintin_thc::toy::ToyGrid {
     }
 }
 
-fn tiny_orbitals(grid: &libmuffintin_thc::toy::ToyGrid, mesh: &KMesh) -> BlochOrbitals {
+fn tiny_orbitals(grid: &muffintin_thc::toy::ToyGrid, mesh: &KMesh) -> BlochOrbitals {
     let n_k = mesh.len();
     let n_orb = 2;
     let mut values = Vec::with_capacity(grid.len() * n_k * n_orb);
@@ -112,7 +112,7 @@ fn coulomb_pool_changes_selection_and_protects_worst_finite_q() {
         engine: L2Engine::FullColumnPivotedQr,
         grid_path: GridPath::Uniform {
             divisions: 6,
-            shift: libmuffintin_thc::UniformShift::Origin,
+            shift: muffintin_thc::UniformShift::Origin,
         },
     };
     let mut request_pool = request_l2.clone();
@@ -182,7 +182,7 @@ fn coulomb_pool_without_grams_is_missing_injection() {
             engine: L2Engine::FullColumnPivotedQr,
             grid_path: GridPath::Uniform {
                 divisions: 6,
-                shift: libmuffintin_thc::UniformShift::Origin,
+                shift: muffintin_thc::UniformShift::Origin,
             },
         },
         None,
@@ -219,7 +219,7 @@ fn l2_paths_reject_grams_at_the_wrong_q_or_layout() {
         engine: L2Engine::FullColumnPivotedQr,
         grid_path: GridPath::Uniform {
             divisions: 6,
-            shift: libmuffintin_thc::UniformShift::Origin,
+            shift: muffintin_thc::UniformShift::Origin,
         },
     };
     let error = run_thc(
@@ -297,7 +297,7 @@ fn coulomb_pool_rejects_grams_at_the_wrong_transfer_q() {
             engine: L2Engine::FullColumnPivotedQr,
             grid_path: GridPath::Uniform {
                 divisions: 6,
-                shift: libmuffintin_thc::UniformShift::Origin,
+                shift: muffintin_thc::UniformShift::Origin,
             },
         },
         Some(&set),

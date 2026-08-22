@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "muffintin_basis"
+
 [dependencies]
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-envelope = { path = "../mt-envelope" }

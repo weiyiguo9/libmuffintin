@@ -1,8 +1,8 @@
 //! Pair vertices onto a compiled auxiliary basis.
 
 use crate::{AuxiliaryLayout, CompiledAuxiliaryBasis, ProductError, ProductRadialId, TransferQ};
-use libmuffintin_basis::Provenance;
-use libmuffintin_core::GVector;
+use muffintin_basis::Provenance;
+use muffintin_core::GVector;
 use num_complex::Complex64;
 
 /// Representation-neutral factor of an orbital pair.

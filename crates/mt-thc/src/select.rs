@@ -5,8 +5,8 @@ use crate::gram::CoulombGramSet;
 use crate::kmesh::KMesh;
 use crate::linalg::{column_pivots, hermitian_sqrt, pivoted_cholesky_pivots};
 use crate::pair::{BlochOrbitals, PairBlock, PairColumnLayout, UmklappGauge, evaluate_pair_block};
-use libmuffintin_core::{Bohr, VolumeBohr3};
-use libmuffintin_product::{
+use muffintin_core::{Bohr, VolumeBohr3};
+use muffintin_product::{
     InterpolationAuxiliaryPoint, InterpolationRegion, sort_interpolation_points,
 };
 use num_complex::Complex64;

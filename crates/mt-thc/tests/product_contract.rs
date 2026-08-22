@@ -1,11 +1,11 @@
 //! Interpolation-point auxiliaries stay on the product-space IR.
 
-use libmuffintin_product::{AuxiliaryRegion, InterpolationRegion, OrbitalPair};
-use libmuffintin_thc::toy::{
+use muffintin_product::{AuxiliaryRegion, InterpolationRegion, OrbitalPair};
+use muffintin_thc::toy::{
     mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
     mt_reference_grid,
 };
-use libmuffintin_thc::{
+use muffintin_thc::{
     GridPath, HEADLINE_SEED, L2Engine, RankPolicy, SelectionRequest, SelectorStrategy, run_thc,
 };
 

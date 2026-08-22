@@ -5,7 +5,7 @@ use crate::gram::InjectedCoulombGram;
 use crate::linalg::{hermitian_sqrt, lstsq};
 use crate::pair::{PairBlock, PairColumnLayout};
 use crate::select::{matmul, reconstruct_pairs, weighted_residual};
-use libmuffintin_product::TransferQ;
+use muffintin_product::TransferQ;
 use num_complex::Complex64;
 
 /// Weighted residual pair.
@@ -209,7 +209,7 @@ pub fn gamma_report(reports: &[PerQFit], is_gamma: impl Fn(usize) -> bool) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libmuffintin_core::InverseBohr;
+    use muffintin_core::InverseBohr;
 
     fn report(q_index: usize, l2: f64, coulomb: f64) -> PerQFit {
         PerQFit {

@@ -1,4 +1,4 @@
-use libmuffintin_core::{Bohr, ExponentialMesh, InverseBohr, ReciprocalLattice};
+use muffintin_core::{Bohr, ExponentialMesh, InverseBohr, ReciprocalLattice};
 use proptest::prelude::*;
 use std::collections::BTreeSet;
 

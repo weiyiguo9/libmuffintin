@@ -2,13 +2,13 @@
 
 mod common;
 
-use libmuffintin_basis::Provenance;
-use libmuffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
-use libmuffintin_coulomb::{
+use muffintin_basis::Provenance;
+use muffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
+use muffintin_coulomb::{
     CoulombError, CoulombRequest, EwaldScan, EwaldSummation, InterpolationProjection,
     assemble_point_charge_oracle, converged_ewald_point_kernel, ewald_point_kernel,
 };
-use libmuffintin_product::{
+use muffintin_product::{
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationAuxiliaryPoint,
     InterpolationPointAuxiliary, InterpolationRegion, ProductPartition,
 };
@@ -20,7 +20,7 @@ const EWALD_SUCCESSIVE_TOLERANCE: f64 = 1.0e-6;
 /// Recorded relative error $1.7\times 10^{-7}$ on cubic $a=8$, $q=2\pi\hat y/a$.
 const WEINERT_VS_EWALD_TOLERANCE: f64 = 1.0e-6;
 
-fn two_site_unit_charges(q: libmuffintin_product::TransferQ) -> CompiledAuxiliaryBasis {
+fn two_site_unit_charges(q: muffintin_product::TransferQ) -> CompiledAuxiliaryBasis {
     let r1 = [Bohr(2.0), Bohr(2.0), Bohr(2.0)];
     let r2 = [Bohr(6.0), Bohr(2.0), Bohr(2.0)];
     let partition = ProductPartition::from_interstitial(
@@ -53,7 +53,7 @@ fn two_site_unit_charges(q: libmuffintin_product::TransferQ) -> CompiledAuxiliar
             region: InterpolationRegion::MuffinTin { site: 1 },
         },
     ];
-    libmuffintin_product::sort_interpolation_points(&mut points);
+    muffintin_product::sort_interpolation_points(&mut points);
     let auxiliary = CompiledAuxiliaryBasis {
         partition,
         q,
@@ -156,7 +156,7 @@ fn ewald_kernel_reports_successive_residual_and_rejects_tight_unmet_tolerance() 
 #[test]
 fn coincident_gamma_kernel_includes_the_regular_ewald_self_limit() {
     let request = CoulombRequest::cubic(1.0, 0).unwrap();
-    let q = libmuffintin_product::TransferQ::from_cartesian([InverseBohr(0.0); 3]).unwrap();
+    let q = muffintin_product::TransferQ::from_cartesian([InverseBohr(0.0); 3]).unwrap();
     let origin = [Bohr(0.0); 3];
     let value = ewald_point_kernel(
         request.cell(),
@@ -191,7 +191,7 @@ fn two_site_monopoles_track_ewald_kernel() {
     let operator = assemble_point_charge_oracle(&auxiliary, &request).unwrap();
     assert_eq!(
         operator.kind(),
-        libmuffintin_coulomb::AuxiliaryKind::PointChargeOracle
+        muffintin_coulomb::AuxiliaryKind::PointChargeOracle
     );
     let points = auxiliary.require_interpolation_points().unwrap();
     let assembled = operator.element(0, 1).unwrap();

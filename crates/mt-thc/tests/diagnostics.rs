@@ -1,8 +1,8 @@
 //! Error-contract regressions for the M-I public boundary.
 
-use libmuffintin_core::InverseBohr;
-use libmuffintin_product::{InterpolationRegion, TransferQ};
-use libmuffintin_thc::{
+use muffintin_core::InverseBohr;
+use muffintin_product::{InterpolationRegion, TransferQ};
+use muffintin_thc::{
     BlochOrbitals, CoulombGramSet, GridPath, InjectedCoulombGram, KMesh, L2Engine, PairBlock,
     PairColumnLayout, RankPolicy, SelectionRequest, SelectorStrategy, ThcError, UniformShift,
     select_points,
@@ -201,8 +201,7 @@ fn anisotropic_kminus_roundtrip_and_umklapp() {
         .unwrap();
     let (_, shift) = mesh.kminus(0, iq).unwrap();
     assert_eq!(shift, [0, -1, 0]);
-    let phase =
-        libmuffintin_thc::umklapp_phase([0.0, 5.0 / 4.0, 0.0], shift, mesh.lattice_constant());
+    let phase = muffintin_thc::umklapp_phase([0.0, 5.0 / 4.0, 0.0], shift, mesh.lattice_constant());
     assert!((phase + Complex64::i()).norm() < 2.0e-14);
 }
 
@@ -535,7 +534,7 @@ fn pivots_from_pair_blocks_rejects_shorter_and_relayouted_later_blocks() {
     let mixed = PairBlock::new(1, 2, other, vec![Complex64::new(1.0, 0.0); 8]).unwrap();
     let weights = vec![1.0; 2];
     assert!(matches!(
-        libmuffintin_thc::pivots_from_pair_blocks(&[first.clone(), shorter], &weights, 1),
+        muffintin_thc::pivots_from_pair_blocks(&[first.clone(), shorter], &weights, 1),
         Err(ThcError::PairBlockPointCount {
             index: 1,
             expected: 2,
@@ -543,7 +542,7 @@ fn pivots_from_pair_blocks_rejects_shorter_and_relayouted_later_blocks() {
         })
     ));
     assert!(matches!(
-        libmuffintin_thc::pivots_from_pair_blocks(&[first, mixed], &weights, 1),
+        muffintin_thc::pivots_from_pair_blocks(&[first, mixed], &weights, 1),
         Err(ThcError::PairBlockLayout { index: 1 })
     ));
 }

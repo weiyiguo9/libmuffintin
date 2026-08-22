@@ -2,11 +2,11 @@
 
 use crate::CoulombError;
 use crate::spec::{CoulombRequest, InterpolationProjection};
-use libmuffintin_core::{
+use muffintin_core::{
     Bohr, ExponentialMesh, InverseBohr, VolumeBohr3, complex_spherical_harmonics, lm_count,
     lm_index,
 };
-use libmuffintin_product::{
+use muffintin_product::{
     AuxiliaryInterstitialWave, AuxiliaryLayout, AuxiliaryRegion, CompiledAuxiliaryBasis,
     InterpolationRegion, MixedProductAuxiliary, TransferQ,
 };
@@ -278,7 +278,7 @@ pub(crate) fn mixed_product_densities(
             }
             AuxiliaryRegion::InterpolationPoint { .. } => {
                 return Err(CoulombError::Product(
-                    libmuffintin_product::ProductError::ExpectedMixedProduct,
+                    muffintin_product::ProductError::ExpectedMixedProduct,
                 ));
             }
         }

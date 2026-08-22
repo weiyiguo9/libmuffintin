@@ -2,14 +2,14 @@
 
 mod common;
 
-use libmuffintin_core::{Bohr, ExponentialMesh, InverseBohr, ReciprocalLattice};
-use libmuffintin_coulomb::{
+use muffintin_core::{Bohr, ExponentialMesh, InverseBohr, ReciprocalLattice};
+use muffintin_coulomb::{
     CoulombError, CoulombRequest, DEFAULT_LEXP, assemble_coulomb, brute_force_structure_constant,
     intra_sphere_poisson, multipole_moment, radial_primitive, second_moment, spex_real_g,
     spherical_bessel_moment, structure_constants, weinert_gmat,
 };
-use libmuffintin_grid::Cell;
-use libmuffintin_product::TransferQ;
+use muffintin_grid::Cell;
+use muffintin_product::TransferQ;
 use std::f64::consts::E;
 use std::f64::consts::PI;
 
@@ -142,7 +142,7 @@ fn spherical_bessel_moment_finite_q_matches_numeric_integral() {
     let mut numeric = 0.0;
     for i in 1..=n {
         let r = dr * i as f64;
-        numeric += r.powi(l as i32 + 2) * libmuffintin_core::spherical_bessel_j(l, q * r) * dr;
+        numeric += r.powi(l as i32 + 2) * muffintin_core::spherical_bessel_j(l, q * r) * dr;
     }
     assert!(
         (analytic - numeric).abs() < 5.0e-4,
@@ -311,7 +311,7 @@ fn finite_q_pw_diagonal_contains_four_pi_over_q_squared() {
     for (index, region) in operator.regions().iter().enumerate() {
         if matches!(
             region,
-            libmuffintin_product::AuxiliaryRegion::Interstitial { .. }
+            muffintin_product::AuxiliaryRegion::Interstitial { .. }
         ) {
             let diagonal = operator.element(index, index).unwrap();
             assert!(diagonal.re.is_finite());

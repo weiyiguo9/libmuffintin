@@ -1,8 +1,8 @@
 //! Assembly request: direct cell, Weinert `LEXP`, and interpolation projection.
 
 use crate::CoulombError;
-use libmuffintin_core::{InverseBohr, ReciprocalLattice};
-use libmuffintin_grid::Cell;
+use muffintin_core::{InverseBohr, ReciprocalLattice};
+use muffintin_grid::Cell;
 
 /// Default SPEX-style Weinert expansion cutoff used by the toy assembler.
 pub const DEFAULT_LEXP: u32 = 4;
@@ -35,7 +35,7 @@ impl InterpolationProjection {
 
 /// Finite-$q$ Coulomb assembly request.
 ///
-/// The public assembler consumes [`libmuffintin_product::CompiledAuxiliaryBasis`].
+/// The public assembler consumes [`muffintin_product::CompiledAuxiliaryBasis`].
 /// Mixed-product auxiliaries use [`crate::assemble_coulomb`]. Interpolation-point
 /// auxiliaries use [`crate::assemble_sampled_coulomb`] with sampled $\zeta$.
 /// [`InterpolationProjection`] supplies the Weinert $L$ and $|q+G|$ cutoffs
@@ -68,26 +68,26 @@ impl CoulombRequest {
     pub fn cubic(lattice: f64, lexp: u32) -> Result<Self, CoulombError> {
         let cell = Cell::new([
             [
-                libmuffintin_core::Bohr(lattice),
-                libmuffintin_core::Bohr(0.0),
-                libmuffintin_core::Bohr(0.0),
+                muffintin_core::Bohr(lattice),
+                muffintin_core::Bohr(0.0),
+                muffintin_core::Bohr(0.0),
             ],
             [
-                libmuffintin_core::Bohr(0.0),
-                libmuffintin_core::Bohr(lattice),
-                libmuffintin_core::Bohr(0.0),
+                muffintin_core::Bohr(0.0),
+                muffintin_core::Bohr(lattice),
+                muffintin_core::Bohr(0.0),
             ],
             [
-                libmuffintin_core::Bohr(0.0),
-                libmuffintin_core::Bohr(0.0),
-                libmuffintin_core::Bohr(lattice),
+                muffintin_core::Bohr(0.0),
+                muffintin_core::Bohr(0.0),
+                muffintin_core::Bohr(lattice),
             ],
         ])?;
         Self::new(cell, lexp)
     }
 
     /// Attach the interpolation-point projection used when the auxiliary is
-    /// [`libmuffintin_product::AuxiliaryRepresentation::InterpolationPoints`].
+    /// [`muffintin_product::AuxiliaryRepresentation::InterpolationPoints`].
     pub fn with_interpolation(
         mut self,
         projection: InterpolationProjection,

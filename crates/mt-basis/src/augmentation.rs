@@ -1,12 +1,12 @@
 //! APW value/slope matching and site augmentation coefficients.
 
 use crate::BasisError;
-use libmuffintin_core::{
+use muffintin_core::{
     Bohr, InverseBohr, Kappa, Lm, RelativisticChannel, SpinProjection, VolumeBohr3, lm_count,
     spherical_bessel_j, spherical_bessel_j_derivative,
 };
-use libmuffintin_envelope::{PlaneWave, rayleigh_coefficient, site_translation_phase};
-use libmuffintin_radial::BoundaryData;
+use muffintin_envelope::{PlaneWave, rayleigh_coefficient, site_translation_phase};
+use muffintin_radial::BoundaryData;
 use num_complex::Complex64;
 
 /// The two primitive radial boundary columns `(u_l, du_l/dE)`.
