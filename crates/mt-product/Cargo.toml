@@ -1,6 +1,6 @@
 [package]
-name = "libmuffintin-mpb"
-description = "SPEX-compatible mixed product basis constructor"
+name = "libmuffintin-product"
+description = "Method-neutral product-space IR and auxiliary-basis contracts"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,11 +8,8 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-libmuffintin-basis = { path = "../libmuffintin-basis" }
+libmuffintin-basis = { path = "../mt-basis" }
 libmuffintin-core = { path = "../mt-core" }
-libmuffintin-envelope = { path = "../libmuffintin-envelope" }
-libmuffintin-operators = { path = "../libmuffintin-operators" }
-libmuffintin-product = { path = "../libmuffintin-product" }
 libmuffintin-radial = { path = "../mt-radial" }
 num-complex.workspace = true
 thiserror.workspace = true

@@ -8,14 +8,14 @@ members = [
     "crates/mt-radial",
     "crates/mt-sphere",
     "crates/mt-tensor",
-    "crates/libmuffintin-envelope",
-    "crates/libmuffintin-basis",
-    "crates/libmuffintin-operators",
-    "crates/libmuffintin-recipes",
-    "crates/libmuffintin-product",
-    "crates/libmuffintin-mpb",
-    "crates/libmuffintin-thc",
-    "crates/libmuffintin-coulomb",
+    "crates/mt-envelope",
+    "crates/mt-basis",
+    "crates/mt-operators",
+    "crates/mt-recipes",
+    "crates/mt-product",
+    "crates/mt-mpb",
+    "crates/mt-thc",
+    "crates/mt-coulomb",
 ]
 
 [workspace.package]

@@ -22,7 +22,7 @@ assembler and not a real-material accuracy claim. Production $V^q$ is
 
 | Directory | Package |
 |---|---|
-| `crates/libmuffintin-thc` | `libmuffintin-thc` |
+| `crates/mt-thc` | `libmuffintin-thc` |
 
 `libmuffintin-product` now stores a typed
 `AuxiliaryRepresentation::{MixedProduct, InterpolationPoints}` variant on

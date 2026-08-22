@@ -1,5 +1,6 @@
 [package]
-name = "libmuffintin-lapw"
+name = "libmuffintin-recipes"
+description = "Validated basis presets, defaults, and provenance"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,12 +11,9 @@ rust-version.workspace = true
 libmuffintin-basis = { path = "../mt-basis" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-envelope = { path = "../mt-envelope" }
-libmuffintin-operators = { path = "../mt-operators" }
+
+[dev-dependencies]
 libmuffintin-radial = { path = "../mt-radial" }
-libmuffintin-recipes = { path = "../mt-recipes" }
-libmuffintin-tensor = { path = "../mt-tensor" }
-num-complex.workspace = true
-thiserror.workspace = true
 
 [lints]
 workspace = true
