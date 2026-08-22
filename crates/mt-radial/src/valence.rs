@@ -41,7 +41,7 @@ pub struct BoundaryData {
 }
 
 impl BoundaryData {
-    fn new(value: f64, derivative: f64, radius: f64) -> Self {
+    pub(crate) fn new(value: f64, derivative: f64, radius: f64) -> Self {
         let scale = value.abs().max(1.0);
         let logarithmic = (value.abs() > 64.0 * f64::EPSILON * scale).then(|| derivative / value);
         Self {

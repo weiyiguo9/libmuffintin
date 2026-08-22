@@ -1,8 +1,10 @@
-use libmuffintin_core::{Bohr, ExponentialMesh};
+use libmuffintin_core::{
+    Bohr, ExponentialMesh, Kappa, Lm, RelativisticChannel, TwiceMu, spinor_gaunt,
+};
 use libmuffintin_radial::{RadialComponents, RadialIntegralKernel, radial_integral};
 use libmuffintin_sphere::{
     HarmonicConvention, MatrixElementError, SphereField, SphereFieldError, SphereOrbital,
-    SphereOrbitalError, matrix_element,
+    SphereOrbitalError, SpinorSphereOrbital, matrix_element, spinor_matrix_element,
 };
 use num_complex::Complex64;
 use std::f64::consts::PI;
@@ -18,6 +20,26 @@ fn orbital(l: u32, m: i32, mesh: &ExponentialMesh, scale: f64) -> SphereOrbital 
         .map(|radius| scale * radius.get() * (-radius.get()).exp())
         .collect();
     SphereOrbital::new(l, m, large, None).unwrap()
+}
+
+fn channel(kappa: i32, twice_mu: i64) -> RelativisticChannel {
+    RelativisticChannel::new(Kappa::new(kappa).unwrap(), TwiceMu::new(twice_mu).unwrap()).unwrap()
+}
+
+fn radial_component(mesh: &ExponentialMesh, scale: f64) -> Vec<f64> {
+    mesh.radii()
+        .iter()
+        .map(|radius| scale * radius.get() * (-radius.get()).exp())
+        .collect()
+}
+
+fn component_overlap(mesh: &ExponentialMesh, left: &[f64], right: &[f64]) -> f64 {
+    let values: Vec<f64> = left
+        .iter()
+        .zip(right)
+        .map(|(&left, &right)| left * right)
+        .collect();
+    mesh.integrate(&values).unwrap()
 }
 
 #[test]
@@ -128,4 +150,133 @@ fn length_and_convention_errors_identify_the_bad_input() {
 
     // Ensure the public orbital is directly usable by libmuffintin-radial consumers.
     assert_eq!(valid.large_component().len(), mesh.len());
+}
+
+#[test]
+fn spinor_low_order_oracles_resolve_p_and_q_angular_channels() {
+    let mesh = mesh();
+    let field = SphereField::new(
+        HarmonicConvention::Complex,
+        [((1, 0), vec![Complex64::new(1.0, 0.0); mesh.len()])],
+    )
+    .unwrap();
+    let zero = vec![0.0; mesh.len()];
+    let left_radial = radial_component(&mesh, 0.8);
+    let right_radial = radial_component(&mesh, 1.3);
+    let radial = component_overlap(&mesh, &left_radial, &right_radial);
+    let expected_angular = (2.0_f64 / 3.0).sqrt() / (4.0 * PI).sqrt();
+
+    // Omega_(-1,1/2) = Y_00 chi_up and the matching term of
+    // Omega_(-2,1/2) is sqrt(2/3) Y_10 chi_up.
+    let large_left =
+        SpinorSphereOrbital::new(channel(-1, 1), left_radial.clone(), zero.clone()).unwrap();
+    let large_right =
+        SpinorSphereOrbital::new(channel(-2, 1), right_radial.clone(), zero.clone()).unwrap();
+    let large = spinor_matrix_element(&mesh, &large_left, &field, &large_right).unwrap();
+    assert!((large.re - expected_angular * radial).abs() < 2.0e-14 * (1.0 + radial.abs()));
+    assert_eq!(large.im, 0.0);
+
+    // For kappa=+1,+2 the small harmonics are the same Omega_-1/Omega_-2
+    // pair.  A zero P component therefore exercises the independent QQ path.
+    let small_left = SpinorSphereOrbital::new(channel(1, 1), zero.clone(), left_radial).unwrap();
+    let small_right = SpinorSphereOrbital::new(channel(2, 1), zero, right_radial).unwrap();
+    let small = spinor_matrix_element(&mesh, &small_left, &field, &small_right).unwrap();
+    assert!((small.re - expected_angular * radial).abs() < 2.0e-14 * (1.0 + radial.abs()));
+    assert_eq!(small.im, 0.0);
+}
+
+#[test]
+fn spinor_pp_and_qq_integrals_are_assembled_separately() {
+    let mesh = mesh();
+    let field_channel = Lm::new(1, 0).unwrap();
+    let field = SphereField::new(
+        HarmonicConvention::Complex,
+        [((1, 0), vec![Complex64::new(0.7, -0.2); mesh.len()])],
+    )
+    .unwrap();
+    let left_channel = channel(-1, 1);
+    let right_channel = channel(-2, 1);
+    let left_p = radial_component(&mesh, 0.6);
+    let left_q = radial_component(&mesh, 1.1);
+    let right_p = radial_component(&mesh, 1.4);
+    let right_q = radial_component(&mesh, 0.9);
+    let pp = component_overlap(&mesh, &left_p, &right_p);
+    let qq = component_overlap(&mesh, &left_q, &right_q);
+    let left = SpinorSphereOrbital::new(left_channel, left_p, left_q).unwrap();
+    let right = SpinorSphereOrbital::new(right_channel, right_p, right_q).unwrap();
+
+    let large_angular = spinor_gaunt(left_channel, field_channel, right_channel);
+    let small_angular = spinor_gaunt(
+        left_channel.opposite_kappa(),
+        field_channel,
+        right_channel.opposite_kappa(),
+    );
+    let expected = Complex64::new(0.7, -0.2) * (large_angular * pp + small_angular * qq);
+    let actual = spinor_matrix_element(&mesh, &left, &field, &right).unwrap();
+    assert!((actual - expected).norm() < 3.0e-14 * (1.0 + expected.norm()));
+}
+
+#[test]
+fn spinor_real_tesseral_blocks_are_hermitian() {
+    let mesh = mesh();
+    let field = SphereField::from_real_channels([((1, -1), vec![0.9; mesh.len()])]).unwrap();
+    let left = SpinorSphereOrbital::new(
+        channel(-1, 1),
+        radial_component(&mesh, 0.7),
+        radial_component(&mesh, 0.2),
+    )
+    .unwrap();
+    let right = SpinorSphereOrbital::new(
+        channel(-2, -1),
+        radial_component(&mesh, 1.3),
+        radial_component(&mesh, 0.5),
+    )
+    .unwrap();
+
+    let left_right = spinor_matrix_element(&mesh, &left, &field, &right).unwrap();
+    let right_left = spinor_matrix_element(&mesh, &right, &field, &left).unwrap();
+    assert!(left_right.im.abs() > 1.0e-12);
+    assert!((left_right - right_left.conj()).norm() < 3.0e-14 * (1.0 + left_right.norm()));
+}
+
+#[test]
+fn spinor_length_errors_identify_component_and_operand() {
+    assert_eq!(
+        SpinorSphereOrbital::new(channel(-1, 1), vec![1.0; 8], vec![0.0; 7]).unwrap_err(),
+        SphereOrbitalError::SmallComponentLength {
+            expected: 8,
+            actual: 7,
+        }
+    );
+
+    let mesh = mesh();
+    let field = SphereField::from_real_channels([((0, 0), vec![1.0; mesh.len()])]).unwrap();
+    let short = SpinorSphereOrbital::new(
+        channel(-1, 1),
+        vec![1.0; mesh.len() - 1],
+        vec![0.0; mesh.len() - 1],
+    )
+    .unwrap();
+    let valid =
+        SpinorSphereOrbital::new(channel(-1, 1), vec![1.0; mesh.len()], vec![0.0; mesh.len()])
+            .unwrap();
+    assert!(matches!(
+        spinor_matrix_element(&mesh, &valid, &field, &short),
+        Err(MatrixElementError::OrbitalMeshLength {
+            operand: libmuffintin_sphere::Operand::Right,
+            component: libmuffintin_sphere::Component::Large,
+            actual,
+            ..
+        }) if actual == mesh.len() - 1
+    ));
+
+    let short_field =
+        SphereField::from_real_channels([((0, 0), vec![1.0; mesh.len() - 1])]).unwrap();
+    assert_eq!(
+        spinor_matrix_element(&mesh, &valid, &short_field, &valid),
+        Err(MatrixElementError::FieldMeshLength {
+            expected: mesh.len(),
+            actual: mesh.len() - 1,
+        })
+    );
 }

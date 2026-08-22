@@ -13,6 +13,7 @@ pub mod gaunt;
 pub mod harmonics;
 pub mod mesh;
 pub mod reciprocal;
+pub mod spinor;
 pub mod step_function;
 pub mod units;
 
@@ -28,6 +29,10 @@ pub use harmonics::{
 };
 pub use mesh::{ExponentialMesh, MeshError, OriginContribution, QuadratureWeights};
 pub use reciprocal::{GVector, LatticeError, ReciprocalLattice};
+pub use spinor::{
+    DiracAngularContract, Kappa, KappaError, RelativisticChannel, RelativisticChannelError,
+    SpinProjection, SpinorHarmonicTerm, TwiceMu, TwiceMuError, spinor_gaunt,
+};
 pub use step_function::{
     InterstitialGeometry, Sphere, StepFunctionError, sphere_form_factor,
     step_function_coefficient_cutoff,

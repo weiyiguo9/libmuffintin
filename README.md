@@ -9,22 +9,25 @@ muffin-tin electronic-structure methods.  The long-term target includes
 FP-KKR, (L)APW(+lo), and the LMTO/EMTO/NMTO family; the v0.1 route is LAPW
 first. Note that this library is not for production DFT calculations, and the API is subject to further changes.  The library is intended to be used as experiments to unify the foudamental muffin-tin basis in electronic structure methods and abstrct the common/heavy relyed functions. Apparantly named after libxc, libpaw, libcint.
 
-The current M-A through M-J implementation candidate provides:
+The current M-A through M-Ka implementation candidate provides:
 
 - `libmuffintin-core`: Hartree/Bohr units, complex and real spherical harmonics,
   SPEX-convention complex Gaunt coefficients, real Gaunt coefficients,
   spherical Bessel functions, exponential radial meshes and quadrature,
   reciprocal-vector generation, and analytic interstitial step-function
-  Fourier coefficients;
+  Fourier coefficients, and validated Dirac `Kappa`, exact `TwiceMu`,
+  spinor-harmonic, and spinor-Gaunt contracts;
 - `libmuffintin-radial`: nonrelativistic and scalar-relativistic valence radial
   solutions, energy derivatives, local orbitals, radial integral blocks, and
-  a separate spherical four-component Dirac bound-core solver;
-- an explicitly reserved valence 4c Dirac interface. Full valence 4c support
-  also needs spinor augmentation and assembly and is not claimed here;
+  a separate spherical four-component Dirac bound-core solver, plus regular
+  fixed-energy Dirac valence functions with physical $(P,Q)$ traces and an
+  explicit SRA $(U,U_r)$ adapter. The active M-Ka contract extends this route
+  with analytic second energy derivatives and confined SRA HDLOs;
 - `libmuffintin-grid`: typed atom-centred, uniform, interstitial, and stable composite
   quadrature grids, with an optional `rstsr` tensor conversion feature;
 - `libmuffintin-sphere`: $(L,M)$-resolved sphere fields and Gaunt-weighted radial matrix
-  elements for complex or real harmonics;
+  elements for complex or real harmonics, plus a parallel typed spinor path
+  that keeps the large-large and small-small radial/angular factors separate;
 - `libmuffintin-io`: independently versioned, human-diffable TOML formats for physical
   snapshots and materialized grid artifacts. The FLEUR converter remains
   frozen;
@@ -47,7 +50,14 @@ The current M-A through M-J implementation candidate provides:
   keeps SPEX APW matching, explicit Rayleigh and site phases, the SPEX
   symmetric-Laplacian interstitial kinetic convention, collinear spin
   channels without SOC, and $(k,\mathrm{band})$ reference reports. An
-  explicit `BasisSpec` route must not call `recipes::lapw()`;
+  explicit `BasisSpec` route must not call `recipes::lapw()`. M-Ka adds a
+  parallel `SpinorCompiledBasis`, `spin * n_g + g` Pauli-PW order, typed
+  spinor site projection, equal-spin SRA interstitial assembly, and an
+  explicit Hartree-convention Schlosser--Marcus surface bilinear form. The
+  analytic second-derivative/HDLO path and a repository-local non-empty-sphere
+  large-$c$ frozen-fixture reduction are internally tested; this is not yet a
+  completed M-Ka acceptance or a cross-code validation against a frozen
+  FlapwMBPT/source-equivalent band fixture;
 - `libmuffintin-product` and `libmuffintin-mpb` M-H: a historical-method-name-free
   product-space IR (`ProductPartition`, `ProductSource` without a compiled
   one-particle basis, untruncated muffin-tin products, capability-supplied

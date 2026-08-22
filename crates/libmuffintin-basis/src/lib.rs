@@ -11,12 +11,13 @@ mod layout;
 mod spec;
 
 pub use augmentation::{
-    ApwBoundaryBasis, ApwMatch, PlaneWaveAugmentation, augmentation_coefficients,
-    match_apw_boundary,
+    ApwBoundaryBasis, ApwMatch, PlaneWaveAugmentation, SpinorApwMatch, SpinorPlaneWaveAugmentation,
+    augmentation_coefficients, match_apw_boundary, spinor_augmentation_coefficients,
 };
-pub use layout::{BasisLayout, LocalOrbitalLayout};
+pub use layout::{BasisLayout, LocalOrbitalLayout, SpinorBasisLayout, SpinorSiteLayout};
 pub use spec::{
-    ApwSiteAugmentation, ApwSiteGeometry, BasisBlock, BasisSpec, CompiledBasis, Provenance, compile,
+    ApwSiteAugmentation, ApwSiteGeometry, BasisBlock, BasisSpec, CompiledBasis, Provenance,
+    SpinorCompiledBasis, compile,
 };
 
 use libmuffintin_envelope::EnvelopeError;
@@ -31,6 +32,16 @@ pub enum BasisError {
     SingularBoundaryMatrix { l: u32, determinant: f64 },
     #[error("APW matches must be ordered by l: expected {expected}, found {actual}")]
     MatchAngularMomentum { expected: u32, actual: u32 },
+    #[error("spinor site layout contains kappa={kappa} more than once")]
+    DuplicateKappa { kappa: i32 },
+    #[error("spinor APW matches contain kappa={kappa} more than once")]
+    DuplicateSpinorMatch { kappa: i32 },
+    #[error("spinor APW match for kappa={kappa} must use l={expected}, found l={actual}")]
+    SpinorMatchAngularMomentum {
+        kappa: i32,
+        expected: u32,
+        actual: u32,
+    },
     #[error("wave-vector norm must be finite and nonnegative, got {0}")]
     InvalidWaveVector(f64),
     #[error("site {site} is not present in the envelope APW site list")]
@@ -46,8 +57,12 @@ pub enum BasisError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libmuffintin_core::{Bohr, InverseBohr, ReciprocalLattice, VolumeBohr3};
-    use libmuffintin_envelope::{PlaneWave, PlaneWaveEnvelope, site_translation_phase};
+    use libmuffintin_core::{
+        Bohr, InverseBohr, Kappa, Lm, ReciprocalLattice, TwiceMu, VolumeBohr3,
+    };
+    use libmuffintin_envelope::{
+        PlaneWave, PlaneWaveEnvelope, rayleigh_coefficient, site_translation_phase,
+    };
     use libmuffintin_radial::BoundaryData;
 
     fn boundary(value: f64, derivative: f64) -> BoundaryData {
@@ -107,6 +122,52 @@ mod tests {
     }
 
     #[test]
+    fn spinor_layout_uses_spin_g_then_site_kappa_mu_n_order() {
+        let minus_two = Kappa::new(-2).unwrap();
+        let minus_one = Kappa::new(-1).unwrap();
+        let plus_one = Kappa::new(1).unwrap();
+        let first =
+            SpinorSiteLayout::new(vec![(plus_one, 1), (minus_one, 2), (minus_two, 1)]).unwrap();
+        assert_eq!(
+            first.counts_by_kappa(),
+            &[(minus_two, 1), (minus_one, 2), (plus_one, 1)]
+        );
+        assert_eq!(first.len(), 10);
+        assert_eq!(
+            first.index(minus_two, TwiceMu::new(-3).unwrap(), 0),
+            Some(0)
+        );
+        assert_eq!(first.index(minus_two, TwiceMu::new(3).unwrap(), 0), Some(3));
+        assert_eq!(
+            first.index(minus_one, TwiceMu::new(-1).unwrap(), 0),
+            Some(4)
+        );
+        assert_eq!(
+            first.index(minus_one, TwiceMu::new(-1).unwrap(), 1),
+            Some(5)
+        );
+        assert_eq!(first.index(minus_one, TwiceMu::new(1).unwrap(), 0), Some(6));
+        assert_eq!(first.index(plus_one, TwiceMu::new(1).unwrap(), 0), Some(9));
+        assert_eq!(first.index(plus_one, TwiceMu::new(3).unwrap(), 0), None);
+
+        let second = SpinorSiteLayout::new(vec![(minus_one, 1)]).unwrap();
+        let layout = SpinorBasisLayout::new(3, vec![first, second]);
+        assert_eq!(layout.plane_wave_range(), 0..6);
+        assert_eq!(layout.plane_wave_spin_range(0), Some(0..3));
+        assert_eq!(layout.plane_wave_spin_range(1), Some(3..6));
+        assert_eq!(layout.plane_wave_index(0, 2), Some(2));
+        assert_eq!(layout.plane_wave_index(1, 0), Some(3));
+        assert_eq!(layout.plane_wave_index(2, 0), None);
+        assert_eq!(layout.site_spinor_range(0), Some(6..16));
+        assert_eq!(layout.site_spinor_range(1), Some(16..18));
+        assert_eq!(
+            layout.site_spinor_index(0, minus_one, TwiceMu::new(1).unwrap(), 1),
+            Some(13)
+        );
+        assert_eq!(layout.dimension(), 18);
+    }
+
+    #[test]
     fn nonzero_k_site_phase_is_carried_by_augmentation_coefficients() {
         let wave = waves()[0];
         assert!(wave.k.iter().any(|component| component.get() != 0.0));
@@ -128,6 +189,89 @@ mod tests {
                     .norm()
                     < 1.0e-14
             );
+        }
+    }
+
+    #[test]
+    fn spinor_augmentation_selects_rayleigh_orbitals_and_cg_coefficients() {
+        let wave = waves()[0];
+        let kappa = Kappa::new(1).unwrap();
+        let radial = [0.7, -0.2];
+        let augmentation = spinor_augmentation_coefficients(
+            &wave,
+            [Bohr(0.0); 3],
+            VolumeBohr3(80.0),
+            &[SpinorApwMatch {
+                kappa,
+                apw: ApwMatch {
+                    l: 1,
+                    coefficients: radial,
+                    value_residual: 0.0,
+                    slope_residual: 0.0,
+                },
+            }],
+        )
+        .unwrap();
+        assert_eq!(augmentation.channels.len(), 2);
+        assert_eq!(augmentation.augmented_site_coordinate_count(), 4);
+        assert_eq!(augmentation.site_coordinate_index(1, 0), Some(2));
+        assert_eq!(augmentation.site_coordinate_index(1, 1), Some(3));
+        assert_eq!(augmentation.channels[1].kappa(), kappa);
+        assert_eq!(
+            augmentation.channels[1].twice_mu(),
+            TwiceMu::new(1).unwrap()
+        );
+
+        let up_angular = rayleigh_coefficient(Lm::new(1, 0).unwrap(), wave.q, VolumeBohr3(80.0))
+            .unwrap()
+            * -(1.0_f64 / 3.0).sqrt();
+        let down_angular = rayleigh_coefficient(Lm::new(1, 1).unwrap(), wave.q, VolumeBohr3(80.0))
+            .unwrap()
+            * (2.0_f64 / 3.0).sqrt();
+        for (radial_column, &radial_coefficient) in radial.iter().enumerate() {
+            assert!(
+                (augmentation.coefficient(0, 1)[radial_column] - up_angular * radial_coefficient)
+                    .norm()
+                    < 1.0e-14
+            );
+            assert!(
+                (augmentation.coefficient(1, 1)[radial_column] - down_angular * radial_coefficient)
+                    .norm()
+                    < 1.0e-14
+            );
+        }
+    }
+
+    #[test]
+    fn spinor_augmentation_carries_translated_site_phase() {
+        let wave = waves()[0];
+        let matched = [SpinorApwMatch {
+            kappa: Kappa::new(1).unwrap(),
+            apw: ApwMatch {
+                l: 1,
+                coefficients: [0.7, -0.2],
+                value_residual: 0.0,
+                slope_residual: 0.0,
+            },
+        }];
+        let origin =
+            spinor_augmentation_coefficients(&wave, [Bohr(0.0); 3], VolumeBohr3(80.0), &matched)
+                .unwrap();
+        let site = [Bohr(0.31), Bohr(-0.27), Bohr(0.19)];
+        let translated =
+            spinor_augmentation_coefficients(&wave, site, VolumeBohr3(80.0), &matched).unwrap();
+        let phase = site_translation_phase(wave.q, site);
+        for spin in 0..2 {
+            for channel in 0..origin.channels.len() {
+                for radial in 0..2 {
+                    assert!(
+                        (translated.coefficient(spin, channel)[radial]
+                            - phase * origin.coefficient(spin, channel)[radial])
+                            .norm()
+                            < 1.0e-14
+                    );
+                }
+            }
         }
     }
 

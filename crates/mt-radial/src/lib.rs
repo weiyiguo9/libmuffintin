@@ -12,9 +12,9 @@ mod integrals;
 mod valence;
 
 pub use core_dirac::{
-    CoreDiracSolution, CoreDiracSpec, CoreState, DiracAngularContract, EnergyBracket, Kappa,
-    KappaError, RelativisticRole, ValenceDiracSolution, ValenceDiracSpec, solve_core_dirac,
-    solve_valence_dirac,
+    CoreDiracSolution, CoreDiracSpec, CoreState, DiracBoundaryTrace, DiracEnergyDerivative,
+    DiracError, DiracLocalOrbital, DiracSecondEnergyDerivative, EnergyBracket, RelativisticRole,
+    ValenceDiracSolution, ValenceDiracSpec, solve_core_dirac, solve_valence_dirac,
 };
 pub use integrals::{RadialComponents, RadialIntegralError, RadialIntegralKernel, radial_integral};
 pub use valence::{
