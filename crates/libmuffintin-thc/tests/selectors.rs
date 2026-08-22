@@ -126,6 +126,48 @@ fn selection_is_deterministic_under_fixed_seed_and_column_order() {
 }
 
 #[test]
+fn full_qrcp_and_pivoted_cholesky_select_the_same_points() {
+    let mesh = mt_kmesh();
+    let grid = mt_adaptive_grid(8, 12, 6);
+    let reference = mt_reference_grid();
+    let norms = mt_orbital_norms(&reference);
+    let orbitals = mt_bloch_orbitals(&grid, &norms, &mesh).unwrap();
+    for strategy in [SelectorStrategy::Q0L2, SelectorStrategy::AllQL2] {
+        let mut selections = Vec::new();
+        for engine in [L2Engine::FullColumnPivotedQr, L2Engine::FullPivotedCholesky] {
+            let request = SelectionRequest {
+                strategy,
+                rank: RankPolicy::Exact { n_mu: 12 },
+                seed: HEADLINE_SEED,
+                pool_factor: 2,
+                engine,
+                grid_path: GridPath::Adaptive {
+                    nrad: 8,
+                    nang: 12,
+                    ninter: 6,
+                },
+            };
+            let selection = libmuffintin_thc::select_points(
+                &orbitals,
+                &grid.points,
+                &grid.weights,
+                &grid.regions,
+                &mesh,
+                &request,
+                None,
+                Some(0),
+            )
+            .unwrap();
+            assert_eq!(selection.provenance.n_mu, 12);
+            assert_eq!(selection.provenance.engine, engine);
+            selections.push(selection);
+        }
+        assert_eq!(selections[0].pivots, selections[1].pivots);
+        assert_eq!(selections[0].points, selections[1].points);
+    }
+}
+
+#[test]
 fn exact_structured_sketch_rejects_more_points_than_ranked_rows() {
     let mesh = mt_kmesh();
     let grid = mt_adaptive_grid(4, 6, 3);

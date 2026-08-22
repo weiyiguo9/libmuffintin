@@ -18,12 +18,16 @@ fn layout() -> PairColumnLayout {
 }
 
 fn request(rank: RankPolicy) -> SelectionRequest {
+    request_with_engine(rank, L2Engine::FullColumnPivotedQr)
+}
+
+fn request_with_engine(rank: RankPolicy, engine: L2Engine) -> SelectionRequest {
     SelectionRequest {
         strategy: SelectorStrategy::AllQL2,
         rank,
         seed: 7,
         pool_factor: 2,
-        engine: L2Engine::FullColumnPivotedQr,
+        engine,
         grid_path: GridPath::Uniform {
             divisions: 2,
             shift: UniformShift::Half,
@@ -54,24 +58,29 @@ fn threshold_on_all_zero_pairs_is_degenerate_not_full_rank() {
     ];
     let weights = vec![1.0; n_points];
     let regions = vec![InterpolationRegion::Uniform; n_points];
-    let error = select_points(
-        &orbitals,
-        &points,
-        &weights,
-        &regions,
-        &mesh,
-        &request(RankPolicy::Threshold {
-            thresh: 1.0e-6,
-            n_max: n_points,
-        }),
-        None,
-        None,
-    )
-    .unwrap_err();
-    assert!(
-        matches!(error, ThcError::DegenerateRank),
-        "zero sketch must not return n_max points, got {error:?}"
-    );
+    for engine in [L2Engine::FullColumnPivotedQr, L2Engine::FullPivotedCholesky] {
+        let error = select_points(
+            &orbitals,
+            &points,
+            &weights,
+            &regions,
+            &mesh,
+            &request_with_engine(
+                RankPolicy::Threshold {
+                    thresh: 1.0e-6,
+                    n_max: n_points,
+                },
+                engine,
+            ),
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(error, ThcError::DegenerateRank),
+            "zero pair matrix must be degenerate for {engine:?}, got {error:?}"
+        );
+    }
 }
 
 #[test]
@@ -88,22 +97,77 @@ fn threshold_keeps_leading_nondegenerate_rank() {
     ];
     let weights = vec![1.0; n_points];
     let regions = vec![InterpolationRegion::Uniform; n_points];
-    let selection = select_points(
-        &orbitals,
-        &points,
-        &weights,
-        &regions,
-        &mesh,
-        &request(RankPolicy::Threshold {
-            thresh: 1.0e-8,
-            n_max: n_points,
-        }),
-        None,
-        None,
+    let mut selections = Vec::new();
+    for engine in [L2Engine::FullColumnPivotedQr, L2Engine::FullPivotedCholesky] {
+        let selection = select_points(
+            &orbitals,
+            &points,
+            &weights,
+            &regions,
+            &mesh,
+            &request_with_engine(
+                RankPolicy::Threshold {
+                    thresh: 1.0e-8,
+                    n_max: n_points,
+                },
+                engine,
+            ),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(selection.pivots.len(), 1);
+        assert_eq!(selection.provenance.n_mu, 1);
+        assert_eq!(selection.provenance.engine, engine);
+        selections.push(selection);
+    }
+    assert_eq!(selections[0].pivots, selections[1].pivots);
+    assert_eq!(selections[0].points, selections[1].points);
+}
+
+#[test]
+fn relative_threshold_has_the_same_amplitude_scale_for_full_engines() {
+    let mesh = KMesh::gamma_centred([1, 1, 1], 6.0).unwrap();
+    let points = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+    let orbitals = BlochOrbitals::new(
+        points.len(),
+        1,
+        3,
+        vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::default(),
+            Complex64::default(),
+            Complex64::default(),
+            Complex64::new(0.1, 0.0),
+            Complex64::default(),
+            Complex64::default(),
+            Complex64::default(),
+            Complex64::new(0.01, 0.0),
+        ],
     )
     .unwrap();
-    assert_eq!(selection.pivots.len(), 1);
-    assert_eq!(selection.provenance.n_mu, 1);
+    let weights = vec![1.0; points.len()];
+    let regions = vec![InterpolationRegion::Uniform; points.len()];
+    for engine in [L2Engine::FullColumnPivotedQr, L2Engine::FullPivotedCholesky] {
+        let selection = select_points(
+            &orbitals,
+            &points,
+            &weights,
+            &regions,
+            &mesh,
+            &request_with_engine(
+                RankPolicy::Threshold {
+                    thresh: 5.0e-3,
+                    n_max: points.len(),
+                },
+                engine,
+            ),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(selection.pivots, vec![0, 1], "engine={engine:?}");
+    }
 }
 
 #[test]

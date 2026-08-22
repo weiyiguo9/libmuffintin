@@ -443,36 +443,38 @@ fn source_equivalent_python_lapw_fixture() {
     );
 
     let n_mu = 16 * LAPW_NORB;
-    let metrics = candidate_eri_action_over_q(
-        &cand_orbs,
-        &candidate,
-        &mesh,
-        &kernel,
-        &reference_ft,
-        n_mu,
-        SelectorStrategy::AllQL2,
-        None,
-        L2Engine::FullColumnPivotedQr,
-        None,
-    )
-    .unwrap();
-    eprintln!(
-        "source-equivalent fine candidate Nmu={n_mu}: pair-G={:.6e} ERI-F={:.6e} ERI-max={:.6e} action={:.6e} (Python 2.362e-2 / 4.932e-2 / 4.560e-2 / 6.230e-2, gate 8e-2)",
-        metrics.pair_fourier, metrics.eri_frobenius, metrics.eri_max_element, metrics.action
-    );
-    assert!(
-        metrics.eri_frobenius <= RECORDED_ERI_ACTION_GATE,
-        "fine ERI-F {:.6e} exceeded 8e-2",
-        metrics.eri_frobenius
-    );
-    assert!(
-        metrics.eri_max_element <= RECORDED_ERI_ACTION_GATE,
-        "fine ERI-max {:.6e} exceeded 8e-2",
-        metrics.eri_max_element
-    );
-    assert!(
-        metrics.action <= RECORDED_ERI_ACTION_GATE,
-        "fine action {:.6e} exceeded 8e-2",
-        metrics.action
-    );
+    for engine in [L2Engine::FullColumnPivotedQr, L2Engine::FullPivotedCholesky] {
+        let metrics = candidate_eri_action_over_q(
+            &cand_orbs,
+            &candidate,
+            &mesh,
+            &kernel,
+            &reference_ft,
+            n_mu,
+            SelectorStrategy::AllQL2,
+            None,
+            engine,
+            None,
+        )
+        .unwrap();
+        eprintln!(
+            "source-equivalent fine candidate engine={engine:?} Nmu={n_mu}: pair-G={:.6e} ERI-F={:.6e} ERI-max={:.6e} action={:.6e} (Python 2.362e-2 / 4.932e-2 / 4.560e-2 / 6.230e-2, gate 8e-2)",
+            metrics.pair_fourier, metrics.eri_frobenius, metrics.eri_max_element, metrics.action
+        );
+        assert!(
+            metrics.eri_frobenius <= RECORDED_ERI_ACTION_GATE,
+            "fine {engine:?} ERI-F {:.6e} exceeded 8e-2",
+            metrics.eri_frobenius
+        );
+        assert!(
+            metrics.eri_max_element <= RECORDED_ERI_ACTION_GATE,
+            "fine {engine:?} ERI-max {:.6e} exceeded 8e-2",
+            metrics.eri_max_element
+        );
+        assert!(
+            metrics.action <= RECORDED_ERI_ACTION_GATE,
+            "fine {engine:?} action {:.6e} exceeded 8e-2",
+            metrics.action
+        );
+    }
 }
