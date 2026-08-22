@@ -4,12 +4,9 @@
   <img src="https://cdn.jsdelivr.net/gh/weiyiguo9/libmuffintin@main/assets/libmuffintin-logo.webp" alt="libmuffintin logo" width="300">
 </p>
 
-`libmuffintin` is a memory-safe Rust experimental library for the algebra shared by
-muffin-tin electronic-structure methods.  The long-term target includes
-FP-KKR, (L)APW(+lo), and the LMTO/EMTO/NMTO family; the v0.1 route is LAPW
-first. Note that this library is not for production DFT calculations, and the API is subject to further changes.  The library is intended to be used as experiments to unify the foudamental muffin-tin basis in electronic structure methods and abstrct the common/heavy relyed functions. Apparantly named after libxc, libpaw, libcint.
+`libmuffintin` is a memory-safe experimental Rust library for algebra shared by muffin-tin electronic-structure methods. The long-term target includes FP-KKR, (L)APW(+lo), and the LMTO/EMTO/NMTO family; the first executable route is LAPW. The API remains subject to breaking changes, and the new DFT workflow is an implementation candidate rather than a production-validated materials code. The name follows libraries such as libxc, libpaw, and libcint.
 
-The current M-A through M-Ka implementation candidate plus the initial M-Kb slice provides:
+The current M-A through M-Kb implementation candidate provides:
 
 - `libmuffintin-core`: Hartree/Bohr units, complex and real spherical harmonics,
   SPEX-convention complex Gaunt coefficients, real Gaunt coefficients,
@@ -87,7 +84,8 @@ The current M-A through M-Ka implementation candidate plus the initial M-Kb slic
   `libmuffintin-mpb` or `libmuffintin-thc` types. Direct Ewald-summed
   $1/r$ is a toy oracle only. There is no live SPEX $V^q$ dump and no
   Coulomb/THC/GW production consumer;
-- `libmuffintin-dft` M-Kb (occupation slice): explicitly weighted regular-full-BZ band states; overflow-safe Fermi--Dirac and SPEX-standard-deviation Gaussian occupations; a shared bounded chemical-potential solve; Fermi--Dirac entropy/$-TS$; and the separate variational Gaussian smearing correction. State degeneracy is explicit, so implicit nonmagnetic spin degeneracy is not confused with explicitly enumerated collinear or spinor states. Density synthesis, Weinert Poisson, LDA/PBE, mixing, the SCF driver, SOC second variation, and tetrahedron DOS remain unimplemented M-Kb work.
+- `libmuffintin-dft` M-Kb: regional muffin-tin/interstitial density synthesis with the physical step-function metric; per-iteration four-component $P^2+Q^2$ core density; Weinert electronic Hartree plus periodic nuclei; SPEX LDA/PW92 and PBE; overflow-safe Fermi--Dirac and Gaussian occupations with their distinct variational corrections; linear, type-2 Broyden, and Pulay--Anderson mixing; total-energy and SCF state machines; scalar Koelling--Harmon, optional nonmagnetic SPEX-style second-variation SOC, and a four-component first-variation library route; frozen-potential bands; and regular-mesh tetrahedron DOS. State degeneracy and total-versus-core electron counting are explicit.
+- `libmuffintin-runtime`: the single `muffintin` binary plus a reusable library boundary. One versioned TOML input carries an ordered `workflow.tasks` array and `[task.<id>]` blocks with nested arrays and subblocks; later tasks consume typed outputs such as `scf.state`. The registry currently executes DFT SCF, bands, and DOS and is intentionally not DFT-named so future THC tasks and a Python interface can share the same modular runtime.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.
@@ -124,4 +122,4 @@ recorded in the numbered derivation notes.
 
 ## Scope boundary
 
-This is a frozen-input LAPW operator engine with a finite-temperature occupation substrate, not yet a self-consistent DFT code. M-F includes local-orbital basis rows and collinear spin-channel drivers, but not SCF, SOC, noncollinear spin, density synthesis, or potential construction. The real Cu-versus-SPEX one-meV gate still needs a matching frozen potential/basis/eigenvalue fixture; synthetic empty-lattice tests do not replace that evidence, so the README overlay and `v0.1` release tag are not yet claimed. Producer-specific FLEUR conversion is intentionally frozen.
+The repository now contains an executable minimal full-potential DFT implementation candidate, but it is not yet cross-code accepted or production validated. Focused and one-site end-to-end gates do not replace the planned Si/SrVO3 scalar, Pt/Au second-variation SOC, collinear bcc Fe, and SPEX/FLEUR tetrahedron-DOS fixtures. Snapshot V1 represents scalar or collinear diagonal spin potentials; the library-level four-component route exposes Cartesian spin density, while a versioned noncollinear snapshot/restart schema remains future work. The older Cu-versus-SPEX frozen-potential one-meV gate and producer-specific FLEUR conversion also remain outside the current acceptance evidence, so a `v0.1` release tag is not claimed.
