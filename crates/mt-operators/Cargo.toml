@@ -14,9 +14,13 @@ name = "muffintin_operators"
 faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
 libmuffintin-basis = { path = "../mt-basis" }
 libmuffintin-core = { path = "../mt-core" }
+libmuffintin-radial = { path = "../mt-radial" }
 libmuffintin-tensor = { path = "../mt-tensor" }
 num-complex.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+libmuffintin-envelope = { path = "../mt-envelope" }
 
 [lints]
 workspace = true

@@ -1,10 +1,8 @@
 //! Site projection $P^\dagger B P$ scattered into a global operator pair.
 
-use crate::OperatorError;
-use muffintin_basis::{CompiledBasis, PlaneWaveAugmentation};
-use muffintin_tensor::{
-    Axis, ComplexTensor, DenseHermitianMatrix, TensorError, hermitian_congruence,
-};
+use crate::{CompiledSiteProjection, OperatorError};
+use muffintin_basis::CompiledBasis;
+use muffintin_tensor::{Axis, DenseHermitianMatrix, TensorError};
 use num_complex::Complex64;
 
 /// Both muffin-tin operators in the same local coordinate basis.
@@ -65,28 +63,10 @@ pub fn add_site_contributions(
     }
 
     for (site_index, site) in sites.iter().enumerate() {
-        validate_operator_site(
-            site_index,
-            site,
-            &compiled.site_augmentations[site_index],
-            compiled,
-        )?;
-        add_site_projection(
-            overlap,
-            dimension,
-            site_index,
-            &compiled.site_augmentations[site_index],
-            &site.overlap,
-            compiled,
-        )?;
-        add_site_projection(
-            hamiltonian,
-            dimension,
-            site_index,
-            &compiled.site_augmentations[site_index],
-            &site.hamiltonian,
-            compiled,
-        )?;
+        let projection = CompiledSiteProjection::scalar(compiled, site_index)?;
+        validate_operator_site(site_index, site, projection.coordinate_count())?;
+        projection.add_congruence_to(overlap, dimension, &site.overlap)?;
+        projection.add_congruence_to(hamiltonian, dimension, &site.hamiltonian)?;
     }
 
     Ok(OperatorSet {
@@ -106,32 +86,8 @@ pub fn add_site_contributions(
 fn validate_operator_site(
     site_index: usize,
     site: &SiteOperatorBlocks,
-    augmentations: &[PlaneWaveAugmentation],
-    compiled: &CompiledBasis,
+    expected: usize,
 ) -> Result<(), OperatorError> {
-    let layout = &compiled.layout;
-    if augmentations.len() != layout.plane_wave_count() {
-        return Err(OperatorError::PlaneWaveCount {
-            expected: layout.plane_wave_count(),
-            actual: augmentations.len(),
-        });
-    }
-    let channels = augmentations
-        .first()
-        .map_or(0, |augmentation| augmentation.coefficients.len());
-    for (plane_wave, augmentation) in augmentations.iter().enumerate() {
-        if augmentation.coefficients.len() != channels {
-            return Err(OperatorError::ChannelCount {
-                plane_wave,
-                expected: channels,
-                actual: augmentation.coefficients.len(),
-            });
-        }
-    }
-    let expected = 2 * channels
-        + layout
-            .site_layout(site_index)
-            .map_or(0, muffintin_basis::LocalOrbitalLayout::len);
     for (name, block) in [
         ("overlap", &site.overlap),
         ("Hamiltonian", &site.hamiltonian),
@@ -153,81 +109,4 @@ fn validate_operator_site(
         }
     }
     Ok(())
-}
-
-fn add_site_projection(
-    global: &mut [Complex64],
-    dimension: usize,
-    site_index: usize,
-    augmentations: &[PlaneWaveAugmentation],
-    block: &DenseHermitianMatrix,
-    compiled: &CompiledBasis,
-) -> Result<(), OperatorError> {
-    let layout = &compiled.layout;
-    let channels = augmentations
-        .first()
-        .map_or(0, |augmentation| augmentation.coefficients.len());
-    let apw_dimension = 2 * channels;
-    let lo_range = layout
-        .site_local_orbital_range(site_index)
-        .expect("validated site index");
-    let global_indices = layout
-        .plane_wave_range()
-        .chain(lo_range.clone())
-        .collect::<Vec<_>>();
-    let n_coord = block.dimension();
-    let n_basis = global_indices.len();
-    if n_coord == 0 || n_basis == 0 {
-        return Ok(());
-    }
-
-    let mut projection = vec![Complex64::default(); n_coord * n_basis];
-    for (column, &global_index) in global_indices.iter().enumerate() {
-        if global_index < layout.plane_wave_count() {
-            for (channel, coefficients) in
-                augmentations[global_index].coefficients.iter().enumerate()
-            {
-                projection[(2 * channel) * n_basis + column] = coefficients[0];
-                projection[(2 * channel + 1) * n_basis + column] = coefficients[1];
-            }
-        } else {
-            let row = apw_dimension + global_index - lo_range.start;
-            projection[row * n_basis + column] = Complex64::new(1.0, 0.0);
-        }
-    }
-
-    let projection = ComplexTensor::from_host_row_major(
-        &[n_coord, n_basis],
-        &[Axis::SiteCoordinate, Axis::SiteBasis],
-        projection,
-    )?;
-    let site_matrix = hermitian_congruence(&projection, block)?;
-    let values = site_matrix.to_host_row_major();
-    for left in 0..n_basis {
-        for right in left..n_basis {
-            add_hermitian(
-                global,
-                dimension,
-                global_indices[left],
-                global_indices[right],
-                values[left * n_basis + right],
-            );
-        }
-    }
-    Ok(())
-}
-
-fn add_hermitian(
-    data: &mut [Complex64],
-    dimension: usize,
-    row: usize,
-    column: usize,
-    value: Complex64,
-) {
-    data[row * dimension + column] += value;
-    if row == column {
-        data[row * dimension + row].im = 0.0;
-    } else {
-        data[column * dimension + row] += value.conj();
-    }
 }
