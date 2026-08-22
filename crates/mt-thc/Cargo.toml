@@ -1,6 +1,6 @@
 [package]
-name = "libmuffintin-basis"
-description = "Anonymous basis specification, layout, and APW augmentation"
+name = "libmuffintin-thc"
+description = "Toy k-point ISDF/THC selection over the product-space IR"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,9 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
+libmuffintin-basis = { path = "../mt-basis" }
 libmuffintin-core = { path = "../mt-core" }
-libmuffintin-envelope = { path = "../libmuffintin-envelope" }
-libmuffintin-radial = { path = "../mt-radial" }
+libmuffintin-product = { path = "../mt-product" }
 num-complex.workspace = true
 thiserror.workspace = true
 

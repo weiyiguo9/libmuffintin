@@ -27,7 +27,7 @@ Ewald kernel is an independent toy oracle, not production assembly.
 
 | Directory | Package |
 |---|---|
-| `crates/libmuffintin-coulomb` | `libmuffintin-coulomb` |
+| `crates/mt-coulomb` | `libmuffintin-coulomb` |
 
 Production dependencies: `libmuffintin-product`, `libmuffintin-core`,
 `libmuffintin-basis`, `libmuffintin-grid`.

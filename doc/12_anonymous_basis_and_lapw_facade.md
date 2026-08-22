@@ -10,9 +10,8 @@ convention, and APW+lo layout remain in [08](08_lapw_matching_and_overlap.md),
 
 ## 1. Package names and directories
 
-Published Cargo package names use the `libmuffintin-*` prefix. Existing
-directories under `crates/mt-*` are unchanged; new crates live in matching
-`crates/libmuffintin-*` directories.
+Workspace directories uniformly use the `crates/mt-*` prefix, while published
+Cargo package names use `libmuffintin-*`.
 
 | Directory | Package |
 |---|---|
@@ -22,10 +21,10 @@ directories under `crates/mt-*` are unchanged; new crates live in matching
 | `crates/mt-grid` | `libmuffintin-grid` |
 | `crates/mt-io` | `libmuffintin-io` |
 | `crates/mt-tensor` | `libmuffintin-tensor` |
-| `crates/libmuffintin-envelope` | `libmuffintin-envelope` |
-| `crates/libmuffintin-basis` | `libmuffintin-basis` |
-| `crates/libmuffintin-operators` | `libmuffintin-operators` |
-| `crates/libmuffintin-recipes` | `libmuffintin-recipes` |
+| `crates/mt-envelope` | `libmuffintin-envelope` |
+| `crates/mt-basis` | `libmuffintin-basis` |
+| `crates/mt-operators` | `libmuffintin-operators` |
+| `crates/mt-recipes` | `libmuffintin-recipes` |
 | `crates/mt-lapw` | `libmuffintin-lapw` |
 
 There is no compatibility package named `mt-*`. Rust imports use underscores,

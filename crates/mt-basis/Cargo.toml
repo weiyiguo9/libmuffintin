@@ -1,6 +1,6 @@
 [package]
-name = "libmuffintin-recipes"
-description = "Validated basis presets, defaults, and provenance"
+name = "libmuffintin-basis"
+description = "Anonymous basis specification, layout, and APW augmentation"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,12 +8,11 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-libmuffintin-basis = { path = "../libmuffintin-basis" }
 libmuffintin-core = { path = "../mt-core" }
-libmuffintin-envelope = { path = "../libmuffintin-envelope" }
-
-[dev-dependencies]
+libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-radial = { path = "../mt-radial" }
+num-complex.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

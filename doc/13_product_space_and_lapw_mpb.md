@@ -13,9 +13,9 @@ and [03](03_exponential_mesh_and_radial_quadrature.md).
 
 | Directory | Package |
 |---|---|
-| `crates/libmuffintin-product` | `libmuffintin-product` |
-| `crates/libmuffintin-mpb` | `libmuffintin-mpb` |
-| `crates/libmuffintin-thc` | `libmuffintin-thc` (M-I; interpolation-point payload) |
+| `crates/mt-product` | `libmuffintin-product` |
+| `crates/mt-mpb` | `libmuffintin-mpb` |
+| `crates/mt-thc` | `libmuffintin-thc` (M-I; interpolation-point payload) |
 
 There is no `libmuffintin-mbp` alias. `libmuffintin-product` and
 `libmuffintin-mpb` do not depend on `libmuffintin-lapw`, THC, or Coulomb.
