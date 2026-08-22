@@ -51,13 +51,24 @@ fn valence_fixture(
     Vec<f64>,
     muffintin_radial::ValenceDiracSolution,
 ) {
+    valence_fixture_for_kappa(energy, Kappa::new(-1).unwrap())
+}
+
+fn valence_fixture_for_kappa(
+    energy: f64,
+    kappa: Kappa,
+) -> (
+    ExponentialMesh,
+    Vec<f64>,
+    muffintin_radial::ValenceDiracSolution,
+) {
     let mesh = extended_mesh(1.0e-6, 8.0, 0.003);
     let potential: Vec<f64> = mesh
         .radii()
         .iter()
         .map(|radius| -1.0 / radius.get())
         .collect();
-    let spec = ValenceDiracSpec::new(Kappa::new(-1).unwrap(), Hartree(energy)).unwrap();
+    let spec = ValenceDiracSpec::new(kappa, Hartree(energy)).unwrap();
     let solution = solve_valence_dirac(&mesh, &potential, spec).unwrap();
     (mesh, potential, solution)
 }
@@ -258,6 +269,109 @@ fn sra_hdlo_is_confined_normalized_and_retains_its_small_component() {
         .collect();
     assert!((mesh.integrate(&density).unwrap() - 1.0).abs() < 2.0e-12);
     assert!(hdlo.q.iter().any(|value| value.abs() > 1.0e-10));
+}
+
+#[test]
+fn distinct_energy_p_half_sra_local_orbital_is_confined_and_four_component_normalized() {
+    let kappa = Kappa::new(1).unwrap();
+    let (mesh, _, base) = valence_fixture_for_kappa(-0.3, kappa);
+    let (_, _, raw) = valence_fixture_for_kappa(0.4, kappa);
+    let local = base.sra_local_orbital(&raw, &mesh).unwrap();
+
+    assert_eq!(local.energy, raw.energy);
+    assert_eq!(local.kappa, kappa);
+    assert!(local.boundary.value.abs() <= 1.0e-10);
+    assert!(local.boundary.derivative.abs() <= 1.0e-10);
+    let coefficients = local.coefficients;
+    let p_boundary = coefficients.normalization_scale
+        * (raw.boundary.p
+            + coefficients.a * base.boundary.p
+            + coefficients.b * base.energy_derivative.boundary.p);
+    let p_derivative_boundary = coefficients.normalization_scale
+        * (raw.boundary.p_derivative
+            + coefficients.a * base.boundary.p_derivative
+            + coefficients.b * base.energy_derivative.boundary.p_derivative);
+    assert!(p_boundary.abs() <= 1.0e-10);
+    assert!(p_derivative_boundary.abs() <= 1.0e-10);
+    let density: Vec<f64> = local
+        .p
+        .iter()
+        .zip(&local.q)
+        .map(|(&p, &q)| p * p + q * q)
+        .collect();
+    assert!((mesh.integrate(&density).unwrap() - 1.0).abs() < 2.0e-12);
+    assert!(local.q.iter().any(|value| value.abs() > 1.0e-10));
+}
+
+#[test]
+fn distinct_lo_energy_changes_the_p_half_local_orbital() {
+    let kappa = Kappa::new(1).unwrap();
+    let (mesh, _, base) = valence_fixture_for_kappa(-0.3, kappa);
+    let (_, _, raw_low) = valence_fixture_for_kappa(0.1, kappa);
+    let (_, _, raw_high) = valence_fixture_for_kappa(1.2, kappa);
+    let low = base.sra_local_orbital(&raw_low, &mesh).unwrap();
+    let high = base.sra_local_orbital(&raw_high, &mesh).unwrap();
+    let overlap_samples: Vec<f64> = low
+        .p
+        .iter()
+        .zip(&low.q)
+        .zip(&high.p)
+        .zip(&high.q)
+        .map(|(((&low_p, &low_q), &high_p), &high_q)| low_p * high_p + low_q * high_q)
+        .collect();
+    let overlap = mesh.integrate(&overlap_samples).unwrap().abs();
+    assert!(overlap < 1.0 - 1.0e-8, "local-orbital overlap {overlap}");
+}
+
+#[test]
+fn distinct_energy_sra_local_orbital_rejects_incompatible_inputs() {
+    let kappa = Kappa::new(1).unwrap();
+    let (mesh, _, base) = valence_fixture_for_kappa(-0.3, kappa);
+    let (_, _, raw) = valence_fixture_for_kappa(0.4, kappa);
+
+    let (_, _, wrong_kappa) = valence_fixture_for_kappa(0.4, Kappa::new(-1).unwrap());
+    assert!(matches!(
+        base.sra_local_orbital(&wrong_kappa, &mesh),
+        Err(DiracError::LocalOrbitalKappaMismatch { base: 1, raw: -1 })
+    ));
+
+    let mut wrong_speed = raw.clone();
+    wrong_speed.speed_of_light = 40.0;
+    assert!(matches!(
+        base.sra_local_orbital(&wrong_speed, &mesh),
+        Err(DiracError::LocalOrbitalSpeedOfLightMismatch { base: _, raw: 40.0 })
+    ));
+
+    let shorter_mesh =
+        ExponentialMesh::new(mesh.first(), mesh.increment(), mesh.len() - 1).unwrap();
+    assert!(matches!(
+        base.sra_local_orbital(&raw, &shorter_mesh),
+        Err(DiracError::LocalOrbitalSampleCountMismatch {
+            field: "base.p",
+            mesh: expected,
+            actual,
+        }) if expected == mesh.len() - 1 && actual == mesh.len()
+    ));
+
+    let shifted_mesh = ExponentialMesh::new(
+        Bohr(mesh.first().get() * 1.01),
+        mesh.increment(),
+        mesh.len(),
+    )
+    .unwrap();
+    assert!(matches!(
+        base.sra_local_orbital(&raw, &shifted_mesh),
+        Err(DiracError::LocalOrbitalBoundaryRadiusMismatch {
+            field: "base.boundary",
+            mesh: expected,
+            actual,
+        }) if expected == shifted_mesh.last().get() && actual == mesh.last().get()
+    ));
+
+    assert!(matches!(
+        base.sra_local_orbital(&base, &mesh),
+        Err(DiracError::LocalOrbitalEnergyNotDistinct { energy: -0.3 })
+    ));
 }
 
 #[test]

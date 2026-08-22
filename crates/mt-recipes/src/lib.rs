@@ -3,8 +3,10 @@
 #![forbid(unsafe_code)]
 
 mod lapw;
+mod spinor;
 
 pub use lapw::{LapwSiteInput, lapw};
+pub use spinor::spinor_lapw;
 
 use muffintin_basis::Provenance;
 
@@ -12,6 +14,13 @@ pub(crate) fn lapw_provenance() -> Provenance {
     Provenance {
         recipe: Some("lapw".to_owned()),
         reference: Some("SPEX APW+lo".to_owned()),
+    }
+}
+
+pub(crate) fn spinor_provenance() -> Provenance {
+    Provenance {
+        recipe: Some("spinor-lapw".to_owned()),
+        reference: Some("SRA first variation: 2c interstitial and 4c muffin tins".to_owned()),
     }
 }
 

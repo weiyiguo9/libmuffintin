@@ -122,11 +122,112 @@ impl EnergyDerivative {
     }
 }
 
+/// Exact second energy derivative of a normalized homogeneous solution.
+///
+/// The normalization gauge obeys
+/// `2 <u | d2u/dE2> + 2 <du/dE | du/dE> = 0`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SecondEnergyDerivative {
+    /// `d2 p / dE2` in Hartree^-2.
+    pub p: Vec<f64>,
+    /// Physical `d2 Q / dE2`, present only for Koelling--Harmon.
+    pub q: Option<Vec<f64>>,
+    pub boundary: BoundaryData,
+    /// Metric norm of the normalized second derivative.
+    pub norm_squared: f64,
+}
+
+impl SecondEnergyDerivative {
+    /// Materialize `d2u/dE2 = (d2p/dE2)/r` on `mesh`.
+    pub fn u(&self, mesh: &ExponentialMesh) -> Result<Vec<f64>, RadialError> {
+        ensure_mesh_length(mesh, self.p.len())?;
+        Ok(self
+            .p
+            .iter()
+            .zip(mesh.radii())
+            .map(|(&p, r)| p / r.get())
+            .collect())
+    }
+}
+
 /// The LAPW linearization pair `(u, du/dE)`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LinearizedRadialSolution {
     pub solution: RadialSolution,
     pub energy_derivative: EnergyDerivative,
+    pub second_energy_derivative: SecondEnergyDerivative,
+}
+
+impl LinearizedRadialSolution {
+    /// Build the scalar/KH HDLO from the analytic normalized second energy
+    /// derivative. The same matching coefficients act on `P` and physical
+    /// `Q`, and the resulting complete radial norm is one.
+    pub fn hdlo(&self, mesh: &ExponentialMesh) -> Result<LocalOrbital, RadialError> {
+        let base = &self.solution;
+        let first = &self.energy_derivative;
+        let second = &self.second_energy_derivative;
+        for actual in [base.p.len(), first.p.len(), second.p.len()] {
+            ensure_mesh_length(mesh, actual)?;
+        }
+        let determinant = base.boundary.value * first.boundary.derivative
+            - first.boundary.value * base.boundary.derivative;
+        let determinant_scale = (base.boundary.value.abs() * first.boundary.derivative.abs())
+            .max(first.boundary.value.abs() * base.boundary.derivative.abs())
+            .max(1.0);
+        if determinant.abs() <= 256.0 * f64::EPSILON * determinant_scale {
+            return Err(RadialError::SingularLocalOrbital { determinant });
+        }
+        let a = (-second.boundary.value * first.boundary.derivative
+            + first.boundary.value * second.boundary.derivative)
+            / determinant;
+        let b = (-base.boundary.value * second.boundary.derivative
+            + second.boundary.value * base.boundary.derivative)
+            / determinant;
+        let mut p = second
+            .p
+            .iter()
+            .zip(&base.p)
+            .zip(&first.p)
+            .map(|((&raw, &base), &first)| raw + a * base + b * first)
+            .collect::<Vec<_>>();
+        let mut q = match (&second.q, &base.q, &first.q) {
+            (Some(raw), Some(base), Some(first)) => Some(
+                raw.iter()
+                    .zip(base)
+                    .zip(first)
+                    .map(|((&raw, &base), &first)| raw + a * base + b * first)
+                    .collect::<Vec<_>>(),
+            ),
+            (None, None, None) => None,
+            _ => return Err(RadialError::ComponentMismatch),
+        };
+        let norm_squared = component_norm_squared(mesh, &p, q.as_deref())?;
+        if !norm_squared.is_finite() || norm_squared <= f64::MIN_POSITIVE {
+            return Err(RadialError::SingularNorm { norm_squared });
+        }
+        let normalization_scale = norm_squared.sqrt().recip();
+        p.iter_mut().for_each(|value| *value *= normalization_scale);
+        if let Some(q) = &mut q {
+            q.iter_mut().for_each(|value| *value *= normalization_scale);
+        }
+        let value = normalization_scale
+            * (second.boundary.value + a * base.boundary.value + b * first.boundary.value);
+        let derivative = normalization_scale
+            * (second.boundary.derivative
+                + a * base.boundary.derivative
+                + b * first.boundary.derivative);
+        Ok(LocalOrbital {
+            energy: base.energy(),
+            p,
+            q,
+            coefficients: LocalOrbitalCoefficients {
+                a,
+                b,
+                normalization_scale,
+            },
+            boundary: BoundaryData::new(value, derivative, mesh.last().get()),
+        })
+    }
 }
 
 /// Coefficients of the unnormalized matched combination
@@ -240,10 +341,12 @@ impl<'a> RadialSolver<'a> {
         energy: Hartree,
     ) -> Result<LinearizedRadialSolution, RadialError> {
         let solution = self.solve(angular_momentum, energy)?;
-        let energy_derivative = self.integrate_energy_derivative(&solution)?;
+        let (energy_derivative, second_energy_derivative) =
+            self.integrate_energy_derivatives(&solution)?;
         Ok(LinearizedRadialSolution {
             solution,
             energy_derivative,
+            second_energy_derivative,
         })
     }
 
@@ -509,19 +612,22 @@ impl<'a> RadialSolver<'a> {
         })
     }
 
-    fn integrate_energy_derivative(
+    fn integrate_energy_derivatives(
         &self,
         solution: &RadialSolution,
-    ) -> Result<EnergyDerivative, RadialError> {
+    ) -> Result<(EnergyDerivative, SecondEnergyDerivative), RadialError> {
         let n = self.mesh.len();
         ensure_mesh_length(self.mesh, solution.p.len())?;
         let cci = self.equation.c_inverse_squared();
         let q_base = solution.auxiliary_q.clone();
         let mut pdot = vec![0.0; n];
         let mut qdot = vec![0.0; n];
+        let mut psecond = vec![0.0; n];
+        let mut qsecond = vec![0.0; n];
         if cci != 0.0 {
             let m0 = 2.0 + (solution.energy.get() - self.potential[0]) * cci;
             qdot[0] = -q_base[0] * cci / m0;
+            qsecond[0] = 2.0 * q_base[0] * cci * cci / (m0 * m0);
         }
         let l = f64::from(solution.angular_momentum);
         let ll = l * (l + 1.0);
@@ -547,63 +653,85 @@ impl<'a> RadialSolver<'a> {
             let base_y4_p = solution.p[i] + dr * base_k3_p;
             let base_y4_q = q_base[i] + dr * base_k3_q;
 
-            let (s1_p, s1_q) = sensitivity_rhs(
+            let s1 = energy_sensitivity_rhs(
                 ra,
                 self.potential[i],
-                pdot[i],
-                qdot[i],
+                [pdot[i], qdot[i], psecond[i], qsecond[i]],
                 solution.p[i],
                 q_base[i],
                 ll,
                 e,
                 cci,
             );
-            let (s2_p, s2_q) = sensitivity_rhs(
+            let s2 = energy_sensitivity_rhs(
                 rb,
                 vb,
-                pdot[i] + 0.5 * dr * s1_p,
-                qdot[i] + 0.5 * dr * s1_q,
+                add_sensitivity([pdot[i], qdot[i], psecond[i], qsecond[i]], 0.5 * dr, s1),
                 base_y2_p,
                 base_y2_q,
                 ll,
                 e,
                 cci,
             );
-            let (s3_p, s3_q) = sensitivity_rhs(
+            let s3 = energy_sensitivity_rhs(
                 rb,
                 vb,
-                pdot[i] + 0.5 * dr * s2_p,
-                qdot[i] + 0.5 * dr * s2_q,
+                add_sensitivity([pdot[i], qdot[i], psecond[i], qsecond[i]], 0.5 * dr, s2),
                 base_y3_p,
                 base_y3_q,
                 ll,
                 e,
                 cci,
             );
-            let (s4_p, s4_q) = sensitivity_rhs(
+            let s4 = energy_sensitivity_rhs(
                 rc,
                 self.potential[i + 1],
-                pdot[i] + dr * s3_p,
-                qdot[i] + dr * s3_q,
+                add_sensitivity([pdot[i], qdot[i], psecond[i], qsecond[i]], dr, s3),
                 base_y4_p,
                 base_y4_q,
                 ll,
                 e,
                 cci,
             );
-            pdot[i + 1] = pdot[i] + dr * (s1_p + 2.0 * s2_p + 2.0 * s3_p + s4_p) / 6.0;
-            qdot[i + 1] = qdot[i] + dr * (s1_q + 2.0 * s2_q + 2.0 * s3_q + s4_q) / 6.0;
+            let current = [pdot[i], qdot[i], psecond[i], qsecond[i]];
+            let next: [f64; 4] = std::array::from_fn(|component| {
+                current[component]
+                    + dr * (s1[component]
+                        + 2.0 * s2[component]
+                        + 2.0 * s3[component]
+                        + s4[component])
+                        / 6.0
+            });
+            pdot[i + 1] = next[0];
+            qdot[i + 1] = next[1];
+            psecond[i + 1] = next[2];
+            qsecond[i + 1] = next[3];
         }
 
-        let overlap_density: Vec<f64> = solution
+        let first_projection_density: Vec<f64> = solution
             .p
             .iter()
             .zip(&pdot)
             .zip(q_base.iter().zip(&qdot))
             .map(|((&p, &pdot), (&q, &qdot))| p * pdot + cci * q * qdot)
             .collect();
-        let projection = integrate(self.mesh, &overlap_density)?;
+        let projection = integrate(self.mesh, &first_projection_density)?;
+        let normalization_second_density = solution
+            .p
+            .iter()
+            .zip(&pdot)
+            .zip(&psecond)
+            .zip(q_base.iter().zip(&qdot).zip(&qsecond))
+            .map(|(((&p, &pdot), &psecond), ((&q, &qdot), &qsecond))| {
+                pdot * pdot + cci * qdot * qdot + p * psecond + cci * q * qsecond
+            })
+            .collect::<Vec<_>>();
+        let normalization_second = integrate(self.mesh, &normalization_second_density)?;
         for i in 0..n {
+            psecond[i] = psecond[i] - 2.0 * projection * pdot[i]
+                + (3.0 * projection * projection - normalization_second) * solution.p[i];
+            qsecond[i] = qsecond[i] - 2.0 * projection * qdot[i]
+                + (3.0 * projection * projection - normalization_second) * q_base[i];
             pdot[i] -= projection * solution.p[i];
             qdot[i] -= projection * q_base[i];
         }
@@ -611,17 +739,42 @@ impl<'a> RadialSolver<'a> {
         let v = self.potential[n - 1];
         let m = 2.0 + (e - v) * cci;
         let pprime = pdot[n - 1] / r + m * qdot[n - 1] + cci * q_base[n - 1];
-        let value = pdot[n - 1] / r;
-        let derivative = (pprime - pdot[n - 1] / r) / r;
-        let physical_q = (self.equation == RadialEquation::ScalarKoellingHarmon)
-            .then(|| qdot.into_iter().map(|q| q / SPEX_SPEED_OF_LIGHT).collect());
-        let norm_squared = component_norm_squared(self.mesh, &pdot, physical_q.as_deref())?;
-        Ok(EnergyDerivative {
-            p: pdot,
-            q: physical_q,
-            boundary: BoundaryData::new(value, derivative, r),
-            norm_squared,
-        })
+        let psecond_prime = psecond[n - 1] / r + m * qsecond[n - 1] + 2.0 * cci * qdot[n - 1];
+        let first_boundary = BoundaryData::new(pdot[n - 1] / r, (pprime - pdot[n - 1] / r) / r, r);
+        let second_boundary = BoundaryData::new(
+            psecond[n - 1] / r,
+            (psecond_prime - psecond[n - 1] / r) / r,
+            r,
+        );
+        let physical_q = (self.equation == RadialEquation::ScalarKoellingHarmon).then(|| {
+            qdot.iter()
+                .map(|q| q / SPEX_SPEED_OF_LIGHT)
+                .collect::<Vec<_>>()
+        });
+        let physical_q_second =
+            (self.equation == RadialEquation::ScalarKoellingHarmon).then(|| {
+                qsecond
+                    .iter()
+                    .map(|q| q / SPEX_SPEED_OF_LIGHT)
+                    .collect::<Vec<_>>()
+            });
+        let first_norm = component_norm_squared(self.mesh, &pdot, physical_q.as_deref())?;
+        let second_norm =
+            component_norm_squared(self.mesh, &psecond, physical_q_second.as_deref())?;
+        Ok((
+            EnergyDerivative {
+                p: pdot,
+                q: physical_q,
+                boundary: first_boundary,
+                norm_squared: first_norm,
+            },
+            SecondEnergyDerivative {
+                p: psecond,
+                q: physical_q_second,
+                boundary: second_boundary,
+                norm_squared: second_norm,
+            },
+        ))
     }
 
     fn boundary_from_internal(
@@ -687,6 +840,36 @@ fn sensitivity_rhs(
     let dm = cci;
     let dw = -1.0 - wh * cci / m;
     (pdot / r + m * qdot + dm * q, -qdot / r + w * pdot + dw * p)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn energy_sensitivity_rhs(
+    r: f64,
+    potential: f64,
+    sensitivity: [f64; 4],
+    p: f64,
+    q: f64,
+    ll: f64,
+    energy: f64,
+    cci: f64,
+) -> [f64; 4] {
+    let [pdot, qdot, psecond, qsecond] = sensitivity;
+    let (pdot_prime, qdot_prime) = sensitivity_rhs(r, potential, pdot, qdot, p, q, ll, energy, cci);
+    let mass = 2.0 + (energy - potential) * cci;
+    let centrifugal = ll / (mass * r * r);
+    let w = centrifugal + potential - energy;
+    let dw = -1.0 - centrifugal * cci / mass;
+    let d2w = 2.0 * centrifugal * cci * cci / (mass * mass);
+    [
+        pdot_prime,
+        qdot_prime,
+        psecond / r + mass * qsecond + 2.0 * cci * qdot,
+        -qsecond / r + w * psecond + 2.0 * dw * pdot + d2w * p,
+    ]
+}
+
+fn add_sensitivity(state: [f64; 4], scale: f64, derivative: [f64; 4]) -> [f64; 4] {
+    std::array::from_fn(|index| state[index] + scale * derivative[index])
 }
 
 /// SPEX's optional `BAS_DIFF_R` branch: use the arithmetic-radius RK midpoint
@@ -917,5 +1100,77 @@ mod tests {
         .unwrap();
         assert!(overlap.abs() < 2.0e-12);
         assert!(pair.energy_derivative.norm_squared > 0.0);
+    }
+
+    #[test]
+    fn analytic_second_energy_derivative_and_hdlo_cover_schroedinger_and_kh() {
+        for equation in [
+            RadialEquation::Schroedinger,
+            RadialEquation::ScalarKoellingHarmon,
+        ] {
+            let mesh = mesh(1.0e-6, 3.0, 0.0015);
+            let potential: Vec<f64> = mesh
+                .radii()
+                .iter()
+                .map(|r| -0.4 / (r.get() + 0.03))
+                .collect();
+            let solver = RadialSolver::new(&mesh, &potential, equation).unwrap();
+            let energy = Hartree(-0.11);
+            let center = solver.solve_with_energy_derivative(1, energy).unwrap();
+            let step = 2.0e-4;
+            let plus = solver.solve(1, Hartree(energy.get() + step)).unwrap();
+            let minus = solver.solve(1, Hartree(energy.get() - step)).unwrap();
+            let mut error = Vec::with_capacity(mesh.len());
+            for index in 0..mesh.len() {
+                let finite_difference = (plus.p[index] - 2.0 * center.solution.p[index]
+                    + minus.p[index])
+                    / (step * step);
+                let mut value =
+                    (finite_difference - center.second_energy_derivative.p[index]).powi(2);
+                if let (Some(plus), Some(base), Some(minus), Some(second)) = (
+                    plus.q.as_ref(),
+                    center.solution.q.as_ref(),
+                    minus.q.as_ref(),
+                    center.second_energy_derivative.q.as_ref(),
+                ) {
+                    let finite_difference =
+                        (plus[index] - 2.0 * base[index] + minus[index]) / (step * step);
+                    value += (finite_difference - second[index]).powi(2);
+                }
+                error.push(value);
+            }
+            let l2_error = integrate(&mesh, &error).unwrap().sqrt();
+            assert!(
+                l2_error < 8.0e-5,
+                "{equation:?} second derivative error {l2_error}"
+            );
+
+            let first_norm = center.energy_derivative.norm_squared;
+            let gauge = crate::radial_integral(
+                &mesh,
+                &center.solution,
+                &center.second_energy_derivative,
+                crate::RadialIntegralKernel::Overlap,
+            )
+            .unwrap();
+            assert!((gauge + first_norm).abs() < 3.0e-11);
+
+            let hdlo = center.hdlo(&mesh).unwrap();
+            assert!(hdlo.boundary.value.abs() < 3.0e-11);
+            assert!(hdlo.boundary.derivative.abs() < 3.0e-11);
+            assert!(
+                (component_norm_squared(&mesh, &hdlo.p, hdlo.q.as_deref()).unwrap() - 1.0).abs()
+                    < 3.0e-12
+            );
+            if equation == RadialEquation::ScalarKoellingHarmon {
+                assert!(
+                    hdlo.q
+                        .as_ref()
+                        .is_some_and(|q| q.iter().any(|value| *value != 0.0))
+                );
+            } else {
+                assert!(hdlo.q.is_none());
+            }
+        }
     }
 }

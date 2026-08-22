@@ -161,6 +161,36 @@ impl CoreDiracSpec {
     }
 }
 
+/// Deterministic finite continuum-below scan for one bound-core bracket.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CoreBracketSearch {
+    pub state: CoreState,
+    pub muffin_tin_radius: Bohr,
+    pub energy_window: EnergyBracket,
+    /// Number of equal adjacent intervals in `energy_window`.
+    pub intervals: usize,
+}
+
+impl CoreBracketSearch {
+    pub const fn new(
+        state: CoreState,
+        muffin_tin_radius: Bohr,
+        energy_window: EnergyBracket,
+    ) -> Self {
+        Self {
+            state,
+            muffin_tin_radius,
+            energy_window,
+            intervals: 256,
+        }
+    }
+
+    pub const fn with_intervals(mut self, intervals: usize) -> Self {
+        self.intervals = intervals;
+        self
+    }
+}
+
 /// A normalized physical core spinor and its shooting diagnostics.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoreDiracSolution {
@@ -234,7 +264,7 @@ pub struct DiracSecondEnergyDerivative {
     pub norm_squared: f64,
 }
 
-/// A normalized SRA-HDLO with both large-component boundary data zero.
+/// A normalized SRA local orbital with both large-component boundary data zero.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DiracLocalOrbital {
     pub energy: Hartree,
@@ -276,6 +306,130 @@ impl ValenceDiracSolution {
     /// The established scalar/SRA value-and-slope boundary adapter.
     pub fn sra_boundary(&self) -> BoundaryData {
         self.boundary.sra_large_component()
+    }
+
+    /// Build a confined SRA local orbital from a solution at a distinct energy.
+    ///
+    /// The matched spinor is `raw + a * self + b * d(self)/dE`.  Its large
+    /// component and radial derivative vanish at the muffin-tin boundary.  The
+    /// same coefficients are applied to the physical small component before
+    /// normalizing the complete four-component radial norm.
+    pub fn sra_local_orbital(
+        &self,
+        raw_at_lo_energy: &ValenceDiracSolution,
+        mesh: &ExponentialMesh,
+    ) -> Result<DiracLocalOrbital, DiracError> {
+        if self.kappa != raw_at_lo_energy.kappa {
+            return Err(DiracError::LocalOrbitalKappaMismatch {
+                base: self.kappa.get(),
+                raw: raw_at_lo_energy.kappa.get(),
+            });
+        }
+        if self.speed_of_light != raw_at_lo_energy.speed_of_light {
+            return Err(DiracError::LocalOrbitalSpeedOfLightMismatch {
+                base: self.speed_of_light,
+                raw: raw_at_lo_energy.speed_of_light,
+            });
+        }
+        if self.energy == raw_at_lo_energy.energy {
+            return Err(DiracError::LocalOrbitalEnergyNotDistinct {
+                energy: self.energy.get(),
+            });
+        }
+
+        let expected = mesh.len();
+        for (field, actual) in [
+            ("base.p", self.p.len()),
+            ("base.q", self.q.len()),
+            ("base.energy_derivative.p", self.energy_derivative.p.len()),
+            ("base.energy_derivative.q", self.energy_derivative.q.len()),
+            ("raw.p", raw_at_lo_energy.p.len()),
+            ("raw.q", raw_at_lo_energy.q.len()),
+        ] {
+            if actual != expected {
+                return Err(DiracError::LocalOrbitalSampleCountMismatch {
+                    field,
+                    mesh: expected,
+                    actual,
+                });
+            }
+        }
+
+        let mesh_boundary = mesh.last().get();
+        for (field, actual) in [
+            ("base.boundary", self.boundary.radius.get()),
+            (
+                "base.energy_derivative.boundary",
+                self.energy_derivative.boundary.radius.get(),
+            ),
+            ("raw.boundary", raw_at_lo_energy.boundary.radius.get()),
+        ] {
+            if actual != mesh_boundary {
+                return Err(DiracError::LocalOrbitalBoundaryRadiusMismatch {
+                    field,
+                    mesh: mesh_boundary,
+                    actual,
+                });
+            }
+        }
+
+        let base = self.boundary.sra_large_component();
+        let first = self.energy_derivative.boundary.sra_large_component();
+        let raw = raw_at_lo_energy.boundary.sra_large_component();
+        let determinant = base.value * first.derivative - first.value * base.derivative;
+        let determinant_scale = (base.value.abs() * first.derivative.abs())
+            .max(first.value.abs() * base.derivative.abs())
+            .max(1.0);
+        if determinant.abs() <= 256.0 * f64::EPSILON * determinant_scale {
+            return Err(DiracError::SingularLocalOrbital { determinant });
+        }
+        let a = (-raw.value * first.derivative + first.value * raw.derivative) / determinant;
+        let b = (-base.value * raw.derivative + raw.value * base.derivative) / determinant;
+
+        let mut p: Vec<f64> = raw_at_lo_energy
+            .p
+            .iter()
+            .zip(&self.p)
+            .zip(&self.energy_derivative.p)
+            .map(|((&raw, &base), &first)| raw + a * base + b * first)
+            .collect();
+        let mut q: Vec<f64> = raw_at_lo_energy
+            .q
+            .iter()
+            .zip(&self.q)
+            .zip(&self.energy_derivative.q)
+            .map(|((&raw, &base), &first)| raw + a * base + b * first)
+            .collect();
+        let density: Vec<f64> = p
+            .iter()
+            .zip(&q)
+            .map(|(&large, &small)| large * large + small * small)
+            .collect();
+        let norm_squared = mesh
+            .integrate(&density)
+            .map_err(|error| DiracError::Quadrature(error.to_string()))?;
+        if !norm_squared.is_finite() || norm_squared <= f64::MIN_POSITIVE {
+            return Err(DiracError::SingularNorm { norm_squared });
+        }
+        let normalization_scale = norm_squared.sqrt().recip();
+        p.iter_mut().for_each(|value| *value *= normalization_scale);
+        q.iter_mut().for_each(|value| *value *= normalization_scale);
+        let value = normalization_scale * (raw.value + a * base.value + b * first.value);
+        let derivative =
+            normalization_scale * (raw.derivative + a * base.derivative + b * first.derivative);
+
+        Ok(DiracLocalOrbital {
+            energy: raw_at_lo_energy.energy,
+            kappa: self.kappa,
+            p,
+            q,
+            coefficients: LocalOrbitalCoefficients {
+                a,
+                b,
+                normalization_scale,
+            },
+            boundary: BoundaryData::new(value, derivative, mesh_boundary),
+        })
     }
 
     /// Build the confined SRA-HDLO from the normalized second derivative.
@@ -379,6 +533,28 @@ pub enum DiracError {
     InvalidPrincipalQuantumNumber { n: u32, l: u32 },
     #[error("energy bracket is invalid: [{lower}, {upper}] Ha")]
     InvalidEnergyBracket { lower: f64, upper: f64 },
+    #[error("core bracket search window must be finite and ordered, got [{lower}, {upper}] Ha")]
+    InvalidCoreSearchWindow { lower: f64, upper: f64 },
+    #[error("core bracket search requires at least one interval, got {0}")]
+    InvalidCoreSearchIntervals(usize),
+    #[error(
+        "no bracket for n={n}, kappa={kappa} was found in [{lower}, {upper}] Ha using {intervals} intervals"
+    )]
+    CoreBracketNotFound {
+        n: u32,
+        kappa: i32,
+        lower: f64,
+        upper: f64,
+        intervals: usize,
+    },
+    #[error(
+        "core bracket search for n={n}, kappa={kappa} found {candidates} node-compatible roots"
+    )]
+    CoreBracketAmbiguous {
+        n: u32,
+        kappa: i32,
+        candidates: usize,
+    },
     #[error("potential has {actual} samples, but the mesh has {expected}")]
     PotentialLength { expected: usize, actual: usize },
     #[error("potential[{index}] is not finite: {value}")]
@@ -430,6 +606,26 @@ pub enum DiracError {
     SingularNorm { norm_squared: f64 },
     #[error("Dirac local-orbital boundary system is singular (determinant {determinant})")]
     SingularLocalOrbital { determinant: f64 },
+    #[error("Dirac local-orbital kappa mismatch: base {base}, raw {raw}")]
+    LocalOrbitalKappaMismatch { base: i32, raw: i32 },
+    #[error("Dirac local-orbital speed-of-light mismatch: base {base}, raw {raw}")]
+    LocalOrbitalSpeedOfLightMismatch { base: f64, raw: f64 },
+    #[error("Dirac local-orbital raw energy must differ from the base energy {energy} Ha")]
+    LocalOrbitalEnergyNotDistinct { energy: f64 },
+    #[error("Dirac local-orbital {field} has {actual} samples, but the mesh has {mesh}")]
+    LocalOrbitalSampleCountMismatch {
+        field: &'static str,
+        mesh: usize,
+        actual: usize,
+    },
+    #[error(
+        "Dirac local-orbital {field} radius {actual} bohr does not match the mesh boundary {mesh} bohr"
+    )]
+    LocalOrbitalBoundaryRadiusMismatch {
+        field: &'static str,
+        mesh: f64,
+        actual: f64,
+    },
     #[error("mesh quadrature failed: {0}")]
     Quadrature(String),
 }
@@ -485,6 +681,82 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
     Err(DiracError::RootDidNotConverge {
         iterations: spec.max_iterations,
     })
+}
+
+/// Isolate the unique adjacent shooting interval with the requested node count.
+///
+/// The caller supplies the extended mesh and its complete physical potential;
+/// this helper does not construct or extrapolate an outer potential. Every
+/// residual sign change is solved and accepted only when the converged `P`
+/// has [`CoreState::expected_nodes`].
+pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
+    mesh: &ExponentialMesh,
+    potential: &[f64],
+    search: S,
+) -> Result<EnergyBracket, DiracError> {
+    let search = search.borrow();
+    let (lower, upper) = search.energy_window.values();
+    if !lower.is_finite() || !upper.is_finite() || lower >= upper {
+        return Err(DiracError::InvalidCoreSearchWindow { lower, upper });
+    }
+    if search.intervals == 0 {
+        return Err(DiracError::InvalidCoreSearchIntervals(search.intervals));
+    }
+    // Reuse the production input validation, including the exact MT mesh point.
+    validate_inputs(
+        mesh,
+        potential,
+        &CoreDiracSpec::new(search.state, search.energy_window, search.muffin_tin_radius),
+    )?;
+
+    let step = (upper - lower) / search.intervals as f64;
+    let mut previous_energy = lower;
+    let mut previous = shoot(mesh, potential, search.state.kappa, previous_energy, false)?;
+    let mut candidates = Vec::new();
+    let mut previous_exact_root = false;
+    for interval in 1..=search.intervals {
+        let energy = if interval == search.intervals {
+            upper
+        } else {
+            lower + interval as f64 * step
+        };
+        let current = shoot(mesh, potential, search.state.kappa, energy, false)?;
+        let sign_change = !previous_exact_root
+            && (previous.residual == 0.0
+                || current.residual == 0.0
+                || previous.residual.signum() != current.residual.signum());
+        if sign_change {
+            let bracket = EnergyBracket::from_values(previous_energy, energy)?;
+            let spec = CoreDiracSpec::new(search.state, bracket, search.muffin_tin_radius);
+            match solve_core_dirac(mesh, potential, spec) {
+                Ok(_) => candidates.push(bracket),
+                Err(
+                    DiracError::NodeCountMismatch { .. }
+                    | DiracError::RootNotBracketed { .. }
+                    | DiracError::RootDidNotConverge { .. },
+                ) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        previous_exact_root = current.residual == 0.0;
+        previous_energy = energy;
+        previous = current;
+    }
+    match candidates.as_slice() {
+        [bracket] => Ok(*bracket),
+        [] => Err(DiracError::CoreBracketNotFound {
+            n: search.state.n,
+            kappa: search.state.kappa.get(),
+            lower,
+            upper,
+            intervals: search.intervals,
+        }),
+        many => Err(DiracError::CoreBracketAmbiguous {
+            n: search.state.n,
+            kappa: search.state.kappa.get(),
+            candidates: many.len(),
+        }),
+    }
 }
 
 /// Integrate the regular spherical Dirac solution outward at fixed real energy.
@@ -1383,6 +1655,118 @@ mod tests {
         assert!(solution.spill > 0.0 && solution.spill < 1.0e-3);
         assert_eq!(solution.nodes, 0);
         assert!(solution.matching_residual.abs() <= spec.matching_tolerance);
+    }
+
+    #[test]
+    fn deterministic_core_search_isolates_the_node_compatible_bracket() {
+        let mesh = extended_mesh(1.0e-7, 40.0, 0.002);
+        let potential: Vec<f64> = mesh
+            .radii()
+            .iter()
+            .map(|radius| -1.0 / radius.get())
+            .collect();
+        let mt_radius = *mesh
+            .radii()
+            .iter()
+            .min_by(|a, b| (a.get() - 6.0).abs().total_cmp(&(b.get() - 6.0).abs()))
+            .unwrap();
+        let state = CoreState::new(1, Kappa::new(-1).unwrap()).unwrap();
+        let search = CoreBracketSearch::new(
+            state,
+            mt_radius,
+            EnergyBracket::from_values(-0.8, -0.2).unwrap(),
+        )
+        .with_intervals(48);
+        let bracket = isolate_core_dirac_bracket(&mesh, &potential, search).unwrap();
+        let exact = C_SQUARED * ((1.0 - 1.0 / C_SQUARED).sqrt() - 1.0);
+        assert!(bracket.lower.get() < exact && bracket.upper.get() > exact);
+        let solution = solve_core_dirac(
+            &mesh,
+            &potential,
+            CoreDiracSpec::new(state, bracket, mt_radius),
+        )
+        .unwrap();
+        assert_eq!(solution.nodes, state.expected_nodes());
+
+        let missing = CoreBracketSearch::new(
+            state,
+            mt_radius,
+            EnergyBracket::from_values(-0.2, -0.05).unwrap(),
+        )
+        .with_intervals(24);
+        assert!(matches!(
+            isolate_core_dirac_bracket(&mesh, &potential, missing),
+            Err(DiracError::CoreBracketNotFound { .. })
+        ));
+    }
+
+    #[test]
+    fn core_search_and_solution_are_covariant_under_global_energy_shift() {
+        let mesh = extended_mesh(1.0e-7, 40.0, 0.002);
+        let potential = mesh
+            .radii()
+            .iter()
+            .map(|radius| -1.0 / radius.get())
+            .collect::<Vec<_>>();
+        let mt_radius = *mesh
+            .radii()
+            .iter()
+            .min_by(|a, b| (a.get() - 6.0).abs().total_cmp(&(b.get() - 6.0).abs()))
+            .unwrap();
+        let state = CoreState::new(1, Kappa::new(-1).unwrap()).unwrap();
+        let window = EnergyBracket::from_values(-0.8, -0.2).unwrap();
+        let bracket = isolate_core_dirac_bracket(
+            &mesh,
+            &potential,
+            CoreBracketSearch::new(state, mt_radius, window).with_intervals(48),
+        )
+        .unwrap();
+        let solution = solve_core_dirac(
+            &mesh,
+            &potential,
+            CoreDiracSpec::new(state, bracket, mt_radius),
+        )
+        .unwrap();
+
+        let shift = 1.25;
+        let shifted_potential = potential
+            .iter()
+            .map(|value| value + shift)
+            .collect::<Vec<_>>();
+        let shifted_window =
+            EnergyBracket::from_values(window.lower.get() + shift, window.upper.get() + shift)
+                .unwrap();
+        let shifted_bracket = isolate_core_dirac_bracket(
+            &mesh,
+            &shifted_potential,
+            CoreBracketSearch::new(state, mt_radius, shifted_window).with_intervals(48),
+        )
+        .unwrap();
+        assert!((shifted_bracket.lower.get() - bracket.lower.get() - shift).abs() < 1.0e-13);
+        assert!((shifted_bracket.upper.get() - bracket.upper.get() - shift).abs() < 1.0e-13);
+        let shifted_solution = solve_core_dirac(
+            &mesh,
+            &shifted_potential,
+            CoreDiracSpec::new(state, shifted_bracket, mt_radius),
+        )
+        .unwrap();
+        assert!((shifted_solution.energy.get() - solution.energy.get() - shift).abs() < 1.0e-11);
+        let phase = solution
+            .p
+            .iter()
+            .zip(&shifted_solution.p)
+            .map(|(&left, &right)| left * right)
+            .sum::<f64>()
+            .signum();
+        for ((&p, &q), (&shifted_p, &shifted_q)) in solution
+            .p
+            .iter()
+            .zip(&solution.q)
+            .zip(shifted_solution.p.iter().zip(&shifted_solution.q))
+        {
+            assert!((phase * shifted_p - p).abs() < 2.0e-11);
+            assert!((phase * shifted_q - q).abs() < 2.0e-13);
+        }
     }
 
     #[test]
