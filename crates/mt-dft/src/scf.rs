@@ -6,6 +6,8 @@ use muffintin_core::{Hartree, Kappa};
 use thiserror::Error;
 
 use crate::soc::FirstVariationWindow;
+use crate::xc::XcFunctional;
+use crate::xc_field::NoncollinearXcRoute;
 use crate::{
     BandState, DensityMixer, EnergyError, MixingError, OccupationEnergy, OccupationError,
     RegionalDensity, RegionalError, RegionalPotential, ScfEnergy, TetrahedronDosBins,
@@ -53,11 +55,11 @@ pub enum ScfOccupations {
     Gaussian { width: Hartree },
 }
 
-/// Exchange-correlation route selected for potential and energy evaluation.
+/// Functional and noncollinear reduction selected for XC evaluation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ScfExchangeCorrelation {
-    LdaPw92,
-    Pbe,
+pub struct ScfExchangeCorrelation {
+    pub functional: XcFunctional,
+    pub noncollinear_route: NoncollinearXcRoute,
 }
 
 /// Density mixer and its persistent-history controls.
@@ -798,33 +800,32 @@ mod tests {
     use muffintin_core::{
         FourierLayout, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, VolumeBohr3,
     };
-    use muffintin_lapw::Collinear;
     use num_complex::Complex64;
 
     use super::*;
-    use crate::{InterstitialField, RegularSpectrum};
+    use crate::{InterstitialField, RegionalScalarField, RegularSpectrum};
 
     struct MockPhysics {
         template: RegionalDensity,
         core_per_site: f64,
         events: Vec<String>,
+        exchange_correlations: Vec<ScfExchangeCorrelation>,
         valence_occupation_sum: Option<f64>,
     }
 
     impl MockPhysics {
         fn new(core_per_site: f64) -> Self {
             Self {
-                template: scalar_density(1.0),
+                template: regional_density(1.0, 0.4),
                 core_per_site,
                 events: Vec::new(),
+                exchange_correlations: Vec::new(),
                 valence_occupation_sum: None,
             }
         }
 
-        fn scaled_density(&self, scale: f64) -> RegionalDensity {
-            let mut density = self.template.zero_like();
-            density.add_scaled(scale, &self.template).unwrap();
-            density
+        fn core_density(&self) -> RegionalDensity {
+            regional_density(self.core_per_site, 0.0)
         }
     }
 
@@ -842,12 +843,16 @@ mod tests {
             &mut self,
             iteration: usize,
             density: &RegionalDensity,
-            _exchange_correlation: ScfExchangeCorrelation,
+            exchange_correlation: ScfExchangeCorrelation,
         ) -> Result<RegionalPotential, Self::Error> {
             self.events.push(format!("potential:{iteration}"));
+            self.exchange_correlations.push(exchange_correlation);
             Ok(RegionalPotential::new(
-                density.muffin_tins().clone(),
-                density.interstitial().clone(),
+                density.charge().clone(),
+                density
+                    .magnetization()
+                    .each_ref()
+                    .map(|component| component.clone()),
             )
             .unwrap())
         }
@@ -861,7 +866,7 @@ mod tests {
             self.events.push(format!("core:{iteration}:{}", site.id));
             Ok(CoreContribution {
                 site_id: site.id.clone(),
-                density: self.scaled_density(self.core_per_site),
+                density: self.core_density(),
                 eigenvalue_sum: Hartree(-0.5),
             })
         }
@@ -907,7 +912,7 @@ mod tests {
         ) -> Result<RegionalDensity, Self::Error> {
             self.valence_occupation_sum = Some(occupations.iter().sum());
             self.events.push(format!("valence:{iteration}"));
-            Ok(self.template.zero_like())
+            Ok(regional_density(0.0, 0.1))
         }
 
         fn energy_terms(
@@ -961,7 +966,7 @@ mod tests {
         }
     }
 
-    fn scalar_density(value: f64) -> RegionalDensity {
+    fn regional_density(charge_value: f64, magnetization_x_value: f64) -> RegionalDensity {
         let reciprocal = ReciprocalLattice::new([
             [InverseBohr(1.0), InverseBohr(0.0), InverseBohr(0.0)],
             [InverseBohr(0.0), InverseBohr(1.0), InverseBohr(0.0)],
@@ -984,10 +989,12 @@ mod tests {
             )
             .unwrap()
         };
+        let geometry = InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), Vec::new()).unwrap();
+        let scalar =
+            |value| RegionalScalarField::new(geometry.clone(), Vec::new(), field(value)).unwrap();
         RegionalDensity::new(
-            InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), Vec::new()).unwrap(),
-            Collinear::new(Vec::new(), Vec::new()),
-            Collinear::new(field(value), field(0.0)),
+            scalar(charge_value),
+            [scalar(magnetization_x_value), scalar(0.0), scalar(0.0)],
         )
         .unwrap()
     }
@@ -1005,7 +1012,10 @@ mod tests {
                 local_orbitals: Vec::new(),
             },
             occupations,
-            exchange_correlation: ScfExchangeCorrelation::LdaPw92,
+            exchange_correlation: ScfExchangeCorrelation {
+                functional: XcFunctional::LdaPw92,
+                noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+            },
             mixing,
             relativity: ScfRelativity::SpexSecondVariation {
                 window: FirstVariationWindow::new(0, 2).unwrap(),
@@ -1033,7 +1043,7 @@ mod tests {
     }
 
     #[test]
-    fn state_machine_has_frozen_order_per_site_core_and_sv_route() {
+    fn state_machine_preserves_transverse_density_and_frozen_sv_route() {
         let mut physics = MockPhysics::new(0.125);
         let state = run_scf(
             &mut physics,
@@ -1048,10 +1058,26 @@ mod tests {
         .unwrap();
         assert_eq!(state.iterations(), 2);
         assert!((physics.valence_occupation_sum.unwrap() - 0.75).abs() < ELECTRON_TOLERANCE);
-        assert_eq!(
-            state.density.difference_rms(&scalar_density(0.25)).unwrap(),
-            0.0
+        assert!(
+            state
+                .density
+                .difference_rms(&regional_density(0.25, 0.1))
+                .unwrap()
+                < 1.0e-14
         );
+        assert!(
+            (state.density.magnetization()[0]
+                .interstitial()
+                .coefficient([0; 3])
+                .unwrap()
+                .re
+                - 0.1)
+                .abs()
+                < 1.0e-15
+        );
+        assert!(physics.exchange_correlations.iter().all(|selection| {
+            selection.noncollinear_route == NoncollinearXcRoute::LocalSpinFrame
+        }));
         assert_eq!(
             physics.events,
             [
@@ -1073,6 +1099,44 @@ mod tests {
             ]
         );
         assert!(!physics.events.iter().any(|event| event == "dos"));
+    }
+
+    #[test]
+    fn one_physics_seam_carries_both_xc_routes_through_all_relativistic_routes() {
+        for relativity in [
+            ScfRelativity::Scalar,
+            ScfRelativity::SpexSecondVariation {
+                window: FirstVariationWindow::new(0, 2).unwrap(),
+            },
+            ScfRelativity::SpinorFirstVariation,
+        ] {
+            for noncollinear_route in [
+                NoncollinearXcRoute::LocalSpinFrame,
+                NoncollinearXcRoute::MagnetizationField,
+            ] {
+                let mut physics = MockPhysics::new(0.125);
+                let mut config = config(
+                    ScfMixing::Linear { alpha: 1.0 },
+                    ScfOccupations::FermiDirac {
+                        temperature: Hartree(0.1),
+                    },
+                );
+                config.relativity = relativity;
+                config.exchange_correlation.noncollinear_route = noncollinear_route;
+                let state = run_scf(&mut physics, &config, None).unwrap();
+                assert!(
+                    state
+                        .density
+                        .difference_rms(&regional_density(0.25, 0.1))
+                        .unwrap()
+                        < 1.0e-14
+                );
+                assert!(physics.exchange_correlations.iter().all(|selection| {
+                    selection.functional == XcFunctional::LdaPw92
+                        && selection.noncollinear_route == noncollinear_route
+                }));
+            }
+        }
     }
 
     #[test]

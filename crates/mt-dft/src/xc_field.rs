@@ -2,14 +2,13 @@
 
 use crate::{
     DensityJet2, InterstitialField, MuffinTinField, RegionalDensity, RegionalError,
-    RegionalPotential, XcError, XcFunctional, evaluate_xc_point,
+    RegionalPotential, RegionalScalarField, XcError, XcFunctional, evaluate_xc_point,
 };
 use muffintin_core::{
     Bohr, FourierFieldError, FourierLayout, Hartree, Lm, MeshError, complex_spherical_harmonics,
     lm_count, real_spherical_harmonics,
 };
 use muffintin_grid::{AngularGrid, Cell, Grid, GridError, InterstitialGrid, UniformGrid};
-use muffintin_lapw::Collinear;
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
@@ -19,6 +18,20 @@ use thiserror::Error;
 const REAL_TOLERANCE: f64 = 4096.0 * f64::EPSILON;
 const DERIVATIVE_RADIUS_FRACTION: f64 = 0.2;
 const DERIVATIVE_SPACING_FRACTION: f64 = 0.25;
+const LOCAL_FRAME_MAGNETIZATION_THRESHOLD: f64 = 1.0e-12;
+
+/// How noncollinear PBE derivatives are reduced to two local spin channels.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum NoncollinearXcRoute {
+    /// Away from magnetization nodes, follow SPEX 06.00pre38 `potential.f`:
+    /// project the density, gradient, and Hessian independently on the
+    /// magnetization direction at the point.
+    #[default]
+    LocalSpinFrame,
+    /// Treat the local eigenvalue fields `(n +/- |m|)/2` as scalar fields,
+    /// including the complete Hessian of `|m|` in PBE.
+    MagnetizationField,
+}
 
 /// Deterministic transform controls for regional exchange-correlation fields.
 ///
@@ -33,6 +46,7 @@ pub struct XcFieldSpec {
     pub interstitial_divisions: [usize; 3],
     pub angular_point_count: usize,
     pub output_l_max: u32,
+    pub noncollinear_route: NoncollinearXcRoute,
 }
 
 impl XcFieldSpec {
@@ -85,25 +99,72 @@ impl XcFieldSpec {
 #[derive(Clone, Debug, PartialEq)]
 pub struct RegionalXcResult {
     pub potential: RegionalPotential,
-    /// $E_{xc} = \int rho\,epsilon_{xc}$.
+    /// Exchange-correlation energy integrated over both physical regions.
     pub exchange_correlation_energy: Hartree,
-    /// $\int \sum_sigma rho_sigma v_{xc,sigma}$.
+    /// Integral of `n Vxc + m . Bxc` in the Pauli convention below.
     pub density_potential_integral: Hartree,
 }
 
-/// Evaluate LDA/PW92 or PBE over both physical regions.
+/// Evaluate LDA/PW92 or PBE with the selected noncollinear derivative route.
+///
+/// Away from magnetization nodes, [`NoncollinearXcRoute::LocalSpinFrame`]
+/// follows SPEX 06.00pre38 `potential.f`: it projects charge/magnetization
+/// values and their first and second derivatives onto the instantaneous
+/// magnetization direction before invoking the collinear point kernel.
+/// [`NoncollinearXcRoute::MagnetizationField`] instead differentiates the
+/// eigenvalue fields containing `|m|`, including its transverse Hessian term.
+/// With this crate's Pauli Hamiltonian `Vxc I + Bxc . sigma`, both routes use
+/// `Vxc=(v_up+v_down)/2` and `Bxc=(v_up-v_down) m/(2|m|)`. Below the
+/// `|m| < 1e-12` stability threshold, the direction is undefined: the local
+/// polarization jet and magnetic field are set to zero rather than selecting
+/// an arbitrary global axis. The shared point kernel applies its declared
+/// gradient threshold in both regions; it does not reproduce the muffin-tin
+/// `drhon >= drhon` typo in that SPEX snapshot.
 pub fn evaluate_regional_xc(
     functional: XcFunctional,
     density: &RegionalDensity,
     spec: XcFieldSpec,
 ) -> Result<RegionalXcResult, RegionalXcError> {
-    let layout = density.interstitial().up.layout();
+    let layout = density.charge().interstitial().layout();
     spec.validate(layout)?;
     let angular = AngularGrid::fibonacci(spec.angular_point_count)?;
 
-    let interstitial = transform_interstitial(functional, density, spec.interstitial_divisions)?;
-    let muffin_tin = transform_muffin_tins(functional, density, &angular, spec.output_l_max)?;
-    let potential = RegionalPotential::new(muffin_tin.fields, interstitial.fields)?;
+    let interstitial = transform_interstitial(
+        functional,
+        density,
+        spec.interstitial_divisions,
+        spec.noncollinear_route,
+    )?;
+    let muffin_tin = transform_muffin_tins(
+        functional,
+        density,
+        &angular,
+        spec.output_l_max,
+        spec.noncollinear_route,
+    )?;
+    let [
+        scalar_muffin_tins,
+        bx_muffin_tins,
+        by_muffin_tins,
+        bz_muffin_tins,
+    ] = muffin_tin.fields;
+    let [
+        scalar_interstitial,
+        bx_interstitial,
+        by_interstitial,
+        bz_interstitial,
+    ] = interstitial.fields;
+    let scalar = RegionalScalarField::new(
+        density.geometry().clone(),
+        scalar_muffin_tins,
+        scalar_interstitial,
+    )?;
+    let magnetic = [
+        RegionalScalarField::new(density.geometry().clone(), bx_muffin_tins, bx_interstitial)?,
+        RegionalScalarField::new(density.geometry().clone(), by_muffin_tins, by_interstitial)?,
+        RegionalScalarField::new(density.geometry().clone(), bz_muffin_tins, bz_interstitial)?,
+    ];
+    let potential = RegionalPotential::new(scalar, magnetic)?;
     Ok(RegionalXcResult {
         potential,
         exchange_correlation_energy: Hartree(
@@ -116,13 +177,13 @@ pub fn evaluate_regional_xc(
 }
 
 struct RegionTransform {
-    fields: Collinear<Vec<MuffinTinField>>,
+    fields: [Vec<MuffinTinField>; 4],
     exchange_correlation_energy: f64,
     density_potential_integral: f64,
 }
 
 struct InterstitialTransform {
-    fields: Collinear<InterstitialField>,
+    fields: [InterstitialField; 4],
     exchange_correlation_energy: f64,
     density_potential_integral: f64,
 }
@@ -131,39 +192,42 @@ fn transform_interstitial(
     functional: XcFunctional,
     density: &RegionalDensity,
     divisions: [usize; 3],
+    route: NoncollinearXcRoute,
 ) -> Result<InterstitialTransform, RegionalXcError> {
-    let layout = density.interstitial().up.layout();
+    let layout = density.charge().interstitial().layout();
     let cell = direct_cell(layout)?;
     let uniform = UniformGrid::new(cell, divisions)?;
     let interstitial_grid = InterstitialGrid::new(&uniform, density.geometry().spheres())?;
     let volume = density.geometry().cell_volume().get();
-    let mut coefficients = Collinear::new(
-        vec![Complex64::new(0.0, 0.0); layout.len()],
-        vec![Complex64::new(0.0, 0.0); layout.len()],
-    );
+    let mut coefficients: [Vec<Complex64>; 4] =
+        std::array::from_fn(|_| vec![Complex64::new(0.0, 0.0); layout.len()]);
     let mut exchange_correlation_energy = 0.0;
     let mut density_potential_integral = 0.0;
 
     for point in interstitial_grid.points() {
-        let jet = interstitial_density_jet(density.interstitial(), point.position)?;
-        let xc = evaluate_xc_point(functional, jet)?;
+        let (charge, magnetization) = interstitial_pauli_jets(density, point.position)?;
+        let xc = evaluate_noncollinear_xc_point(functional, route, charge, magnetization)?;
         exchange_correlation_energy += point.weight.get() * xc.energy_density;
-        density_potential_integral += point.weight.get()
-            * (jet.rho[0] * xc.potential[0].get() + jet.rho[1] * xc.potential[1].get());
+        density_potential_integral += point.weight.get() * xc.density_potential;
         let normalized_weight = point.weight.get() / volume;
         for (position, vector) in layout.vectors().iter().enumerate() {
             let phase = -dot_g_r(vector.cartesian, point.position);
             let transform = Complex64::from_polar(normalized_weight, phase);
-            coefficients.up[position] += xc.potential[0].get() * transform;
-            coefficients.down[position] += xc.potential[1].get() * transform;
+            for (target, value) in coefficients.iter_mut().zip(xc.potential) {
+                target[position] += value * transform;
+            }
         }
     }
-    enforce_fourier_reality(layout, &mut coefficients.up)?;
-    enforce_fourier_reality(layout, &mut coefficients.down)?;
-    let fields = Collinear::new(
-        interstitial_from_ordered(layout.clone(), coefficients.up)?,
-        interstitial_from_ordered(layout.clone(), coefficients.down)?,
-    );
+    for component in &mut coefficients {
+        enforce_fourier_reality(layout, component)?;
+    }
+    let [scalar, bx, by, bz] = coefficients;
+    let fields = [
+        interstitial_from_ordered(layout.clone(), scalar)?,
+        interstitial_from_ordered(layout.clone(), bx)?,
+        interstitial_from_ordered(layout.clone(), by)?,
+        interstitial_from_ordered(layout.clone(), bz)?,
+    ];
     Ok(InterstitialTransform {
         fields,
         exchange_correlation_energy,
@@ -176,19 +240,27 @@ fn transform_muffin_tins(
     density: &RegionalDensity,
     angular: &AngularGrid,
     output_l_max: u32,
+    route: NoncollinearXcRoute,
 ) -> Result<RegionTransform, RegionalXcError> {
-    let mut fields = Collinear::new(Vec::new(), Vec::new());
+    let mut fields: [Vec<MuffinTinField>; 4] = std::array::from_fn(|_| Vec::new());
     let mut exchange_correlation_energy = 0.0;
     let mut density_potential_integral = 0.0;
-    for (up, down) in density
-        .muffin_tins()
-        .up
-        .iter()
-        .zip(&density.muffin_tins().down)
-    {
-        let transformed = transform_muffin_tin(functional, up, down, angular, output_l_max)?;
-        fields.up.push(transformed.fields.up);
-        fields.down.push(transformed.fields.down);
+    for site in 0..density.charge().muffin_tins().len() {
+        let transformed = transform_muffin_tin(
+            functional,
+            route,
+            [
+                &density.charge().muffin_tins()[site],
+                &density.magnetization()[0].muffin_tins()[site],
+                &density.magnetization()[1].muffin_tins()[site],
+                &density.magnetization()[2].muffin_tins()[site],
+            ],
+            angular,
+            output_l_max,
+        )?;
+        for (target, component) in fields.iter_mut().zip(transformed.fields) {
+            target.push(component);
+        }
         exchange_correlation_energy += transformed.exchange_correlation_energy;
         density_potential_integral += transformed.density_potential_integral;
     }
@@ -200,94 +272,238 @@ fn transform_muffin_tins(
 }
 
 struct MuffinTinTransform {
-    fields: Collinear<MuffinTinField>,
+    fields: [MuffinTinField; 4],
     exchange_correlation_energy: f64,
     density_potential_integral: f64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct FieldJet {
+    value: f64,
+    gradient: [f64; 3],
+    hessian: [f64; 6],
+}
+
+struct NoncollinearXcPoint {
+    /// `[Vxc, Bxc_x, Bxc_y, Bxc_z]` in Hartree.
+    potential: [f64; 4],
+    energy_density: f64,
+    density_potential: f64,
+}
+
+fn evaluate_noncollinear_xc_point(
+    functional: XcFunctional,
+    route: NoncollinearXcRoute,
+    charge: FieldJet,
+    magnetization: [FieldJet; 3],
+) -> Result<NoncollinearXcPoint, RegionalXcError> {
+    let magnitude = magnetization
+        .iter()
+        .fold(0.0_f64, |norm, component| norm.hypot(component.value));
+    let magnetization_node = magnitude < LOCAL_FRAME_MAGNETIZATION_THRESHOLD;
+    let direction = if magnetization_node {
+        [0.0; 3]
+    } else {
+        magnetization.map(|component| component.value / magnitude)
+    };
+    let projected = if magnetization_node {
+        FieldJet {
+            value: 0.0,
+            gradient: [0.0; 3],
+            hessian: [0.0; 6],
+        }
+    } else if route == NoncollinearXcRoute::MagnetizationField {
+        magnetization_modulus_jet(magnetization, magnitude)
+    } else {
+        project_magnetization_jet(magnetization, direction)
+    };
+    let jet = split_local_spin_jet(charge, projected);
+    let xc = evaluate_xc_point(functional, jet)?;
+    let scalar = 0.5 * (xc.potential[0].get() + xc.potential[1].get());
+    let splitting = 0.5 * (xc.potential[0].get() - xc.potential[1].get());
+    let magnetic = direction.map(|component| splitting * component);
+    Ok(NoncollinearXcPoint {
+        potential: [scalar, magnetic[0], magnetic[1], magnetic[2]],
+        energy_density: xc.energy_density,
+        density_potential: jet.rho[0] * xc.potential[0].get() + jet.rho[1] * xc.potential[1].get(),
+    })
+}
+
+fn project_magnetization_jet(magnetization: [FieldJet; 3], direction: [f64; 3]) -> FieldJet {
+    FieldJet {
+        value: magnetization
+            .iter()
+            .zip(direction)
+            .map(|(component, axis)| component.value * axis)
+            .sum(),
+        gradient: std::array::from_fn(|coordinate| {
+            magnetization
+                .iter()
+                .zip(direction)
+                .map(|(component, axis)| component.gradient[coordinate] * axis)
+                .sum()
+        }),
+        hessian: std::array::from_fn(|coordinate| {
+            magnetization
+                .iter()
+                .zip(direction)
+                .map(|(component, axis)| component.hessian[coordinate] * axis)
+                .sum()
+        }),
+    }
+}
+
+fn magnetization_modulus_jet(magnetization: [FieldJet; 3], magnitude: f64) -> FieldJet {
+    let gradient = std::array::from_fn(|coordinate| {
+        magnetization
+            .iter()
+            .map(|component| component.value * component.gradient[coordinate])
+            .sum::<f64>()
+            / magnitude
+    });
+    let axes = [(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)];
+    let hessian = std::array::from_fn(|coordinate| {
+        let (left, right) = axes[coordinate];
+        let numerator = magnetization
+            .iter()
+            .map(|component| {
+                component.gradient[left] * component.gradient[right]
+                    + component.value * component.hessian[coordinate]
+            })
+            .sum::<f64>()
+            - gradient[left] * gradient[right];
+        numerator / magnitude
+    });
+    FieldJet {
+        value: magnitude,
+        gradient,
+        hessian,
+    }
+}
+
+fn split_local_spin_jet(charge: FieldJet, polarization: FieldJet) -> DensityJet2 {
+    DensityJet2 {
+        rho: [
+            0.5 * (charge.value + polarization.value),
+            0.5 * (charge.value - polarization.value),
+        ],
+        gradient: [
+            std::array::from_fn(|axis| 0.5 * (charge.gradient[axis] + polarization.gradient[axis])),
+            std::array::from_fn(|axis| 0.5 * (charge.gradient[axis] - polarization.gradient[axis])),
+        ],
+        hessian: [
+            std::array::from_fn(|axis| 0.5 * (charge.hessian[axis] + polarization.hessian[axis])),
+            std::array::from_fn(|axis| 0.5 * (charge.hessian[axis] - polarization.hessian[axis])),
+        ],
+    }
+}
+
 fn transform_muffin_tin(
     functional: XcFunctional,
-    up: &MuffinTinField,
-    down: &MuffinTinField,
+    route: NoncollinearXcRoute,
+    fields: [&MuffinTinField; 4],
     angular: &AngularGrid,
     output_l_max: u32,
 ) -> Result<MuffinTinTransform, RegionalXcError> {
-    if up.mesh() != down.mesh() {
-        return Err(RegionalXcError::MuffinTinSpinMeshMismatch);
-    }
-    let mesh = up.mesh();
+    let charge = fields[0];
+    let mesh = charge.mesh();
     let channel_count = lm_count(output_l_max);
-    let mut projected = Collinear::new(
-        vec![vec![Complex64::new(0.0, 0.0); mesh.len()]; channel_count],
-        vec![vec![Complex64::new(0.0, 0.0); mesh.len()]; channel_count],
-    );
+    let mut projected: [Vec<Vec<Complex64>>; 4] =
+        std::array::from_fn(|_| vec![vec![Complex64::new(0.0, 0.0); mesh.len()]; channel_count]);
     let mut radial_energy = vec![0.0; mesh.len()];
     let mut radial_density_potential = vec![0.0; mesh.len()];
-    let convention = up.field().convention();
+    let convention = charge.field().convention();
 
     for radial_index in 0..mesh.len() {
         let radius = mesh.radius(radial_index).unwrap().get();
         let derivative_step = derivative_step(mesh.radii(), radial_index);
         for point in angular.points() {
             let position = point.direction.map(|component| component * radius);
-            let jet = muffin_tin_density_jet(up, down, radial_index, position, derivative_step)?;
-            let xc = evaluate_xc_point(functional, jet)?;
+            let [charge, mx, my, mz] = fields
+                .map(|field| muffin_tin_field_jet(field, radial_index, position, derivative_step));
+            let xc = evaluate_noncollinear_xc_point(functional, route, charge?, [mx?, my?, mz?])?;
             radial_energy[radial_index] += point.weight * xc.energy_density;
-            radial_density_potential[radial_index] += point.weight
-                * (jet.rho[0] * xc.potential[0].get() + jet.rho[1] * xc.potential[1].get());
-            project_angular_value(
-                convention,
-                output_l_max,
-                point.direction,
-                point.weight,
-                xc.potential[0].get(),
-                radial_index,
-                &mut projected.up,
-            );
-            project_angular_value(
-                convention,
-                output_l_max,
-                point.direction,
-                point.weight,
-                xc.potential[1].get(),
-                radial_index,
-                &mut projected.down,
-            );
+            radial_density_potential[radial_index] += point.weight * xc.density_potential;
+            for (target, value) in projected.iter_mut().zip(xc.potential) {
+                project_angular_value(
+                    convention,
+                    output_l_max,
+                    point.direction,
+                    point.weight,
+                    value,
+                    radial_index,
+                    target,
+                );
+            }
         }
         let radius_squared = radius * radius;
         radial_energy[radial_index] *= radius_squared;
         radial_density_potential[radial_index] *= radius_squared;
     }
 
-    let up_field = finish_sphere_projection(convention, output_l_max, projected.up)?;
-    let down_field = finish_sphere_projection(convention, output_l_max, projected.down)?;
+    let [scalar, bx, by, bz] = projected;
     Ok(MuffinTinTransform {
-        fields: Collinear::new(
-            MuffinTinField::new(mesh.clone(), up_field)?,
-            MuffinTinField::new(mesh.clone(), down_field)?,
-        ),
+        fields: [
+            MuffinTinField::new(
+                mesh.clone(),
+                finish_sphere_projection(convention, output_l_max, scalar)?,
+            )?,
+            MuffinTinField::new(
+                mesh.clone(),
+                finish_sphere_projection(convention, output_l_max, bx)?,
+            )?,
+            MuffinTinField::new(
+                mesh.clone(),
+                finish_sphere_projection(convention, output_l_max, by)?,
+            )?,
+            MuffinTinField::new(
+                mesh.clone(),
+                finish_sphere_projection(convention, output_l_max, bz)?,
+            )?,
+        ],
         exchange_correlation_energy: mesh.integrate(&radial_energy)?,
         density_potential_integral: mesh.integrate(&radial_density_potential)?,
     })
 }
 
-pub(crate) fn interstitial_density_jet(
-    fields: &Collinear<InterstitialField>,
+fn interstitial_pauli_jets(
+    density: &RegionalDensity,
     position: [Bohr; 3],
-) -> Result<DensityJet2, RegionalXcError> {
-    let up = interstitial_spin_jet(&fields.up, position)?;
-    let down = interstitial_spin_jet(&fields.down, position)?;
-    Ok(DensityJet2 {
-        rho: [up.0, down.0],
-        gradient: [up.1, down.1],
-        hessian: [up.2, down.2],
-    })
+) -> Result<(FieldJet, [FieldJet; 3]), RegionalXcError> {
+    Ok((
+        interstitial_field_jet(density.charge().interstitial(), position)?,
+        [
+            interstitial_field_jet(density.magnetization()[0].interstitial(), position)?,
+            interstitial_field_jet(density.magnetization()[1].interstitial(), position)?,
+            interstitial_field_jet(density.magnetization()[2].interstitial(), position)?,
+        ],
+    ))
 }
 
-fn interstitial_spin_jet(
+pub(crate) fn evaluate_interstitial_noncollinear_xc_potential(
+    functional: XcFunctional,
+    route: NoncollinearXcRoute,
+    density: &RegionalDensity,
+    position: [Bohr; 3],
+) -> Result<(Hartree, [Hartree; 3]), RegionalXcError> {
+    let (charge, magnetization) = interstitial_pauli_jets(density, position)?;
+    let point = evaluate_noncollinear_xc_point(functional, route, charge, magnetization)?;
+    Ok((
+        Hartree(point.potential[0]),
+        point.potential[1..]
+            .iter()
+            .copied()
+            .map(Hartree)
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("three magnetic components remain three components"),
+    ))
+}
+
+fn interstitial_field_jet(
     field: &InterstitialField,
     position: [Bohr; 3],
-) -> Result<(f64, [f64; 3], [f64; 6]), RegionalXcError> {
+) -> Result<FieldJet, RegionalXcError> {
     let mut value = Complex64::new(0.0, 0.0);
     let mut gradient = [Complex64::new(0.0, 0.0); 3];
     let mut hessian = [Complex64::new(0.0, 0.0); 6];
@@ -316,35 +532,19 @@ fn interstitial_spin_jet(
                 + g.iter().map(|component| component.abs()).sum::<f64>()
                 + products.iter().map(|product| product.abs()).sum::<f64>());
     }
-    Ok((
-        checked_real(value, scale, "interstitial density")?,
-        checked_real_array(gradient, scale, "interstitial gradient")?,
-        checked_real_array(hessian, scale, "interstitial Hessian")?,
-    ))
-}
-
-fn muffin_tin_density_jet(
-    up: &MuffinTinField,
-    down: &MuffinTinField,
-    radial_index: usize,
-    position: [f64; 3],
-    step: f64,
-) -> Result<DensityJet2, RegionalXcError> {
-    let up = muffin_tin_spin_jet(up, radial_index, position, step)?;
-    let down = muffin_tin_spin_jet(down, radial_index, position, step)?;
-    Ok(DensityJet2 {
-        rho: [up.0, down.0],
-        gradient: [up.1, down.1],
-        hessian: [up.2, down.2],
+    Ok(FieldJet {
+        value: checked_real(value, scale, "interstitial field")?,
+        gradient: checked_real_array(gradient, scale, "interstitial gradient")?,
+        hessian: checked_real_array(hessian, scale, "interstitial Hessian")?,
     })
 }
 
-fn muffin_tin_spin_jet(
+fn muffin_tin_field_jet(
     field: &MuffinTinField,
     radial_index: usize,
     position: [f64; 3],
     step: f64,
-) -> Result<(f64, [f64; 3], [f64; 6]), RegionalXcError> {
+) -> Result<FieldJet, RegionalXcError> {
     const OFFSETS: [i32; 4] = [-2, -1, 1, 2];
     const FIRST_WEIGHTS: [f64; 4] = [1.0, -8.0, 8.0, -1.0];
     let center = evaluate_muffin_tin_field(field, radial_index, position)?;
@@ -384,7 +584,11 @@ fn muffin_tin_spin_jet(
         }
         hessian[entry] = derivative / (144.0 * step * step);
     }
-    Ok((center, gradient, hessian))
+    Ok(FieldJet {
+        value: center,
+        gradient,
+        hessian,
+    })
 }
 
 fn evaluate_muffin_tin_field(
@@ -677,8 +881,6 @@ pub enum RegionalXcError {
     },
     #[error("angular grid has {points} points, fewer than the {channels} output harmonic channels")]
     UndersampledAngularGrid { points: usize, channels: usize },
-    #[error("spin channels use different muffin-tin radial meshes")]
-    MuffinTinSpinMeshMismatch,
     #[error("{quantity} has imaginary part {imaginary}, tolerance {tolerance}")]
     NonRealTransform {
         quantity: &'static str,
@@ -753,15 +955,29 @@ mod tests {
         down: impl IntoIterator<Item = ([i32; 3], Complex64)>,
     ) -> RegionalDensity {
         let layout = layout(indices);
-        RegionalDensity::new(
-            InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), Vec::new()).unwrap(),
-            Collinear::new(Vec::new(), Vec::new()),
-            Collinear::new(
-                interstitial_field(layout.clone(), up),
-                interstitial_field(layout, down),
-            ),
+        let geometry = InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), Vec::new()).unwrap();
+        let up: BTreeMap<_, _> = up.into_iter().collect();
+        let down: BTreeMap<_, _> = down.into_iter().collect();
+        let combine = |sign: f64| -> Vec<_> {
+            indices
+                .iter()
+                .map(|&index| (index, up[&index] + sign * down[&index]))
+                .collect()
+        };
+        let charge = RegionalScalarField::new(
+            geometry.clone(),
+            Vec::new(),
+            interstitial_field(layout.clone(), combine(1.0)),
         )
-        .unwrap()
+        .unwrap();
+        let mz = RegionalScalarField::new(
+            geometry,
+            Vec::new(),
+            interstitial_field(layout, combine(-1.0)),
+        )
+        .unwrap();
+        let zero = charge.zero_like();
+        RegionalDensity::new(charge, [zero.clone(), zero, mz]).unwrap()
     }
 
     fn uniform_density(up: f64, down: f64) -> RegionalDensity {
@@ -772,12 +988,78 @@ mod tests {
         )
     }
 
+    fn uniform_pauli_density(charge: f64, magnetization: [f64; 3]) -> RegionalDensity {
+        let layout = layout(&[[0; 3]]);
+        let geometry = InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), Vec::new()).unwrap();
+        let scalar = |value: f64| {
+            RegionalScalarField::new(
+                geometry.clone(),
+                Vec::new(),
+                interstitial_field(layout.clone(), [([0; 3], Complex64::new(value, 0.0))]),
+            )
+            .unwrap()
+        };
+        RegionalDensity::new(scalar(charge), magnetization.map(scalar)).unwrap()
+    }
+
+    fn line_pauli_density(coefficients: [[Complex64; 3]; 4]) -> RegionalDensity {
+        let indices = [[-1, 0, 0], [0; 3], [1, 0, 0]];
+        let layout = layout(&indices);
+        let geometry = InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), Vec::new()).unwrap();
+        let fields = coefficients.map(|values| {
+            RegionalScalarField::new(
+                geometry.clone(),
+                Vec::new(),
+                interstitial_field(layout.clone(), indices.into_iter().zip(values)),
+            )
+            .unwrap()
+        });
+        let [charge, mx, my, mz] = fields;
+        RegionalDensity::new(charge, [mx, my, mz]).unwrap()
+    }
+
     fn spec(divisions_x: usize) -> XcFieldSpec {
         XcFieldSpec {
             interstitial_divisions: [divisions_x, 3, 3],
             angular_point_count: 50,
             output_l_max: 0,
+            noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
         }
+    }
+
+    fn route_spec(divisions_x: usize, route: NoncollinearXcRoute) -> XcFieldSpec {
+        XcFieldSpec {
+            noncollinear_route: route,
+            ..spec(divisions_x)
+        }
+    }
+
+    fn spin_potential_coefficient(
+        result: &RegionalXcResult,
+        spin: usize,
+        index: [i32; 3],
+    ) -> Complex64 {
+        let scalar = result
+            .potential
+            .scalar()
+            .interstitial()
+            .coefficient(index)
+            .unwrap();
+        let bz = result.potential.magnetic()[2]
+            .interstitial()
+            .coefficient(index)
+            .unwrap();
+        if spin == 0 { scalar + bz } else { scalar - bz }
+    }
+
+    fn pauli_potential_coefficient(result: &RegionalXcResult, index: [i32; 3]) -> [Complex64; 4] {
+        [
+            result.potential.scalar(),
+            &result.potential.magnetic()[0],
+            &result.potential.magnetic()[1],
+            &result.potential.magnetic()[2],
+        ]
+        .map(|field| field.interstitial().coefficient(index).unwrap())
     }
 
     #[test]
@@ -795,22 +1077,14 @@ mod tests {
         )
         .unwrap();
         for spin in 0..2 {
-            let lda_field = if spin == 0 {
-                &lda.potential.interstitial().up
-            } else {
-                &lda.potential.interstitial().down
-            };
-            let pbe_field = if spin == 0 {
-                &pbe.potential.interstitial().up
-            } else {
-                &pbe.potential.interstitial().down
-            };
             assert!(
-                (lda_field.coefficient([0; 3]).unwrap().re - point.potential[spin].get()).abs()
+                (spin_potential_coefficient(&lda, spin, [0; 3]).re - point.potential[spin].get())
+                    .abs()
                     < 2.0e-14
             );
             assert!(
-                (pbe_field.coefficient([0; 3]).unwrap().re - point.potential[spin].get()).abs()
+                (spin_potential_coefficient(&pbe, spin, [0; 3]).re - point.potential[spin].get())
+                    .abs()
                     < 2.0e-14
             );
         }
@@ -832,6 +1106,254 @@ mod tests {
     }
 
     #[test]
+    fn uniform_global_spin_rotation_covariance_and_collinear_reduction() {
+        for route in [
+            NoncollinearXcRoute::LocalSpinFrame,
+            NoncollinearXcRoute::MagnetizationField,
+        ] {
+            let tilted = uniform_pauli_density(0.3, [0.03, 0.04, 0.0]);
+            let collinear = uniform_pauli_density(0.3, [0.0, 0.0, 0.05]);
+            let tilted =
+                evaluate_regional_xc(XcFunctional::Pbe, &tilted, route_spec(4, route)).unwrap();
+            let collinear =
+                evaluate_regional_xc(XcFunctional::Pbe, &collinear, route_spec(4, route)).unwrap();
+            let tilted_v = pauli_potential_coefficient(&tilted, [0; 3]).map(|value| value.re);
+            let collinear_v = pauli_potential_coefficient(&collinear, [0; 3]).map(|value| value.re);
+            assert!((tilted_v[0] - collinear_v[0]).abs() < 2.0e-14);
+            assert!((tilted_v[1] - 0.6 * collinear_v[3]).abs() < 2.0e-14);
+            assert!((tilted_v[2] - 0.8 * collinear_v[3]).abs() < 2.0e-14);
+            assert!(tilted_v[3].abs() < 2.0e-14);
+            assert!(
+                (tilted.exchange_correlation_energy.get()
+                    - collinear.exchange_correlation_energy.get())
+                .abs()
+                    < 2.0e-12
+            );
+        }
+    }
+
+    #[test]
+    fn nonuniform_global_spin_rotation_is_covariant_for_both_routes() {
+        let zero = [Complex64::new(0.0, 0.0); 3];
+        let charge = [
+            Complex64::new(0.02, 0.0),
+            Complex64::new(0.4, 0.0),
+            Complex64::new(0.02, 0.0),
+        ];
+        let magnetization = [
+            Complex64::new(0.01, 0.0),
+            Complex64::new(0.08, 0.0),
+            Complex64::new(0.01, 0.0),
+        ];
+        for route in [
+            NoncollinearXcRoute::LocalSpinFrame,
+            NoncollinearXcRoute::MagnetizationField,
+        ] {
+            let along_x = line_pauli_density([charge, magnetization, zero, zero]);
+            let along_z = line_pauli_density([charge, zero, zero, magnetization]);
+            let along_x =
+                evaluate_regional_xc(XcFunctional::Pbe, &along_x, route_spec(24, route)).unwrap();
+            let along_z =
+                evaluate_regional_xc(XcFunctional::Pbe, &along_z, route_spec(24, route)).unwrap();
+            for index in [[-1, 0, 0], [0; 3], [1, 0, 0]] {
+                let x = pauli_potential_coefficient(&along_x, index);
+                let z = pauli_potential_coefficient(&along_z, index);
+                assert!((x[0] - z[0]).norm() < 2.0e-13);
+                assert!((x[1] - z[3]).norm() < 2.0e-13);
+                assert!(x[2].norm() < 2.0e-13 && x[3].norm() < 2.0e-13);
+                assert!(z[1].norm() < 2.0e-13 && z[2].norm() < 2.0e-13);
+            }
+        }
+    }
+
+    #[test]
+    fn textured_pbe_distinguishes_the_two_derivative_routes() {
+        let charge = FieldJet {
+            value: 0.3,
+            gradient: [0.0; 3],
+            hessian: [0.0; 6],
+        };
+        let amplitude = 0.08;
+        // At x=0 for m=a(cos x, sin x, 0): the projected Hessian is -a,
+        // while the complete Hessian of |m| is exactly zero.
+        let magnetization = [
+            FieldJet {
+                value: amplitude,
+                gradient: [0.0; 3],
+                hessian: [-amplitude, 0.0, 0.0, 0.0, 0.0, 0.0],
+            },
+            FieldJet {
+                value: 0.0,
+                gradient: [amplitude, 0.0, 0.0],
+                hessian: [0.0; 6],
+            },
+            FieldJet {
+                value: 0.0,
+                gradient: [0.0; 3],
+                hessian: [0.0; 6],
+            },
+        ];
+        let local = evaluate_noncollinear_xc_point(
+            XcFunctional::Pbe,
+            NoncollinearXcRoute::LocalSpinFrame,
+            charge,
+            magnetization,
+        )
+        .unwrap();
+        let field = evaluate_noncollinear_xc_point(
+            XcFunctional::Pbe,
+            NoncollinearXcRoute::MagnetizationField,
+            charge,
+            magnetization,
+        )
+        .unwrap();
+        let expected_local = evaluate_xc_point(
+            XcFunctional::Pbe,
+            split_local_spin_jet(
+                charge,
+                FieldJet {
+                    value: amplitude,
+                    gradient: [0.0; 3],
+                    hessian: [-amplitude, 0.0, 0.0, 0.0, 0.0, 0.0],
+                },
+            ),
+        )
+        .unwrap();
+        let expected_field = evaluate_xc_point(
+            XcFunctional::Pbe,
+            split_local_spin_jet(
+                charge,
+                FieldJet {
+                    value: amplitude,
+                    gradient: [0.0; 3],
+                    hessian: [0.0; 6],
+                },
+            ),
+        )
+        .unwrap();
+        assert!(
+            (local.potential[0]
+                - 0.5 * (expected_local.potential[0].get() + expected_local.potential[1].get()))
+            .abs()
+                < 2.0e-14
+        );
+        assert!(
+            (field.potential[0]
+                - 0.5 * (expected_field.potential[0].get() + expected_field.potential[1].get()))
+            .abs()
+                < 2.0e-14
+        );
+        assert!((local.potential[0] - field.potential[0]).abs() > 1.0e-8);
+
+        let zero = [Complex64::new(0.0, 0.0); 3];
+        let charge_coefficients = [
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.3, 0.0),
+            Complex64::new(0.0, 0.0),
+        ];
+        let mx = [
+            Complex64::new(amplitude / 2.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(amplitude / 2.0, 0.0),
+        ];
+        let my = [
+            Complex64::new(0.0, amplitude / 2.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, -amplitude / 2.0),
+        ];
+        let texture = line_pauli_density([charge_coefficients, mx, my, zero]);
+        let local = evaluate_regional_xc(
+            XcFunctional::Pbe,
+            &texture,
+            route_spec(32, NoncollinearXcRoute::LocalSpinFrame),
+        )
+        .unwrap();
+        let field = evaluate_regional_xc(
+            XcFunctional::Pbe,
+            &texture,
+            route_spec(32, NoncollinearXcRoute::MagnetizationField),
+        )
+        .unwrap();
+        assert!(
+            (pauli_potential_coefficient(&local, [0; 3])[0]
+                - pauli_potential_coefficient(&field, [0; 3])[0])
+                .norm()
+                > 1.0e-8
+        );
+
+        let local_lda = evaluate_regional_xc(
+            XcFunctional::LdaPw92,
+            &texture,
+            route_spec(32, NoncollinearXcRoute::LocalSpinFrame),
+        )
+        .unwrap();
+        let field_lda = evaluate_regional_xc(
+            XcFunctional::LdaPw92,
+            &texture,
+            route_spec(32, NoncollinearXcRoute::MagnetizationField),
+        )
+        .unwrap();
+        for index in [[-1, 0, 0], [0; 3], [1, 0, 0]] {
+            let left = pauli_potential_coefficient(&local_lda, index);
+            let right = pauli_potential_coefficient(&field_lda, index);
+            for (left, right) in left.into_iter().zip(right) {
+                assert!((left - right).norm() < 2.0e-13);
+            }
+        }
+    }
+
+    #[test]
+    fn magnetization_node_with_derivatives_is_spin_rotation_covariant() {
+        let charge = FieldJet {
+            value: 0.2,
+            gradient: [0.01, 0.0, 0.0],
+            hessian: [0.002, 0.0, 0.0, 0.0, 0.0, 0.0],
+        };
+        let mx = FieldJet {
+            value: 0.0,
+            gradient: [0.03, -0.02, 0.01],
+            hessian: [0.006, -0.004, 0.002, 0.003, -0.001, 0.005],
+        };
+        let my = FieldJet {
+            value: 0.0,
+            gradient: [-0.01, 0.04, 0.02],
+            hessian: [-0.003, 0.007, -0.002, 0.001, 0.004, -0.005],
+        };
+        let mz = FieldJet {
+            value: 0.0,
+            gradient: [0.02, 0.01, -0.03],
+            hessian: [0.005, 0.001, -0.006, -0.002, 0.003, 0.004],
+        };
+        // A 90-degree spin rotation around z: (mx,my,mz) -> (-my,mx,mz).
+        let rotated_mx = FieldJet {
+            value: -my.value,
+            gradient: my.gradient.map(|value| -value),
+            hessian: my.hessian.map(|value| -value),
+        };
+        let rotated_magnetization = [rotated_mx, mx, mz];
+        for route in [
+            NoncollinearXcRoute::LocalSpinFrame,
+            NoncollinearXcRoute::MagnetizationField,
+        ] {
+            let point =
+                evaluate_noncollinear_xc_point(XcFunctional::Pbe, route, charge, [mx, my, mz])
+                    .unwrap();
+            let rotated_point = evaluate_noncollinear_xc_point(
+                XcFunctional::Pbe,
+                route,
+                charge,
+                rotated_magnetization,
+            )
+            .unwrap();
+            assert!(point.potential.into_iter().all(f64::is_finite));
+            assert_eq!(point.energy_density, rotated_point.energy_density);
+            assert_eq!(point.potential[0], rotated_point.potential[0]);
+            assert_eq!(point.potential[1..], [0.0; 3]);
+            assert_eq!(rotated_point.potential[1..], [0.0; 3]);
+        }
+    }
+
+    #[test]
     fn one_cosine_has_analytic_jet_and_nonlinear_transform_converges() {
         let indices = [[-1, 0, 0], [0; 3], [1, 0, 0]];
         let density = interstitial_density(
@@ -848,9 +1370,12 @@ mod tests {
             ],
         );
         let x = 0.73;
-        let jet =
-            interstitial_density_jet(density.interstitial(), [Bohr(x), Bohr(0.2), Bohr(-0.4)])
-                .unwrap();
+        let (charge, magnetization) =
+            interstitial_pauli_jets(&density, [Bohr(x), Bohr(0.2), Bohr(-0.4)]).unwrap();
+        let jet = split_local_spin_jet(
+            charge,
+            project_magnetization_jet(magnetization, [0.0, 0.0, 1.0]),
+        );
         assert!((jet.rho[0] - (0.5 + 0.1 * x.cos())).abs() < 2.0e-15);
         assert!((jet.gradient[0][0] + 0.1 * x.sin()).abs() < 2.0e-15);
         assert!((jet.hessian[0][0] + 0.1 * x.cos()).abs() < 2.0e-15);
@@ -860,15 +1385,8 @@ mod tests {
         let coarse = evaluate_regional_xc(XcFunctional::LdaPw92, &density, spec(4)).unwrap();
         let fine = evaluate_regional_xc(XcFunctional::LdaPw92, &density, spec(8)).unwrap();
         let reference = evaluate_regional_xc(XcFunctional::LdaPw92, &density, spec(64)).unwrap();
-        let coefficient = |result: &RegionalXcResult| {
-            result
-                .potential
-                .interstitial()
-                .up
-                .coefficient([1, 0, 0])
-                .unwrap()
-                .re
-        };
+        let coefficient =
+            |result: &RegionalXcResult| spin_potential_coefficient(result, 0, [1, 0, 0]).re;
         let coarse_error = (coefficient(&coarse) - coefficient(&reference)).abs();
         let fine_error = (coefficient(&fine) - coefficient(&reference)).abs();
         assert!(fine_error < coarse_error);
@@ -879,18 +1397,8 @@ mod tests {
             (pbe.exchange_correlation_energy.get() - lda.exchange_correlation_energy.get()).abs()
                 > 1.0e-8
         );
-        let plus = pbe
-            .potential
-            .interstitial()
-            .up
-            .coefficient([1, 0, 0])
-            .unwrap();
-        let minus = pbe
-            .potential
-            .interstitial()
-            .up
-            .coefficient([-1, 0, 0])
-            .unwrap();
+        let plus = spin_potential_coefficient(&pbe, 0, [1, 0, 0]);
+        let minus = spin_potential_coefficient(&pbe, 0, [-1, 0, 0]);
         assert_eq!(minus, plus.conj());
     }
 
@@ -920,13 +1428,15 @@ mod tests {
         let position = [inverse_norm, 2.0 * inverse_norm, 3.0 * inverse_norm]
             .map(|direction| direction * radius);
         let step = derivative_step(mesh.radii(), radial_index);
-        let jet = muffin_tin_spin_jet(&field, radial_index, position, step).unwrap();
-        assert!((jet.0 - (base + quadratic * radius.powi(2))).abs() < 2.0e-13);
-        for ((&gradient, &coordinate), &hessian) in jet.1.iter().zip(&position).zip(&jet.2[..3]) {
+        let jet = muffin_tin_field_jet(&field, radial_index, position, step).unwrap();
+        assert!((jet.value - (base + quadratic * radius.powi(2))).abs() < 2.0e-13);
+        for ((&gradient, &coordinate), &hessian) in
+            jet.gradient.iter().zip(&position).zip(&jet.hessian[..3])
+        {
             assert!((gradient - 2.0 * quadratic * coordinate).abs() < 2.0e-10);
             assert!((hessian - 2.0 * quadratic).abs() < 2.0e-8);
         }
-        for &mixed in &jet.2[3..] {
+        for &mixed in &jet.hessian[3..] {
             assert!(mixed.abs() < 2.0e-8);
         }
     }
@@ -948,12 +1458,12 @@ mod tests {
                 < 1.0e-13
         );
         assert_eq!(
-            first.potential.interstitial().up.coefficient([0; 3]),
-            swapped.potential.interstitial().down.coefficient([0; 3])
+            spin_potential_coefficient(&first, 0, [0; 3]),
+            spin_potential_coefficient(&swapped, 1, [0; 3])
         );
         assert_eq!(
-            first.potential.interstitial().down.coefficient([0; 3]),
-            swapped.potential.interstitial().up.coefficient([0; 3])
+            spin_potential_coefficient(&first, 1, [0; 3]),
+            spin_potential_coefficient(&swapped, 0, [0; 3])
         );
     }
 
@@ -976,19 +1486,20 @@ mod tests {
         };
         let fourier_layout = layout(&[[0; 3]]);
         let zero = interstitial_field(fourier_layout.clone(), [([0; 3], Complex64::new(0.0, 0.0))]);
-        let density = RegionalDensity::new(
-            InterstitialGeometry::new(
-                VolumeBohr3(TAU.powi(3)),
-                vec![Sphere {
-                    center: [Bohr(0.0); 3],
-                    radius: Bohr(0.5),
-                }],
-            )
-            .unwrap(),
-            Collinear::new(vec![make_field(0.2)], vec![make_field(0.1)]),
-            Collinear::new(zero.clone(), zero),
+        let geometry = InterstitialGeometry::new(
+            VolumeBohr3(TAU.powi(3)),
+            vec![Sphere {
+                center: [Bohr(0.0); 3],
+                radius: Bohr(0.5),
+            }],
         )
         .unwrap();
+        let charge =
+            RegionalScalarField::new(geometry.clone(), vec![make_field(0.3)], zero.clone())
+                .unwrap();
+        let mz = RegionalScalarField::new(geometry, vec![make_field(0.1)], zero).unwrap();
+        let zero = charge.zero_like();
+        let density = RegionalDensity::new(charge, [zero.clone(), zero, mz]).unwrap();
         let result = evaluate_regional_xc(
             XcFunctional::LdaPw92,
             &density,
@@ -996,12 +1507,13 @@ mod tests {
                 interstitial_divisions: [8, 8, 8],
                 angular_point_count: 100,
                 output_l_max: 0,
+                noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
             },
         )
         .unwrap();
         for field in [
-            &result.potential.muffin_tins().up[0],
-            &result.potential.muffin_tins().down[0],
+            &result.potential.scalar().muffin_tins()[0],
+            &result.potential.magnetic()[2].muffin_tins()[0],
         ] {
             assert_eq!(field.field().channel_count(), 1);
             assert!(
@@ -1028,6 +1540,7 @@ mod tests {
                     interstitial_divisions: [0, 1, 1],
                     angular_point_count: 1,
                     output_l_max: 0,
+                    noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
                 }
             ),
             Err(RegionalXcError::ZeroInterstitialDivision(_))
@@ -1040,6 +1553,7 @@ mod tests {
                     interstitial_divisions: [1; 3],
                     angular_point_count: 0,
                     output_l_max: 0,
+                    noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
                 }
             ),
             Err(RegionalXcError::ZeroAngularPointCount)

@@ -336,13 +336,11 @@ fn solve_dense(mut matrix: Vec<Vec<f64>>, mut right: Vec<f64>) -> Option<Vec<f64
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::InterstitialField;
+    use crate::{InterstitialField, RegionalScalarField};
     use muffintin_core::{
         FourierLayout, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, VolumeBohr3,
     };
-    use muffintin_lapw::Collinear;
     use num_complex::Complex64;
-    use std::collections::BTreeMap;
     use std::f64::consts::TAU;
 
     fn layout(indices: &[[i32; 3]]) -> FourierLayout {
@@ -376,23 +374,31 @@ mod tests {
         coefficients: impl IntoIterator<Item = ([i32; 3], Complex64)>,
     ) -> RegionalDensity {
         let layout = layout(indices);
-        let up =
+        let charge_interstitial =
             InterstitialField::new(layout.clone(), coefficients.into_iter().collect()).unwrap();
-        let down = InterstitialField::new(
-            layout,
-            indices
-                .iter()
-                .copied()
-                .map(|g| (g, Complex64::new(0.0, 0.0)))
-                .collect::<BTreeMap<_, _>>(),
-        )
-        .unwrap();
-        RegionalDensity::new(
-            InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), Vec::new()).unwrap(),
-            Collinear::new(Vec::new(), Vec::new()),
-            Collinear::new(up, down),
-        )
-        .unwrap()
+        let geometry = InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), Vec::new()).unwrap();
+        let charge = RegionalScalarField::new(geometry, Vec::new(), charge_interstitial).unwrap();
+        let zero = charge.zero_like();
+        RegionalDensity::new(charge, [zero.clone(), zero.clone(), zero]).unwrap()
+    }
+
+    fn pauli_scalar(values: [f64; 4]) -> RegionalDensity {
+        let layout = layout(&[[0; 3]]);
+        let geometry = InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), Vec::new()).unwrap();
+        let fields = values.map(|value| {
+            RegionalScalarField::new(
+                geometry.clone(),
+                Vec::new(),
+                InterstitialField::new(
+                    layout.clone(),
+                    [([0; 3], Complex64::new(value, 0.0))].into_iter().collect(),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        });
+        let [charge, mx, my, mz] = fields;
+        RegionalDensity::new(charge, [mx, my, mz]).unwrap()
     }
 
     fn scalar(value: f64) -> RegionalDensity {
@@ -400,7 +406,12 @@ mod tests {
     }
 
     fn scalar_value(density: &RegionalDensity) -> f64 {
-        density.interstitial().up.coefficient([0; 3]).unwrap().re
+        density
+            .charge()
+            .interstitial()
+            .coefficient([0; 3])
+            .unwrap()
+            .re
     }
 
     #[test]
@@ -423,6 +434,22 @@ mod tests {
         let mut mixer = DensityMixer::linear(0.25).unwrap();
         let mixed = mixer.mix(&scalar(4.0), &scalar(0.0)).unwrap();
         assert!((scalar_value(&mixed) - 3.0).abs() < 1.0e-15);
+    }
+
+    #[test]
+    fn linear_step_mixes_charge_and_all_magnetization_components() {
+        let mut mixer = DensityMixer::linear(0.25).unwrap();
+        let mixed = mixer
+            .mix(
+                &pauli_scalar([4.0, 1.0, -2.0, 3.0]),
+                &pauli_scalar([0.0; 4]),
+            )
+            .unwrap();
+        let actual = std::iter::once(mixed.charge())
+            .chain(mixed.magnetization())
+            .map(|field| field.interstitial().coefficient([0; 3]).unwrap().re)
+            .collect::<Vec<_>>();
+        assert_eq!(actual, vec![3.0, 0.75, -1.5, 2.25]);
     }
 
     #[test]

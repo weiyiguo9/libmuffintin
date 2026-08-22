@@ -10,17 +10,16 @@
 //! finite MT/outer value and slope mismatches, then vanishes with zero slope
 //! at the extended endpoint so the raw physical outer field controls decay.
 
-use crate::xc_field::interstitial_density_jet;
+use crate::xc_field::{NoncollinearXcRoute, evaluate_interstitial_noncollinear_xc_potential};
 use crate::{
     InterstitialField, MuffinTinField, RegionalDensity, RegionalElectrostaticResult,
-    RegionalXcError, RegionalXcResult, XcError, XcFunctional, evaluate_xc_point,
+    RegionalXcError, RegionalXcResult, XcFunctional,
 };
 use muffintin_core::{
     Bohr, ExponentialMesh, InterstitialGeometry, spherical_bessel_j, spherical_bessel_j_derivative,
 };
 use muffintin_coulomb::{InterstitialHartreePotential, MuffinTinHartreePotential};
 use muffintin_grid::{AngularGrid, GridError};
-use muffintin_lapw::Collinear;
 use muffintin_radial::{
     CenteredSphericalFourierMode, CorePotentialContinuationError, CorePotentialContinuationSpec,
     ExtendedCorePotential, join_core_spherical_potential,
@@ -38,6 +37,8 @@ pub struct CorePotentialBuildSpec {
     pub continuation: CorePotentialContinuationSpec,
     /// The same functional used to produce the supplied `RegionalXcResult`.
     pub xc_functional: XcFunctional,
+    /// The same noncollinear reduction used to produce the supplied XC result.
+    pub xc_noncollinear_route: NoncollinearXcRoute,
     /// Fibonacci angular points used for each outer XC spherical average.
     pub xc_angular_point_count: usize,
 }
@@ -68,7 +69,7 @@ pub struct BuiltExtendedCorePotential {
     pub join: CorePotentialJoin,
 }
 
-/// Build spin-resolved spherical effective potentials on extended core meshes.
+/// Build spherical scalar effective potentials on extended core meshes.
 ///
 /// The `RegionalXcResult` supplies physical inner MT monopoles. Its masked
 /// interstitial coefficients are used only for layout identity, never as a raw
@@ -81,7 +82,7 @@ pub fn build_extended_core_potentials(
     density: &RegionalDensity,
     extended_meshes: &[ExponentialMesh],
     spec: CorePotentialBuildSpec,
-) -> Result<Collinear<Vec<BuiltExtendedCorePotential>>, CorePotentialBuildError> {
+) -> Result<Vec<BuiltExtendedCorePotential>, CorePotentialBuildError> {
     let raw = &electrostatics.raw_electrostatic;
     let nuclear_charges = electrostatics.raw_nuclear.nuclear_charges();
     let geometry = density.geometry();
@@ -106,38 +107,20 @@ pub fn build_extended_core_potentials(
             actual: extended_meshes.len(),
         });
     }
-    require_xc_site_count("up", xc_potential.muffin_tins().up.len(), site_count)?;
-    require_xc_site_count("down", xc_potential.muffin_tins().down.len(), site_count)?;
+    require_xc_site_count(xc_potential.scalar().muffin_tins().len(), site_count)?;
 
-    let up = build_spin_channel(
-        "up",
-        0,
+    build_scalar_channel(
         raw.muffin_tins(),
         raw.interstitial(),
-        &xc_potential.muffin_tins().up,
-        &xc_potential.interstitial().up,
-        density.interstitial(),
+        xc_potential.scalar().muffin_tins(),
+        xc_potential.scalar().interstitial(),
+        density,
         geometry,
         nuclear_charges,
         extended_meshes,
         spec,
         &angular,
-    )?;
-    let down = build_spin_channel(
-        "down",
-        1,
-        raw.muffin_tins(),
-        raw.interstitial(),
-        &xc_potential.muffin_tins().down,
-        &xc_potential.interstitial().down,
-        density.interstitial(),
-        geometry,
-        nuclear_charges,
-        extended_meshes,
-        spec,
-        &angular,
-    )?;
-    Ok(Collinear::new(up, down))
+    )
 }
 
 /// Bootstrap extended core potentials directly from a frozen snapshot total potential.
@@ -157,7 +140,7 @@ pub fn build_extended_snapshot_core_potentials(
     nuclear_charges: &[f64],
     extended_meshes: &[ExponentialMesh],
     continuation: CorePotentialContinuationSpec,
-) -> Result<Collinear<Vec<BuiltExtendedCorePotential>>, CorePotentialBuildError> {
+) -> Result<Vec<BuiltExtendedCorePotential>, CorePotentialBuildError> {
     let site_count = geometry.spheres().len();
     if nuclear_charges.len() != site_count {
         return Err(CorePotentialBuildError::NuclearSiteCount {
@@ -171,31 +154,18 @@ pub fn build_extended_snapshot_core_potentials(
             actual: extended_meshes.len(),
         });
     }
-    require_snapshot_site_count("up", snapshot_total.muffin_tins().up.len(), site_count)?;
-    require_snapshot_site_count("down", snapshot_total.muffin_tins().down.len(), site_count)?;
-    let up = build_snapshot_spin_channel(
-        "up",
-        &snapshot_total.muffin_tins().up,
-        &snapshot_total.interstitial().up,
+    require_snapshot_site_count(snapshot_total.scalar().muffin_tins().len(), site_count)?;
+    build_snapshot_scalar(
+        snapshot_total.scalar().muffin_tins(),
+        snapshot_total.scalar().interstitial(),
         geometry,
         nuclear_charges,
         extended_meshes,
         continuation,
-    )?;
-    let down = build_snapshot_spin_channel(
-        "down",
-        &snapshot_total.muffin_tins().down,
-        &snapshot_total.interstitial().down,
-        geometry,
-        nuclear_charges,
-        extended_meshes,
-        continuation,
-    )?;
-    Ok(Collinear::new(up, down))
+    )
 }
 
-fn build_snapshot_spin_channel(
-    spin: &'static str,
+fn build_snapshot_scalar(
     muffin_tins: &[MuffinTinField],
     interstitial: &InterstitialField,
     geometry: &InterstitialGeometry,
@@ -221,20 +191,20 @@ fn build_snapshot_spin_channel(
                     tolerance: radius_tolerance,
                 });
             }
-            let monopole = physical_snapshot_monopole(site, spin, muffin_tin)?;
+            let monopole = physical_snapshot_monopole(site, "scalar", muffin_tin)?;
             let modes = centered_snapshot_modes(interstitial, sphere.center.map(Bohr::get));
             let mut outer = extended_mesh.radii()[muffin_tin.mesh().len() - 1..]
                 .iter()
                 .enumerate()
                 .map(|(radial, radius)| {
-                    periodic_spherical_average(site, spin, radial, radius.get(), &modes)
+                    periodic_spherical_average(site, "scalar", radial, radius.get(), &modes)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             let uncorrected_outer_boundary_derivative =
                 periodic_spherical_derivative(muffin_tin.mesh().last().get(), &modes);
             bridge_and_join_core_potential(
                 site,
-                spin,
+                "scalar",
                 muffin_tin.mesh(),
                 &monopole,
                 extended_mesh,
@@ -248,29 +218,23 @@ fn build_snapshot_spin_channel(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_spin_channel(
-    spin: &'static str,
-    spin_index: usize,
+fn build_scalar_channel(
     electrostatic_muffin_tins: &[MuffinTinHartreePotential],
     electrostatic_interstitial: &InterstitialHartreePotential,
     xc_muffin_tins: &[MuffinTinField],
     xc_operator_interstitial: &InterstitialField,
-    density_interstitial: &Collinear<InterstitialField>,
+    density: &RegionalDensity,
     geometry: &InterstitialGeometry,
     nuclear_charges: &[f64],
     extended_meshes: &[ExponentialMesh],
     spec: CorePotentialBuildSpec,
     angular: &AngularGrid,
 ) -> Result<Vec<BuiltExtendedCorePotential>, CorePotentialBuildError> {
-    let density_layout = if spin_index == 0 {
-        density_interstitial.up.layout()
-    } else {
-        density_interstitial.down.layout()
-    };
+    let density_layout = density.charge().interstitial().layout();
     if electrostatic_interstitial.layout() != xc_operator_interstitial.layout()
         || electrostatic_interstitial.layout() != density_layout
     {
-        return Err(CorePotentialBuildError::InterstitialLayout { spin });
+        return Err(CorePotentialBuildError::InterstitialLayout);
     }
     let modes_by_site = geometry
         .spheres()
@@ -291,7 +255,7 @@ fn build_spin_channel(
         .map(
             |(site, (((((electrostatic_mt, xc_mt), sphere), &charge), extended_mesh), modes))| {
                 if electrostatic_mt.mesh() != xc_mt.mesh() {
-                    return Err(CorePotentialBuildError::MuffinTinMesh { site, spin });
+                    return Err(CorePotentialBuildError::MuffinTinMesh { site });
                 }
                 let mesh_radius = electrostatic_mt.mesh().last().get();
                 let geometry_radius = sphere.radius.get();
@@ -305,7 +269,7 @@ fn build_spin_channel(
                     });
                 }
                 let effective_monopole =
-                    physical_effective_monopole(site, spin, electrostatic_mt, xc_mt)?;
+                    physical_effective_monopole(site, "scalar", electrostatic_mt, xc_mt)?;
                 let mut outer_potential = extended_mesh.radii()
                     [electrostatic_mt.mesh().len() - 1..]
                     .iter()
@@ -313,19 +277,18 @@ fn build_spin_channel(
                     .map(|(outer_index, radius)| {
                         let electrostatic = periodic_spherical_average(
                             site,
-                            spin,
+                            "scalar",
                             outer_index,
                             radius.get(),
                             &modes,
                         )?;
                         let xc = xc_spherical_average(
                             site,
-                            spin,
-                            spin_index,
                             sphere.center,
                             radius.get(),
-                            density_interstitial,
+                            density,
                             spec.xc_functional,
+                            spec.xc_noncollinear_route,
                             angular,
                         )?;
                         Ok(electrostatic + xc)
@@ -336,7 +299,7 @@ fn build_spin_channel(
                     endpoint_derivative(outer_radii, &outer_potential, 0);
                 bridge_and_join_core_potential(
                     site,
-                    spin,
+                    "scalar",
                     electrostatic_mt.mesh(),
                     &effective_monopole,
                     extended_mesh,
@@ -606,68 +569,45 @@ fn endpoint_derivative(radii: &[Bohr], values: &[f64], point: usize) -> f64 {
 #[allow(clippy::too_many_arguments)]
 fn xc_spherical_average(
     site: usize,
-    spin: &'static str,
-    spin_index: usize,
     center: [Bohr; 3],
     radius: f64,
-    density: &Collinear<InterstitialField>,
+    density: &RegionalDensity,
     functional: XcFunctional,
+    route: NoncollinearXcRoute,
     angular: &AngularGrid,
 ) -> Result<f64, CorePotentialBuildError> {
     let mut average = 0.0;
     for point in angular.points() {
         let position =
             std::array::from_fn(|axis| Bohr(center[axis].get() + radius * point.direction[axis]));
-        let jet = interstitial_density_jet(density, position).map_err(|source| {
-            CorePotentialBuildError::InterstitialDensity {
+        let xc =
+            evaluate_interstitial_noncollinear_xc_potential(functional, route, density, position)
+                .map_err(|source| CorePotentialBuildError::InterstitialDensity {
                 site,
-                spin,
                 radius,
                 source,
-            }
-        })?;
-        let xc = evaluate_xc_point(functional, jet).map_err(|source| {
-            CorePotentialBuildError::XcEvaluation {
-                site,
-                spin,
-                radius,
-                source,
-            }
-        })?;
-        average += point.weight * xc.potential[spin_index].get();
+            })?;
+        average += point.weight * xc.0.get();
     }
     Ok(average / (4.0 * PI))
 }
 
-fn require_xc_site_count(
-    spin: &'static str,
-    actual: usize,
-    expected: usize,
-) -> Result<(), CorePotentialBuildError> {
+fn require_xc_site_count(actual: usize, expected: usize) -> Result<(), CorePotentialBuildError> {
     if actual == expected {
         Ok(())
     } else {
-        Err(CorePotentialBuildError::XcSiteCount {
-            spin,
-            expected,
-            actual,
-        })
+        Err(CorePotentialBuildError::XcSiteCount { expected, actual })
     }
 }
 
 fn require_snapshot_site_count(
-    spin: &'static str,
     actual: usize,
     expected: usize,
 ) -> Result<(), CorePotentialBuildError> {
     if actual == expected {
         Ok(())
     } else {
-        Err(CorePotentialBuildError::SnapshotSiteCount {
-            spin,
-            expected,
-            actual,
-        })
+        Err(CorePotentialBuildError::SnapshotSiteCount { expected, actual })
     }
 }
 
@@ -682,22 +622,14 @@ pub enum CorePotentialBuildError {
     NuclearSiteCount { expected: usize, actual: usize },
     #[error("extended core mesh list has {actual} sites, expected {expected}")]
     ExtendedMeshCount { expected: usize, actual: usize },
-    #[error("{spin} XC muffin-tin potential has {actual} sites, expected {expected}")]
-    XcSiteCount {
-        spin: &'static str,
-        expected: usize,
-        actual: usize,
-    },
-    #[error("{spin} frozen snapshot muffin-tin potential has {actual} sites, expected {expected}")]
-    SnapshotSiteCount {
-        spin: &'static str,
-        expected: usize,
-        actual: usize,
-    },
-    #[error("{spin} density/XC/raw-electrostatic interstitial layouts differ")]
-    InterstitialLayout { spin: &'static str },
-    #[error("site {site} {spin} XC and raw electrostatic muffin-tin meshes differ")]
-    MuffinTinMesh { site: usize, spin: &'static str },
+    #[error("scalar XC muffin-tin potential has {actual} sites, expected {expected}")]
+    XcSiteCount { expected: usize, actual: usize },
+    #[error("scalar frozen snapshot muffin-tin potential has {actual} sites, expected {expected}")]
+    SnapshotSiteCount { expected: usize, actual: usize },
+    #[error("charge/scalar-XC/raw-electrostatic interstitial layouts differ")]
+    InterstitialLayout,
+    #[error("site {site} scalar XC and raw electrostatic muffin-tin meshes differ")]
+    MuffinTinMesh { site: usize },
     #[error(
         "site {site} muffin-tin mesh radius {mesh} differs from geometry radius {geometry}, tolerance {tolerance}"
     )]
@@ -733,19 +665,11 @@ pub enum CorePotentialBuildError {
         imaginary: f64,
         tolerance: f64,
     },
-    #[error("site {site} {spin} interstitial density evaluation failed at r={radius}: {source}")]
+    #[error("site {site} interstitial density/XC evaluation failed at r={radius}: {source}")]
     InterstitialDensity {
         site: usize,
-        spin: &'static str,
         radius: f64,
         source: RegionalXcError,
-    },
-    #[error("site {site} {spin} XC evaluation failed at r={radius}: {source}")]
-    XcEvaluation {
-        site: usize,
-        spin: &'static str,
-        radius: f64,
-        source: XcError,
     },
     #[error("site {site} {spin} core-potential continuation failed: {source}")]
     Continuation {
@@ -830,20 +754,27 @@ mod tests {
     }
 
     fn uniform_density(up: f64, down: f64) -> RegionalDensity {
+        uniform_pauli_density(up + down, [0.0, 0.0, up - down])
+    }
+
+    fn uniform_pauli_density(charge_value: f64, magnetization: [f64; 3]) -> RegionalDensity {
         let radial = mesh(101);
         let reciprocal_layout = layout();
-        RegionalDensity::new(
+        let charge = crate::RegionalScalarField::new(
             geometry(),
-            Collinear::new(
-                vec![muffin_tin(&radial, |_| up)],
-                vec![muffin_tin(&radial, |_| down)],
-            ),
-            Collinear::new(
-                interstitial(&reciprocal_layout, up),
-                interstitial(&reciprocal_layout, down),
-            ),
+            vec![muffin_tin(&radial, |_| charge_value)],
+            interstitial(&reciprocal_layout, charge_value),
         )
-        .unwrap()
+        .unwrap();
+        let components = magnetization.map(|value| {
+            crate::RegionalScalarField::new(
+                geometry(),
+                vec![muffin_tin(&radial, |_| value)],
+                interstitial(&reciprocal_layout, value),
+            )
+            .unwrap()
+        });
+        RegionalDensity::new(charge, components).unwrap()
     }
 
     #[test]
@@ -851,7 +782,7 @@ mod tests {
         let density = uniform_density(0.02, 0.01);
         let charge = electron_count(&density).unwrap();
         let electrostatics = evaluate_regional_electrostatics(
-            &density,
+            density.charge(),
             &ElectrostaticSpec::new(WeinertHartreeSpec::electronic(4).unwrap(), vec![charge])
                 .unwrap(),
         )
@@ -863,6 +794,7 @@ mod tests {
                 interstitial_divisions: [8; 3],
                 angular_point_count: 14,
                 output_l_max: 0,
+                noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
             },
         )
         .unwrap();
@@ -878,48 +810,83 @@ mod tests {
                     coulomb_tolerance: 1.0e-7,
                 },
                 xc_functional: XcFunctional::LdaPw92,
+                xc_noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
                 xc_angular_point_count: 26,
             },
         )
         .unwrap();
-        assert_eq!(built.up[0].potential.mesh, extended);
-        assert!(built.up[0].potential.boundary_mismatch.abs() < 1.0e-11);
-        assert!(built.down[0].potential.boundary_mismatch.abs() < 1.0e-11);
-        assert!(built.up[0].potential.origin_coulomb_residual < 1.0e-7 * charge);
-        assert_ne!(
-            built.up[0].potential.values.last(),
-            built.down[0].potential.values.last()
+        assert_eq!(built[0].potential.mesh, extended);
+        assert!(built[0].potential.boundary_mismatch.abs() < 1.0e-11);
+        assert!(built[0].potential.origin_coulomb_residual < 1.0e-7 * charge);
+
+        let transverse_density = uniform_pauli_density(0.03, [0.01, 0.0, 0.0]);
+        let transverse_xc = evaluate_regional_xc(
+            XcFunctional::LdaPw92,
+            &transverse_density,
+            XcFieldSpec {
+                interstitial_divisions: [8; 3],
+                angular_point_count: 14,
+                output_l_max: 0,
+                noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+            },
+        )
+        .unwrap();
+        let transverse_built = build_extended_core_potentials(
+            &electrostatics,
+            &transverse_xc,
+            &transverse_density,
+            std::slice::from_ref(&extended),
+            CorePotentialBuildSpec {
+                continuation: CorePotentialContinuationSpec {
+                    boundary_tolerance: 1.0e-10,
+                    coulomb_tolerance: 1.0e-7,
+                },
+                xc_functional: XcFunctional::LdaPw92,
+                xc_noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+                xc_angular_point_count: 26,
+            },
+        )
+        .unwrap();
+        assert!(
+            built[0]
+                .potential
+                .values
+                .iter()
+                .zip(&transverse_built[0].potential.values)
+                .all(|(&longitudinal, &transverse)| (longitudinal - transverse).abs() < 2.0e-12)
         );
         let masked_xc_g0 = xc
             .potential
+            .scalar()
             .interstitial()
-            .up
             .coefficient([0; 3])
             .unwrap()
             .re;
-        let pointwise_xc = evaluate_xc_point(
+        let pointwise_xc = evaluate_interstitial_noncollinear_xc_potential(
             XcFunctional::LdaPw92,
-            crate::DensityJet2 {
-                rho: [0.02, 0.01],
-                gradient: [[0.0; 3]; 2],
-                hessian: [[0.0; 6]; 2],
-            },
+            NoncollinearXcRoute::LocalSpinFrame,
+            &density,
+            [Bohr(0.0); 3],
         )
         .unwrap()
-        .potential[0]
-            .get();
+        .0
+        .get();
         assert!((masked_xc_g0 - pointwise_xc).abs() > 1.0e-4);
 
         let mismatch = 0.03;
         let shift = muffin_tin(&mesh(101), |_| mismatch);
-        let mut shifted_up = xc.potential.muffin_tins().up[0].clone();
-        shifted_up.add_scaled(1.0, &shift).unwrap();
-        let mut shifted_down = xc.potential.muffin_tins().down[0].clone();
-        shifted_down.add_scaled(1.0, &shift).unwrap();
+        let mut shifted_muffin_tins = xc.potential.scalar().muffin_tins().to_vec();
+        shifted_muffin_tins[0].add_scaled(1.0, &shift).unwrap();
+        let shifted_scalar = crate::RegionalScalarField::new(
+            density.geometry().clone(),
+            shifted_muffin_tins,
+            xc.potential.scalar().interstitial().clone(),
+        )
+        .unwrap();
         let shifted_xc = crate::RegionalXcResult {
             potential: crate::RegionalPotential::new(
-                Collinear::new(vec![shifted_up], vec![shifted_down]),
-                xc.potential.interstitial().clone(),
+                shifted_scalar,
+                xc.potential.magnetic().clone(),
             )
             .unwrap(),
             exchange_correlation_energy: xc.exchange_correlation_energy,
@@ -936,22 +903,23 @@ mod tests {
                     coulomb_tolerance: 1.0e-7,
                 },
                 xc_functional: XcFunctional::LdaPw92,
+                xc_noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
                 xc_angular_point_count: 26,
             },
         )
         .unwrap();
         assert!(
-            (shifted.up[0].join.boundary_value_correction
-                - built.up[0].join.boundary_value_correction
+            (shifted[0].join.boundary_value_correction
+                - built[0].join.boundary_value_correction
                 - mismatch)
                 .abs()
                 < 1.0e-12
         );
-        assert!(shifted.up[0].join.corrected_boundary_residual.abs() < 1.0e-12);
-        assert!(shifted.up[0].join.outer_correction_residual.abs() < 1.0e-12);
+        assert!(shifted[0].join.corrected_boundary_residual.abs() < 1.0e-12);
+        assert!(shifted[0].join.outer_correction_residual.abs() < 1.0e-12);
         assert_eq!(
-            shifted.up[0].potential.values.last(),
-            built.up[0].potential.values.last()
+            shifted[0].potential.values.last(),
+            built[0].potential.values.last()
         );
     }
 
@@ -964,14 +932,15 @@ mod tests {
         let snapshot_mt = muffin_tin(&radial, |radius| -charge / radius + regular);
         let reciprocal_layout = layout();
         let outer_level = -1.25;
-        let snapshot = crate::RegionalPotential::new(
-            Collinear::new(vec![snapshot_mt.clone()], vec![snapshot_mt]),
-            Collinear::new(
-                interstitial(&reciprocal_layout, outer_level),
-                interstitial(&reciprocal_layout, outer_level),
-            ),
+        let scalar = crate::RegionalScalarField::new(
+            geometry(),
+            vec![snapshot_mt],
+            interstitial(&reciprocal_layout, outer_level),
         )
         .unwrap();
+        let zero = scalar.zero_like();
+        let snapshot =
+            crate::RegionalPotential::new(scalar, [zero.clone(), zero.clone(), zero]).unwrap();
         let built = build_extended_snapshot_core_potentials(
             &snapshot,
             &geometry(),
@@ -983,7 +952,7 @@ mod tests {
             },
         )
         .unwrap();
-        let site = &built.up[0];
+        let site = &built[0];
         let original = radial
             .radii()
             .iter()

@@ -4,7 +4,7 @@ use muffintin_core::{
     ExponentialMesh, FourierFieldError, FourierLayout, HermitianFourierField, InterstitialGeometry,
     MeshError, StepFunctionError,
 };
-use muffintin_lapw::{Collinear, InterstitialPotential, LapwError};
+use muffintin_lapw::{InterstitialPauliPotential, InterstitialPotential, LapwError};
 use muffintin_sphere::{SphereField, SphereFieldError};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
@@ -274,224 +274,82 @@ impl RegionalScalarField {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-struct RegionalFields {
-    muffin_tins: Collinear<Vec<MuffinTinField>>,
-    interstitial: Collinear<InterstitialField>,
-}
-
-impl RegionalFields {
-    fn new(
-        muffin_tins: Collinear<Vec<MuffinTinField>>,
-        interstitial: Collinear<InterstitialField>,
-    ) -> Result<Self, RegionalError> {
-        if muffin_tins.up.len() != muffin_tins.down.len() {
-            return Err(RegionalError::SpinMuffinTinCountMismatch {
-                up: muffin_tins.up.len(),
-                down: muffin_tins.down.len(),
-            });
-        }
-        for (up, down) in muffin_tins.up.iter().zip(&muffin_tins.down) {
-            up.require_same_layout(down)?;
-        }
-        if interstitial.up.layout() != interstitial.down.layout() {
-            return Err(RegionalError::Fourier(FourierFieldError::LayoutMismatch));
-        }
-        Ok(Self {
-            muffin_tins,
-            interstitial,
-        })
-    }
-
-    fn zero_like(&self) -> Self {
-        Self {
-            muffin_tins: Collinear::new(
-                self.muffin_tins
-                    .up
-                    .iter()
-                    .map(MuffinTinField::zero_like)
-                    .collect(),
-                self.muffin_tins
-                    .down
-                    .iter()
-                    .map(MuffinTinField::zero_like)
-                    .collect(),
-            ),
-            interstitial: Collinear::new(
-                self.interstitial.up.zero_like(),
-                self.interstitial.down.zero_like(),
-            ),
-        }
-    }
-
-    fn add_scaled(&mut self, scale: f64, other: &Self) -> Result<(), RegionalError> {
-        self.require_same_layout(other)?;
-        for (target, source) in self.muffin_tins.up.iter_mut().zip(&other.muffin_tins.up) {
-            target.add_scaled(scale, source)?;
-        }
-        for (target, source) in self
-            .muffin_tins
-            .down
-            .iter_mut()
-            .zip(&other.muffin_tins.down)
-        {
-            target.add_scaled(scale, source)?;
-        }
-        self.interstitial
-            .up
-            .add_scaled(scale, &other.interstitial.up)?;
-        self.interstitial
-            .down
-            .add_scaled(scale, &other.interstitial.down)?;
-        Ok(())
-    }
-
-    fn difference(&self, other: &Self) -> Result<Self, RegionalError> {
-        self.require_same_layout(other)?;
-        Ok(Self {
-            muffin_tins: Collinear::new(
-                self.muffin_tins
-                    .up
-                    .iter()
-                    .zip(&other.muffin_tins.up)
-                    .map(|(left, right)| left.difference(right))
-                    .collect::<Result<_, _>>()?,
-                self.muffin_tins
-                    .down
-                    .iter()
-                    .zip(&other.muffin_tins.down)
-                    .map(|(left, right)| left.difference(right))
-                    .collect::<Result<_, _>>()?,
-            ),
-            interstitial: Collinear::new(
-                self.interstitial.up.difference(&other.interstitial.up)?,
-                self.interstitial
-                    .down
-                    .difference(&other.interstitial.down)?,
-            ),
-        })
-    }
-
-    fn require_same_layout(&self, other: &Self) -> Result<(), RegionalError> {
-        if self.muffin_tins.up.len() != other.muffin_tins.up.len()
-            || self.muffin_tins.down.len() != other.muffin_tins.down.len()
-        {
-            return Err(RegionalError::RegionalMuffinTinCountMismatch);
-        }
-        for (left, right) in self.muffin_tins.up.iter().zip(&other.muffin_tins.up) {
-            left.require_same_layout(right)?;
-        }
-        for (left, right) in self.muffin_tins.down.iter().zip(&other.muffin_tins.down) {
-            left.require_same_layout(right)?;
-        }
-        if self.interstitial.up.layout() != other.interstitial.up.layout()
-            || self.interstitial.down.layout() != other.interstitial.down.layout()
-        {
-            return Err(RegionalError::Fourier(FourierFieldError::LayoutMismatch));
-        }
-        Ok(())
-    }
-}
-
-/// Explicit spin-up/spin-down density over muffin-tin and interstitial regions.
+/// Charge and Cartesian magnetization over muffin-tin and interstitial regions.
+///
+/// The density matrix convention is
+/// `rho = (charge * I + magnetization . sigma) / 2`. Therefore a collinear
+/// density has `charge = rho_up + rho_down` and `magnetization[2] = rho_up -
+/// rho_down`; transverse magnetization components are ordinary signed scalar
+/// fields, not occupation channels.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RegionalDensity {
-    geometry: InterstitialGeometry,
-    fields: RegionalFields,
+    charge: RegionalScalarField,
+    magnetization: [RegionalScalarField; 3],
 }
 
 impl RegionalDensity {
     pub fn new(
-        geometry: InterstitialGeometry,
-        muffin_tins: Collinear<Vec<MuffinTinField>>,
-        interstitial: Collinear<InterstitialField>,
+        charge: RegionalScalarField,
+        magnetization: [RegionalScalarField; 3],
     ) -> Result<Self, RegionalError> {
-        let fields = RegionalFields::new(muffin_tins, interstitial)?;
-        if fields.muffin_tins.up.len() != geometry.spheres().len() {
-            return Err(RegionalError::GeometryMuffinTinCountMismatch {
-                geometry: geometry.spheres().len(),
-                fields: fields.muffin_tins.up.len(),
-            });
+        for component in &magnetization {
+            charge.require_same_layout(component)?;
         }
-        validate_reciprocal_volume(&geometry, fields.interstitial.up.layout())?;
-        Ok(Self { geometry, fields })
+        Ok(Self {
+            charge,
+            magnetization,
+        })
     }
 
     pub const fn geometry(&self) -> &InterstitialGeometry {
-        &self.geometry
+        self.charge.geometry()
     }
 
-    pub const fn muffin_tins(&self) -> &Collinear<Vec<MuffinTinField>> {
-        &self.fields.muffin_tins
+    pub const fn charge(&self) -> &RegionalScalarField {
+        &self.charge
     }
 
-    pub const fn interstitial(&self) -> &Collinear<InterstitialField> {
-        &self.fields.interstitial
+    /// Cartesian magnetization fields in `[mx, my, mz]` order.
+    pub const fn magnetization(&self) -> &[RegionalScalarField; 3] {
+        &self.magnetization
     }
 
     pub fn zero_like(&self) -> Self {
         Self {
-            geometry: self.geometry.clone(),
-            fields: self.fields.zero_like(),
+            charge: self.charge.zero_like(),
+            magnetization: self.magnetization.each_ref().map(|field| field.zero_like()),
         }
     }
 
     pub fn add_scaled(&mut self, scale: f64, other: &Self) -> Result<(), RegionalError> {
         self.require_same_layout(other)?;
-        self.fields.add_scaled(scale, &other.fields)
+        self.charge.add_scaled(scale, &other.charge)?;
+        for (target, source) in self.magnetization.iter_mut().zip(&other.magnetization) {
+            target.add_scaled(scale, source)?;
+        }
+        Ok(())
     }
 
     /// Form `self - other` after exact regional-layout validation.
     pub fn difference(&self, other: &Self) -> Result<Self, RegionalError> {
         self.require_same_layout(other)?;
-        Ok(Self {
-            geometry: self.geometry.clone(),
-            fields: self.fields.difference(&other.fields)?,
-        })
+        let mut difference = self.clone();
+        difference.add_scaled(-1.0, other)?;
+        Ok(difference)
     }
 
-    /// Physical collinear inner product, summed over both explicit spins.
+    /// Physical density-matrix inner product.
     ///
-    /// Muffin-tin terms are `sum_LM integral r^2 a*_LM b_LM dr`.
-    /// Interstitial terms are the step-function convolution
-    /// `Omega sum_GG' a*_G theta_(G-G') b_G'`.
+    /// The factor one half is `Tr(rho_a rho_b)` in the Pauli decomposition and
+    /// makes the result reduce exactly to the sum of explicit up/down metrics
+    /// for a collinear density.
     pub fn physical_inner_product(&self, other: &Self) -> Result<f64, RegionalError> {
         self.require_same_layout(other)?;
-        let mut total = Complex64::new(0.0, 0.0);
-        let mut absolute_scale = 0.0;
-
-        for (left, right) in self
-            .fields
-            .muffin_tins
-            .up
-            .iter()
-            .zip(&other.fields.muffin_tins.up)
-            .chain(
-                self.fields
-                    .muffin_tins
-                    .down
-                    .iter()
-                    .zip(&other.fields.muffin_tins.down),
-            )
-        {
-            let contribution = muffin_tin_inner_product(left, right)?;
-            total += contribution;
-            absolute_scale += contribution.norm();
+        let mut total = self.charge.physical_inner_product(&other.charge)?;
+        for (left, right) in self.magnetization.iter().zip(&other.magnetization) {
+            total += left.physical_inner_product(right)?;
         }
-        for (left, right) in [
-            (&self.fields.interstitial.up, &other.fields.interstitial.up),
-            (
-                &self.fields.interstitial.down,
-                &other.fields.interstitial.down,
-            ),
-        ] {
-            let (contribution, term_scale) =
-                interstitial_inner_product(&self.geometry, left, right)?;
-            total += contribution;
-            absolute_scale += term_scale;
-        }
-
-        real_metric_value(total, absolute_scale)
+        Ok(0.5 * total)
     }
 
     /// Root-mean-square magnitude of this regional residual per cell volume.
@@ -501,7 +359,7 @@ impl RegionalDensity {
         if norm_squared < -tolerance {
             return Err(RegionalError::NegativeNorm(norm_squared));
         }
-        Ok((norm_squared.max(0.0) / self.geometry.cell_volume().get()).sqrt())
+        Ok((norm_squared.max(0.0) / self.geometry().cell_volume().get()).sqrt())
     }
 
     /// RMS of `self - other`, using the same physical metric.
@@ -510,58 +368,79 @@ impl RegionalDensity {
     }
 
     fn require_same_layout(&self, other: &Self) -> Result<(), RegionalError> {
-        if self.geometry != other.geometry {
-            return Err(RegionalError::InterstitialGeometryMismatch);
+        self.charge.require_same_layout(&other.charge)?;
+        for (left, right) in self.magnetization.iter().zip(&other.magnetization) {
+            left.require_same_layout(right)?;
         }
-        self.fields.require_same_layout(&other.fields)
+        Ok(())
     }
 }
 
-/// Explicit spin-up/spin-down regional potential.
+/// Noncollinear regional potential `scalar * I + magnetic . sigma`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RegionalPotential {
-    fields: RegionalFields,
+    scalar: RegionalScalarField,
+    magnetic: [RegionalScalarField; 3],
 }
 
 impl RegionalPotential {
     pub fn new(
-        muffin_tins: Collinear<Vec<MuffinTinField>>,
-        interstitial: Collinear<InterstitialField>,
+        scalar: RegionalScalarField,
+        magnetic: [RegionalScalarField; 3],
     ) -> Result<Self, RegionalError> {
-        Ok(Self {
-            fields: RegionalFields::new(muffin_tins, interstitial)?,
-        })
+        for component in &magnetic {
+            scalar.require_same_layout(component)?;
+        }
+        Ok(Self { scalar, magnetic })
     }
 
-    pub const fn muffin_tins(&self) -> &Collinear<Vec<MuffinTinField>> {
-        &self.fields.muffin_tins
+    pub const fn scalar(&self) -> &RegionalScalarField {
+        &self.scalar
     }
 
-    pub const fn interstitial(&self) -> &Collinear<InterstitialField> {
-        &self.fields.interstitial
+    /// Cartesian magnetic fields in `[Bx, By, Bz]` order.
+    pub const fn magnetic(&self) -> &[RegionalScalarField; 3] {
+        &self.magnetic
     }
 
     pub fn zero_like(&self) -> Self {
         Self {
-            fields: self.fields.zero_like(),
+            scalar: self.scalar.zero_like(),
+            magnetic: self.magnetic.each_ref().map(|field| field.zero_like()),
         }
     }
 
     pub fn add_scaled(&mut self, scale: f64, other: &Self) -> Result<(), RegionalError> {
-        self.fields.add_scaled(scale, &other.fields)
+        self.require_same_layout(other)?;
+        self.scalar.add_scaled(scale, &other.scalar)?;
+        for (target, source) in self.magnetic.iter_mut().zip(&other.magnetic) {
+            target.add_scaled(scale, source)?;
+        }
+        Ok(())
     }
 
     pub fn difference(&self, other: &Self) -> Result<Self, RegionalError> {
-        Ok(Self {
-            fields: self.fields.difference(&other.fields)?,
-        })
+        self.require_same_layout(other)?;
+        let mut difference = self.clone();
+        difference.add_scaled(-1.0, other)?;
+        Ok(difference)
     }
 
-    /// Convert both explicit spin channels to the LAPW interstitial boundary.
-    pub fn to_lapw_interstitial(&self) -> Result<Collinear<InterstitialPotential>, RegionalError> {
-        Ok(Collinear::new(
-            InterstitialPotential::try_from(&self.fields.interstitial.up)?,
-            InterstitialPotential::try_from(&self.fields.interstitial.down)?,
+    fn require_same_layout(&self, other: &Self) -> Result<(), RegionalError> {
+        self.scalar.require_same_layout(&other.scalar)?;
+        for (left, right) in self.magnetic.iter().zip(&other.magnetic) {
+            left.require_same_layout(right)?;
+        }
+        Ok(())
+    }
+
+    /// Convert the Pauli components to the LAPW interstitial boundary.
+    pub fn to_lapw_interstitial(&self) -> Result<InterstitialPauliPotential, RegionalError> {
+        Ok(InterstitialPauliPotential::new(
+            InterstitialPotential::try_from(self.scalar.interstitial())?,
+            InterstitialPotential::try_from(self.magnetic[0].interstitial())?,
+            InterstitialPotential::try_from(self.magnetic[1].interstitial())?,
+            InterstitialPotential::try_from(self.magnetic[2].interstitial())?,
         ))
     }
 }
@@ -671,8 +550,6 @@ pub enum RegionalError {
     MuffinTinSampleCount { expected: usize, actual: usize },
     #[error("muffin-tin radial meshes differ")]
     MuffinTinMeshMismatch,
-    #[error("spin channels have different muffin-tin counts: up={up}, down={down}")]
-    SpinMuffinTinCountMismatch { up: usize, down: usize },
     #[error("regional fields have different muffin-tin counts")]
     RegionalMuffinTinCountMismatch,
     #[error("geometry has {geometry} spheres but regional field has {fields} muffin tins")]
@@ -752,37 +629,77 @@ mod tests {
         InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), spheres).unwrap()
     }
 
-    fn interstitial_only_density(
+    fn regional_scalar(
         geometry: InterstitialGeometry,
-        up: InterstitialField,
-        down: InterstitialField,
-    ) -> RegionalDensity {
+        interstitial: InterstitialField,
+    ) -> RegionalScalarField {
         let empty_muffin_tin = MuffinTinField::new(
             ExponentialMesh::new(Bohr(0.01), 0.1, 7).unwrap(),
             SphereField::new(HarmonicConvention::Real, []).unwrap(),
         )
         .unwrap();
         let muffin_tins = vec![empty_muffin_tin; geometry.spheres().len()];
-        RegionalDensity::new(
-            geometry,
-            Collinear::new(muffin_tins.clone(), muffin_tins),
-            Collinear::new(up, down),
+        RegionalScalarField::new(geometry, muffin_tins, interstitial).unwrap()
+    }
+
+    fn g0_scalar(
+        geometry: &InterstitialGeometry,
+        layout: &FourierLayout,
+        value: f64,
+    ) -> RegionalScalarField {
+        regional_scalar(
+            geometry.clone(),
+            interstitial(layout.clone(), [([0; 3], Complex64::new(value, 0.0))]),
         )
-        .unwrap()
     }
 
     #[test]
-    fn g0_metric_sums_explicit_spin_channels_and_rms_identity() {
+    fn pauli_metric_reduces_to_explicit_collinear_spin_metric() {
         let layout = layout(&[[0; 3]]);
-        let density = interstitial_only_density(
-            geometry(Vec::new()),
-            interstitial(layout.clone(), [([0; 3], Complex64::new(2.0, 0.0))]),
-            interstitial(layout, [([0; 3], Complex64::new(3.0, 0.0))]),
-        );
+        let geometry = geometry(Vec::new());
+        // rho_up=2 and rho_down=3 imply n=5 and mz=-1.
+        let charge = g0_scalar(&geometry, &layout, 5.0);
+        let zero = charge.zero_like();
+        let density = RegionalDensity::new(
+            charge,
+            [zero.clone(), zero, g0_scalar(&geometry, &layout, -1.0)],
+        )
+        .unwrap();
         let norm = density.physical_inner_product(&density).unwrap();
         assert!((norm - TAU.powi(3) * 13.0).abs() < 1.0e-11);
         assert!((density.residual_rms().unwrap() - 13.0_f64.sqrt()).abs() < 1.0e-13);
         assert_eq!(density.difference_rms(&density).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn pauli_metric_is_invariant_under_global_spin_rotation() {
+        let layout = layout(&[[0; 3]]);
+        let geometry = geometry(Vec::new());
+        let charge = g0_scalar(&geometry, &layout, 6.0);
+        let first = RegionalDensity::new(
+            charge.clone(),
+            [
+                g0_scalar(&geometry, &layout, 3.0),
+                g0_scalar(&geometry, &layout, 4.0),
+                charge.zero_like(),
+            ],
+        )
+        .unwrap();
+        let second = RegionalDensity::new(
+            charge.clone(),
+            [
+                charge.zero_like(),
+                charge.zero_like(),
+                g0_scalar(&geometry, &layout, 5.0),
+            ],
+        )
+        .unwrap();
+        assert!(
+            (first.physical_inner_product(&first).unwrap()
+                - second.physical_inner_product(&second).unwrap())
+            .abs()
+                < 1.0e-11
+        );
     }
 
     #[test]
@@ -793,17 +710,12 @@ mod tests {
             ([-1, 0, 0], Complex64::new(1.0, 0.0)),
             ([1, 0, 0], Complex64::new(1.0, 0.0)),
         ];
-        let zeros = indices.map(|g| (g, Complex64::new(0.0, 0.0)));
         let sphere = Sphere {
             center: [Bohr(0.0); 3],
             radius: Bohr(0.5),
         };
         let geometry = geometry(vec![sphere]);
-        let density = interstitial_only_density(
-            geometry.clone(),
-            interstitial(layout.clone(), values),
-            interstitial(layout, zeros),
-        );
+        let field = regional_scalar(geometry.clone(), interstitial(layout.clone(), values));
         let theta_zero = geometry.coefficient([InverseBohr(0.0); 3]).unwrap().re;
         let theta_two = geometry
             .coefficient([InverseBohr(2.0), InverseBohr(0.0), InverseBohr(0.0)])
@@ -811,7 +723,7 @@ mod tests {
             .re;
         let expected = TAU.powi(3) * (2.0 * theta_zero + 2.0 * theta_two);
         let diagonal_only = TAU.powi(3) * 2.0 * theta_zero;
-        let actual = density.physical_inner_product(&density).unwrap();
+        let actual = field.physical_inner_product(&field).unwrap();
         assert!((actual - expected).abs() < 1.0e-12);
         assert!((actual - diagonal_only).abs() > 1.0e-4);
         assert!(actual >= 0.0);
@@ -838,7 +750,6 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        let zero_mt = left.zero_like();
         let reciprocal_layout = layout(&[[0; 3]]);
         let zero_interstitial =
             interstitial(reciprocal_layout, [([0; 3], Complex64::new(0.0, 0.0))]);
@@ -846,25 +757,18 @@ mod tests {
             center: [Bohr(0.0); 3],
             radius: Bohr(1.0),
         }]);
-        let left_density = RegionalDensity::new(
-            geometry.clone(),
-            Collinear::new(vec![left], vec![zero_mt.clone()]),
-            Collinear::new(zero_interstitial.clone(), zero_interstitial.clone()),
-        )
-        .unwrap();
-        let right_density = RegionalDensity::new(
-            geometry,
-            Collinear::new(vec![right], vec![zero_mt]),
-            Collinear::new(zero_interstitial.clone(), zero_interstitial),
-        )
-        .unwrap();
+        let left_field =
+            RegionalScalarField::new(geometry.clone(), vec![left], zero_interstitial.clone())
+                .unwrap();
+        let right_field =
+            RegionalScalarField::new(geometry, vec![right], zero_interstitial).unwrap();
         let r_squared: Vec<_> = mesh
             .radii()
             .iter()
             .map(|radius| radius.get().powi(2))
             .collect();
         let expected = 6.0 * mesh.integrate(&r_squared).unwrap();
-        let actual = left_density.physical_inner_product(&right_density).unwrap();
+        let actual = left_field.physical_inner_product(&right_field).unwrap();
         assert!((actual - expected).abs() < 1.0e-14);
     }
 
@@ -899,8 +803,8 @@ mod tests {
                 ([1, 0, 0], Complex64::new(0.0, 0.0)),
             ],
         );
-        let first = interstitial_only_density(geometry(Vec::new()), g0.clone(), g0);
-        let second = interstitial_only_density(geometry(Vec::new()), three.clone(), three);
+        let first = regional_scalar(geometry(Vec::new()), g0);
+        let second = regional_scalar(geometry(Vec::new()), three);
         assert!(matches!(
             first.difference(&second),
             Err(RegionalError::Fourier(FourierFieldError::LayoutMismatch))
@@ -908,21 +812,22 @@ mod tests {
     }
 
     #[test]
-    fn regional_potential_converts_both_spin_channels_to_lapw() {
+    fn regional_potential_converts_all_pauli_components_to_lapw() {
         let layout = layout(&[[0; 3]]);
+        let geometry = geometry(Vec::new());
+        let scalar = g0_scalar(&geometry, &layout, 0.25);
         let potential = RegionalPotential::new(
-            Collinear::new(Vec::new(), Vec::new()),
-            Collinear::new(
-                interstitial(layout.clone(), [([0; 3], Complex64::new(0.25, 0.0))]),
-                interstitial(layout, [([0; 3], Complex64::new(-0.5, 0.0))]),
-            ),
+            scalar.clone(),
+            [
+                g0_scalar(&geometry, &layout, -0.5),
+                g0_scalar(&geometry, &layout, 0.75),
+                scalar.zero_like(),
+            ],
         )
         .unwrap();
         let converted = potential.to_lapw_interstitial().unwrap();
-        assert_eq!(converted.up.coefficient([0; 3]), Complex64::new(0.25, 0.0));
-        assert_eq!(
-            converted.down.coefficient([0; 3]),
-            Complex64::new(-0.5, 0.0)
-        );
+        assert_eq!(converted.v0.coefficient([0; 3]), Complex64::new(0.25, 0.0));
+        assert_eq!(converted.bx.coefficient([0; 3]), Complex64::new(-0.5, 0.0));
+        assert_eq!(converted.by.coefficient([0; 3]), Complex64::new(0.75, 0.0));
     }
 }

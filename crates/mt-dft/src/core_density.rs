@@ -1,6 +1,6 @@
 //! Four-component core density over the exact muffin-tin/interstitial partition.
 
-use crate::density::{DensityError, electron_count, scalar_field_integral};
+use crate::density::{DensityError, scalar_field_integral};
 use crate::regional::{
     InterstitialField, MuffinTinField, RegionalDensity, RegionalError, RegionalScalarField,
 };
@@ -9,7 +9,6 @@ use muffintin_core::{
     ExponentialMesh, FourierFieldError, Hartree, HermitianFourierField, InterstitialGeometry,
     InverseBohr, Lm, StepFunctionError, spherical_bessel_j,
 };
-use muffintin_operators::Collinear;
 use muffintin_radial::{CoreDiracSolution, CoreState};
 use muffintin_sphere::{SphereField, SphereFieldError};
 use num_complex::Complex64;
@@ -20,7 +19,7 @@ const MATCH_TOLERANCE: f64 = 4096.0 * f64::EPSILON;
 const ZERO_MODE_FRACTION_TOLERANCE: f64 = 1.0e-12;
 const CHARGE_CLOSURE_TOLERANCE: f64 = 65536.0 * f64::EPSILON;
 
-/// Explicit distribution of one core-shell occupation over collinear outputs.
+/// Explicit distribution of one core-shell occupation into charge and $m_z$.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CoreSpinPartition {
     /// A closed shell contributes half of its total occupation to each channel.
@@ -76,9 +75,14 @@ pub struct CoreDensityDiagnostics {
 pub struct PseudochargeZeroModeAdjustment {
     pub interstitial_fraction: f64,
     pub response_volume: f64,
-    pub requested_spin_charge: [f64; 2],
-    pub uncorrected_spin_charge: [f64; 2],
-    pub coefficient_correction: [f64; 2],
+    pub requested_charge: f64,
+    pub requested_magnetization_z: f64,
+    pub uncorrected_charge: f64,
+    pub uncorrected_magnetization_z: f64,
+    /// Constant Fourier-coefficient correction for the charge component.
+    pub charge_coefficient_correction: f64,
+    /// Constant Fourier-coefficient correction for the $m_z$ component.
+    pub magnetization_z_coefficient_correction: f64,
 }
 
 /// SCF core contribution plus explicit regional-partition diagnostics.
@@ -91,6 +95,8 @@ pub struct BuiltRegionalCoreContribution {
 /// Build one site's true-MT plus smooth-tail regional core contribution.
 ///
 /// The physical muffin-tin density always uses the true `P^2 + Q^2` samples.
+/// Closed shells produce zero magnetization; explicit collinear occupations
+/// produce $m_z = \rho_\uparrow - \rho_\down$ with $m_x=m_y=0$.
 /// For the plane-wave representation, the true tail is retained outside the
 /// muffin-tin radius and continued inside by the SPEX smooth pseudocharge
 /// matching its boundary value and derivative. The transform is
@@ -119,37 +125,34 @@ pub fn build_regional_core_contribution(
             actual: muffin_tin_mesh.last().get(),
         });
     }
-    let template_up =
-        zero_like_template
-            .muffin_tins()
-            .up
-            .get(site_index)
-            .ok_or(CoreDensityError::SiteIndex {
-                site: site_index,
-                site_count: zero_like_template.muffin_tins().up.len(),
-            })?;
-    let template_down = &zero_like_template.muffin_tins().down[site_index];
-    if template_up.mesh() != muffin_tin_mesh || template_down.mesh() != muffin_tin_mesh {
+    let template_charge = zero_like_template
+        .charge()
+        .muffin_tins()
+        .get(site_index)
+        .ok_or(CoreDensityError::SiteIndex {
+            site: site_index,
+            site_count: zero_like_template.charge().muffin_tins().len(),
+        })?;
+    if template_charge.mesh() != muffin_tin_mesh {
         return Err(CoreDensityError::TemplateMuffinTinMesh);
     }
-    let layout = zero_like_template.interstitial().up.layout();
-    if zero_like_template.interstitial().down.layout() != layout {
-        return Err(CoreDensityError::Fourier(FourierFieldError::LayoutMismatch));
-    }
+    let layout = zero_like_template.charge().interstitial().layout();
 
-    let mut mt_up = vec![0.0; muffin_tin_mesh.len()];
-    let mut mt_down = mt_up.clone();
-    let mut fourier_up = vec![Complex64::new(0.0, 0.0); layout.len()];
-    let mut fourier_down = fourier_up.clone();
+    let mut mt_charge = vec![0.0; muffin_tin_mesh.len()];
+    let mut mt_magnetization_z = mt_charge.clone();
+    let mut fourier_charge = vec![Complex64::new(0.0, 0.0); layout.len()];
+    let mut fourier_magnetization_z = fourier_charge.clone();
     let mut diagnostics = Vec::with_capacity(shells.len());
     let mut eigenvalue_sum = Hartree(0.0);
-    let mut requested_spin_charge = [0.0; 2];
+    let mut requested_charge = 0.0;
+    let mut requested_magnetization_z = 0.0;
 
     for shell in shells {
         validate_shell(muffin_tin_mesh, shell)?;
         let [up_occupation, down_occupation] = spin_occupations(shell)?;
-        requested_spin_charge[0] += up_occupation;
-        requested_spin_charge[1] += down_occupation;
+        let magnetization_z_occupation = up_occupation - down_occupation;
+        requested_charge += shell.occupation;
+        requested_magnetization_z += magnetization_z_occupation;
         let transform = smooth_shell_transform(
             geometry,
             site_index,
@@ -173,12 +176,13 @@ pub fn build_regional_core_contribution(
             .take(muffin_tin_mesh.len())
             .map(|(&p, &q)| p * p + q * q);
         for (index, value) in probability.enumerate() {
-            mt_up[index] += up_occupation * value;
-            mt_down[index] += down_occupation * value;
+            mt_charge[index] += shell.occupation * value;
+            mt_magnetization_z[index] += magnetization_z_occupation * value;
         }
         for position in 0..layout.len() {
-            fourier_up[position] += up_occupation * transform.coefficients[position];
-            fourier_down[position] += down_occupation * transform.coefficients[position];
+            fourier_charge[position] += shell.occupation * transform.coefficients[position];
+            fourier_magnetization_z[position] +=
+                magnetization_z_occupation * transform.coefficients[position];
         }
         let muffin_tin_charge = shell.occupation * transform.muffin_tin_charge;
         diagnostics.push(CoreShellDensityDiagnostic {
@@ -197,32 +201,61 @@ pub fn build_regional_core_contribution(
         eigenvalue_sum += shell.solution.energy * shell.occupation;
     }
 
-    enforce_fourier_reality(layout, &mut fourier_up)?;
-    enforce_fourier_reality(layout, &mut fourier_down)?;
-    let mut muffin_tins = zero_like_template.zero_like().muffin_tins().clone();
-    muffin_tins.up[site_index] = replace_monopole(template_up, &mt_up)?;
-    muffin_tins.down[site_index] = replace_monopole(template_down, &mt_down)?;
+    enforce_fourier_reality(layout, &mut fourier_charge)?;
+    enforce_fourier_reality(layout, &mut fourier_magnetization_z)?;
+    let mut charge_muffin_tins = zero_like_template
+        .charge()
+        .zero_like()
+        .muffin_tins()
+        .to_vec();
+    charge_muffin_tins[site_index] = replace_monopole(template_charge, &mt_charge)?;
+    let mut magnetization_z_muffin_tins = zero_like_template
+        .charge()
+        .zero_like()
+        .muffin_tins()
+        .to_vec();
+    magnetization_z_muffin_tins[site_index] =
+        replace_monopole(template_charge, &mt_magnetization_z)?;
     let zero_mode_adjustment = close_pseudocharge_zero_mode(
         geometry,
         layout,
-        &muffin_tins,
-        requested_spin_charge,
-        &mut fourier_up,
-        &mut fourier_down,
+        PseudochargeComponent {
+            muffin_tins: &charge_muffin_tins,
+            requested_integral: requested_charge,
+            fourier: &mut fourier_charge,
+        },
+        PseudochargeComponent {
+            muffin_tins: &magnetization_z_muffin_tins,
+            requested_integral: requested_magnetization_z,
+            fourier: &mut fourier_magnetization_z,
+        },
     )?;
-    let interstitial = Collinear::new(
+    let charge = RegionalScalarField::new(
+        geometry.clone(),
+        charge_muffin_tins,
         InterstitialField::from_fourier_field(HermitianFourierField::new(
             layout.clone(),
-            fourier_up,
+            fourier_charge,
         )?),
+    )?;
+    let magnetization_z = RegionalScalarField::new(
+        geometry.clone(),
+        magnetization_z_muffin_tins,
         InterstitialField::from_fourier_field(HermitianFourierField::new(
             layout.clone(),
-            fourier_down,
+            fourier_magnetization_z,
         )?),
-    );
-    let density = RegionalDensity::new(geometry.clone(), muffin_tins, interstitial)?;
-    let represented_charge = electron_count(&density)?;
-    let requested_charge: f64 = requested_spin_charge.into_iter().sum();
+    )?;
+    let zero_magnetization = charge.zero_like();
+    let density = RegionalDensity::new(
+        charge,
+        [
+            zero_magnetization.clone(),
+            zero_magnetization,
+            magnetization_z,
+        ],
+    )?;
+    let represented_charge = scalar_field_integral(density.charge())?;
     let closure_tolerance = CHARGE_CLOSURE_TOLERANCE * requested_charge.abs().max(1.0);
     if (represented_charge - requested_charge).abs() > closure_tolerance {
         return Err(CoreDensityError::ChargeClosure {
@@ -240,13 +273,12 @@ pub fn build_regional_core_contribution(
         .map(|diagnostic| diagnostic.spill_charge)
         .sum();
     let finite_g_norm = density
+        .charge()
         .interstitial()
-        .up
         .field()
         .iter()
-        .zip(density.interstitial().down.field().iter())
-        .filter(|((vector, _), _)| vector.index != [0; 3])
-        .map(|((_, up), (_, down))| (*up + *down).norm_sqr())
+        .filter(|(vector, _)| vector.index != [0; 3])
+        .map(|(_, charge)| charge.norm_sqr())
         .sum::<f64>()
         .sqrt();
     Ok(BuiltRegionalCoreContribution {
@@ -267,13 +299,17 @@ pub fn build_regional_core_contribution(
     })
 }
 
+struct PseudochargeComponent<'a> {
+    muffin_tins: &'a [MuffinTinField],
+    requested_integral: f64,
+    fourier: &'a mut [Complex64],
+}
+
 fn close_pseudocharge_zero_mode(
     geometry: &InterstitialGeometry,
     layout: &muffintin_core::FourierLayout,
-    muffin_tins: &Collinear<Vec<MuffinTinField>>,
-    requested_spin_charge: [f64; 2],
-    fourier_up: &mut [Complex64],
-    fourier_down: &mut [Complex64],
+    charge: PseudochargeComponent<'_>,
+    magnetization_z: PseudochargeComponent<'_>,
 ) -> Result<PseudochargeZeroModeAdjustment, CoreDensityError> {
     let zero = layout
         .index([0, 0, 0])
@@ -303,13 +339,12 @@ fn close_pseudocharge_zero_mode(
         let field = RegionalScalarField::new(geometry.clone(), muffin_tins.to_vec(), interstitial)?;
         scalar_field_integral(&field).map_err(CoreDensityError::from)
     };
-    let uncorrected_spin_charge = [
-        preview(&muffin_tins.up, fourier_up)?,
-        preview(&muffin_tins.down, fourier_down)?,
-    ];
+    let uncorrected_charge = preview(charge.muffin_tins, &*charge.fourier)?;
+    let uncorrected_magnetization_z =
+        preview(magnetization_z.muffin_tins, &*magnetization_z.fourier)?;
     let coefficient_correction = [
-        (requested_spin_charge[0] - uncorrected_spin_charge[0]) / response_volume,
-        (requested_spin_charge[1] - uncorrected_spin_charge[1]) / response_volume,
+        (charge.requested_integral - uncorrected_charge) / response_volume,
+        (magnetization_z.requested_integral - uncorrected_magnetization_z) / response_volume,
     ];
     if coefficient_correction
         .iter()
@@ -319,14 +354,17 @@ fn close_pseudocharge_zero_mode(
             correction: coefficient_correction,
         });
     }
-    fourier_up[zero].re += coefficient_correction[0];
-    fourier_down[zero].re += coefficient_correction[1];
+    charge.fourier[zero].re += coefficient_correction[0];
+    magnetization_z.fourier[zero].re += coefficient_correction[1];
     Ok(PseudochargeZeroModeAdjustment {
         interstitial_fraction,
         response_volume,
-        requested_spin_charge,
-        uncorrected_spin_charge,
-        coefficient_correction,
+        requested_charge: charge.requested_integral,
+        requested_magnetization_z: magnetization_z.requested_integral,
+        uncorrected_charge,
+        uncorrected_magnetization_z,
+        charge_coefficient_correction: coefficient_correction[0],
+        magnetization_z_coefficient_correction: coefficient_correction[1],
     })
 }
 
@@ -790,12 +828,9 @@ mod tests {
             )
             .unwrap(),
         );
-        RegionalDensity::new(
-            geometry,
-            Collinear::new(vec![muffin_tin.clone()], vec![muffin_tin]),
-            Collinear::new(interstitial.clone(), interstitial),
-        )
-        .unwrap()
+        let charge = RegionalScalarField::new(geometry, vec![muffin_tin], interstitial).unwrap();
+        let zero = charge.zero_like();
+        RegionalDensity::new(charge, [zero.clone(), zero.clone(), zero]).unwrap()
     }
 
     fn build(
@@ -827,23 +862,26 @@ mod tests {
         let solution = core_solution(&mt_mesh, &extended_mesh, true, false);
         let template = template([Bohr(0.0); 3], &mt_mesh, 4.0);
         let result = build(&template, &mt_mesh, &extended_mesh, &solution, 2.0);
-        let up = result.contribution.density.muffin_tins().up[0]
+        let charge = result.contribution.density.charge().muffin_tins()[0]
             .field()
             .channel(0, 0)
             .unwrap();
-        assert!(up.iter().any(|value| value.re > 0.0));
-        assert_eq!(
-            result.contribution.density.muffin_tins().up[0],
-            result.contribution.density.muffin_tins().down[0]
-        );
+        assert!(charge.iter().any(|value| value.re > 0.0));
+        for component in result.contribution.density.magnetization() {
+            assert_eq!(component, &result.contribution.density.charge().zero_like());
+        }
         assert!((result.diagnostics.requested_charge - 2.0).abs() < 1.0e-14);
         assert!((result.diagnostics.represented_charge - 2.0).abs() < 2.0e-12);
+        assert_eq!(
+            result.diagnostics.zero_mode_adjustment.requested_charge,
+            2.0
+        );
         assert_eq!(
             result
                 .diagnostics
                 .zero_mode_adjustment
-                .requested_spin_charge,
-            [1.0, 1.0]
+                .requested_magnetization_z,
+            0.0
         );
         assert!((result.contribution.eigenvalue_sum.get() + 1.0).abs() < 1.0e-14);
 
@@ -861,27 +899,34 @@ mod tests {
             &template,
         )
         .unwrap();
-        assert!(
-            polarized.contribution.density.muffin_tins().down[0]
-                .field()
-                .channel(0, 0)
-                .unwrap()
-                .iter()
-                .all(|value| *value == Complex64::new(0.0, 0.0))
+        assert_eq!(
+            polarized.contribution.density.magnetization()[2],
+            *polarized.contribution.density.charge()
+        );
+        assert_eq!(
+            polarized.contribution.density.magnetization()[0],
+            polarized.contribution.density.charge().zero_like()
+        );
+        assert_eq!(
+            polarized.contribution.density.magnetization()[1],
+            polarized.contribution.density.charge().zero_like()
         );
         assert_eq!(
             polarized
                 .diagnostics
                 .zero_mode_adjustment
-                .requested_spin_charge,
-            [2.0, 0.0]
+                .requested_magnetization_z,
+            2.0
         );
         assert_eq!(
             polarized
                 .diagnostics
                 .zero_mode_adjustment
-                .coefficient_correction[1],
-            0.0
+                .magnetization_z_coefficient_correction,
+            polarized
+                .diagnostics
+                .zero_mode_adjustment
+                .charge_coefficient_correction
         );
     }
 
@@ -892,16 +937,16 @@ mod tests {
         let template = template([Bohr(0.0); 3], &mt_mesh, 0.0);
         let result = build(&template, &mt_mesh, &extended_mesh, &solution, 2.0);
         let adjustment = result.diagnostics.zero_mode_adjustment;
-        let uncorrected = adjustment.uncorrected_spin_charge.into_iter().sum::<f64>();
+        let uncorrected = adjustment.uncorrected_charge;
 
         assert!((uncorrected - 2.0).abs() > 1.0e-3);
-        assert!(adjustment.coefficient_correction[0].abs() > 1.0e-8);
-        assert_eq!(
-            adjustment.coefficient_correction[0],
-            adjustment.coefficient_correction[1]
-        );
+        assert!(adjustment.charge_coefficient_correction.abs() > 1.0e-8);
+        assert_eq!(adjustment.magnetization_z_coefficient_correction, 0.0);
         assert!((result.diagnostics.represented_charge - 2.0).abs() < 2.0e-12);
-        assert!((electron_count(&result.contribution.density).unwrap() - 2.0).abs() < 2.0e-12);
+        assert!(
+            (scalar_field_integral(result.contribution.density.charge()).unwrap() - 2.0).abs()
+                < 2.0e-12
+        );
         assert_eq!(result.diagnostics.finite_g_norm, 0.0);
     }
 
@@ -915,14 +960,7 @@ mod tests {
         let low = build(&low_template, &mt_mesh, &extended_mesh, &solution, 2.0);
         let high = build(&high_template, &mt_mesh, &extended_mesh, &solution, 2.0);
         let uncorrected_error = |density: &BuiltRegionalCoreContribution| {
-            (density
-                .diagnostics
-                .zero_mode_adjustment
-                .uncorrected_spin_charge
-                .into_iter()
-                .sum::<f64>()
-                - 2.0)
-                .abs()
+            (density.diagnostics.zero_mode_adjustment.uncorrected_charge - 2.0).abs()
         };
         let low_error = uncorrected_error(&low);
         let high_error = uncorrected_error(&high);
@@ -931,13 +969,13 @@ mod tests {
         assert!((high.diagnostics.represented_charge - 2.0).abs() < 2.0e-12);
         assert!(high.diagnostics.spill_charge > 0.0);
         assert!(high.diagnostics.finite_g_norm > 1.0e-8);
-        let layout = high.contribution.density.interstitial().up.layout();
+        let layout = high.contribution.density.charge().interstitial().layout();
         let g0 = layout.index([0, 0, 0]).unwrap();
         assert!(
             high.contribution
                 .density
+                .charge()
                 .interstitial()
-                .up
                 .field()
                 .coefficients()[g0]
                 .re
@@ -959,17 +997,10 @@ mod tests {
             let actual = high
                 .contribution
                 .density
+                .charge()
                 .interstitial()
-                .up
                 .field()
-                .coefficients()[position]
-                + high
-                    .contribution
-                    .density
-                    .interstitial()
-                    .down
-                    .field()
-                    .coefficients()[position];
+                .coefficients()[position];
             assert!((actual - 2.0 * transform.coefficients[position]).norm() < 2.0e-14);
         }
     }
@@ -987,15 +1018,15 @@ mod tests {
         let origin_value = origin
             .contribution
             .density
+            .charge()
             .interstitial()
-            .up
             .coefficient(index)
             .unwrap();
         let shifted_value = shifted
             .contribution
             .density
+            .charge()
             .interstitial()
-            .up
             .coefficient(index)
             .unwrap();
         let g = reciprocal().cartesian(index);
@@ -1009,8 +1040,8 @@ mod tests {
             shifted
                 .contribution
                 .density
+                .charge()
                 .interstitial()
-                .up
                 .coefficient([-1, 0, 0])
                 .unwrap(),
             shifted_value.conj()
@@ -1031,18 +1062,18 @@ mod tests {
         assert!(compact.spill < 2.0e-14);
         let compact_result = build(&template, &mt_mesh, &extended_mesh, &compact, 2.0);
         assert!(compact_result.diagnostics.finite_g_norm < 1.0e-14);
-        let compact_interstitial = compact_result.contribution.density.interstitial();
-        for (vector, coefficient) in compact_interstitial.up.field().iter() {
+        let compact_interstitial = compact_result.contribution.density.charge().interstitial();
+        for (vector, coefficient) in compact_interstitial.field().iter() {
             if vector.index != [0; 3] {
                 assert!(coefficient.norm() < 1.0e-14);
             }
         }
         assert_eq!(
-            compact_interstitial.up.coefficient([0; 3]).unwrap().re,
+            compact_interstitial.coefficient([0; 3]).unwrap().re,
             compact_result
                 .diagnostics
                 .zero_mode_adjustment
-                .coefficient_correction[0]
+                .charge_coefficient_correction
         );
         assert!(
             (compact_result.diagnostics.represented_charge - 2.0).abs() < 2.0e-12,

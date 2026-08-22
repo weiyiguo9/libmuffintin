@@ -58,61 +58,8 @@ pub struct FullSpinorDensitySiteBasis {
     pub orbitals: Vec<SpinorSphereOrbital>,
 }
 
-/// Noncollinear full-spinor regional density.
-///
-/// `charge` is `psi^dagger psi`; `spin` is
-/// `psi^dagger [sigma_x, sigma_y, sigma_z] psi`. All four components are
-/// physically real fields on exactly the same regional layout.
-#[derive(Clone, Debug, PartialEq)]
-pub struct FullSpinorRegionalDensity {
-    charge: RegionalScalarField,
-    spin: [RegionalScalarField; 3],
-    expected_electron_count: f64,
-}
-
-impl FullSpinorRegionalDensity {
-    pub const fn charge(&self) -> &RegionalScalarField {
-        &self.charge
-    }
-
-    /// Cartesian spin density in `[x, y, z]` order.
-    pub const fn spin(&self) -> &[RegionalScalarField; 3] {
-        &self.spin
-    }
-
-    /// Occupation-derived electron count checked during synthesis.
-    pub const fn expected_electron_count(&self) -> f64 {
-        self.expected_electron_count
-    }
-
-    /// Integrate the charge over the physical regional partition.
-    pub fn electron_count(&self) -> Result<f64, DensityError> {
-        scalar_field_integral(&self.charge)
-    }
-
-    /// Produce explicit collinear populations `(n + m_z)/2` and `(n - m_z)/2`.
-    ///
-    /// The full result still retains `m_x` and `m_y`; this adapter is for
-    /// existing scalar/collinear density consumers.
-    pub fn collinear_density(&self) -> Result<RegionalDensity, DensityError> {
-        let combine = |sign: f64| -> Result<RegionalScalarField, DensityError> {
-            let mut field = self.charge.zero_like();
-            field.add_scaled(0.5, &self.charge)?;
-            field.add_scaled(0.5 * sign, &self.spin[2])?;
-            Ok(field)
-        };
-        let up = combine(1.0)?;
-        let down = combine(-1.0)?;
-        RegionalDensity::new(
-            self.charge.geometry().clone(),
-            Collinear::new(up.muffin_tins().to_vec(), down.muffin_tins().to_vec()),
-            Collinear::new(up.interstitial().clone(), down.interstitial().clone()),
-        )
-        .map_err(Into::into)
-    }
-}
-
-/// Synthesize the two collinear valence densities from occupied LAPW states.
+/// Synthesize charge and longitudinal magnetization from occupied collinear
+/// LAPW states.
 ///
 /// Muffin-tin coefficients are formed after applying the canonical compiled
 /// site projection. Interstitial coefficients use the plane-wave rows
@@ -177,7 +124,7 @@ pub fn synthesize_collinear_valence_density(
             interstitial.down,
         )?),
     );
-    RegionalDensity::new(geometry, muffin_tins, interstitial).map_err(Into::into)
+    regional_density_from_collinear(geometry, muffin_tins, interstitial)
 }
 
 /// Synthesize charge and Cartesian spin density from occupied full-spinor states.
@@ -191,7 +138,7 @@ pub fn synthesize_full_spinor_valence_density(
     layout: FourierLayout,
     sites: &[FullSpinorDensitySiteBasis],
     k_points: &[FullSpinorKPoint<'_>],
-) -> Result<FullSpinorRegionalDensity, DensityError> {
+) -> Result<RegionalDensity, DensityError> {
     validate_full_spinor_k_points(&geometry, &layout, sites, k_points)?;
     if layout.index([0, 0, 0]).is_none() {
         return Err(DensityError::MissingZeroVector);
@@ -289,12 +236,8 @@ pub fn synthesize_full_spinor_valence_density(
     let spin: [RegionalScalarField; 3] = spin
         .try_into()
         .expect("exactly three spin components were constructed");
-    let result = FullSpinorRegionalDensity {
-        charge,
-        spin,
-        expected_electron_count,
-    };
-    let actual = result.electron_count()?;
+    let result = RegionalDensity::new(charge, spin)?;
+    let actual = electron_count(&result)?;
     let tolerance = SPINOR_COUNT_TOLERANCE * expected_electron_count.abs().max(1.0);
     if (actual - expected_electron_count).abs() > tolerance {
         return Err(DensityError::SpinorChargeMismatch {
@@ -375,56 +318,14 @@ pub fn add_core_density(
     Ok(())
 }
 
-/// Integrate both spin channels over the non-overlapping muffin-tin and
-/// interstitial regions of one cell.
+/// Integrate charge over the non-overlapping muffin-tin and interstitial
+/// regions of one cell.
 pub fn electron_count(density: &RegionalDensity) -> Result<f64, DensityError> {
-    let mut count = Complex64::new(0.0, 0.0);
-    for muffin_tins in [&density.muffin_tins().up, &density.muffin_tins().down] {
-        for muffin_tin in muffin_tins {
-            if let Some(monopole) = muffin_tin.field().channel(0, 0) {
-                let radii = muffin_tin.mesh().radii();
-                let real = monopole
-                    .iter()
-                    .zip(radii)
-                    .map(|(&value, radius)| value.re * radius.get().powi(2))
-                    .collect::<Vec<_>>();
-                let imaginary = monopole
-                    .iter()
-                    .zip(radii)
-                    .map(|(&value, radius)| value.im * radius.get().powi(2))
-                    .collect::<Vec<_>>();
-                count += (4.0 * PI).sqrt()
-                    * Complex64::new(
-                        muffin_tin.mesh().integrate(&real)?,
-                        muffin_tin.mesh().integrate(&imaginary)?,
-                    );
-            }
-        }
-    }
-    for field in [&density.interstitial().up, &density.interstitial().down] {
-        let reciprocal = field.layout().reciprocal();
-        for (vector, &coefficient) in field.field().iter() {
-            let minus_g = vector.index.map(|component| -component);
-            count += density.geometry().cell_volume().get()
-                * density
-                    .geometry()
-                    .coefficient(reciprocal.cartesian(minus_g))?
-                * coefficient;
-        }
-    }
-    let tolerance = 4096.0 * f64::EPSILON * count.re.abs().max(1.0);
-    if count.im.abs() > tolerance {
-        Err(DensityError::ComplexElectronCount {
-            real: count.re,
-            imaginary: count.im,
-        })
-    } else {
-        Ok(count.re)
-    }
+    scalar_field_integral(density.charge())
 }
 
-/// Correct only roundoff-scale charge drift through the two spin `G=0`
-/// interstitial coefficients, preserving their difference and every other
+/// Correct only roundoff-scale charge drift through the charge `G=0`
+/// interstitial coefficient, preserving all magnetization and every other
 /// regional coefficient.
 pub fn correct_electron_count(
     density: RegionalDensity,
@@ -449,15 +350,10 @@ pub fn correct_electron_count(
     if mismatch == 0.0 {
         return Ok(density);
     }
-    let layout = density.interstitial().up.layout();
+    let layout = density.charge().interstitial().layout();
     let Some(zero) = layout.index([0, 0, 0]) else {
         return Err(DensityError::MissingZeroVector);
     };
-    if density.interstitial().down.layout() != layout {
-        return Err(DensityError::Regional(RegionalError::Fourier(
-            muffintin_core::FourierFieldError::LayoutMismatch,
-        )));
-    }
     let theta_zero = density
         .geometry()
         .coefficient([muffintin_core::InverseBohr(0.0); 3])?
@@ -466,23 +362,37 @@ pub fn correct_electron_count(
     if !interstitial_volume.is_finite() || interstitial_volume <= 0.0 {
         return Err(DensityError::EmptyInterstitial);
     }
-    let shift = mismatch / (2.0 * interstitial_volume);
-    let corrected = |field: &InterstitialField| -> Result<InterstitialField, DensityError> {
-        let mut coefficients = field.field().coefficients().to_vec();
-        coefficients[zero].re += shift;
-        Ok(InterstitialField::from_fourier_field(
-            muffintin_core::HermitianFourierField::new(layout.clone(), coefficients)?,
-        ))
-    };
-    RegionalDensity::new(
+    let mut coefficients = density
+        .charge()
+        .interstitial()
+        .field()
+        .coefficients()
+        .to_vec();
+    coefficients[zero].re += mismatch / interstitial_volume;
+    let charge = RegionalScalarField::new(
         density.geometry().clone(),
-        density.muffin_tins().clone(),
-        Collinear::new(
-            corrected(&density.interstitial().up)?,
-            corrected(&density.interstitial().down)?,
-        ),
-    )
-    .map_err(Into::into)
+        density.charge().muffin_tins().to_vec(),
+        InterstitialField::from_fourier_field(muffintin_core::HermitianFourierField::new(
+            layout.clone(),
+            coefficients,
+        )?),
+    )?;
+    RegionalDensity::new(charge, density.magnetization().clone()).map_err(Into::into)
+}
+
+fn regional_density_from_collinear(
+    geometry: InterstitialGeometry,
+    muffin_tins: Collinear<Vec<MuffinTinField>>,
+    interstitial: Collinear<InterstitialField>,
+) -> Result<RegionalDensity, DensityError> {
+    let up = RegionalScalarField::new(geometry.clone(), muffin_tins.up, interstitial.up)?;
+    let down = RegionalScalarField::new(geometry, muffin_tins.down, interstitial.down)?;
+    let mut charge = up.clone();
+    charge.add_scaled(1.0, &down)?;
+    let mut mz = up;
+    mz.add_scaled(-1.0, &down)?;
+    let zero = charge.zero_like();
+    RegionalDensity::new(charge, [zero.clone(), zero, mz]).map_err(Into::into)
 }
 
 fn validate_full_spinor_k_points(
@@ -1143,19 +1053,16 @@ mod tests {
         let geometry = InterstitialGeometry::new(VolumeBohr3(volume), Vec::new()).unwrap();
         let vectors = reciprocal.enumerate(InverseBohr(0.0)).unwrap();
         let layout = FourierLayout::new(reciprocal, vectors).unwrap();
-        let one_spin = InterstitialField::from_fourier_field(
+        let charge_interstitial = InterstitialField::from_fourier_field(
             HermitianFourierField::new(
                 layout.clone(),
-                vec![Complex64::new(electrons / (2.0 * volume), 0.0)],
+                vec![Complex64::new(electrons / volume, 0.0)],
             )
             .unwrap(),
         );
-        RegionalDensity::new(
-            geometry,
-            Collinear::new(Vec::new(), Vec::new()),
-            Collinear::new(one_spin.clone(), one_spin),
-        )
-        .unwrap()
+        let charge = RegionalScalarField::new(geometry, Vec::new(), charge_interstitial).unwrap();
+        let zero = charge.zero_like();
+        RegionalDensity::new(charge, [zero.clone(), zero.clone(), zero]).unwrap()
     }
 
     #[test]
@@ -1164,9 +1071,22 @@ mod tests {
         assert!((electron_count(&density).unwrap() - (4.0 - 1.0e-12)).abs() < 1.0e-14);
         let corrected = correct_electron_count(density, 4.0, 2.0e-12).unwrap();
         assert!((electron_count(&corrected).unwrap() - 4.0).abs() < 1.0e-14);
-        assert_eq!(
-            corrected.interstitial().up.coefficient([0, 0, 0]),
-            corrected.interstitial().down.coefficient([0, 0, 0])
+        assert!(
+            (corrected
+                .charge()
+                .interstitial()
+                .coefficient([0, 0, 0])
+                .unwrap()
+                .re
+                - 4.0 / corrected.geometry().cell_volume().get())
+            .abs()
+                < 1.0e-15
+        );
+        assert!(
+            corrected
+                .magnetization()
+                .iter()
+                .all(|field| field.residual_rms().unwrap() == 0.0)
         );
 
         let density = interstitial_only_density(3.0);
@@ -1234,15 +1154,19 @@ mod tests {
             &[k_point],
         )
         .unwrap();
-        let up = &density.interstitial().up;
-        assert!((up.coefficient([0, 0, 0]).unwrap().re - 1.0 / volume).abs() < 1.0e-15);
+        let charge = density.charge().interstitial();
+        assert!((charge.coefficient([0, 0, 0]).unwrap().re - 1.0 / volume).abs() < 1.0e-15);
         assert!(
-            (up.coefficient([1, 0, 0]).unwrap() - Complex64::new(0.0, 0.5 / volume)).norm()
+            (charge.coefficient([1, 0, 0]).unwrap() - Complex64::new(0.0, 0.5 / volume)).norm()
                 < 1.0e-15
         );
         assert!(
-            (up.coefficient([-1, 0, 0]).unwrap() - Complex64::new(0.0, -0.5 / volume)).norm()
+            (charge.coefficient([-1, 0, 0]).unwrap() - Complex64::new(0.0, -0.5 / volume)).norm()
                 < 1.0e-15
+        );
+        assert_eq!(
+            density.magnetization()[2].interstitial(),
+            density.charge().interstitial()
         );
         assert!((electron_count(&density).unwrap() - 1.0).abs() < 1.0e-14);
     }
@@ -1294,7 +1218,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!((density.electron_count().unwrap() - 1.0).abs() < 1.0e-14);
+        assert!((electron_count(&density).unwrap() - 1.0).abs() < 1.0e-14);
         assert!(
             (density
                 .charge()
@@ -1307,7 +1231,7 @@ mod tests {
                 < 1.0e-15
         );
         assert!(
-            density.spin()[0]
+            density.magnetization()[0]
                 .interstitial()
                 .coefficient([0; 3])
                 .unwrap()
@@ -1315,7 +1239,7 @@ mod tests {
                 < 1.0e-15
         );
         assert!(
-            (density.spin()[1]
+            (density.magnetization()[1]
                 .interstitial()
                 .coefficient([0; 3])
                 .unwrap()
@@ -1325,33 +1249,15 @@ mod tests {
                 < 1.0e-15
         );
         assert!(
-            density.spin()[2]
+            density.magnetization()[2]
                 .interstitial()
                 .coefficient([0; 3])
                 .unwrap()
                 .norm()
                 < 1.0e-15
         );
-        assert!(density.spin()[0].residual_rms().unwrap() < 1.0e-15);
-        assert!(density.spin()[1].residual_rms().unwrap() > 0.0);
-
-        let collinear = density.collinear_density().unwrap();
-        assert!((electron_count(&collinear).unwrap() - 1.0).abs() < 1.0e-14);
-        assert!(
-            (collinear.interstitial().up.coefficient([0; 3]).unwrap().re - 0.5 / volume).abs()
-                < 1.0e-15
-        );
-        assert!(
-            (collinear
-                .interstitial()
-                .down
-                .coefficient([0; 3])
-                .unwrap()
-                .re
-                - 0.5 / volume)
-                .abs()
-                < 1.0e-15
-        );
+        assert!(density.magnetization()[0].residual_rms().unwrap() < 1.0e-15);
+        assert!(density.magnetization()[1].residual_rms().unwrap() > 0.0);
     }
 
     #[test]
@@ -1411,12 +1317,12 @@ mod tests {
             }],
         )
         .unwrap();
-        for field in std::iter::once(density.charge()).chain(density.spin()) {
+        for field in std::iter::once(density.charge()).chain(density.magnetization()) {
             let plus = field.interstitial().coefficient([1, 0, 0]).unwrap();
             let minus = field.interstitial().coefficient([-1, 0, 0]).unwrap();
             assert_eq!(minus, plus.conj());
         }
-        assert!((density.electron_count().unwrap() - 1.0).abs() < 1.0e-14);
+        assert!((electron_count(&density).unwrap() - 1.0).abs() < 1.0e-14);
     }
 
     #[test]
@@ -1503,7 +1409,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!((density.electron_count().unwrap() - 1.0).abs() < 2.0e-13);
+        assert!((electron_count(&density).unwrap() - 1.0).abs() < 2.0e-13);
         assert!(
             density.charge().muffin_tins()[0]
                 .field()
@@ -1516,15 +1422,12 @@ mod tests {
             .field()
             .validate_physical_reality(2.0e-13)
             .unwrap();
-        for component in density.spin() {
+        for component in density.magnetization() {
             component.muffin_tins()[0]
                 .field()
                 .validate_physical_reality(2.0e-13)
                 .unwrap();
         }
-        assert!(
-            (electron_count(&density.collinear_density().unwrap()).unwrap() - 1.0).abs() < 2.0e-13
-        );
     }
 
     #[test]

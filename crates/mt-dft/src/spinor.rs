@@ -5,7 +5,7 @@ use muffintin_core::{
     ExponentialMesh, InterstitialGeometry, Lm, RelativisticChannel, SpinProjection, gaunt,
 };
 use muffintin_lapw::{
-    Collinear, GeneralizedEigensolution, InterstitialPotential, LapwEigenproblem, LapwError,
+    GeneralizedEigensolution, InterstitialPauliPotential, LapwEigenproblem, LapwError,
     assemble_sra_spinor_compiled, solve_generalized_hermitian,
 };
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SpinorSiteOperatorBlocks};
@@ -117,14 +117,14 @@ pub fn build_full_spinor_site_blocks(
 
 /// Build, assemble, and solve the unique magnetic/SOC/noncollinear route.
 ///
-/// The interstitial arguments are the two Pauli diagonal blocks consumed by
-/// SRA assembly. All local noncollinear spin mixing is in the four-component
-/// site blocks. No interstitial Dirac small component is introduced.
+/// The interstitial argument carries the complete `V0 I + B . sigma` field
+/// consumed by SRA assembly. No interstitial Dirac small component is
+/// introduced.
 pub fn solve_full_spinor_first_variation(
     route: RelativisticSpinorRoute,
     compiled: &SpinorCompiledBasis,
     geometry: &InterstitialGeometry,
-    interstitial: Collinear<&InterstitialPotential>,
+    interstitial: &InterstitialPauliPotential,
     sites: &[FullSpinorSiteInput],
     relative_overlap_threshold: f64,
 ) -> Result<SolvedFullSpinorFirstVariation, SpinorFirstVariationError> {
@@ -705,12 +705,12 @@ mod tests {
             }],
         )
         .unwrap();
-        let interstitial = InterstitialPotential::default();
+        let interstitial = InterstitialPauliPotential::default();
         let solved = solve_full_spinor_first_variation(
             RelativisticSpinorRoute::FullFourComponentFirstVariation,
             &compiled,
             &geometry,
-            Collinear::new(&interstitial, &interstitial),
+            &interstitial,
             &[input],
             1.0e-12,
         )

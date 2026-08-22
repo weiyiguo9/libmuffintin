@@ -1,6 +1,6 @@
-//! Regional-density adapter for full-potential electrostatics.
+//! Charge-only regional adapter for full-potential electrostatics.
 
-use crate::{InterstitialField, MuffinTinField, RegionalDensity, RegionalError, RegionalPotential};
+use crate::{InterstitialField, MuffinTinField, RegionalError, RegionalScalarField};
 use muffintin_core::{
     FourierFieldError, FourierLayout, Hartree, HermitianFourierField, InterstitialGeometry, Lm,
     MeshError, StepFunctionError, lm_count, lm_index,
@@ -11,7 +11,6 @@ use muffintin_coulomb::{
     WeinertChargeDensity, WeinertHartreeSpec, solve_periodic_nuclear_potential,
     solve_weinert_hartree,
 };
-use muffintin_lapw::Collinear;
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
 use num_complex::Complex64;
 use std::f64::consts::PI;
@@ -46,9 +45,9 @@ impl ElectrostaticSpec {
 /// Electrostatic potential and the energy terms consumed by an SCF step.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RegionalElectrostaticResult {
-    /// Spin-independent regional potential. Its interstitial coefficients are
-    /// step-function masked and are ready for the LAPW operator boundary.
-    pub potential: RegionalPotential,
+    /// Scalar `V_H + V_nuclear`. Its interstitial coefficients are
+    /// step-function masked and ready for the LAPW operator boundary.
+    pub potential: RegionalScalarField,
     /// SPEX Coulomb integral `C = integral n (V_H + V_nuc)`.
     pub coulomb: Hartree,
     /// SPEX Madelung term `M = E_en + 2 E_II`.
@@ -59,7 +58,7 @@ pub struct RegionalElectrostaticResult {
     pub electron_nuclear: Hartree,
     /// Periodic ion-ion energy in the common zero-mean gauge.
     pub nuclear_nuclear: Hartree,
-    /// Dense complex-harmonic, spin-summed density passed to Weinert.
+    /// Dense complex-harmonic charge density passed to Weinert.
     pub weinert_density: WeinertChargeDensity,
     /// Raw unmasked electronic Hartree potential.
     pub raw_hartree: RawHartreePotential,
@@ -69,21 +68,21 @@ pub struct RegionalElectrostaticResult {
     pub raw_electrostatic: RawElectrostaticPotential,
 }
 
-/// Convert a regional electronic number density and solve its electrostatics.
+/// Convert the regional electronic charge component and solve its electrostatics.
 ///
-/// Both spin densities are positive electron number densities. They are
-/// summed before the electronic Hartree solve. The electronic and nuclear
+/// The API accepts only [`RegionalScalarField`], so no magnetization component
+/// can enter Poisson's equation. The electronic and nuclear
 /// subsystems each omit their constant Fourier source through compensating
 /// backgrounds; this adapter additionally requires their physical source
 /// charges to cancel. The resulting raw interstitial potential is convolved
 /// with the interstitial step function before it is exposed as a
-/// [`RegionalPotential`].
+/// [`RegionalScalarField`].
 pub fn evaluate_regional_electrostatics(
-    density: &RegionalDensity,
+    charge: &RegionalScalarField,
     spec: &ElectrostaticSpec,
 ) -> Result<RegionalElectrostaticResult, RegionalElectrostaticError> {
     require_electronic_treatment(spec.weinert)?;
-    let weinert_density = spin_summed_weinert_density(density)?;
+    let weinert_density = weinert_density(charge)?;
     let raw_hartree = solve_weinert_hartree(&weinert_density, spec.weinert)?;
     let raw_nuclear = solve_periodic_nuclear_potential(&weinert_density, &spec.nuclear_charges)?;
     let raw_electrostatic = raw_hartree.add_nuclear_external(&raw_nuclear)?;
@@ -123,7 +122,7 @@ pub fn evaluate_regional_electrostatics(
     let electron_hartree = Hartree(0.5 * hartree_integral.get());
     let nuclear_nuclear = nuclear_nuclear_energy(&raw_nuclear)?;
     let madelung = Hartree(electron_nuclear.get() + 2.0 * nuclear_nuclear.get());
-    let potential = regional_potential(density, &raw_electrostatic)?;
+    let potential = regional_potential(charge, &raw_electrostatic)?;
 
     Ok(RegionalElectrostaticResult {
         potential,
@@ -149,80 +148,52 @@ fn require_electronic_treatment(
     }
 }
 
-fn spin_summed_weinert_density(
-    density: &RegionalDensity,
+fn weinert_density(
+    charge: &RegionalScalarField,
 ) -> Result<WeinertChargeDensity, RegionalElectrostaticError> {
-    let muffin_tins = density
+    let muffin_tins = charge
         .muffin_tins()
-        .up
         .iter()
-        .zip(&density.muffin_tins().down)
-        .map(|(up, down)| spin_summed_muffin_tin(up, down))
+        .map(muffin_tin_charge)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let up = density.interstitial().up.field();
-    let down = density.interstitial().down.field();
-    if up.layout() != down.layout() {
-        return Err(FourierFieldError::LayoutMismatch.into());
-    }
-    let interstitial = HermitianFourierField::new(
-        up.layout().clone(),
-        up.coefficients()
-            .iter()
-            .zip(down.coefficients())
-            .map(|(&left, &right)| left + right)
-            .collect(),
-    )?;
+    let interstitial = charge.interstitial().field().clone();
     Ok(WeinertChargeDensity::new(
-        density.geometry().clone(),
+        charge.geometry().clone(),
         muffin_tins,
         interstitial,
     )?)
 }
 
-fn spin_summed_muffin_tin(
-    up: &MuffinTinField,
-    down: &MuffinTinField,
+fn muffin_tin_charge(
+    charge: &MuffinTinField,
 ) -> Result<MuffinTinChargeDensity, RegionalElectrostaticError> {
-    if up.mesh() != down.mesh() {
-        return Err(RegionalElectrostaticError::MuffinTinMeshMismatch);
-    }
-    let up_field = up.field();
-    let down_field = down.field();
-    if up_field.convention() != down_field.convention()
-        || !up_field
-            .channels()
-            .map(|(channel, _)| channel)
-            .eq(down_field.channels().map(|(channel, _)| channel))
-    {
-        return Err(RegionalElectrostaticError::MuffinTinLayoutMismatch);
-    }
-    let l_max = up_field
+    let field = charge.field();
+    let l_max = field
         .channels()
         .map(|(channel, _)| channel.l)
         .max()
         .unwrap_or(0);
-    let n_radial = up.mesh().len();
+    let n_radial = charge.mesh().len();
     let mut coefficients = vec![Complex64::default(); lm_count(l_max) * n_radial];
-    for ((channel, up_values), (_, down_values)) in up_field.channels().zip(down_field.channels()) {
-        let sum = up_values
-            .iter()
-            .zip(down_values)
-            .map(|(&left, &right)| left + right);
-        match up_field.convention() {
+    for (channel, values) in field.channels() {
+        match field.convention() {
             HarmonicConvention::Complex => {
                 let start = channel.index() * n_radial;
-                for (target, value) in coefficients[start..start + n_radial].iter_mut().zip(sum) {
-                    *target = value;
-                }
+                coefficients[start..start + n_radial].copy_from_slice(values);
             }
             HarmonicConvention::Real => {
-                accumulate_real_channel(&mut coefficients, n_radial, channel, sum);
+                accumulate_real_channel(
+                    &mut coefficients,
+                    n_radial,
+                    channel,
+                    values.iter().copied(),
+                );
             }
         }
     }
     Ok(MuffinTinChargeDensity::new(
-        up.mesh().clone(),
+        charge.mesh().clone(),
         l_max,
         coefficients,
     )?)
@@ -259,20 +230,17 @@ fn accumulate_real_channel(
 }
 
 fn regional_potential(
-    density: &RegionalDensity,
+    charge: &RegionalScalarField,
     raw: &RawElectrostaticPotential,
-) -> Result<RegionalPotential, RegionalElectrostaticError> {
+) -> Result<RegionalScalarField, RegionalElectrostaticError> {
     let muffin_tins = raw
         .muffin_tins()
         .iter()
         .map(raw_muffin_tin_field)
         .collect::<Result<Vec<_>, _>>()?;
-    let interstitial = masked_interstitial(density, raw.interstitial())?;
-    RegionalPotential::new(
-        Collinear::new(muffin_tins.clone(), muffin_tins),
-        Collinear::new(interstitial.clone(), interstitial),
-    )
-    .map_err(Into::into)
+    let interstitial = masked_interstitial(charge, raw.interstitial())?;
+    RegionalScalarField::new(charge.geometry().clone(), muffin_tins, interstitial)
+        .map_err(Into::into)
 }
 
 fn raw_muffin_tin_field(
@@ -297,7 +265,7 @@ fn raw_muffin_tin_field(
 }
 
 fn masked_interstitial(
-    density: &RegionalDensity,
+    charge: &RegionalScalarField,
     raw: &InterstitialHartreePotential,
 ) -> Result<InterstitialField, RegionalElectrostaticError> {
     let layout = raw.layout();
@@ -305,7 +273,7 @@ fn masked_interstitial(
         .coefficients()
         .map(|value| value.as_complex())
         .collect::<Vec<_>>();
-    let masked = mask_fourier_coefficients(density.geometry(), layout, &raw_coefficients)?;
+    let masked = mask_fourier_coefficients(charge.geometry(), layout, &raw_coefficients)?;
     Ok(InterstitialField::from_fourier_field(
         HermitianFourierField::new(layout.clone(), masked)?,
     ))
@@ -539,10 +507,6 @@ pub enum RegionalElectrostaticError {
     StepFunction(#[from] StepFunctionError),
     #[error("regional electrostatics requires ElectronicWithUniformBackground")]
     NonElectronicChargeTreatment,
-    #[error("spin muffin-tin fields use different radial meshes")]
-    MuffinTinMeshMismatch,
-    #[error("spin muffin-tin fields use different harmonic layouts")]
-    MuffinTinLayoutMismatch,
     #[error("raw charge and potential layouts differ")]
     RawLayoutMismatch,
     #[error("electron-plus-nuclear source is not neutral: charge {charge}, tolerance {tolerance}")]
@@ -572,6 +536,7 @@ pub enum RegionalElectrostaticError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::RegionalDensity;
     use muffintin_core::{
         Bohr, ExponentialMesh, GVector, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3,
         spherical_bessel_j,
@@ -640,7 +605,7 @@ mod tests {
         .unwrap()
     }
 
-    fn regional_density() -> RegionalDensity {
+    fn regional_charge() -> RegionalScalarField {
         let layout = shell_layout(3.0);
         let interstitial = |mean: f64, mode: Complex64| {
             let coefficients = layout
@@ -658,7 +623,7 @@ mod tests {
             )
         };
         let radial_mesh = mesh();
-        RegionalDensity::new(
+        RegionalScalarField::new(
             InterstitialGeometry::new(
                 VolumeBohr3(LATTICE.powi(3)),
                 vec![Sphere {
@@ -667,20 +632,14 @@ mod tests {
                 }],
             )
             .unwrap(),
-            Collinear::new(
-                vec![sphere_field(&radial_mesh, 0.02)],
-                vec![sphere_field(&radial_mesh, 0.01)],
-            ),
-            Collinear::new(
-                interstitial(0.02, Complex64::new(0.002, 0.001)),
-                interstitial(0.01, Complex64::new(0.001, -0.0005)),
-            ),
+            vec![sphere_field(&radial_mesh, 0.03)],
+            interstitial(0.03, Complex64::new(0.003, 0.0005)),
         )
         .unwrap()
     }
 
     #[test]
-    fn sparse_real_spin_density_becomes_dense_complex_harmonics() {
+    fn sparse_real_charge_becomes_dense_complex_harmonics() {
         let radial_mesh = ExponentialMesh::new(Bohr(0.01), 0.2, 7).unwrap();
         let make = |positive: f64, negative: f64| {
             MuffinTinField::new(
@@ -702,7 +661,7 @@ mod tests {
             )
             .unwrap()
         };
-        let dense = spin_summed_muffin_tin(&make(0.75, 1.0), &make(1.25, 2.0)).unwrap();
+        let dense = muffin_tin_charge(&make(2.0, 3.0)).unwrap();
         assert_eq!(dense.l_max(), 1);
         assert_eq!(dense.channel(0, 0).unwrap(), vec![Complex64::default(); 7]);
         let inverse_sqrt_two = 1.0 / 2.0_f64.sqrt();
@@ -769,8 +728,8 @@ mod tests {
 
     #[test]
     fn regional_electrostatics_closes_boundary_energy_spin_and_layout() {
-        let density = regional_density();
-        let converted = spin_summed_weinert_density(&density).unwrap();
+        let charge = regional_charge();
+        let converted = weinert_density(&charge).unwrap();
         let electronic =
             solve_weinert_hartree(&converted, WeinertHartreeSpec::electronic(4).unwrap()).unwrap();
         let spec = ElectrostaticSpec::new(
@@ -778,7 +737,7 @@ mod tests {
             vec![electronic.source_charge()],
         )
         .unwrap();
-        let result = evaluate_regional_electrostatics(&density, &spec).unwrap();
+        let result = evaluate_regional_electrostatics(&charge, &spec).unwrap();
 
         assert!(result.raw_electrostatic.source_charge().abs() < 1.0e-12);
         assert!(
@@ -789,23 +748,15 @@ mod tests {
                 < 1.0e-14
         );
         assert_eq!(
-            result.potential.muffin_tins().up,
-            result.potential.muffin_tins().down
+            result.potential.interstitial().layout(),
+            charge.interstitial().layout()
         );
         assert_eq!(
-            result.potential.interstitial().up,
-            result.potential.interstitial().down
+            result.potential.muffin_tins()[0].mesh(),
+            charge.muffin_tins()[0].mesh()
         );
         assert_eq!(
-            result.potential.interstitial().up.layout(),
-            density.interstitial().up.layout()
-        );
-        assert_eq!(
-            result.potential.muffin_tins().up[0].mesh(),
-            density.muffin_tins().up[0].mesh()
-        );
-        assert_eq!(
-            result.potential.muffin_tins().up[0].field().convention(),
+            result.potential.muffin_tins()[0].field().convention(),
             HarmonicConvention::Complex
         );
 
@@ -816,13 +767,13 @@ mod tests {
             .map(|value| value.as_complex())
             .collect::<Vec<_>>();
         let expected_masked = mask_fourier_coefficients(
-            density.geometry(),
-            density.interstitial().up.layout(),
+            charge.geometry(),
+            charge.interstitial().layout(),
             &raw_coefficients,
         )
         .unwrap();
         assert_eq!(
-            result.potential.interstitial().up.field().coefficients(),
+            result.potential.interstitial().field().coefficients(),
             expected_masked
         );
 
@@ -875,8 +826,8 @@ mod tests {
 
     #[test]
     fn regional_electrostatics_rejects_non_neutral_electron_nuclear_cell() {
-        let density = regional_density();
-        let converted = spin_summed_weinert_density(&density).unwrap();
+        let charge = regional_charge();
+        let converted = weinert_density(&charge).unwrap();
         let electronic =
             solve_weinert_hartree(&converted, WeinertHartreeSpec::electronic(4).unwrap()).unwrap();
         let spec = ElectrostaticSpec::new(
@@ -885,8 +836,34 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(
-            evaluate_regional_electrostatics(&density, &spec),
+            evaluate_regional_electrostatics(&charge, &spec),
             Err(RegionalElectrostaticError::NonNeutralElectronNuclear { .. })
         ));
+    }
+
+    #[test]
+    fn hartree_is_independent_of_magnetization_orientation() {
+        let charge = regional_charge();
+        let zero = charge.zero_like();
+        let mut finite = charge.zero_like();
+        finite.add_scaled(0.2, &charge).unwrap();
+        let along_x =
+            RegionalDensity::new(charge.clone(), [finite.clone(), zero.clone(), zero.clone()])
+                .unwrap();
+        let along_z = RegionalDensity::new(charge, [zero.clone(), zero, finite]).unwrap();
+        let converted = weinert_density(along_x.charge()).unwrap();
+        let spec = ElectrostaticSpec::new(
+            WeinertHartreeSpec::electronic(4).unwrap(),
+            vec![
+                solve_weinert_hartree(&converted, WeinertHartreeSpec::electronic(4).unwrap())
+                    .unwrap()
+                    .source_charge(),
+            ],
+        )
+        .unwrap();
+        let x = evaluate_regional_electrostatics(along_x.charge(), &spec).unwrap();
+        let z = evaluate_regional_electrostatics(along_z.charge(), &spec).unwrap();
+        assert_eq!(x.potential, z.potential);
+        assert_eq!(x.coulomb, z.coulomb);
     }
 }

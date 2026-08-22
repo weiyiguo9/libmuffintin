@@ -9,7 +9,7 @@ use muffintin_basis::{
     SpinorSiteLayout, compile_spinor,
 };
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, InterstitialGeometry, Kappa, KappaError};
-use muffintin_lapw::{Collinear, InterstitialPotential, PlaneWaveEnvelope};
+use muffintin_lapw::{InterstitialPauliPotential, PlaneWaveEnvelope};
 use muffintin_radial::{
     DiracError, DiracLocalOrbital, DiracSecondEnergyDerivative, RadialComponents,
     RadialIntegralError, RadialIntegralKernel, ValenceDiracSolution, ValenceDiracSpec,
@@ -151,7 +151,7 @@ pub fn build_spinor_iteration_basis(
 pub fn solve_spinor_k_point(
     basis: &SpinorIterationBasis,
     geometry: &InterstitialGeometry,
-    interstitial: Collinear<&InterstitialPotential>,
+    interstitial: &InterstitialPauliPotential,
     relative_overlap_threshold: f64,
 ) -> Result<SolvedFullSpinorFirstVariation, SpinorBuilderError> {
     solve_full_spinor_first_variation(
@@ -756,14 +756,8 @@ mod tests {
         let energy = built.radial_sites[0].solutions[0].energy.get();
         assert!((blocks[0].hamiltonian.at(0, 0).re - energy * overlap).abs() < 2.0e-11);
 
-        let interstitial = InterstitialPotential::default();
-        let solved = solve_spinor_k_point(
-            &built,
-            &geometry,
-            Collinear::new(&interstitial, &interstitial),
-            1.0e-10,
-        )
-        .unwrap();
+        let interstitial = InterstitialPauliPotential::default();
+        let solved = solve_spinor_k_point(&built, &geometry, &interstitial, 1.0e-10).unwrap();
         assert!(solved.solution.retained_dimension > 0);
         assert!(
             solved
