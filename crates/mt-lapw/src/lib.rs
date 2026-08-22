@@ -123,6 +123,31 @@ impl InterstitialPotential {
     }
 }
 
+/// Cell-normalized Fourier fields for an interstitial Pauli potential
+/// `V0 I + B dot sigma`.
+///
+/// In the Pauli order `(up, down)`, the spin blocks are `V0 + Bz`,
+/// `Bx - i By`, `Bx + i By`, and `V0 - Bz`. Each Cartesian field is a
+/// Hermitian real-space field represented by [`InterstitialPotential`].
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct InterstitialPauliPotential {
+    pub v0: InterstitialPotential,
+    pub bx: InterstitialPotential,
+    pub by: InterstitialPotential,
+    pub bz: InterstitialPotential,
+}
+
+impl InterstitialPauliPotential {
+    pub fn new(
+        v0: InterstitialPotential,
+        bx: InterstitialPotential,
+        by: InterstitialPotential,
+        bz: InterstitialPotential,
+    ) -> Self {
+        Self { v0, bx, by, bz }
+    }
+}
+
 /// A real symmetric `2 x 2` radial overlap block in the `(u, du/dE)` basis.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RadialOverlapBlock {
@@ -254,14 +279,16 @@ pub fn assemble_compiled(
 /// Assemble the first-variation SRA spinor problem from a typed spinor basis.
 ///
 /// The interstitial has two Pauli components ordered as `spin * n_g + g`.
-/// Its overlap, kinetic energy, and collinear scalar potentials are lifted
-/// into equal-spin blocks. All spin mixing and large/small component physics
-/// inside muffin tins enters through the typed site projection; there is no
-/// interstitial small-component fallback.
+/// Its overlap and kinetic energy are lifted into equal-spin blocks. The
+/// interstitial potential is `V0 I + B dot sigma`, so transverse magnetic
+/// fields mix the two Pauli blocks as `Bx - i By` and `Bx + i By`. Additional
+/// spin mixing and all large/small component physics inside muffin tins enters
+/// through the typed site projection; there is no interstitial small-component
+/// fallback.
 pub fn assemble_sra_spinor_compiled(
     compiled: &SpinorCompiledBasis,
     geometry: &InterstitialGeometry,
-    potentials: Collinear<&InterstitialPotential>,
+    potential: &InterstitialPauliPotential,
     sites: &[SpinorSiteOperatorBlocks],
 ) -> Result<LapwEigenproblem, LapwError> {
     let plane_waves = &compiled.plane_waves;
@@ -284,27 +311,21 @@ pub fn assemble_sra_spinor_compiled(
     let dimension = layout.dimension();
     let mut overlap = vec![Complex64::default(); dimension * dimension];
     let mut hamiltonian = vec![Complex64::default(); dimension * dimension];
-    for spin in 0..2 {
-        let potential = if spin == 0 {
-            potentials.up
-        } else {
-            potentials.down
-        };
-        for i in 0..plane_waves.len() {
-            for j in i..plane_waves.len() {
-                let cartesian_difference = std::array::from_fn(|axis| {
-                    InverseBohr(
-                        plane_waves[i].g.cartesian[axis].get()
-                            - plane_waves[j].g.cartesian[axis].get(),
-                    )
-                });
-                let integer_difference = std::array::from_fn(|axis| {
-                    plane_waves[i].g.index[axis] - plane_waves[j].g.index[axis]
-                });
-                let theta = geometry
-                    .coefficient(cartesian_difference)
-                    .map_err(|error| LapwError::StepFunction(error.to_string()))?;
-                let kinetic = INTERSTITIAL_KINETIC.prefactor(plane_waves[i].q, plane_waves[j].q);
+    for i in 0..plane_waves.len() {
+        for j in i..plane_waves.len() {
+            let cartesian_difference = std::array::from_fn(|axis| {
+                InverseBohr(
+                    plane_waves[i].g.cartesian[axis].get() - plane_waves[j].g.cartesian[axis].get(),
+                )
+            });
+            let integer_difference = std::array::from_fn(|axis| {
+                plane_waves[i].g.index[axis] - plane_waves[j].g.index[axis]
+            });
+            let theta = geometry
+                .coefficient(cartesian_difference)
+                .map_err(|error| LapwError::StepFunction(error.to_string()))?;
+            let kinetic = INTERSTITIAL_KINETIC.prefactor(plane_waves[i].q, plane_waves[j].q);
+            for spin in 0..2 {
                 let left = layout
                     .plane_wave_index(spin, i)
                     .expect("loop bounds and Pauli spin are valid");
@@ -317,9 +338,31 @@ pub fn assemble_sra_spinor_compiled(
                     dimension,
                     left,
                     right,
-                    theta * kinetic.get() + potential.coefficient(integer_difference),
+                    theta * kinetic.get()
+                        + potential.v0.coefficient(integer_difference)
+                        + if spin == 0 {
+                            potential.bz.coefficient(integer_difference)
+                        } else {
+                            -potential.bz.coefficient(integer_difference)
+                        },
                 );
             }
+        }
+    }
+    for i in 0..plane_waves.len() {
+        for j in 0..plane_waves.len() {
+            let integer_difference = std::array::from_fn(|axis| {
+                plane_waves[i].g.index[axis] - plane_waves[j].g.index[axis]
+            });
+            let up = layout
+                .plane_wave_index(0, i)
+                .expect("loop bounds and Pauli spin are valid");
+            let down = layout
+                .plane_wave_index(1, j)
+                .expect("loop bounds and Pauli spin are valid");
+            let transverse = potential.bx.coefficient(integer_difference)
+                - Complex64::i() * potential.by.coefficient(integer_difference);
+            set_hermitian(&mut hamiltonian, dimension, up, down, transverse);
         }
     }
     Ok(add_spinor_site_contributions(
@@ -1145,27 +1188,34 @@ mod tests {
         assert!((left_right - right_left.conj()).norm() < 2.0e-15);
     }
 
-    #[test]
-    fn sra_interstitial_is_two_spin_slow_blocks() {
-        let waves = waves();
-        let n_g = waves.len();
-        let compiled = SpinorCompiledBasis {
-            layout: SpinorBasisLayout::new(n_g, Vec::new()),
-            plane_waves: waves,
+    fn empty_spinor_compiled(plane_waves: Vec<PlaneWave>) -> SpinorCompiledBasis {
+        SpinorCompiledBasis {
+            layout: SpinorBasisLayout::new(plane_waves.len(), Vec::new()),
+            plane_waves,
             site_augmentations: Vec::new(),
             site_geometry: Vec::new(),
             provenance: Provenance::default(),
-        };
+        }
+    }
+
+    #[test]
+    fn sra_zero_pauli_field_reproduces_scalar_interstitial_in_both_spin_blocks() {
+        let waves = waves();
+        let n_g = waves.len();
+        let scalar_compiled = compiled_with(waves.clone(), Vec::new(), Vec::new(), Vec::new());
+        let compiled = empty_spinor_compiled(waves);
         let geometry = InterstitialGeometry::new(VolumeBohr3(100.0), Vec::new()).unwrap();
-        let up = InterstitialPotential::default();
-        let down = InterstitialPotential::new([([0; 3], Complex64::new(0.25, 0.0))]).unwrap();
+        let scalar = assemble_compiled(
+            &scalar_compiled,
+            &geometry,
+            &InterstitialPotential::default(),
+            &[],
+        )
+        .unwrap();
         let problem = assemble_sra_spinor_compiled(
             &compiled,
             &geometry,
-            Collinear {
-                up: &up,
-                down: &down,
-            },
+            &InterstitialPauliPotential::default(),
             &[],
         )
         .unwrap();
@@ -1175,18 +1225,119 @@ mod tests {
                 let up_j = compiled.layout.plane_wave_index(0, j).unwrap();
                 let down_i = compiled.layout.plane_wave_index(1, i).unwrap();
                 let down_j = compiled.layout.plane_wave_index(1, j).unwrap();
-                assert_eq!(
-                    problem.overlap.at(up_i, up_j),
-                    problem.overlap.at(down_i, down_j)
-                );
+                assert_eq!(problem.overlap.at(up_i, up_j), scalar.overlap.at(i, j));
+                assert_eq!(problem.overlap.at(down_i, down_j), scalar.overlap.at(i, j));
                 assert_eq!(problem.overlap.at(up_i, down_j), Complex64::default());
                 assert_eq!(problem.hamiltonian.at(up_i, down_j), Complex64::default());
-                let expected_shift = if i == j { 0.25 } else { 0.0 };
+                assert_eq!(
+                    problem.hamiltonian.at(up_i, up_j),
+                    scalar.hamiltonian.at(i, j)
+                );
+                assert_eq!(
+                    problem.hamiltonian.at(down_i, down_j),
+                    scalar.hamiltonian.at(i, j)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sra_bz_reduces_to_independent_collinear_channels() {
+        let waves = waves();
+        let n_g = waves.len();
+        let scalar_compiled = compiled_with(waves.clone(), Vec::new(), Vec::new(), Vec::new());
+        let compiled = empty_spinor_compiled(waves);
+        let geometry = InterstitialGeometry::new(VolumeBohr3(100.0), Vec::new()).unwrap();
+        let v0 = InterstitialPotential::new([
+            ([0; 3], Complex64::new(0.12, 0.0)),
+            ([1, 0, 0], Complex64::new(0.03, 0.02)),
+        ])
+        .unwrap();
+        let bz = InterstitialPotential::new([
+            ([0; 3], Complex64::new(-0.07, 0.0)),
+            ([1, 0, 0], Complex64::new(0.01, -0.015)),
+        ])
+        .unwrap();
+        let up = InterstitialPotential::new([
+            ([0; 3], Complex64::new(0.05, 0.0)),
+            ([1, 0, 0], Complex64::new(0.04, 0.005)),
+        ])
+        .unwrap();
+        let down = InterstitialPotential::new([
+            ([0; 3], Complex64::new(0.19, 0.0)),
+            ([1, 0, 0], Complex64::new(0.02, 0.035)),
+        ])
+        .unwrap();
+        let pauli = InterstitialPauliPotential::new(
+            v0,
+            InterstitialPotential::default(),
+            InterstitialPotential::default(),
+            bz,
+        );
+        let problem = assemble_sra_spinor_compiled(&compiled, &geometry, &pauli, &[]).unwrap();
+        let up_problem = assemble_compiled(&scalar_compiled, &geometry, &up, &[]).unwrap();
+        let down_problem = assemble_compiled(&scalar_compiled, &geometry, &down, &[]).unwrap();
+
+        for i in 0..n_g {
+            for j in 0..n_g {
+                let up_i = compiled.layout.plane_wave_index(0, i).unwrap();
+                let up_j = compiled.layout.plane_wave_index(0, j).unwrap();
+                let down_i = compiled.layout.plane_wave_index(1, i).unwrap();
+                let down_j = compiled.layout.plane_wave_index(1, j).unwrap();
                 assert!(
-                    (problem.hamiltonian.at(down_i, down_j)
-                        - problem.hamiltonian.at(up_i, up_j)
-                        - expected_shift)
+                    (problem.hamiltonian.at(up_i, up_j) - up_problem.hamiltonian.at(i, j)).norm()
+                        < 2.0e-14
+                );
+                assert!(
+                    (problem.hamiltonian.at(down_i, down_j) - down_problem.hamiltonian.at(i, j))
                         .norm()
+                        < 2.0e-14
+                );
+                assert_eq!(problem.hamiltonian.at(up_i, down_j), Complex64::default());
+            }
+        }
+    }
+
+    #[test]
+    fn sra_bx_by_mix_pauli_blocks_with_standard_signs() {
+        let compiled = empty_spinor_compiled(vec![waves()[0]]);
+        let geometry = InterstitialGeometry::new(VolumeBohr3(100.0), Vec::new()).unwrap();
+        let bx = InterstitialPotential::new([([0; 3], Complex64::new(0.2, 0.0))]).unwrap();
+        let by = InterstitialPotential::new([([0; 3], Complex64::new(-0.3, 0.0))]).unwrap();
+        let pauli = InterstitialPauliPotential::new(
+            InterstitialPotential::default(),
+            bx,
+            by,
+            InterstitialPotential::default(),
+        );
+        let problem = assemble_sra_spinor_compiled(&compiled, &geometry, &pauli, &[]).unwrap();
+        let up = compiled.layout.plane_wave_index(0, 0).unwrap();
+        let down = compiled.layout.plane_wave_index(1, 0).unwrap();
+        assert_eq!(problem.hamiltonian.at(up, down), Complex64::new(0.2, 0.3));
+        assert_eq!(problem.hamiltonian.at(down, up), Complex64::new(0.2, -0.3));
+        assert_eq!(problem.overlap.at(up, down), Complex64::default());
+    }
+
+    #[test]
+    fn sra_general_interstitial_pauli_potential_is_hermitian() {
+        let compiled = empty_spinor_compiled(waves());
+        let geometry = InterstitialGeometry::new(VolumeBohr3(100.0), Vec::new()).unwrap();
+        let field = |zero, one| {
+            InterstitialPotential::new([([0; 3], Complex64::new(zero, 0.0)), ([1, 0, 0], one)])
+                .unwrap()
+        };
+        let pauli = InterstitialPauliPotential::new(
+            field(0.11, Complex64::new(0.02, -0.01)),
+            field(-0.07, Complex64::new(0.03, 0.04)),
+            field(0.05, Complex64::new(-0.02, 0.015)),
+            field(-0.13, Complex64::new(0.01, -0.025)),
+        );
+        let problem = assemble_sra_spinor_compiled(&compiled, &geometry, &pauli, &[]).unwrap();
+
+        for i in 0..problem.hamiltonian.dimension() {
+            for j in 0..problem.hamiltonian.dimension() {
+                assert!(
+                    (problem.hamiltonian.at(i, j) - problem.hamiltonian.at(j, i).conj()).norm()
                         < 2.0e-14
                 );
             }
@@ -1235,14 +1386,11 @@ mod tests {
             overlap,
             hamiltonian,
         };
-        let potential = InterstitialPotential::default();
+        let potential = InterstitialPauliPotential::default();
         let problem = assemble_sra_spinor_compiled(
             &compiled,
             &geometry,
-            Collinear {
-                up: &potential,
-                down: &potential,
-            },
+            &potential,
             std::slice::from_ref(&site),
         )
         .unwrap();
@@ -1271,15 +1419,7 @@ mod tests {
             hamiltonian: site.hamiltonian.clone(),
         };
         assert_eq!(
-            assemble_sra_spinor_compiled(
-                &compiled,
-                &geometry,
-                Collinear {
-                    up: &potential,
-                    down: &potential,
-                },
-                &[wrong_channels],
-            ),
+            assemble_sra_spinor_compiled(&compiled, &geometry, &potential, &[wrong_channels],),
             Err(LapwError::Operator(OperatorError::SpinorChannelLayout {
                 site: 0,
                 plane_wave: 0,

@@ -11,8 +11,9 @@ use muffintin_core::{
 };
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_lapw::{
-    Collinear, InterstitialPotential, SiteOperatorBlocks, SpinorSiteOperatorBlocks,
-    assemble_compiled, assemble_sra_spinor_compiled, solve_generalized_hermitian,
+    InterstitialPauliPotential, InterstitialPotential, SiteOperatorBlocks,
+    SpinorSiteOperatorBlocks, assemble_compiled, assemble_sra_spinor_compiled,
+    solve_generalized_hermitian,
 };
 use muffintin_radial::{BoundaryData, ValenceDiracSpec, solve_valence_dirac};
 use muffintin_tensor::{Axis, DenseHermitianMatrix};
@@ -290,7 +291,12 @@ fn large_c_sra_reduces_to_two_frozen_scalar_blocks() {
     let spinor_problem = assemble_sra_spinor_compiled(
         &spinor_compiled,
         &geometry,
-        Collinear::new(&potential, &potential),
+        &InterstitialPauliPotential::new(
+            potential.clone(),
+            InterstitialPotential::default(),
+            InterstitialPotential::default(),
+            InterstitialPotential::default(),
+        ),
         std::slice::from_ref(&spinor_site),
     )
     .unwrap();
