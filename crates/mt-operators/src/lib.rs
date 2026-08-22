@@ -4,12 +4,23 @@
 
 mod assemble;
 mod eigensolve;
+mod projection;
+mod soc;
 mod spinor;
 
 pub use assemble::{OperatorSet, SiteOperatorBlocks, add_site_contributions};
 pub use eigensolve::{
     Collinear, EigenpairResidual, GeneralizedEigensolution, RealSymmetricEigensolution,
     solve_generalized_hermitian, solve_real_symmetric,
+};
+pub use projection::{
+    CompiledSiteProjection, SiteOrbitalCoefficients, project_eigenvectors_to_site,
+    project_spinor_eigenvectors_to_site,
+};
+pub use soc::{
+    SecondVariationMixing, SecondVariationSubspaceSolution, SiteSpinOrbitBlock,
+    SocEigenpairResidual, SocOperatorError, project_site_soc_to_subspace,
+    solve_second_variation_subspace,
 };
 pub use spinor::{SpinorSiteOperatorBlocks, add_spinor_site_contributions};
 
@@ -37,6 +48,8 @@ pub enum OperatorError {
     },
     #[error("site {site} plane wave {plane_wave} has a different spinor channel layout")]
     SpinorChannelLayout { site: usize, plane_wave: usize },
+    #[error("site index {site} is outside a basis with {site_count} sites")]
+    SiteIndex { site: usize, site_count: usize },
     #[error("site {site} {matrix} block has dimension {actual}, expected {expected}")]
     SiteBlockDimension {
         site: usize,
@@ -48,6 +61,8 @@ pub enum OperatorError {
     MatrixDataLength { expected: usize, actual: usize },
     #[error("matrix dimensions differ: H is {hamiltonian}, S is {overlap}")]
     MatrixDimensionMismatch { hamiltonian: usize, overlap: usize },
+    #[error("eigenvectors have {actual} global-basis rows, expected {expected}")]
+    EigenvectorBasisCount { expected: usize, actual: usize },
     #[error("overlap eigenvalue threshold must be finite and nonnegative, got {0}")]
     InvalidOverlapThreshold(f64),
     #[error("overlap eigensystem retained no positive directions")]
