@@ -10,6 +10,8 @@
 
 #![forbid(unsafe_code)]
 
+mod density;
+
 use muffintin_core::{ExponentialMesh, Lm, RelativisticChannel, gaunt, real_gaunt, spinor_gaunt};
 use muffintin_radial::{
     RadialComponents, RadialIntegralError, RadialIntegralKernel, radial_integral,
@@ -17,6 +19,12 @@ use muffintin_radial::{
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use thiserror::Error;
+
+pub use density::{
+    DensityComponent, DensityOperand, DensityProjectionError, SpinorPairDensity,
+    project_orbital_pair_density, project_orbital_pair_density_with_convention,
+    project_spinor_pair_density, project_spinor_pair_density_components,
+};
 
 /// Spherical-harmonic basis used for a field and its orbital labels.
 ///
@@ -524,6 +532,38 @@ pub enum SphereFieldError {
         m: i32,
         index: usize,
         value: Complex64,
+    },
+    /// A checked field accumulation used a non-finite complex scale.
+    #[error("field accumulation scale must be finite, got {0}")]
+    InvalidScale(Complex64),
+    /// Two fields use different harmonic conventions.
+    #[error("field harmonic conventions differ: {left:?} and {right:?}")]
+    ConventionMismatch {
+        left: HarmonicConvention,
+        right: HarmonicConvention,
+    },
+    /// Two fields have different radial sample counts.
+    #[error("field sample counts differ: {left:?} and {right:?}")]
+    SampleCountMismatch {
+        left: Option<usize>,
+        right: Option<usize>,
+    },
+    /// Two fields store different ordered normalized-harmonic channel sets.
+    #[error("field channel layouts differ")]
+    ChannelLayoutMismatch,
+    /// A physical-reality check was given an invalid tolerance.
+    #[error("physical-reality tolerance must be finite and nonnegative, got {0}")]
+    InvalidRealityTolerance(f64),
+    /// Complex-harmonic coefficients violate physical-field reality.
+    #[error(
+        "field reality failed at (L={l}, M={m}), sample {index}: partner is {actual}, expected {expected}"
+    )]
+    PhysicalReality {
+        l: u32,
+        m: i32,
+        index: usize,
+        expected: Complex64,
+        actual: Complex64,
     },
 }
 
