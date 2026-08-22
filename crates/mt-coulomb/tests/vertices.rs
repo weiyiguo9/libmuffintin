@@ -2,9 +2,9 @@
 
 mod common;
 
-use libmuffintin_core::InverseBohr;
-use libmuffintin_coulomb::{CoulombError, CoulombRequest, assemble_coulomb};
-use libmuffintin_product::{AuxiliaryLayout, AuxiliaryRegion, OrbitalPair, PairVertex, TransferQ};
+use muffintin_core::InverseBohr;
+use muffintin_coulomb::{CoulombError, CoulombRequest, assemble_coulomb};
+use muffintin_product::{AuxiliaryLayout, AuxiliaryRegion, OrbitalPair, PairVertex, TransferQ};
 
 #[test]
 fn apply_matches_quadratic_form_on_a_unit_vector() {
@@ -98,7 +98,7 @@ fn permuted_regions_with_same_counts_are_rejected() {
     let error = operator.apply(&vertex).unwrap_err();
     assert!(matches!(error, CoulombError::VertexLayout));
     let _ = AuxiliaryRegion::Interstitial {
-        g: libmuffintin_core::GVector {
+        g: muffintin_core::GVector {
             index: [0; 3],
             cartesian: [InverseBohr(0.0); 3],
             norm: InverseBohr(0.0),

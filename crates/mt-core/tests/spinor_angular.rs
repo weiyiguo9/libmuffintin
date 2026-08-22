@@ -1,6 +1,6 @@
 use std::f64::consts::PI;
 
-use libmuffintin_core::{
+use muffintin_core::{
     Kappa, KappaError, Lm, RelativisticChannel, RelativisticChannelError, SpinProjection,
     SpinorHarmonicTerm, TwiceMu, TwiceMuError, spinor_gaunt,
 };

@@ -6,7 +6,7 @@
 
 #![forbid(unsafe_code)]
 
-use libmuffintin_core::{Bohr, GVector, InverseBohr, Lm, VolumeBohr3, complex_spherical_harmonics};
+use muffintin_core::{Bohr, GVector, InverseBohr, Lm, VolumeBohr3, complex_spherical_harmonics};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 use thiserror::Error;
@@ -124,7 +124,7 @@ pub(crate) fn i_pow(l: u32) -> Complex64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libmuffintin_core::Lm;
+    use muffintin_core::Lm;
 
     #[test]
     fn origin_site_phase_is_unity() {
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn envelope_owns_its_plane_waves() {
-        let lattice = libmuffintin_core::ReciprocalLattice::new([
+        let lattice = muffintin_core::ReciprocalLattice::new([
             [InverseBohr(1.0), InverseBohr(0.0), InverseBohr(0.0)],
             [InverseBohr(0.0), InverseBohr(1.0), InverseBohr(0.0)],
             [InverseBohr(0.0), InverseBohr(0.0), InverseBohr(1.0)],

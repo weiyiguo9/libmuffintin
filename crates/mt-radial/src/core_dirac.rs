@@ -7,7 +7,7 @@
 
 use std::borrow::Borrow;
 
-use libmuffintin_core::{Bohr, DiracAngularContract, ExponentialMesh, Hartree, Kappa};
+use muffintin_core::{Bohr, DiracAngularContract, ExponentialMesh, Hartree, Kappa};
 use thiserror::Error;
 
 use crate::valence::{BoundaryData, LocalOrbitalCoefficients, SPEX_SPEED_OF_LIGHT};

@@ -1,21 +1,21 @@
 //! Repository-local large-`c` SRA regression against a frozen synthetic scalar fixture.
 
-use libmuffintin_basis::{
+use muffintin_basis::{
     ApwBoundaryBasis, ApwSiteAugmentation, ApwSiteGeometry, BasisBlock, BasisSpec, Provenance,
     SpinorApwMatch, SpinorBasisLayout, SpinorCompiledBasis, SpinorSiteLayout, compile,
     match_apw_boundary, spinor_augmentation_coefficients,
 };
-use libmuffintin_core::{
+use muffintin_core::{
     Bohr, ExponentialMesh, Hartree, InterstitialGeometry, InverseBohr, Kappa, ReciprocalLattice,
     RelativisticChannel, Sphere, VolumeBohr3,
 };
-use libmuffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
-use libmuffintin_lapw::{
+use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
+use muffintin_lapw::{
     Collinear, InterstitialPotential, SiteOperatorBlocks, SpinorSiteOperatorBlocks,
     assemble_compiled, assemble_sra_spinor_compiled, solve_generalized_hermitian,
 };
-use libmuffintin_radial::{BoundaryData, ValenceDiracSpec, solve_valence_dirac};
-use libmuffintin_tensor::{Axis, DenseHermitianMatrix};
+use muffintin_radial::{BoundaryData, ValenceDiracSpec, solve_valence_dirac};
+use muffintin_tensor::{Axis, DenseHermitianMatrix};
 use num_complex::Complex64;
 
 const LARGE_C: f64 = 1.0e6;

@@ -10,10 +10,8 @@
 
 #![forbid(unsafe_code)]
 
-use libmuffintin_core::{
-    ExponentialMesh, Lm, RelativisticChannel, gaunt, real_gaunt, spinor_gaunt,
-};
-use libmuffintin_radial::{
+use muffintin_core::{ExponentialMesh, Lm, RelativisticChannel, gaunt, real_gaunt, spinor_gaunt};
+use muffintin_radial::{
     RadialComponents, RadialIntegralError, RadialIntegralKernel, radial_integral,
 };
 use num_complex::Complex64;

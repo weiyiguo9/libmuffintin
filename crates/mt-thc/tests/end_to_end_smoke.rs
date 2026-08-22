@@ -12,16 +12,16 @@
 //!    may assert `RECORDED_REFERENCE_GATE` / `RECORDED_ERI_ACTION_GATE`.
 //!    Python table values are evidence, not bit-identity targets.
 
-use libmuffintin_core::InverseBohr;
-use libmuffintin_product::TransferQ;
-use libmuffintin_thc::toy::{
+use muffintin_core::InverseBohr;
+use muffintin_product::TransferQ;
+use muffintin_thc::toy::{
     ACTION_VECTOR_COUNT, ACTION_VECTOR_SEED, LAPW_LATTICE, LAPW_NORB, RECORDED_ERI_ACTION_GATE,
     RECORDED_REFERENCE_GATE, ToyEriActionMetrics, ToyFiniteCutoffKernel, ToyGrid,
     approximate_pair_fourier, compare_candidate_eri_action, lapw_bloch_orbitals,
     lapw_composite_grid, lapw_kmesh, lapw_uniform_grid, pair_fourier, reciprocal_vectors,
     relative_gram_frobenius, toy_coulomb_factors, toy_coulomb_gram, values_fourier,
 };
-use libmuffintin_thc::{
+use muffintin_thc::{
     BlochOrbitals, CoulombGramSet, GridPath, KMesh, L2Engine, PairColumnLayout, RankPolicy,
     SelectionRequest, SelectorStrategy, ThcError, UmklappGauge, evaluate_pair_block, fit_per_q,
     select_points, umklapp_phase,
@@ -185,7 +185,7 @@ fn gram_q_index_is_validated_before_whitening() {
     let error = gram.require_context(0, q, layout).unwrap_err();
     assert!(matches!(
         error,
-        libmuffintin_thc::ThcError::GramQIndex {
+        muffintin_thc::ThcError::GramQIndex {
             expected: 0,
             actual: 1
         }
@@ -194,11 +194,11 @@ fn gram_q_index_is_validated_before_whitening() {
     shifted.layout.n_orb = 3;
     assert!(matches!(
         shifted.require_context(1, q, layout),
-        Err(libmuffintin_thc::ThcError::GramColumnOrder(1))
+        Err(muffintin_thc::ThcError::GramColumnOrder(1))
     ));
     assert!(matches!(
         shifted.require_context(1, q, shifted.layout),
-        Err(libmuffintin_thc::ThcError::GramShape { index: 1, .. })
+        Err(muffintin_thc::ThcError::GramShape { index: 1, .. })
     ));
 }
 
@@ -244,7 +244,7 @@ fn finite_q_action(
             engine,
             grid_path: GridPath::Uniform {
                 divisions: grid.len(),
-                shift: libmuffintin_thc::UniformShift::Origin,
+                shift: muffintin_thc::UniformShift::Origin,
             },
         },
         grams,
@@ -301,7 +301,7 @@ fn three_selectors_distinguish_finite_q_action_at_identical_nmu() {
         name: "finite-q-action".to_owned(),
         points,
         weights: vec![1.0; n],
-        regions: vec![libmuffintin_product::InterpolationRegion::Uniform; n],
+        regions: vec![muffintin_product::InterpolationRegion::Uniform; n],
     };
     let mut values = Vec::new();
     for (p, point) in grid.points.iter().enumerate() {

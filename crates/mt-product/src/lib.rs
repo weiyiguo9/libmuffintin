@@ -34,8 +34,8 @@ pub use vertex::{
     InterstitialPairSpec, MtPairSpec, OrbitalPair, PairOrbital, PairVertex, PairVertexSpec,
 };
 
-use libmuffintin_core::StepFunctionError;
-use libmuffintin_radial::RadialIntegralError;
+use muffintin_core::StepFunctionError;
+use muffintin_radial::RadialIntegralError;
 use thiserror::Error;
 
 /// Product-space construction or validation error.

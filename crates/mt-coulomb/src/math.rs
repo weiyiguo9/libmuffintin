@@ -1,7 +1,7 @@
 //! Factorials, Gaunt-like `gmat`, and plane-wave phases used by SPEX `coulombmatrix.f`.
 
 use crate::CoulombError;
-use libmuffintin_core::{Bohr, InverseBohr, lm_count, lm_index};
+use muffintin_core::{Bohr, InverseBohr, lm_count, lm_index};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 

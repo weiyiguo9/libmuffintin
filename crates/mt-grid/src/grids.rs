@@ -1,7 +1,7 @@
 //! Atom-centred, uniform, interstitial, and composite point grids.
 
 use crate::{AngularGrid, Cell};
-use libmuffintin_core::{Bohr, ExponentialMesh, Sphere, VolumeBohr3};
+use muffintin_core::{Bohr, ExponentialMesh, Sphere, VolumeBohr3};
 use thiserror::Error;
 
 /// Physical region represented by a quadrature point.

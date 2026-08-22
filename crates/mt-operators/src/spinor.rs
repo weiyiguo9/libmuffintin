@@ -1,9 +1,9 @@
 //! Site projection for the parallel typed spinor basis.
 
 use crate::{OperatorError, OperatorSet};
-use libmuffintin_basis::{SpinorCompiledBasis, SpinorPlaneWaveAugmentation};
-use libmuffintin_core::RelativisticChannel;
-use libmuffintin_tensor::{
+use muffintin_basis::{SpinorCompiledBasis, SpinorPlaneWaveAugmentation};
+use muffintin_core::RelativisticChannel;
+use muffintin_tensor::{
     Axis, ComplexTensor, DenseHermitianMatrix, TensorError, hermitian_congruence,
 };
 use num_complex::Complex64;
@@ -136,7 +136,7 @@ fn validate_site(
     let expected = 2 * site.channels.len()
         + layout
             .site_layout(site_index)
-            .map_or(0, libmuffintin_basis::SpinorSiteLayout::len);
+            .map_or(0, muffintin_basis::SpinorSiteLayout::len);
     for (name, block) in [
         ("overlap", &site.overlap),
         ("Hamiltonian", &site.hamiltonian),

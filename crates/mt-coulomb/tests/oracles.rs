@@ -3,17 +3,17 @@
 
 mod common;
 
-use libmuffintin_basis::Provenance;
-use libmuffintin_core::{
+use muffintin_basis::Provenance;
+use muffintin_core::{
     Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, VolumeBohr3,
     complex_spherical_harmonics, lm_index,
 };
-use libmuffintin_coulomb::{
+use muffintin_coulomb::{
     CoulombRequest, StructureConstants, assemble_coulomb, bessel_overlap, bessel_weinert_integral,
     multipole_moment, second_moment, sphbessel_pw_integral, spherical_bessel_moment,
     structure_constants, weinert_gmat,
 };
-use libmuffintin_product::{
+use muffintin_product::{
     AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryRepresentation,
     CompiledAuxiliaryBasis, MixedProductAuxiliary, ProductPartition, SiteAuxiliaryBlock, TransferQ,
 };

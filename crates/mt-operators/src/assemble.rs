@@ -1,8 +1,8 @@
 //! Site projection $P^\dagger B P$ scattered into a global operator pair.
 
 use crate::OperatorError;
-use libmuffintin_basis::{CompiledBasis, PlaneWaveAugmentation};
-use libmuffintin_tensor::{
+use muffintin_basis::{CompiledBasis, PlaneWaveAugmentation};
+use muffintin_tensor::{
     Axis, ComplexTensor, DenseHermitianMatrix, TensorError, hermitian_congruence,
 };
 use num_complex::Complex64;
@@ -131,7 +131,7 @@ fn validate_operator_site(
     let expected = 2 * channels
         + layout
             .site_layout(site_index)
-            .map_or(0, libmuffintin_basis::LocalOrbitalLayout::len);
+            .map_or(0, muffintin_basis::LocalOrbitalLayout::len);
     for (name, block) in [
         ("overlap", &site.overlap),
         ("Hamiltonian", &site.hamiltonian),

@@ -48,7 +48,7 @@ any muffin-tin centre is smaller than that sphere's radius.  The nearest-image
 search is performed in the full direct-lattice metric, rather than by rounding
 three Cartesian components, so skew cells remain valid.  The retained midpoint
 weights converge to the analytic interstitial volume represented by
-`libmuffintin_core::InterstitialGeometry`; boundary correction is a measured later
+`muffintin_core::InterstitialGeometry`; boundary correction is a measured later
 optimization, not part of the M-C contract.
 
 ## 3. Sphere fields and orbitals

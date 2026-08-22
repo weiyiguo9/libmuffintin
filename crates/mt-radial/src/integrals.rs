@@ -1,4 +1,4 @@
-use libmuffintin_core::ExponentialMesh;
+use muffintin_core::ExponentialMesh;
 use thiserror::Error;
 
 use crate::core_dirac::{
@@ -236,7 +236,7 @@ pub fn radial_integral<L: RadialComponents + ?Sized, R: RadialComponents + ?Size
 mod tests {
     use super::*;
     use crate::{RadialEquation, RadialSolver};
-    use libmuffintin_core::{Bohr, Hartree};
+    use muffintin_core::{Bohr, Hartree};
 
     fn problem() -> (ExponentialMesh, Vec<f64>) {
         let first: f64 = 1.0e-6;

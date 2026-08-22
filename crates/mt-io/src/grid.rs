@@ -1,4 +1,4 @@
-use libmuffintin_grid::{Grid, RegionTag};
+use muffintin_grid::{Grid, RegionTag};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{IoError, ValidationError, finite, nonempty};

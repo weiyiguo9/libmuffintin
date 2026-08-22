@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "muffintin_thc"
+
 [dependencies]
 faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
 libmuffintin-basis = { path = "../mt-basis" }

@@ -2,27 +2,27 @@
 //!
 //! The facade path calls the canonical recipe facade. The explicit path
 //! constructs [`BasisSpec`] by hand and must not call
-//! `libmuffintin_recipes::lapw`. Both paths assemble through
+//! `muffintin_recipes::lapw`. Both paths assemble through
 //! `assemble_compiled` / the shared operator layer.
 
-use libmuffintin_basis::{
+use muffintin_basis::{
     ApwBoundaryBasis, ApwSiteAugmentation, BasisBlock, BasisSpec, LocalOrbitalLayout, Provenance,
     compile,
 };
-use libmuffintin_core::{
+use muffintin_core::{
     Bohr, Hartree, InterstitialGeometry, InverseBohr, KineticOperatorConvention, ReciprocalLattice,
     Sphere, VolumeBohr3,
 };
-use libmuffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
-use libmuffintin_lapw::{
+use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
+use muffintin_lapw::{
     DenseEigenvectors, InterstitialPotential, LapwSiteInput, RadialOverlapBlock,
     SiteOperatorBlocks, assemble_compiled, assemble_eigenproblem, solve_collinear_eigenproblems,
 };
-use libmuffintin_operators::{
+use muffintin_operators::{
     Collinear, EigenpairResidual, GeneralizedEigensolution, solve_generalized_hermitian,
 };
-use libmuffintin_radial::BoundaryData;
-use libmuffintin_tensor::{Axis, DenseHermitianMatrix};
+use muffintin_radial::BoundaryData;
+use muffintin_tensor::{Axis, DenseHermitianMatrix};
 use num_complex::Complex64;
 
 const MATRIX_TOL: f64 = 1.0e-14;
@@ -175,8 +175,8 @@ fn solutions_match(
 }
 
 fn eigenproblems_match(
-    facade: &libmuffintin_lapw::LapwEigenproblem,
-    explicit: &libmuffintin_lapw::LapwEigenproblem,
+    facade: &muffintin_lapw::LapwEigenproblem,
+    explicit: &muffintin_lapw::LapwEigenproblem,
     overlap_threshold: f64,
 ) {
     matrices_match(&facade.overlap, &explicit.overlap, MATRIX_TOL);
@@ -248,7 +248,7 @@ fn translated_sphere_overlap_facade_and_explicit_spec_match() {
         udot: boundary(0.2, 1.1),
     };
     let boundaries = vec![apw_boundary, apw_boundary, apw_boundary];
-    let local_dimension = 2 * libmuffintin_core::lm_count(2);
+    let local_dimension = 2 * muffintin_core::lm_count(2);
     let radial = RadialOverlapBlock {
         uu: 1.0,
         u_udot: 0.04,

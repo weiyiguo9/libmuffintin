@@ -1,8 +1,8 @@
-use libmuffintin_core::{
+use muffintin_core::{
     Bohr, ExponentialMesh, Kappa, Lm, RelativisticChannel, TwiceMu, spinor_gaunt,
 };
-use libmuffintin_radial::{RadialComponents, RadialIntegralKernel, radial_integral};
-use libmuffintin_sphere::{
+use muffintin_radial::{RadialComponents, RadialIntegralKernel, radial_integral};
+use muffintin_sphere::{
     HarmonicConvention, MatrixElementError, SphereField, SphereFieldError, SphereOrbital,
     SphereOrbitalError, SpinorSphereOrbital, matrix_element, spinor_matrix_element,
 };
@@ -263,8 +263,8 @@ fn spinor_length_errors_identify_component_and_operand() {
     assert!(matches!(
         spinor_matrix_element(&mesh, &valid, &field, &short),
         Err(MatrixElementError::OrbitalMeshLength {
-            operand: libmuffintin_sphere::Operand::Right,
-            component: libmuffintin_sphere::Component::Large,
+            operand: muffintin_sphere::Operand::Right,
+            component: muffintin_sphere::Component::Large,
             actual,
             ..
         }) if actual == mesh.len() - 1

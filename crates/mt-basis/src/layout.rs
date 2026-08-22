@@ -1,7 +1,7 @@
 //! Global `[envelope][site confined]` layout and site-local `(l, m, n)` order.
 
 use crate::BasisError;
-use libmuffintin_core::{Kappa, TwiceMu};
+use muffintin_core::{Kappa, TwiceMu};
 use std::ops::Range;
 
 /// Counts and ordering of one site's local orbitals.

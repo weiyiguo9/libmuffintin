@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "muffintin_io"
+
 [dependencies]
 libmuffintin-grid = { path = "../mt-grid" }
 serde = { version = "1.0.219", features = ["derive"] }

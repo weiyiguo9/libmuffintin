@@ -1,8 +1,8 @@
 //! MPB auxiliary $|q+G|$ interstitial plane-wave support.
 
 use crate::MpbError;
-use libmuffintin_core::{InverseBohr, ReciprocalLattice};
-use libmuffintin_product::{AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, TransferQ};
+use muffintin_core::{InverseBohr, ReciprocalLattice};
+use muffintin_product::{AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, TransferQ};
 
 /// SPEX mixed-basis interstitial PW set: $|q+G|\le g_{\mathrm{cut}}$, ordered
 /// by $|G|$ then $G$ index.
