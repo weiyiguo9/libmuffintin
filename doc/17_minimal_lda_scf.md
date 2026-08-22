@@ -1,10 +1,10 @@
 # 17. Minimal full-potential DFT workflow
 
-This note defines the M-Kb implementation candidate. M-Kb consumes the M-G LAPW basis/operator boundary, the M-J Weinert conventions, and the M-Ka scalar and four-component radial substrate; it does not create a second basis, Coulomb, or Dirac convention. The implemented scope is regular-full-Brillouin-zone LDA/PBE self-consistency, Fermi--Dirac or Gaussian occupations, three density mixers, scalar Koelling--Harmon bands, optional SPEX-style second-variation SOC, a four-component first-variation library route, frozen-potential bands, and tetrahedron DOS. Energies and temperatures are Hartree and lengths are Bohr.
+This note defines the closed M-Kb implementation contract. M-Kb consumes the M-G LAPW basis/operator boundary, the M-J Weinert conventions, and the M-Ka scalar and four-component radial substrate; it does not create a second basis, Coulomb, or Dirac convention. The implemented scope is regular-full-Brillouin-zone LDA/PBE self-consistency, Fermi--Dirac or Gaussian occupations, three density mixers, scalar Koelling--Harmon bands, optional SPEX-style second-variation SOC, collinear and noncollinear four-component first variation, frozen-potential bands, versioned restart snapshots, and tetrahedron DOS. Energies and temperatures are Hartree and lengths are Bohr.
 
 ## 1. References and fixed execution order
 
-The SPEX anchors in this note were inspected in `spex06.00pre36` at commit `b7778ba9f15ea30274fa1f6962a1d531c5679e5d`; line numbers are not claimed for another SPEX release. The relevant all-electron FlapwMBPT source is `ComDMFTv.2.0/src/FlapwMBPT`, not the local TRIQS directories named `dft_tools`.
+The SPEX anchors in this note were inspected in the local directory `spex06.00pre36` at commit `b7778ba9f15ea30274fa1f6962a1d531c5679e5d`; its `ChangeLog` identifies the live tree as 06.00pre38, and line numbers are not claimed for another release. The FLEUR Pauli-field anchors were inspected at commit `5518b7393f32c3bc4aa1bd3f1f6cb16a220adf51`. The relevant all-electron FlapwMBPT source is `ComDMFTv.2.0/src/FlapwMBPT`, not the local TRIQS directories named `dft_tools`.
 
 SPEX `src/iterate.f:841-1788` and FlapwMBPT `dft_loop.F:1-35` fix the iteration dependency order implemented by `ScfPhysics` and `run_scf`:
 
@@ -59,6 +59,7 @@ temperature = 0.001
 
 [task.scf.xc]
 kind = "lda-pw92"
+noncollinear-route = "local-spin-frame"
 
 [task.scf.mixing]
 kind = "pulay-anderson"
@@ -112,21 +113,24 @@ Task child data may therefore use either arrays of typed records, such as local 
 
 ## 3. Regional density and the physical metric
 
-A collinear density has explicit up and down components. Each component contains one angularly resolved `SphereField` on every muffin-tin mesh and one Hermitian Fourier field on an exact reciprocal layout. The interstitial density coefficients represent the periodic orbital extension; physical integrals apply the analytic interstitial step function. A regional potential instead stores the matrix-element-ready masked interstitial coefficients used by LAPW assembly. The distinction prevents a masked potential from being reused as an unmasked Poisson source.
-
-For scalar LAPW eigenvectors, the muffin-tin coefficients are formed after the unique compiled site projection. Large and scalar-relativistic small radial products enter separately. The interstitial term uses the exact plane-wave difference $G_{\mathrm{right}}-G_{\mathrm{left}}$, the cell normalization $1/\Omega$, explicit k weights, and band occupations.
-
-The collinear physical inner product is
+The single density representation is charge plus Cartesian magnetization, with each of $n,m_x,m_y,m_z$ stored as a `RegionalScalarField` over identical muffin-tin meshes and an exact reciprocal layout. The density-matrix convention is
 
 ```math
-\langle a,b\rangle
-=\sum_{\sigma,s,L,M}\int_0^{R_s}r^2 a^*_{sLM\sigma}(r)b_{sLM\sigma}(r)\,dr
-+\Omega\sum_{\sigma,G,G'}a^*_{G\sigma}\,\theta_{G-G'}\,b_{G'\sigma}.
+\rho=\frac12\left(nI+\mathbf m\cdot\boldsymbol\sigma\right).
 ```
 
-Every mixer and the reported density RMS uses this metric. Serialized coefficient order is never treated as a Euclidean physical norm.
+A collinear density is the exact subset $n=n_\uparrow+n_\downarrow$, $m_z=n_\uparrow-n_\downarrow$, and $m_x=m_y=0$; it is not a separate SCF state type. The interstitial density coefficients represent the periodic orbital extension, and physical integrals apply the analytic interstitial step function. A regional potential instead stores $V_0,B_x,B_y,B_z$ with matrix-element-ready masked interstitial coefficients and convention $V=V_0I+\mathbf B\cdot\boldsymbol\sigma$. This separation prevents a masked potential from being reused as an unmasked Poisson source.
 
-The full-spinor density boundary additionally exposes charge and Cartesian magnetization as four `RegionalScalarField` objects. Muffin-tin pair products retain every physical $P$ and $Q$ component, while the interstitial uses the two Pauli components of the SRA spinor basis. Converting this result to a collinear density is allowed only when transverse magnetization is absent within the declared tolerance.
+For scalar LAPW eigenvectors, the muffin-tin coefficients are formed after the unique compiled site projection. Large and scalar-relativistic small radial products enter separately. The interstitial term uses the exact plane-wave difference $G_{\mathrm{right}}-G_{\mathrm{left}}$, the cell normalization $1/\Omega$, explicit k weights, and band occupations. Full-spinor synthesis retains all physical $P/Q$ pair products and both interstitial Pauli components, so transverse magnetization remains in the same `RegionalDensity` used by mixing, convergence, XC, restart, and the next Hamiltonian.
+
+For regional scalar fields, let $\langle a,b\rangle_R$ denote the muffin-tin radial integral plus the interstitial step-function contraction. The density metric is the Pauli trace
+
+```math
+\langle \rho_a,\rho_b\rangle
+=\frac12\left[\langle n_a,n_b\rangle_R+\sum_{j=x,y,z}\langle m_{a,j},m_{b,j}\rangle_R\right].
+```
+
+When $m_x=m_y=0$, this reduces exactly to the previous sum of explicit up/down metrics. Every mixer and the reported density RMS uses this metric; serialized coefficient order is never treated as a Euclidean physical norm.
 
 ## 4. Four-component core density
 
@@ -156,11 +160,21 @@ and the own-site muffin-tin monopole restores $-Z_s/r$. The combined adapter req
 
 The energy adapter evaluates $C=\int n(V_H+V_{\mathrm{nuc}})$, $M=E_{en}+2E_{II}$, $E_H=\tfrac12\int nV_H$, $E_{en}=\int nV_{\mathrm{nuc}}$, and $E_{II}$ in one common gauge. Discrete muffin-tin and Fourier boundary values are matched using the actual Poisson mesh endpoint, not a second independently rounded multipole quadrature.
 
-## 6. LDA/PW92 and PBE
+## 6. LDA/PW92, PBE, and noncollinear XC
 
-The implemented local-density choice follows SPEX `xlda + cpw92`; the gradient choice follows `xpbe + cpbe` (`src/iterate.f:261-326`, `src/xcfunc.f:105-141,564-783`). The point kernel accepts both spin densities, gradients, and Hessians. PBE includes the density gradient, Laplacian, and gradient--Hessian contraction required by the divergence term in the functional derivative.
+The implemented local-density choice follows the `xlda + cpw92` formulas, and the gradient choice follows `xpbe + cpbe` (`src/iterate.f:261-326`, `src/xcfunc.f:105-141,564-783`). The collinear point kernel accepts both spin densities, gradients, and Hessians. PBE includes the density gradient, Laplacian, and gradient--Hessian contraction required by the divergence term in the functional derivative.
 
-In the interstitial, analytic Fourier derivatives supply the density jet and a deterministic midpoint grid performs the nonlinear forward/inverse transform. Inside each sphere, a deterministic angular rule, quartic radial interpolation, and fourth-order Cartesian differences supply the same point-kernel contract. The result reports both $E_{xc}$ and $\int\sum_\sigma n_\sigma v_{xc,\sigma}$ for total-energy bookkeeping.
+The public noncollinear choices are method names, not producer names. `LocalSpinFrame` rotates the density locally onto $\hat{\mathbf m}$, independently projects the magnetization value, first derivatives, and second derivatives onto that direction, evaluates the two-channel point kernel, and rotates the splitting back to $\mathbf B_{xc}$. This matches the locally collinear construction in SPEX 06.00pre38 `potential.f:586-600,869-889,1001-1022`; the same Pauli matrix convention $V_0I+\mathbf B\cdot\boldsymbol\sigma$ is explicit in FLEUR `math/BfieldtoVmat.f90:9-124` and `vgen/xcBfield.f90:27-36`. At a magnetization node $|\mathbf m|<10^{-12}$, where a local spin direction is undefined, the polarization jet and $\mathbf B_{xc}$ are set to zero rather than selecting a global axis; this preserves global spin-rotation covariance even when the magnetization derivatives at the node are nonzero.
+
+`MagnetizationField` instead treats $(n\pm|\mathbf m|)/2$ as scalar eigenvalue fields. Its PBE route differentiates the full magnetization magnitude, including
+
+```math
+\partial_i\partial_j|\mathbf m|
+=\frac{\partial_i\mathbf m\cdot\partial_j\mathbf m+\mathbf m\cdot\partial_i\partial_j\mathbf m}{|\mathbf m|}
+-\frac{(\mathbf m\cdot\partial_i\mathbf m)(\mathbf m\cdot\partial_j\mathbf m)}{|\mathbf m|^3}.
+```
+
+Both routes return $V_0=(v_\uparrow+v_\downarrow)/2$ and $\mathbf B_{xc}=(v_\uparrow-v_\downarrow)\hat{\mathbf m}/2$, without an extra factor of two or $\mu_B$, and report the total-energy contraction $\int(nV_0+\mathbf m\cdot\mathbf B_{xc})$. In the interstitial, analytic Fourier derivatives supply the density jet and a deterministic midpoint grid performs the nonlinear forward/inverse transform. Inside each sphere, a deterministic angular rule, quartic radial interpolation, and fourth-order Cartesian differences supply the same point-kernel contract.
 
 ## 7. Occupations and chemical potential
 
@@ -214,20 +228,20 @@ The scalar route constructs Schrödinger or Koelling--Harmon radial solutions, a
 
 The optional nonmagnetic SPEX-style SOC route first solves a scalar Koelling--Harmon problem, selects an explicit source-band window, projects the site $\xi(r)\,\mathbf L\cdot\mathbf S$ operator into that subspace, solves the ordinary Hermitian doubled-spin problem, and reconstructs global Pauli spinors. This route rejects magnetic, noncollinear, and full-spinor first-variation inputs rather than silently changing the approximation. A runtime window must begin at the lowest represented valence band because the concrete V1 kernel does not silently drop occupied scalar states below the window.
 
-The full first-variation library route keeps physical four-component $P/Q$ orbitals in every muffin-tin sphere and a two-component SRA interstitial basis. Each scalar $l$ linearization energy is inherited by the two signed-$\kappa$ partners with that large-component $l$; explicit signed-$\kappa$ LO and HDLO requests override the local-orbital content, including the $p_{1/2}$ channel $\kappa=+1$. Magnetic and SOC sphere fields enter as $V_0 I+\mathbf B\cdot\boldsymbol\sigma$ with no scalar fallback.
+The full first-variation route keeps physical four-component $P/Q$ orbitals in every muffin-tin sphere and a two-component SRA interstitial basis. Each scalar $l$ linearization energy is inherited by the two signed-$\kappa$ partners with that large-component $l$; explicit signed-$\kappa$ LO and HDLO requests override the local-orbital content, including the $p_{1/2}$ channel $\kappa=+1$. Sphere and interstitial magnetic fields both enter as $V_0I+\mathbf B\cdot\boldsymbol\sigma$, including the exact off-diagonal factors $B_x\mp iB_y$, with no scalar fallback. The synthesized $m_x,m_y,m_z$ fields pass unchanged through mixing, XC, the next 4c Hamiltonian, and restart serialization.
 
-Snapshot V1 currently carries scalar or collinear diagonal spin potentials. The reusable first-variation library supports transverse fields and returns Cartesian spin density, while the concrete V1 SCF adapter accepts only the collinear fixed-point subset until a versioned snapshot schema can represent transverse input and restart fields.
+Snapshot V2 stores shared geometry and radial-basis metadata plus either a frozen Pauli potential or a restart pair containing $n,m_x,m_y,m_z$ and $V_0,B_x,B_y,B_z$. Snapshot V1 remains readable and normalizes exactly to V2: scalar data maps to $V_0$ with zero $\mathbf B$, while up/down data maps to $V_0=(V_\uparrow+V_\downarrow)/2$, $B_z=(V_\uparrow-V_\downarrow)/2$, and zero transverse fields. The runtime uses header-based version dispatch and one normalized V2 path.
 
 ## 9. Mixing, convergence, and total energy
 
-Linear mixing, type-2 Broyden, and Pulay--Anderson all use residual $r=n_{\mathrm{in}}-n_{\mathrm{out}}$ and the same regional physical inner product. Each nonlinear mixer owns bounded history and rejects a layout change instead of mixing unrelated coefficient vectors.
+Linear mixing, type-2 Broyden, and Pulay--Anderson all use residual $r=\rho_{\mathrm{in}}-\rho_{\mathrm{out}}$ and the same four-component regional physical inner product. Each nonlinear mixer owns bounded history and rejects a layout change instead of mixing unrelated coefficient vectors.
 
 An iteration converges only after both a density RMS threshold and a total-energy-change threshold are available and satisfied. The retained state is the accepted fixed-point input density together with the potential it generated, the exact basis controls, the chemical potential, relativity route, total energy, and ordered diagnostics.
 
 The finite-temperature total-energy expression is assembled once as
 
 ```math
-E=E_{\mathrm{band}}+E_{\mathrm{core}}+\frac{M-C}{2}+E_{xc}-\int n v_{xc}+E_{\mathrm{occ}},
+E=E_{\mathrm{band}}+E_{\mathrm{core}}+\frac{M-C}{2}+E_{xc}-\int\left(nV_0+\mathbf m\cdot\mathbf B_{xc}\right)+E_{\mathrm{occ}},
 ```
 
 where $E_{\mathrm{occ}}$ is either $-TS$ or $C_\sigma$. Core eigenvalues, band energy, electrostatics, XC, and the occupation correction each enter exactly once.
@@ -238,6 +252,6 @@ A bands task consumes an earlier `ScfState` and solves its frozen potential on t
 
 ## 11. Acceptance status and evidence boundary
 
-The implementation has focused gates for weighted occupations, Gaussian and logistic tails, scalar/4c radial identities, signed-$\kappa$ local orbitals and HDLOs, plane-wave and sphere density synthesis, core $P^2+Q^2$ and spill, Weinert electronic and nuclear potentials, electrostatic boundary matching, LDA/PBE functional derivatives, three mixers, SCF ordering and source reuse, scalar and SOC eigensolutions, and tetrahedron normalization. The unified CLI also executes a minimal one-site snapshot through the concrete kernel.
+The implementation has focused gates for weighted occupations, Gaussian and logistic tails, scalar/4c radial identities, signed-$\kappa$ local orbitals and HDLOs, plane-wave and sphere density synthesis, core $P^2+Q^2$ and spill, Weinert electronic and nuclear potentials, electrostatic boundary matching, LDA/PBE functional derivatives, both noncollinear XC reductions, spin-rotation covariance, transverse Pauli blocks, four-component mixing, Snapshot V1-to-V2 normalization and restart, SCF ordering and source reuse, scalar and SOC eigensolutions, and tetrahedron normalization. The unified CLI also executes a minimal one-site snapshot through the concrete kernel.
 
-These gates establish an executable M-Kb implementation candidate; they do not substitute for the planned external acceptance fixtures. Si and SrVO3 scalar results, Pt or Au second-variation SOC, collinear bcc Fe, and a regular-mesh tetrahedron DOS still require frozen SPEX/FLEUR reference artifacts before the milestone can be called cross-code accepted. Meta-GGA, hybrids, forces, SCF symmetry reduction, and tetrahedron occupations are outside M-Kb.
+These gates close the M-Kb implementation contract at the library, TOML workflow, snapshot/restart, and executable levels; they do not substitute for the planned external acceptance fixtures. Si and SrVO3 scalar results, Pt or Au second-variation SOC, collinear and noncollinear magnetic fixtures, and a regular-mesh tetrahedron DOS still require frozen cross-code reference artifacts before M-Kb can be called cross-code accepted or production validated. Meta-GGA, hybrids, forces, SCF symmetry reduction, and tetrahedron occupations are outside M-Kb.
