@@ -1,0 +1,18 @@
+[package]
+name = "libmuffintin-dft"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "muffintin_dft"
+
+[dependencies]
+libmuffintin-core = { path = "../mt-core" }
+libm.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

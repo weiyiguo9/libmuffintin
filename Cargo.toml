@@ -16,6 +16,7 @@ members = [
     "crates/mt-mpb",
     "crates/mt-thc",
     "crates/mt-coulomb",
+    "crates/mt-dft",
 ]
 
 [workspace.package]
@@ -26,6 +27,7 @@ repository = "https://github.com/weiyiguo9/libmuffintin"
 rust-version = "1.85"
 
 [workspace.dependencies]
+libm = "0.2.16"
 num-complex = "0.4.6"
 thiserror = "2.0.12"
 proptest = "1.7.0"

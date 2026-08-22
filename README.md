@@ -9,7 +9,7 @@ muffin-tin electronic-structure methods.  The long-term target includes
 FP-KKR, (L)APW(+lo), and the LMTO/EMTO/NMTO family; the v0.1 route is LAPW
 first. Note that this library is not for production DFT calculations, and the API is subject to further changes.  The library is intended to be used as experiments to unify the foudamental muffin-tin basis in electronic structure methods and abstrct the common/heavy relyed functions. Apparantly named after libxc, libpaw, libcint.
 
-The current M-A through M-Ka implementation candidate provides:
+The current M-A through M-Ka implementation candidate plus the initial M-Kb slice provides:
 
 - `libmuffintin-core`: Hartree/Bohr units, complex and real spherical harmonics,
   SPEX-convention complex Gaunt coefficients, real Gaunt coefficients,
@@ -86,7 +86,8 @@ The current M-A through M-Ka implementation candidate provides:
   `AuxiliaryLayout`. The public assembler does not take
   `libmuffintin-mpb` or `libmuffintin-thc` types. Direct Ewald-summed
   $1/r$ is a toy oracle only. There is no live SPEX $V^q$ dump and no
-  Coulomb/THC/GW production consumer.
+  Coulomb/THC/GW production consumer;
+- `libmuffintin-dft` M-Kb (occupation slice): explicitly weighted regular-full-BZ band states; overflow-safe Fermi--Dirac and SPEX-standard-deviation Gaussian occupations; a shared bounded chemical-potential solve; Fermi--Dirac entropy/$-TS$; and the separate variational Gaussian smearing correction. State degeneracy is explicit, so implicit nonmagnetic spin degeneracy is not confused with explicitly enumerated collinear or spinor states. Density synthesis, Weinert Poisson, LDA/PBE, mixing, the SCF driver, SOC second variation, and tetrahedron DOS remain unimplemented M-Kb work.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.
@@ -123,10 +124,4 @@ recorded in the numbered derivation notes.
 
 ## Scope boundary
 
-This is a frozen-input LAPW operator engine, not yet a self-consistent DFT code.
-M-F includes local-orbital basis rows and collinear spin-channel drivers, but
-not SCF, SOC, noncollinear spin, occupations, or potential construction. The
-real Cu-versus-SPEX one-meV gate still needs a matching frozen
-potential/basis/eigenvalue fixture; synthetic empty-lattice tests do not replace
-that evidence, so the README overlay and `v0.1` release tag are not yet claimed.
-Producer-specific FLEUR conversion is intentionally frozen.
+This is a frozen-input LAPW operator engine with a finite-temperature occupation substrate, not yet a self-consistent DFT code. M-F includes local-orbital basis rows and collinear spin-channel drivers, but not SCF, SOC, noncollinear spin, density synthesis, or potential construction. The real Cu-versus-SPEX one-meV gate still needs a matching frozen potential/basis/eigenvalue fixture; synthetic empty-lattice tests do not replace that evidence, so the README overlay and `v0.1` release tag are not yet claimed. Producer-specific FLEUR conversion is intentionally frozen.
