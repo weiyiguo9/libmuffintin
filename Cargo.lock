@@ -920,7 +920,17 @@ name = "libmuffintin-dft"
 version = "0.1.0"
 dependencies = [
  "libm",
+ "libmuffintin-basis",
  "libmuffintin-core",
+ "libmuffintin-coulomb",
+ "libmuffintin-envelope",
+ "libmuffintin-grid",
+ "libmuffintin-lapw",
+ "libmuffintin-operators",
+ "libmuffintin-radial",
+ "libmuffintin-sphere",
+ "libmuffintin-tensor",
+ "num-complex",
  "thiserror 2.0.20",
 ]
 
@@ -989,6 +999,8 @@ dependencies = [
  "faer 0.22.6",
  "libmuffintin-basis",
  "libmuffintin-core",
+ "libmuffintin-envelope",
+ "libmuffintin-radial",
  "libmuffintin-tensor",
  "num-complex",
  "thiserror 2.0.20",
@@ -1010,6 +1022,7 @@ name = "libmuffintin-radial"
 version = "0.1.0"
 dependencies = [
  "libmuffintin-core",
+ "num-complex",
  "thiserror 2.0.20",
 ]
 
@@ -1021,6 +1034,26 @@ dependencies = [
  "libmuffintin-core",
  "libmuffintin-envelope",
  "libmuffintin-radial",
+]
+
+[[package]]
+name = "libmuffintin-runtime"
+version = "0.1.0"
+dependencies = [
+ "libmuffintin-core",
+ "libmuffintin-coulomb",
+ "libmuffintin-dft",
+ "libmuffintin-envelope",
+ "libmuffintin-io",
+ "libmuffintin-lapw",
+ "libmuffintin-operators",
+ "libmuffintin-radial",
+ "libmuffintin-sphere",
+ "libmuffintin-tensor",
+ "num-complex",
+ "serde",
+ "thiserror 2.0.20",
+ "toml",
 ]
 
 [[package]]

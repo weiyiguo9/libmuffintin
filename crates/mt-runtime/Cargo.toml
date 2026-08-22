@@ -1,0 +1,40 @@
+[package]
+name = "libmuffintin-runtime"
+description = "Versioned workflow input and unified runtime entry point for libmuffintin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+autobins = false
+
+[lib]
+name = "muffintin"
+
+[[bin]]
+name = "muffintin"
+path = "src/main.rs"
+
+[dependencies]
+libmuffintin-core = { path = "../mt-core" }
+libmuffintin-coulomb = { path = "../mt-coulomb" }
+libmuffintin-dft = { path = "../mt-dft" }
+libmuffintin-envelope = { path = "../mt-envelope" }
+libmuffintin-io = { path = "../mt-io" }
+libmuffintin-lapw = { path = "../mt-lapw" }
+libmuffintin-operators = { path = "../mt-operators" }
+libmuffintin-radial = { path = "../mt-radial" }
+libmuffintin-sphere = { path = "../mt-sphere" }
+libmuffintin-tensor = { path = "../mt-tensor" }
+num-complex.workspace = true
+serde = { version = "1.0.219", features = ["derive"] }
+thiserror.workspace = true
+toml = "0.8.20"
+
+[dev-dependencies]
+libmuffintin-io = { path = "../mt-io" }
+libmuffintin-lapw = { path = "../mt-lapw" }
+num-complex.workspace = true
+
+[lints]
+workspace = true
