@@ -9,6 +9,7 @@
 mod augmentation;
 mod layout;
 mod spec;
+mod spinor_spec;
 
 pub use augmentation::{
     ApwBoundaryBasis, ApwMatch, PlaneWaveAugmentation, SpinorApwMatch, SpinorPlaneWaveAugmentation,
@@ -19,6 +20,7 @@ pub use spec::{
     ApwSiteAugmentation, ApwSiteGeometry, BasisBlock, BasisSpec, CompiledBasis, Provenance,
     SpinorCompiledBasis, compile,
 };
+pub use spinor_spec::{SpinorBasisSite, SpinorBasisSpec, compile_spinor};
 
 use muffintin_envelope::EnvelopeError;
 use thiserror::Error;
@@ -36,6 +38,24 @@ pub enum BasisError {
     DuplicateKappa { kappa: i32 },
     #[error("spinor APW matches contain kappa={kappa} more than once")]
     DuplicateSpinorMatch { kappa: i32 },
+    #[error("spinor basis site {site} has no valence radial solutions")]
+    EmptySpinorRadialSet { site: usize },
+    #[error("spinor basis site {site} contains kappa={kappa} more than once")]
+    DuplicateSpinorSolution { site: usize, kappa: i32 },
+    #[error("spinor basis site {site} kappa={kappa} is not a valence radial solution")]
+    NonValenceSpinorSolution { site: usize, kappa: i32 },
+    #[error(
+        "spinor site {site} kappa={kappa} {boundary} boundary radius {actual} does not match {expected}"
+    )]
+    SpinorBoundaryRadius {
+        site: usize,
+        kappa: i32,
+        boundary: &'static str,
+        expected: f64,
+        actual: f64,
+    },
+    #[error("spinor site {site} local-orbital kappa={kappa} has no APW radial solution")]
+    SpinorLocalOrbitalWithoutRadialSolution { site: usize, kappa: i32 },
     #[error("spinor APW match for kappa={kappa} must use l={expected}, found l={actual}")]
     SpinorMatchAngularMomentum {
         kappa: i32,

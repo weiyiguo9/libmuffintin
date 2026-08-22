@@ -5,7 +5,7 @@ use crate::core_dirac::{
     CoreDiracSolution, DiracEnergyDerivative, DiracLocalOrbital, DiracSecondEnergyDerivative,
     ValenceDiracSolution,
 };
-use crate::valence::{EnergyDerivative, LocalOrbital, RadialSolution};
+use crate::valence::{EnergyDerivative, LocalOrbital, RadialSolution, SecondEnergyDerivative};
 
 /// Borrowed large and optional physical-small radial components.
 ///
@@ -27,6 +27,16 @@ impl RadialComponents for RadialSolution {
 }
 
 impl RadialComponents for EnergyDerivative {
+    fn large_component(&self) -> &[f64] {
+        &self.p
+    }
+
+    fn small_component(&self) -> Option<&[f64]> {
+        self.q.as_deref()
+    }
+}
+
+impl RadialComponents for SecondEnergyDerivative {
     fn large_component(&self) -> &[f64] {
         &self.p
     }
