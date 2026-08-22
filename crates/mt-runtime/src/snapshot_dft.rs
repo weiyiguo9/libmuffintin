@@ -13,14 +13,15 @@ use muffintin_dft::{
     BandPathRequest, BandState, CollinearKPoint, CoreContribution, CoreDensityError,
     CorePotentialBuildError, CorePotentialBuildSpec, CoreSpinPartition, DensityError,
     ElectrostaticSpec, FirstVariationRoute, FirstVariationSubspace, FullSpinorKPoint,
-    LocalPauliPotential, MuffinTinField, OccupationError, RegionalCoreShellInput, RegionalDensity,
-    RegionalElectrostaticError, RegionalElectrostaticResult, RegionalPotential, RegionalXcError,
+    InterstitialField, LocalPauliPotential, MuffinTinField, NoncollinearXcRoute, OccupationError,
+    RegionalCoreShellInput, RegionalDensity, RegionalElectrostaticError,
+    RegionalElectrostaticResult, RegionalPotential, RegionalScalarField, RegionalXcError,
     RegionalXcResult, RegularSpectrum, ScalarBuilderError, ScalarIterationBasis,
     ScalarLocalOrbitalRequest, ScalarSiteInput, ScfBasis, ScfConfig, ScfCoreSite, ScfEnergyContext,
     ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfLocalOrbitalKind, ScfOccupations,
     ScfPhysics, ScfRelativity, ScfState, SecondVariationError, SpinorBuilderError,
     SpinorFirstVariationError, SpinorIterationBasis, SpinorLocalOrbitalRequest, SpinorSiteInput,
-    TetrahedronError, XcFieldSpec, XcFunctional, build_collinear_scalar_iteration_bases,
+    TetrahedronError, XcFieldSpec, build_collinear_scalar_iteration_bases,
     build_extended_core_potentials, build_extended_snapshot_core_potentials,
     build_regional_core_contribution, build_spinor_iteration_basis,
     evaluate_regional_electrostatics, evaluate_regional_xc, solve_fermi_dirac, solve_gaussian,
@@ -29,9 +30,11 @@ use muffintin_dft::{
 };
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_io::{
-    AngularBasisV1, IoError, RadialEquationTagV1, SiteSpinV1, SnapshotV1, SpinTagV1,
+    AngularBasisV1, Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2,
+    FourierCoefficientV2, InitialV2, InterstitialFieldV2, IoError, MuffinTinFieldV2, PotentialV2,
+    RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, SnapshotV2, SphericalChannelV2,
 };
-use muffintin_lapw::{Collinear, GeneralizedEigensolution};
+use muffintin_lapw::{Collinear, GeneralizedEigensolution, InterstitialPotential, LapwError};
 use muffintin_operators::{SiteSpinOrbitBlock, SocOperatorError};
 use muffintin_radial::{
     CoreBracketSearch, CoreDiracSpec, CorePotentialContinuationSpec, CoreState, DiracError,
@@ -47,7 +50,7 @@ const OVERLAP_THRESHOLD: f64 = 1.0e-10;
 const OCCUPATION_TOLERANCE: f64 = 1.0e-12;
 const OCCUPATION_ITERATIONS: usize = 256;
 const SNAPSHOT_RADIUS_TOLERANCE: f64 = 1.0e-10;
-const TRANSVERSE_SPIN_TOLERANCE: f64 = 1.0e-10;
+const TRANSVERSE_FIELD_TOLERANCE: f64 = 1.0e-10;
 
 /// Snapshot-backed material kernel shared by SCF, bands, and DOS tasks.
 ///
@@ -56,10 +59,12 @@ const TRANSVERSE_SPIN_TOLERANCE: f64 = 1.0e-10;
 /// no atomic-density or artificial `G=0` guess is installed.
 #[derive(Debug)]
 pub struct SnapshotDftPhysics {
+    snapshot_template: SnapshotV2,
     reciprocal: ReciprocalLattice,
     geometry: InterstitialGeometry,
     sites: Vec<SnapshotSite>,
     frozen_potential: RegionalPotential,
+    restart_density: Option<RegionalDensity>,
     nuclear_charges: Vec<f64>,
     core_potentials: BTreeMap<usize, CorePotentialContext>,
     density_template: Option<RegionalDensity>,
@@ -88,7 +93,6 @@ struct SnapshotSite {
 struct SnapshotSpin {
     equation: RadialEquationTagV1,
     mesh: ExponentialMesh,
-    potential: SphereField,
     linearization: BTreeMap<u32, Hartree>,
     local_orbitals: Vec<(u32, Hartree)>,
 }
@@ -131,8 +135,8 @@ enum SnapshotKPointSolution {
 }
 
 impl SnapshotDftPhysics {
-    /// Convert a validated V1 snapshot into exact internal units and conventions.
-    pub fn new(snapshot: &SnapshotV1) -> Result<Self, SnapshotDftError> {
+    /// Convert a validated V2 snapshot into exact internal units and conventions.
+    pub fn new(snapshot: &SnapshotV2) -> Result<Self, SnapshotDftError> {
         snapshot.validate()?;
         let direct = snapshot
             .geometry
@@ -145,10 +149,8 @@ impl SnapshotDftPhysics {
         let mut converted_sites = Vec::with_capacity(snapshot.geometry.sites.len());
         for site in &snapshot.geometry.sites {
             let position = fractional_to_cartesian(site.fractional_position, direct);
-            let (up, down, nonmagnetic_scalar) = convert_site_spins(
-                &site.spins,
-                snapshot.meta.potential_convention.angular_basis,
-            )?;
+            let (up, down, nonmagnetic_scalar) =
+                convert_v2_site_bases(&site.id, &snapshot.geometry.radial_basis)?;
             if up.mesh != down.mesh {
                 return Err(SnapshotDftError::SpinMeshMismatch {
                     site: site.id.clone(),
@@ -186,29 +188,29 @@ impl SnapshotDftPhysics {
                 })
                 .collect::<Vec<_>>(),
         )?;
-        let interstitial = snapshot_interstitial(snapshot, reciprocal)?;
-        let frozen_potential = RegionalPotential::new(
-            Collinear::new(
-                converted_sites
-                    .iter()
-                    .map(|site| {
-                        MuffinTinField::new(site.up.mesh.clone(), site.up.potential.clone())
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-                converted_sites
-                    .iter()
-                    .map(|site| {
-                        MuffinTinField::new(site.down.mesh.clone(), site.down.potential.clone())
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-            ),
-            Collinear::new(interstitial.clone(), interstitial),
-        )?;
+        let restart_density = match &snapshot.initial {
+            InitialV2::FrozenPotential { .. } => None,
+            InitialV2::Restart { density, .. } => Some(density),
+        };
+        let potential = match &snapshot.initial {
+            InitialV2::FrozenPotential { potential } | InitialV2::Restart { potential, .. } => {
+                potential
+            }
+        };
+        let frozen_potential =
+            regional_potential_from_v2(potential, &geometry, &converted_sites, reciprocal)?;
+        let restart_density = restart_density
+            .map(|density| {
+                regional_density_from_v2(density, &geometry, &converted_sites, reciprocal)
+            })
+            .transpose()?;
         Ok(Self {
+            snapshot_template: snapshot.clone(),
             reciprocal,
             geometry,
             sites: converted_sites,
             frozen_potential,
+            restart_density,
             nuclear_charges: snapshot
                 .geometry
                 .sites
@@ -233,6 +235,12 @@ impl SnapshotDftPhysics {
         &self.frozen_potential
     }
 
+    /// Serialize a converged state as a V2 restart while preserving this
+    /// kernel's immutable geometry and radial-basis identity.
+    pub fn restart_snapshot(&self, state: &ScfState) -> Result<SnapshotV2, SnapshotDftError> {
+        snapshot_v2_from_state(&self.snapshot_template, state)
+    }
+
     fn solve_points(
         &self,
         potential: &RegionalPotential,
@@ -246,8 +254,9 @@ impl SnapshotDftPhysics {
         if relativity == ScfRelativity::SpinorFirstVariation {
             return self.solve_spinor_points(potential, basis, points);
         }
+        self.require_collinear_route(potential)?;
         let site_inputs = self.scalar_site_inputs(potential, basis)?;
-        let interstitial = potential.to_lapw_interstitial()?;
+        let interstitial = collinear_interstitial_potential(potential)?;
         let weight = 1.0 / points.len() as f64;
         let mut solved_points = Vec::with_capacity(points.len());
         let mut states = Vec::new();
@@ -374,7 +383,7 @@ impl SnapshotDftPhysics {
             let solved = solve_spinor_k_point(
                 &spinor_basis,
                 &self.geometry,
-                Collinear::new(&interstitial.up, &interstitial.down),
+                &interstitial,
                 OVERLAP_THRESHOLD,
             )?;
             let start = states.len();
@@ -408,15 +417,7 @@ impl SnapshotDftPhysics {
         potential: &RegionalPotential,
         basis: &ScfBasis,
     ) -> Result<Collinear<Vec<ScalarSiteInput>>, SnapshotDftError> {
-        if potential.muffin_tins().up.len() != self.sites.len()
-            || potential.muffin_tins().down.len() != self.sites.len()
-        {
-            return Err(SnapshotDftError::PotentialSiteCount {
-                expected: self.sites.len(),
-                up: potential.muffin_tins().up.len(),
-                down: potential.muffin_tins().down.len(),
-            });
-        }
+        self.require_potential_site_count(potential)?;
         let build_spin = |spin: usize| {
             self.sites
                 .iter()
@@ -430,12 +431,14 @@ impl SnapshotDftPhysics {
                             equation: template.equation,
                         });
                     }
-                    let field = if spin == 0 {
-                        potential.muffin_tins().up[site_index].field()
-                    } else {
-                        potential.muffin_tins().down[site_index].field()
-                    };
+                    let field = combine_muffin_tin_fields(
+                        &potential.scalar().muffin_tins()[site_index],
+                        1.0,
+                        &potential.magnetic()[2].muffin_tins()[site_index],
+                        if spin == 0 { 1.0 } else { -1.0 },
+                    )?;
                     let monopole = field
+                        .field()
                         .channel(0, 0)
                         .ok_or_else(|| SnapshotDftError::MissingMonopole(site.id.clone()))?;
                     let spherical_potential = monopole
@@ -477,7 +480,7 @@ impl SnapshotDftPhysics {
                         radius: site.radius,
                         mesh: template.mesh.clone(),
                         spherical_potential,
-                        potential: field.clone(),
+                        potential: field.field().clone(),
                         linearization_energies,
                         local_orbitals,
                     })
@@ -492,15 +495,7 @@ impl SnapshotDftPhysics {
         potential: &RegionalPotential,
         basis: &ScfBasis,
     ) -> Result<Vec<SpinorSiteInput>, SnapshotDftError> {
-        if potential.muffin_tins().up.len() != self.sites.len()
-            || potential.muffin_tins().down.len() != self.sites.len()
-        {
-            return Err(SnapshotDftError::PotentialSiteCount {
-                expected: self.sites.len(),
-                up: potential.muffin_tins().up.len(),
-                down: potential.muffin_tins().down.len(),
-            });
-        }
+        self.require_potential_site_count(potential)?;
         self.sites
             .iter()
             .enumerate()
@@ -514,15 +509,11 @@ impl SnapshotDftPhysics {
                         });
                     }
                 }
-                let up = potential.muffin_tins().up[site_index].field();
-                let down = potential.muffin_tins().down[site_index].field();
-                let mut scalar = up.zero_like();
-                scalar.add_scaled(Complex64::new(0.5, 0.0), up)?;
-                scalar.add_scaled(Complex64::new(0.5, 0.0), down)?;
-                let mut longitudinal = up.zero_like();
-                longitudinal.add_scaled(Complex64::new(0.5, 0.0), up)?;
-                longitudinal.add_scaled(Complex64::new(-0.5, 0.0), down)?;
-                let zero = up.zero_like();
+                let scalar = potential.scalar().muffin_tins()[site_index].field().clone();
+                let magnetic = potential
+                    .magnetic()
+                    .each_ref()
+                    .map(|component| component.muffin_tins()[site_index].field().clone());
                 let monopole = scalar
                     .channel(0, 0)
                     .ok_or_else(|| SnapshotDftError::MissingMonopole(site.id.clone()))?;
@@ -594,10 +585,7 @@ impl SnapshotDftPhysics {
                     radius: site.radius,
                     mesh: site.up.mesh.clone(),
                     spherical_potential,
-                    potential: LocalPauliPotential::new(
-                        scalar,
-                        [zero.clone(), zero, longitudinal],
-                    )?,
+                    potential: LocalPauliPotential::new(scalar, magnetic)?,
                     linearization_energies,
                     local_orbitals,
                 })
@@ -633,13 +621,64 @@ impl SnapshotDftPhysics {
         Ok(PlaneWaveEnvelope::new(waves))
     }
 
+    fn require_potential_site_count(
+        &self,
+        potential: &RegionalPotential,
+    ) -> Result<(), SnapshotDftError> {
+        let expected = self.sites.len();
+        for (component, actual) in
+            std::iter::once(("scalar", potential.scalar().muffin_tins().len())).chain(
+                potential
+                    .magnetic()
+                    .iter()
+                    .zip(["Bx", "By", "Bz"])
+                    .map(|(field, name)| (name, field.muffin_tins().len())),
+            )
+        {
+            if actual != expected {
+                return Err(SnapshotDftError::PotentialComponentSiteCount {
+                    component,
+                    expected,
+                    actual,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn require_collinear_route(
+        &self,
+        potential: &RegionalPotential,
+    ) -> Result<(), SnapshotDftError> {
+        let transverse_rms = [
+            potential.magnetic()[0].residual_rms()?,
+            potential.magnetic()[1].residual_rms()?,
+        ];
+        if transverse_rms
+            .iter()
+            .any(|&rms| rms > TRANSVERSE_FIELD_TOLERANCE)
+        {
+            return Err(SnapshotDftError::TransversePotentialUnsupported {
+                x_rms: transverse_rms[0],
+                y_rms: transverse_rms[1],
+                tolerance: TRANSVERSE_FIELD_TOLERANCE,
+            });
+        }
+        Ok(())
+    }
+
     fn require_second_variation_route(
         &self,
         potential: &RegionalPotential,
     ) -> Result<(), SnapshotDftError> {
+        self.require_collinear_route(potential)?;
+        let magnetic = potential
+            .magnetic()
+            .iter()
+            .map(RegionalScalarField::residual_rms)
+            .collect::<Result<Vec<_>, _>>()?;
         if self.sites.iter().any(|site| !site.nonmagnetic_scalar)
-            || potential.muffin_tins().up != potential.muffin_tins().down
-            || potential.interstitial().up != potential.interstitial().down
+            || magnetic.iter().any(|&rms| rms > TRANSVERSE_FIELD_TOLERANCE)
         {
             return Err(SnapshotDftError::SecondVariationRequiresNonmagneticScalar);
         }
@@ -720,13 +759,12 @@ impl SnapshotDftPhysics {
                     &bases.down.density_sites,
                     &down_points,
                 )?;
+                let charge = combine_scalar_fields(up.charge(), 0.5, down.charge(), 0.5)?;
+                let longitudinal = combine_scalar_fields(up.charge(), 0.5, down.charge(), -0.5)?;
+                let zero = charge.zero_like();
                 Ok(RegionalDensity::new(
-                    self.geometry.clone(),
-                    Collinear::new(up.muffin_tins().up.clone(), down.muffin_tins().down.clone()),
-                    Collinear::new(
-                        up.interstitial().up.clone(),
-                        down.interstitial().down.clone(),
-                    ),
+                    charge,
+                    [zero.clone(), zero, longitudinal],
                 )?)
             }
             SnapshotKPointSolution::Spinor { basis, .. } => {
@@ -749,27 +787,12 @@ impl SnapshotDftPhysics {
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let density = synthesize_full_spinor_valence_density(
+                Ok(synthesize_full_spinor_valence_density(
                     self.geometry.clone(),
                     density_layout,
                     &basis.density_sites,
                     &spinor_points,
-                )?;
-                let transverse_rms = [
-                    density.spin()[0].residual_rms()?,
-                    density.spin()[1].residual_rms()?,
-                ];
-                if transverse_rms
-                    .iter()
-                    .any(|&rms| rms > TRANSVERSE_SPIN_TOLERANCE)
-                {
-                    return Err(SnapshotDftError::NoncollinearDensityUnsupported {
-                        x_rms: transverse_rms[0],
-                        y_rms: transverse_rms[1],
-                        tolerance: TRANSVERSE_SPIN_TOLERANCE,
-                    });
-                }
-                Ok(density.collinear_density()?)
+                )?)
             }
         }
     }
@@ -939,6 +962,10 @@ impl ScfPhysics for SnapshotDftPhysics {
     type BandSolution = SnapshotBandSolution;
 
     fn initial_density(&mut self, config: &ScfConfig) -> Result<RegionalDensity, Self::Error> {
+        if let Some(density) = &self.restart_density {
+            self.density_template = Some(density.clone());
+            return Ok(density.clone());
+        }
         let one_particle = SnapshotOneParticle {
             potential: self.frozen_potential.clone(),
             basis: config.basis.clone(),
@@ -970,12 +997,8 @@ impl ScfPhysics for SnapshotDftPhysics {
                     .iter()
                     .position(|candidate| candidate.id == site.id)
                     .ok_or_else(|| SnapshotDftError::UnknownCoreSite(site.id.clone()))?;
-                let effective = average_extended_core(
-                    &extended.up[site_index].potential,
-                    &extended.down[site_index].potential,
-                    &site.id,
-                )?;
-                let contribution = self.core_contribution(site, &effective, &density)?;
+                let contribution =
+                    self.core_contribution(site, &extended[site_index].potential, &density)?;
                 density.add_scaled(1.0, &contribution.density)?;
             }
         }
@@ -991,27 +1014,28 @@ impl ScfPhysics for SnapshotDftPhysics {
     ) -> Result<RegionalPotential, Self::Error> {
         self.density_template = Some(density.clone());
         let electrostatic = evaluate_regional_electrostatics(
-            density,
+            density.charge(),
             &ElectrostaticSpec::new(
                 muffintin_coulomb::WeinertHartreeSpec::electronic(4)?,
                 self.nuclear_charges.clone(),
             )?,
         )?;
-        let output_l_max = density
-            .muffin_tins()
-            .up
-            .iter()
+        let output_l_max = std::iter::once(density.charge())
+            .chain(density.magnetization())
+            .flat_map(RegionalScalarField::muffin_tins)
             .flat_map(|field| field.field().channels().map(|(channel, _)| channel.l))
             .max()
             .unwrap_or(0);
-        let xc_functional = match exchange_correlation {
-            ScfExchangeCorrelation::LdaPw92 => XcFunctional::LdaPw92,
-            ScfExchangeCorrelation::Pbe => XcFunctional::Pbe,
-        };
-        let xc_field_spec = xc_spec(density, output_l_max);
+        let xc_functional = exchange_correlation.functional;
+        let xc_field_spec = xc_spec(
+            density,
+            output_l_max,
+            exchange_correlation.noncollinear_route,
+        );
         let xc = evaluate_regional_xc(xc_functional, density, xc_field_spec)?;
-        let mut potential = electrostatic.potential.clone();
-        potential.add_scaled(1.0, &xc.potential)?;
+        let mut scalar = electrostatic.potential.clone();
+        scalar.add_scaled(1.0, xc.potential.scalar())?;
+        let potential = RegionalPotential::new(scalar, xc.potential.magnetic().clone())?;
         self.core_potentials.insert(
             iteration,
             CorePotentialContext {
@@ -1021,6 +1045,7 @@ impl ScfPhysics for SnapshotDftPhysics {
                 spec: CorePotentialBuildSpec {
                     continuation: CorePotentialContinuationSpec::default(),
                     xc_functional,
+                    xc_noncollinear_route: exchange_correlation.noncollinear_route,
                     xc_angular_point_count: xc_field_spec.angular_point_count,
                 },
             },
@@ -1073,10 +1098,7 @@ impl ScfPhysics for SnapshotDftPhysics {
             &meshes,
             context.spec,
         )?;
-        let up = &continued.up[site_index].potential;
-        let down = &continued.down[site_index].potential;
-        let extended = average_extended_core(up, down, &site.id)?;
-        self.core_contribution(site, &extended, &template)
+        self.core_contribution(site, &continued[site_index].potential, &template)
     }
 
     fn assemble_one_particle(
@@ -1197,93 +1219,105 @@ impl ScfPhysics for SnapshotDftPhysics {
     }
 }
 
-fn convert_site_spins(
-    spins: &[SiteSpinV1],
-    angular_basis: AngularBasisV1,
+/// Build a validated V2 restart snapshot from a converged SCF state.
+///
+/// `template` supplies the immutable cell, sites, radial equations, and
+/// linearization metadata. The state supplies the complete noncollinear
+/// density and potential without reducing their Cartesian Pauli components.
+pub fn snapshot_v2_from_state(
+    template: &SnapshotV2,
+    state: &ScfState,
+) -> Result<SnapshotV2, SnapshotDftError> {
+    template.validate()?;
+    let template_potential = match &template.initial {
+        InitialV2::FrozenPotential { potential } | InitialV2::Restart { potential, .. } => {
+            potential
+        }
+    };
+    let mut potential_hints = template_potential.basis_hints;
+    potential_hints.plane_wave_cutoff = Some(state.basis.plane_wave_cutoff);
+    let mut density_hints = match &template.initial {
+        InitialV2::Restart { density, .. } => density.basis_hints,
+        InitialV2::FrozenPotential { .. } => template_potential.basis_hints,
+    };
+    density_hints.plane_wave_cutoff = Some(state.basis.plane_wave_cutoff);
+    let angular_basis = template.meta.potential_convention.angular_basis;
+    let density = DensityV2 {
+        unit: FieldUnitV2::BohrMinus3,
+        representation: FieldRepresentationV2::PeriodicExtension,
+        angular_basis,
+        basis_hints: density_hints,
+        n: regional_scalar_to_v2(state.density.charge(), &template.geometry.sites)?,
+        mx: regional_scalar_to_v2(&state.density.magnetization()[0], &template.geometry.sites)?,
+        my: regional_scalar_to_v2(&state.density.magnetization()[1], &template.geometry.sites)?,
+        mz: regional_scalar_to_v2(&state.density.magnetization()[2], &template.geometry.sites)?,
+    };
+    let potential = PotentialV2 {
+        unit: FieldUnitV2::Hartree,
+        representation: FieldRepresentationV2::MaskedOperator,
+        angular_basis,
+        basis_hints: potential_hints,
+        v0: regional_scalar_to_v2(state.potential.scalar(), &template.geometry.sites)?,
+        bx: regional_scalar_to_v2(&state.potential.magnetic()[0], &template.geometry.sites)?,
+        by: regional_scalar_to_v2(&state.potential.magnetic()[1], &template.geometry.sites)?,
+        bz: regional_scalar_to_v2(&state.potential.magnetic()[2], &template.geometry.sites)?,
+    };
+    let snapshot = SnapshotV2::new(
+        template.meta.clone(),
+        template.geometry.clone(),
+        InitialV2::Restart { density, potential },
+    );
+    snapshot.validate()?;
+    Ok(snapshot)
+}
+
+fn convert_v2_site_bases(
+    site_id: &str,
+    bases: &[muffintin_io::SiteRadialBasisV2],
 ) -> Result<(SnapshotSpin, SnapshotSpin, bool), SnapshotDftError> {
-    let scalar = spins.iter().find(|spin| spin.spin == SpinTagV1::Scalar);
-    let up = spins.iter().find(|spin| spin.spin == SpinTagV1::Up);
-    let down = spins.iter().find(|spin| spin.spin == SpinTagV1::Down);
-    match (scalar, up, down, spins.len()) {
-        (Some(spin), None, None, 1) => {
-            let converted = convert_spin(spin, angular_basis, None)?;
+    let scalar = bases
+        .iter()
+        .find(|basis| basis.site_id == site_id && basis.spin == RadialBasisSpinV2::Scalar);
+    let up = bases
+        .iter()
+        .find(|basis| basis.site_id == site_id && basis.spin == RadialBasisSpinV2::Up);
+    let down = bases
+        .iter()
+        .find(|basis| basis.site_id == site_id && basis.spin == RadialBasisSpinV2::Down);
+    match (scalar, up, down) {
+        (Some(scalar), None, None) => {
+            let converted = convert_v2_radial_basis(scalar)?;
             Ok((converted.clone(), converted, true))
         }
-        (None, Some(up), Some(down), 2) => {
-            let union = up
-                .potential_channels
-                .iter()
-                .chain(&down.potential_channels)
-                .map(|channel| (channel.l, channel.m))
-                .collect::<BTreeSet<_>>();
-            Ok((
-                convert_spin(up, angular_basis, Some(&union))?,
-                convert_spin(down, angular_basis, Some(&union))?,
-                false,
-            ))
-        }
-        _ => Err(SnapshotDftError::InvalidSpinTags),
+        (None, Some(up), Some(down)) => Ok((
+            convert_v2_radial_basis(up)?,
+            convert_v2_radial_basis(down)?,
+            false,
+        )),
+        _ => Err(SnapshotDftError::InvalidRadialBasisSpins {
+            site: site_id.to_owned(),
+        }),
     }
 }
 
-fn convert_spin(
-    spin: &SiteSpinV1,
-    angular_basis: AngularBasisV1,
-    union: Option<&BTreeSet<(u32, i32)>>,
+fn convert_v2_radial_basis(
+    basis: &muffintin_io::SiteRadialBasisV2,
 ) -> Result<SnapshotSpin, SnapshotDftError> {
     let mesh = ExponentialMesh::new(
-        Bohr(spin.mesh.first),
-        spin.mesh.log_increment,
-        spin.mesh.point_count,
+        Bohr(basis.mesh.first),
+        basis.mesh.log_increment,
+        basis.mesh.point_count,
     )?;
-    let convention = match angular_basis {
-        AngularBasisV1::ComplexCondonShortley => HarmonicConvention::Complex,
-        AngularBasisV1::RealTesseralCondonShortley => HarmonicConvention::Real,
-    };
-    let by_channel = spin
-        .potential_channels
-        .iter()
-        .map(|channel| ((channel.l, channel.m), channel))
-        .collect::<BTreeMap<_, _>>();
-    let channels = union
-        .cloned()
-        .unwrap_or_else(|| by_channel.keys().copied().collect());
-    let normalized = channels
-        .into_iter()
-        .map(|channel| {
-            let values = by_channel.get(&channel).map_or_else(
-                || vec![Complex64::new(0.0, 0.0); mesh.len()],
-                |source| {
-                    source
-                        .real
-                        .iter()
-                        .enumerate()
-                        .map(|(index, &real)| {
-                            let imaginary = source.imaginary.get(index).copied().unwrap_or(0.0);
-                            let scale = if channel == (0, 0) {
-                                (4.0 * PI).sqrt()
-                            } else {
-                                1.0
-                            };
-                            Complex64::new(scale * real, scale * imaginary)
-                        })
-                        .collect()
-                },
-            );
-            (channel, values)
-        })
-        .collect::<Vec<_>>();
     Ok(SnapshotSpin {
-        equation: spin.radial_equation,
+        equation: basis.radial_equation,
         mesh,
-        potential: SphereField::new(convention, normalized)?,
-        linearization: spin
+        linearization: basis
             .linearization
             .linearization_energies
             .iter()
             .map(|parameter| (parameter.l, Hartree(parameter.energy)))
             .collect(),
-        local_orbitals: spin
+        local_orbitals: basis
             .linearization
             .local_orbital_energies
             .iter()
@@ -1292,13 +1326,104 @@ fn convert_spin(
     })
 }
 
-fn snapshot_interstitial(
-    snapshot: &SnapshotV1,
+fn regional_potential_from_v2(
+    potential: &PotentialV2,
+    geometry: &InterstitialGeometry,
+    sites: &[SnapshotSite],
     reciprocal: ReciprocalLattice,
-) -> Result<muffintin_dft::InterstitialField, SnapshotDftError> {
-    let vectors = snapshot
-        .interstitial
-        .coefficients
+) -> Result<RegionalPotential, SnapshotDftError> {
+    let scalar = regional_scalar_from_v2(
+        &potential.v0,
+        potential.angular_basis,
+        geometry,
+        sites,
+        reciprocal,
+    )?;
+    let magnetic = [&potential.bx, &potential.by, &potential.bz]
+        .map(|field| {
+            regional_scalar_from_v2(field, potential.angular_basis, geometry, sites, reciprocal)
+        })
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?
+        .try_into()
+        .expect("three V2 magnetic components remain three components");
+    Ok(RegionalPotential::new(scalar, magnetic)?)
+}
+
+fn regional_density_from_v2(
+    density: &DensityV2,
+    geometry: &InterstitialGeometry,
+    sites: &[SnapshotSite],
+    reciprocal: ReciprocalLattice,
+) -> Result<RegionalDensity, SnapshotDftError> {
+    let charge = regional_scalar_from_v2(
+        &density.n,
+        density.angular_basis,
+        geometry,
+        sites,
+        reciprocal,
+    )?;
+    let magnetization = [&density.mx, &density.my, &density.mz]
+        .map(|field| {
+            regional_scalar_from_v2(field, density.angular_basis, geometry, sites, reciprocal)
+        })
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?
+        .try_into()
+        .expect("three V2 magnetization components remain three components");
+    Ok(RegionalDensity::new(charge, magnetization)?)
+}
+
+fn regional_scalar_from_v2(
+    field: &RegionalFieldV2,
+    angular_basis: AngularBasisV1,
+    geometry: &InterstitialGeometry,
+    sites: &[SnapshotSite],
+    reciprocal: ReciprocalLattice,
+) -> Result<RegionalScalarField, SnapshotDftError> {
+    let convention = match angular_basis {
+        AngularBasisV1::ComplexCondonShortley => HarmonicConvention::Complex,
+        AngularBasisV1::RealTesseralCondonShortley => HarmonicConvention::Real,
+    };
+    let by_site = field
+        .muffin_tins
+        .iter()
+        .map(|field| (field.site_id.as_str(), field))
+        .collect::<BTreeMap<_, _>>();
+    let muffin_tins = sites
+        .iter()
+        .map(|site| {
+            let source = by_site
+                .get(site.id.as_str())
+                .ok_or_else(|| SnapshotDftError::MissingV2FieldSite(site.id.clone()))?;
+            let channels = source.channels.iter().map(|channel| {
+                let scale = if (channel.l, channel.m) == (0, 0) {
+                    (4.0 * PI).sqrt()
+                } else {
+                    1.0
+                };
+                let values = channel
+                    .real
+                    .iter()
+                    .enumerate()
+                    .map(|(index, &real)| {
+                        Complex64::new(
+                            scale * real,
+                            scale * channel.imaginary.get(index).copied().unwrap_or(0.0),
+                        )
+                    })
+                    .collect();
+                ((channel.l, channel.m), values)
+            });
+            Ok(MuffinTinField::new(
+                site.up.mesh.clone(),
+                SphereField::new(convention, channels)?,
+            )?)
+        })
+        .collect::<Result<Vec<_>, SnapshotDftError>>()?;
+    let mut coefficients = field.interstitial.coefficients.clone();
+    coefficients.sort_by_key(|coefficient| coefficient.g);
+    let vectors = coefficients
         .iter()
         .map(|coefficient| g_vector(reciprocal, coefficient.g))
         .collect();
@@ -1306,15 +1431,69 @@ fn snapshot_interstitial(
     if layout.index([0; 3]).is_none() {
         return Err(SnapshotDftError::MissingInterstitialZero);
     }
-    let values = snapshot
-        .interstitial
-        .coefficients
+    let values = coefficients
         .iter()
         .map(|coefficient| Complex64::new(coefficient.value.real, coefficient.value.imaginary))
         .collect();
-    Ok(muffintin_dft::InterstitialField::from_fourier_field(
-        HermitianFourierField::new(layout, values)?,
-    ))
+    let interstitial =
+        InterstitialField::from_fourier_field(HermitianFourierField::new(layout, values)?);
+    Ok(RegionalScalarField::new(
+        geometry.clone(),
+        muffin_tins,
+        interstitial,
+    )?)
+}
+
+fn regional_scalar_to_v2(
+    field: &RegionalScalarField,
+    sites: &[muffintin_io::SiteV2],
+) -> Result<RegionalFieldV2, SnapshotDftError> {
+    if field.muffin_tins().len() != sites.len() {
+        return Err(SnapshotDftError::ExportSiteCount {
+            expected: sites.len(),
+            actual: field.muffin_tins().len(),
+        });
+    }
+    let muffin_tins = sites
+        .iter()
+        .zip(field.muffin_tins())
+        .map(|(site, field)| MuffinTinFieldV2 {
+            site_id: site.id.clone(),
+            channels: field
+                .field()
+                .channels()
+                .map(|(channel, values)| {
+                    let scale = if (channel.l, channel.m) == (0, 0) {
+                        1.0 / (4.0 * PI).sqrt()
+                    } else {
+                        1.0
+                    };
+                    SphericalChannelV2 {
+                        l: channel.l,
+                        m: channel.m,
+                        real: values.iter().map(|value| scale * value.re).collect(),
+                        imaginary: values.iter().map(|value| scale * value.im).collect(),
+                    }
+                })
+                .collect(),
+        })
+        .collect();
+    let coefficients = field
+        .interstitial()
+        .field()
+        .iter()
+        .map(|(vector, &value)| FourierCoefficientV2 {
+            g: vector.index,
+            value: Complex64V2 {
+                real: value.re,
+                imaginary: value.im,
+            },
+        })
+        .collect();
+    Ok(RegionalFieldV2 {
+        muffin_tins,
+        interstitial: InterstitialFieldV2 { coefficients },
+    })
 }
 
 fn second_variation_blocks(
@@ -1371,6 +1550,63 @@ fn split_second_variation(
     Ok(Collinear::new(split(0)?, split(1)?))
 }
 
+fn combine_muffin_tin_fields(
+    left: &MuffinTinField,
+    left_scale: f64,
+    right: &MuffinTinField,
+    right_scale: f64,
+) -> Result<MuffinTinField, SnapshotDftError> {
+    let mut result = left.zero_like();
+    result.add_scaled(left_scale, left)?;
+    result.add_scaled(right_scale, right)?;
+    Ok(result)
+}
+
+fn combine_interstitial_fields(
+    left: &InterstitialField,
+    left_scale: f64,
+    right: &InterstitialField,
+    right_scale: f64,
+) -> Result<InterstitialField, SnapshotDftError> {
+    let mut result = left.zero_like();
+    result.add_scaled(left_scale, left)?;
+    result.add_scaled(right_scale, right)?;
+    Ok(result)
+}
+
+fn combine_scalar_fields(
+    left: &RegionalScalarField,
+    left_scale: f64,
+    right: &RegionalScalarField,
+    right_scale: f64,
+) -> Result<RegionalScalarField, SnapshotDftError> {
+    let mut result = left.zero_like();
+    result.add_scaled(left_scale, left)?;
+    result.add_scaled(right_scale, right)?;
+    Ok(result)
+}
+
+fn collinear_interstitial_potential(
+    potential: &RegionalPotential,
+) -> Result<Collinear<InterstitialPotential>, SnapshotDftError> {
+    let up = combine_interstitial_fields(
+        potential.scalar().interstitial(),
+        1.0,
+        potential.magnetic()[2].interstitial(),
+        1.0,
+    )?;
+    let down = combine_interstitial_fields(
+        potential.scalar().interstitial(),
+        1.0,
+        potential.magnetic()[2].interstitial(),
+        -1.0,
+    )?;
+    Ok(Collinear::new(
+        InterstitialPotential::try_from(&up)?,
+        InterstitialPotential::try_from(&down)?,
+    ))
+}
+
 fn extend_mesh(
     muffin_tin: &ExponentialMesh,
     target_radius: f64,
@@ -1386,35 +1622,6 @@ fn extend_mesh(
         muffin_tin.increment(),
         count,
     )?)
-}
-
-fn average_extended_core(
-    up: &ExtendedCorePotential,
-    down: &ExtendedCorePotential,
-    site: &str,
-) -> Result<ExtendedCorePotential, SnapshotDftError> {
-    if up.mesh != down.mesh
-        || up.values.len() != down.values.len()
-        || up.muffin_tin_points != down.muffin_tin_points
-    {
-        return Err(SnapshotDftError::CoreSpinMeshMismatch {
-            site: site.to_owned(),
-        });
-    }
-    Ok(ExtendedCorePotential {
-        mesh: up.mesh.clone(),
-        values: up
-            .values
-            .iter()
-            .zip(&down.values)
-            .map(|(&up, &down)| 0.5 * (up + down))
-            .collect(),
-        muffin_tin_points: up.muffin_tin_points,
-        muffin_tin_boundary: 0.5 * (up.muffin_tin_boundary + down.muffin_tin_boundary),
-        periodic_boundary: 0.5 * (up.periodic_boundary + down.periodic_boundary),
-        boundary_mismatch: 0.5 * (up.boundary_mismatch + down.boundary_mismatch),
-        origin_coulomb_residual: 0.5 * (up.origin_coulomb_residual + down.origin_coulomb_residual),
-    })
 }
 
 fn spinor_kappas_for_l(l: u32) -> Result<Vec<Kappa>, SnapshotDftError> {
@@ -1486,8 +1693,12 @@ fn regular_k_points(mesh: ScfKMesh) -> Result<Vec<[f64; 3]>, SnapshotDftError> {
     Ok(points)
 }
 
-fn xc_spec(density: &RegionalDensity, output_l_max: u32) -> XcFieldSpec {
-    let layout = density.interstitial().up.layout();
+fn xc_spec(
+    density: &RegionalDensity,
+    output_l_max: u32,
+    noncollinear_route: NoncollinearXcRoute,
+) -> XcFieldSpec {
+    let layout = density.charge().interstitial().layout();
     let divisions = std::array::from_fn(|axis| {
         let maximum = layout
             .vectors()
@@ -1502,6 +1713,7 @@ fn xc_spec(density: &RegionalDensity, output_l_max: u32) -> XcFieldSpec {
         interstitial_divisions: divisions,
         angular_point_count,
         output_l_max,
+        noncollinear_route,
     }
 }
 
@@ -1592,6 +1804,8 @@ pub enum SnapshotDftError {
     #[error(transparent)]
     Tensor(#[from] TensorError),
     #[error(transparent)]
+    Lapw(#[from] LapwError),
+    #[error(transparent)]
     Kappa(#[from] muffintin_core::KappaError),
     #[error(transparent)]
     Tetrahedron(#[from] TetrahedronError),
@@ -1603,8 +1817,12 @@ pub enum SnapshotDftError {
     CorePotential(#[from] CorePotentialBuildError),
     #[error(transparent)]
     CoreDensity(#[from] CoreDensityError),
-    #[error("snapshot site spin tags must be exactly one scalar channel or one up/down pair")]
-    InvalidSpinTags,
+    #[error("site {site:?} radial basis must be exactly scalar or an up/down pair")]
+    InvalidRadialBasisSpins { site: String },
+    #[error("V2 regional field is missing site {0:?}")]
+    MissingV2FieldSite(String),
+    #[error("cannot export {actual} muffin-tin fields against {expected} snapshot sites")]
+    ExportSiteCount { expected: usize, actual: usize },
     #[error("site {site:?} has different up/down radial meshes")]
     SpinMeshMismatch { site: String },
     #[error("site {site:?} muffin-tin radius is {declared}, radial mesh ends at {mesh}")]
@@ -1615,11 +1833,11 @@ pub enum SnapshotDftError {
     },
     #[error("snapshot interstitial potential must contain G=0")]
     MissingInterstitialZero,
-    #[error("potential has up/down site counts {up}/{down}, expected {expected}")]
-    PotentialSiteCount {
+    #[error("potential component {component} has {actual} sites, expected {expected}")]
+    PotentialComponentSiteCount {
+        component: &'static str,
         expected: usize,
-        up: usize,
-        down: usize,
+        actual: usize,
     },
     #[error(
         "scalar route needs Koelling-Harmon input at site {site:?}, spin {spin}; got {equation:?}"
@@ -1662,9 +1880,9 @@ pub enum SnapshotDftError {
     #[error("one band solution mixed scalar and spinor k-point routes")]
     InconsistentRelativityRoute,
     #[error(
-        "V1 SCF potential is collinear, but full-spinor density has transverse RMS ({x_rms}, {y_rms}) above {tolerance}"
+        "scalar/second-variation route cannot consume transverse potential RMS ({x_rms}, {y_rms}) above {tolerance}"
     )]
-    NoncollinearDensityUnsupported {
+    TransversePotentialUnsupported {
         x_rms: f64,
         y_rms: f64,
         tolerance: f64,
@@ -1673,8 +1891,6 @@ pub enum SnapshotDftError {
     UnknownCoreSite(String),
     #[error("extended core mesh point count overflows usize")]
     CoreMeshCountOverflow,
-    #[error("site {site:?} produced different up/down extended core meshes")]
-    CoreSpinMeshMismatch { site: String },
     #[error("core solve has no regional density template")]
     MissingDensityTemplate,
     #[error("iteration {0} has no raw periodic continuation for the core solve")]
@@ -1694,16 +1910,18 @@ mod tests {
     use super::*;
     use muffintin_dft::{
         BandPathPoint, FirstVariationWindow, ScfConvergence, ScfCoreSite, ScfCoreState, ScfMixing,
-        run_scf,
+        XcFunctional, run_scf,
     };
     use muffintin_io::{
         BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1, ExponentialMeshSpecV1,
         FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1, GeometryV1, InterstitialV1,
         InverseLengthUnitV1, LatticeV1, LengthUnitV1, LinearizationV1, MetaV1, PotentialChannelV1,
-        PotentialConventionV1, PotentialRadialQuantityV1, SiteV1, SphericalChannelConventionV1,
+        PotentialConventionV1, PotentialRadialQuantityV1, SiteSpinV1, SiteV1, SnapshotFile,
+        SnapshotV1, SphericalChannelConventionV1, SpinTagV1, snapshot_file_from_toml,
+        snapshot_file_to_toml,
     };
 
-    fn snapshot() -> SnapshotV1 {
+    fn snapshot_v1() -> muffintin_io::SnapshotV1 {
         let point_count = 61;
         let first: f64 = 1.0e-4;
         let radius: f64 = 1.0;
@@ -1787,6 +2005,10 @@ mod tests {
         )
     }
 
+    fn snapshot() -> SnapshotV2 {
+        snapshot_v1().normalize_v2().unwrap()
+    }
+
     fn config(relativity: ScfRelativity) -> ScfConfig {
         ScfConfig {
             electron_count: 1.0,
@@ -1802,7 +2024,10 @@ mod tests {
             occupations: ScfOccupations::FermiDirac {
                 temperature: Hartree(0.02),
             },
-            exchange_correlation: ScfExchangeCorrelation::LdaPw92,
+            exchange_correlation: ScfExchangeCorrelation {
+                functional: XcFunctional::LdaPw92,
+                noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+            },
             mixing: ScfMixing::Linear { alpha: 1.0 },
             relativity,
             convergence: ScfConvergence {
@@ -1817,8 +2042,8 @@ mod tests {
         }
     }
 
-    fn core_snapshot_and_config() -> (SnapshotV1, ScfConfig) {
-        let mut snapshot = snapshot();
+    fn core_snapshot_and_config() -> (SnapshotV2, ScfConfig) {
+        let mut snapshot = snapshot_v1();
         let first: f64 = 1.0e-5;
         let radius: f64 = 3.0;
         let point_count = 121;
@@ -1850,7 +2075,7 @@ mod tests {
             kappa: -1,
             occupation: 1.0,
         });
-        (snapshot, config)
+        (snapshot.normalize_v2().unwrap(), config)
     }
 
     #[test]
@@ -1860,13 +2085,71 @@ mod tests {
             physics.geometry.spheres()[0].center,
             [Bohr(2.0), Bohr(4.0), Bohr(4.0)]
         );
-        let physical = snapshot().geometry.sites[0].spins[0].potential_channels[0].real[17];
-        let normalized = physics.frozen_potential.muffin_tins().up[0]
+        let physical = snapshot_v1().geometry.sites[0].spins[0].potential_channels[0].real[17];
+        let normalized = physics.frozen_potential.scalar().muffin_tins()[0]
             .field()
             .channel(0, 0)
             .unwrap()[17]
             .re;
         assert!((normalized - (4.0 * PI).sqrt() * physical).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn v2_interstitial_components_are_keyed_independently_of_input_order() {
+        fn coefficient(g: [i32; 3], real: f64, imaginary: f64) -> FourierCoefficientV2 {
+            FourierCoefficientV2 {
+                g,
+                value: Complex64V2 { real, imaginary },
+            }
+        }
+
+        let mut snapshot = snapshot();
+        let InitialV2::FrozenPotential { potential } = &mut snapshot.initial else {
+            unreachable!()
+        };
+        potential.v0.interstitial.coefficients = vec![
+            coefficient([0, 0, 0], 0.0, 0.0),
+            coefficient([1, 0, 0], 1.0, 2.0),
+            coefficient([-1, 0, 0], 1.0, -2.0),
+        ];
+        potential.bx.interstitial.coefficients = vec![
+            coefficient([1, 0, 0], 3.0, 4.0),
+            coefficient([0, 0, 0], 0.5, 0.0),
+            coefficient([-1, 0, 0], 3.0, -4.0),
+        ];
+        potential.by.interstitial.coefficients = vec![
+            coefficient([-1, 0, 0], 5.0, -6.0),
+            coefficient([1, 0, 0], 5.0, 6.0),
+            coefficient([0, 0, 0], 0.25, 0.0),
+        ];
+        potential.bz.interstitial.coefficients = vec![
+            coefficient([0, 0, 0], -0.5, 0.0),
+            coefficient([-1, 0, 0], 7.0, -8.0),
+            coefficient([1, 0, 0], 7.0, 8.0),
+        ];
+
+        let physics = SnapshotDftPhysics::new(&snapshot).unwrap();
+        let potential = physics.frozen_potential();
+        for field in potential.magnetic() {
+            assert_eq!(
+                field.interstitial().layout(),
+                potential.scalar().interstitial().layout()
+            );
+        }
+        assert_eq!(
+            potential.magnetic()[0]
+                .interstitial()
+                .field()
+                .coefficient([1, 0, 0]),
+            Some(Complex64::new(3.0, 4.0))
+        );
+        assert_eq!(
+            potential.magnetic()[1]
+                .interstitial()
+                .field()
+                .coefficient([-1, 0, 0]),
+            Some(Complex64::new(5.0, -6.0))
+        );
     }
 
     #[test]
@@ -1876,7 +2159,14 @@ mod tests {
             .initial_density(&config(ScfRelativity::Scalar))
             .unwrap();
         assert!((muffintin_dft::electron_count(&density).unwrap() - 1.0).abs() < 1.0e-10);
-        assert!(density.interstitial().up.layout().index([0; 3]).is_some());
+        assert!(
+            density
+                .charge()
+                .interstitial()
+                .layout()
+                .index([0; 3])
+                .is_some()
+        );
     }
 
     #[test]
@@ -1904,10 +2194,10 @@ mod tests {
 
     #[test]
     fn fully_relativistic_snapshot_uses_full_spinor_solve_and_density() {
-        let mut snapshot = snapshot();
+        let mut snapshot = snapshot_v1();
         snapshot.geometry.sites[0].spins[0].radial_equation =
             RadialEquationTagV1::FullyRelativisticDirac;
-        let mut physics = SnapshotDftPhysics::new(&snapshot).unwrap();
+        let mut physics = SnapshotDftPhysics::new(&snapshot.normalize_v2().unwrap()).unwrap();
         let density = physics
             .initial_density(&config(ScfRelativity::SpinorFirstVariation))
             .unwrap();
@@ -1915,8 +2205,71 @@ mod tests {
     }
 
     #[test]
+    fn full_spinor_scf_retains_transverse_magnetization_for_two_iterations() {
+        let mut snapshot = snapshot_v1();
+        snapshot.geometry.sites[0].spins[0].radial_equation =
+            RadialEquationTagV1::FullyRelativisticDirac;
+        let config = config(ScfRelativity::SpinorFirstVariation);
+        let mut physics = SnapshotDftPhysics::new(&snapshot.normalize_v2().unwrap()).unwrap();
+        let mut source = run_scf(&mut physics, &config, None).unwrap();
+        let charge = source.density.charge().clone();
+        let mut transverse = charge.zero_like();
+        transverse.add_scaled(0.1, &charge).unwrap();
+        let zero = charge.zero_like();
+        source.density = RegionalDensity::new(charge, [transverse, zero.clone(), zero]).unwrap();
+
+        let state = run_scf(&mut physics, &config, Some(&source)).unwrap();
+        assert_eq!(state.iterations(), 2);
+        assert!(state.density.magnetization()[0].residual_rms().unwrap() > 1.0e-8);
+
+        let restart = physics.restart_snapshot(&state).unwrap();
+        let encoded = snapshot_file_to_toml(&SnapshotFile::V2(restart)).unwrap();
+        let SnapshotFile::V2(reloaded) = snapshot_file_from_toml(&encoded).unwrap() else {
+            unreachable!()
+        };
+        let mut restarted_physics = SnapshotDftPhysics::new(&reloaded).unwrap();
+        assert!(
+            restarted_physics
+                .frozen_potential()
+                .scalar()
+                .difference_rms(state.potential.scalar())
+                .unwrap()
+                < 1.0e-10
+        );
+        for (restarted, expected) in restarted_physics
+            .frozen_potential()
+            .magnetic()
+            .iter()
+            .zip(state.potential.magnetic())
+        {
+            assert!(restarted.difference_rms(expected).unwrap() < 1.0e-10);
+        }
+        let restarted_density = restarted_physics.initial_density(&config).unwrap();
+        assert!(state.density.difference_rms(&restarted_density).unwrap() < 1.0e-12);
+    }
+
+    #[test]
+    fn scalar_route_rejects_a_transverse_potential() {
+        let physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+        let scalar = physics.frozen_potential.scalar().clone();
+        let mut transverse = scalar.zero_like();
+        transverse.add_scaled(0.01, &scalar).unwrap();
+        let zero = scalar.zero_like();
+        let potential = RegionalPotential::new(scalar, [transverse, zero.clone(), zero]).unwrap();
+        assert!(matches!(
+            physics.solve_points(
+                &potential,
+                &config(ScfRelativity::Scalar).basis,
+                &[[0.0; 3]],
+                ScfRelativity::Scalar,
+            ),
+            Err(SnapshotDftError::TransversePotentialUnsupported { .. })
+        ));
+    }
+
+    #[test]
     fn signed_kappa_workflow_lo_overrides_only_its_inherited_spinor_partner() {
-        let mut snapshot = snapshot();
+        let mut snapshot = snapshot_v1();
         let spin = &mut snapshot.geometry.sites[0].spins[0];
         spin.radial_equation = RadialEquationTagV1::FullyRelativisticDirac;
         spin.linearization
@@ -1925,7 +2278,7 @@ mod tests {
                 l: 1,
                 energy: -0.25,
             });
-        let physics = SnapshotDftPhysics::new(&snapshot).unwrap();
+        let physics = SnapshotDftPhysics::new(&snapshot.normalize_v2().unwrap()).unwrap();
         let mut basis = config(ScfRelativity::SpinorFirstVariation).basis;
         basis.local_orbitals.push(muffintin_dft::ScfLocalOrbital {
             site: "H-1".to_owned(),

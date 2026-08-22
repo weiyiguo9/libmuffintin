@@ -322,13 +322,30 @@ impl OccupationsV1 {
 #[serde(tag = "kind", deny_unknown_fields)]
 pub enum ExchangeCorrelationV1 {
     #[serde(rename = "lda-pw92")]
-    LdaPw92 {},
+    LdaPw92 {
+        #[serde(default, rename = "noncollinear-route")]
+        noncollinear_route: NoncollinearXcRouteV1,
+    },
     #[serde(rename = "pbe")]
-    Pbe {},
+    Pbe {
+        #[serde(default, rename = "noncollinear-route")]
+        noncollinear_route: NoncollinearXcRouteV1,
+    },
 }
 
 impl ExchangeCorrelationV1 {
     const fn validate(self) {}
+}
+
+/// Noncollinear reduction used by the pointwise XC kernel.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NoncollinearXcRouteV1 {
+    /// Rotate derivatives into the instantaneous magnetization direction.
+    #[default]
+    LocalSpinFrame,
+    /// Differentiate the scalar fields `(n +/- |m|)/2` directly.
+    MagnetizationField,
 }
 
 /// Density-mixing algorithm and history controls.

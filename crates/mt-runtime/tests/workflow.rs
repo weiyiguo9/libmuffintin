@@ -11,11 +11,12 @@ use muffintin_core::{
 };
 use muffintin_dft::{
     BandPathRequest, BandState, CoreContribution, DosRequest, FirstVariationWindow,
-    InterstitialField, RegionalDensity, RegionalPotential, RegularSpectrum, ScfBasis, ScfConfig,
-    ScfCoreSite, ScfEnergyContext, ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfPhysics,
-    ScfRelativity, ScfState,
+    InterstitialField, NoncollinearXcRoute, RegionalDensity, RegionalPotential,
+    RegionalScalarField, RegularSpectrum, ScfBasis, ScfConfig, ScfCoreSite, ScfEnergyContext,
+    ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfPhysics, ScfRelativity, ScfState,
+    XcFunctional,
 };
-use muffintin_lapw::Collinear;
+use muffintin_io::SnapshotFile;
 use num_complex::Complex64;
 
 use common::{sample_input, sample_snapshot};
@@ -66,13 +67,18 @@ impl ScfPhysics for WorkflowKernel {
         density: &RegionalDensity,
         exchange_correlation: ScfExchangeCorrelation,
     ) -> Result<RegionalPotential, Self::Error> {
-        assert_eq!(exchange_correlation, ScfExchangeCorrelation::LdaPw92);
+        assert_eq!(
+            exchange_correlation,
+            ScfExchangeCorrelation {
+                functional: XcFunctional::LdaPw92,
+                noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+            }
+        );
         self.events.push(format!("potential:{iteration}"));
-        Ok(RegionalPotential::new(
-            density.muffin_tins().clone(),
-            density.interstitial().clone(),
+        Ok(
+            RegionalPotential::new(density.charge().clone(), density.magnetization().clone())
+                .unwrap(),
         )
-        .unwrap())
     }
 
     fn solve_core(
@@ -217,17 +223,15 @@ fn scalar_density(value: f64) -> RegionalDensity {
         )
         .unwrap()
     };
-    RegionalDensity::new(
-        InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), Vec::new()).unwrap(),
-        Collinear::new(Vec::new(), Vec::new()),
-        Collinear::new(field(value), field(0.0)),
-    )
-    .unwrap()
+    let geometry = InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), Vec::new()).unwrap();
+    let charge = RegionalScalarField::new(geometry, Vec::new(), field(value)).unwrap();
+    let zero = charge.zero_like();
+    RegionalDensity::new(charge, [zero.clone(), zero.clone(), zero]).unwrap()
 }
 
 #[test]
 fn workflow_executes_scf_bands_dos_in_order_with_exact_state_reuse() {
-    let prepared = prepare_input(&sample_input(), sample_snapshot()).unwrap();
+    let prepared = prepare_input(&sample_input(), SnapshotFile::V1(sample_snapshot())).unwrap();
     let mut kernel = WorkflowKernel::new();
     let result = execute_prepared_with(&prepared, &mut kernel).unwrap();
     assert_eq!(result.tasks.len(), 3);

@@ -3,9 +3,10 @@ mod common;
 use std::path::PathBuf;
 
 use muffintin::{
-    InputError, InputValidationError, MixingV1, RelativityV1, TaskV1, input_to_toml,
-    load_input_path, parse_input_toml, prepare_input,
+    ExchangeCorrelationV1, InputError, InputValidationError, MixingV1, NoncollinearXcRouteV1,
+    RelativityV1, TaskV1, input_to_toml, load_input_path, parse_input_toml, prepare_input,
 };
+use muffintin_io::SnapshotFile;
 
 use common::{FixtureDirectory, sample_input, sample_snapshot};
 
@@ -19,6 +20,23 @@ fn input_round_trips_deterministically_with_header_first() {
     let decoded = parse_input_toml(&encoded).unwrap();
     assert_eq!(decoded, input);
     assert_eq!(input_to_toml(&decoded).unwrap(), encoded);
+}
+
+#[test]
+fn xc_noncollinear_route_defaults_to_local_spin_frame() {
+    let encoded = input_to_toml(&sample_input()).unwrap();
+    let without_route = encoded.replace("noncollinear-route = \"local-spin-frame\"\n", "");
+    assert_ne!(without_route, encoded);
+    let decoded = parse_input_toml(&without_route).unwrap();
+    let TaskV1::DftScf { xc, .. } = &decoded.task["scf"] else {
+        unreachable!()
+    };
+    assert_eq!(
+        *xc,
+        ExchangeCorrelationV1::LdaPw92 {
+            noncollinear_route: NoncollinearXcRouteV1::LocalSpinFrame,
+        }
+    );
 }
 
 #[test]
@@ -254,7 +272,7 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
 #[test]
 fn prepare_is_filesystem_free_and_resolves_sources() {
     let input = sample_input();
-    let prepared = prepare_input(&input, sample_snapshot()).unwrap();
+    let prepared = prepare_input(&input, SnapshotFile::V1(sample_snapshot())).unwrap();
     assert_eq!(prepared.tasks.len(), 3);
     let source = prepared.tasks[1].source.as_ref().unwrap();
     assert_eq!(source.task_index, 0);
@@ -268,7 +286,7 @@ fn path_loader_resolves_snapshot_relative_to_input_parent() {
     let input_path = fixture.write_workflow();
     assert_eq!(input_path.parent(), Some(fixture.root()));
     let prepared = load_input_path(&input_path).unwrap();
-    assert_eq!(prepared.snapshot, sample_snapshot());
+    assert_eq!(prepared.snapshot, sample_snapshot().normalize_v2().unwrap());
     assert_eq!(prepared.tasks[0].id, "scf");
 
     let mut absolute = sample_input();

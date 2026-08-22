@@ -4,16 +4,17 @@ use std::path::{Path, PathBuf};
 use muffintin_core::Hartree;
 use muffintin_dft::{
     BandPathPoint, BandPathRequest, BandPathResult, DosRequest, DosResult, FirstVariationWindow,
-    ScfBasis, ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState, ScfExchangeCorrelation,
-    ScfKMesh, ScfLocalOrbital, ScfLocalOrbitalKind, ScfMixing, ScfOccupations, ScfPhysics,
-    ScfRelativity, ScfState, run_band_path, run_dos, run_scf,
+    NoncollinearXcRoute, ScfBasis, ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState,
+    ScfExchangeCorrelation, ScfKMesh, ScfLocalOrbital, ScfLocalOrbitalKind, ScfMixing,
+    ScfOccupations, ScfPhysics, ScfRelativity, ScfState, XcFunctional, run_band_path, run_dos,
+    run_scf,
 };
-use muffintin_io::{SnapshotV1, snapshot_from_toml};
+use muffintin_io::{SnapshotFile, SnapshotV2, snapshot_file_from_toml};
 
 use crate::input::parse_source;
 use crate::{
     ExchangeCorrelationV1, InputError, InputV1, KMeshV1, LocalOrbitalKindV1, MixingV1,
-    OccupationsV1, RelativityV1, TaskV1, parse_input_toml,
+    NoncollinearXcRouteV1, OccupationsV1, RelativityV1, TaskV1, parse_input_toml,
 };
 
 /// A source reference resolved against the workflow's stable task order.
@@ -35,7 +36,7 @@ pub struct PreparedTask {
 /// A fully validated workflow and loaded immutable input snapshot.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreparedWorkflow {
-    pub snapshot: SnapshotV1,
+    pub snapshot: SnapshotV2,
     pub tasks: Vec<PreparedTask>,
 }
 
@@ -65,10 +66,14 @@ pub struct WorkflowResult {
 /// Validate and resolve an already decoded input and snapshot without filesystem access.
 pub fn prepare_input(
     input: &InputV1,
-    snapshot: SnapshotV1,
+    snapshot: SnapshotFile,
 ) -> Result<PreparedWorkflow, InputError> {
     input.validate()?;
-    snapshot.validate().map_err(InputError::InvalidSnapshot)?;
+    let snapshot = match snapshot {
+        SnapshotFile::V1(snapshot) => snapshot.normalize_v2(),
+        SnapshotFile::V2(snapshot) => snapshot.validate().map(|()| snapshot),
+    }
+    .map_err(InputError::InvalidSnapshot)?;
 
     let mut tasks = Vec::with_capacity(input.workflow.tasks.len());
     for id in &input.workflow.tasks {
@@ -111,10 +116,11 @@ pub fn load_input_path(path: impl AsRef<Path>) -> Result<PreparedWorkflow, Input
             path: snapshot_path.clone(),
             source,
         })?;
-    let snapshot = snapshot_from_toml(&snapshot_text).map_err(|source| InputError::Snapshot {
-        path: snapshot_path,
-        source,
-    })?;
+    let snapshot =
+        snapshot_file_from_toml(&snapshot_text).map_err(|source| InputError::Snapshot {
+            path: snapshot_path,
+            source,
+        })?;
     prepare_input(&input, snapshot)
 }
 
@@ -213,7 +219,7 @@ fn source_state<'a>(
 fn scf_config(
     task_id: &str,
     task: &TaskV1,
-    snapshot: &SnapshotV1,
+    snapshot: &SnapshotV2,
 ) -> Result<ScfConfig, InputError> {
     let TaskV1::DftScf {
         electron_count,
@@ -304,8 +310,14 @@ fn scf_config(
             },
         },
         exchange_correlation: match xc {
-            ExchangeCorrelationV1::LdaPw92 {} => ScfExchangeCorrelation::LdaPw92,
-            ExchangeCorrelationV1::Pbe {} => ScfExchangeCorrelation::Pbe,
+            ExchangeCorrelationV1::LdaPw92 { noncollinear_route } => ScfExchangeCorrelation {
+                functional: XcFunctional::LdaPw92,
+                noncollinear_route: map_noncollinear_xc_route(*noncollinear_route),
+            },
+            ExchangeCorrelationV1::Pbe { noncollinear_route } => ScfExchangeCorrelation {
+                functional: XcFunctional::Pbe,
+                noncollinear_route: map_noncollinear_xc_route(*noncollinear_route),
+            },
         },
         mixing: match mixing {
             MixingV1::Linear { beta } => ScfMixing::Linear { alpha: *beta },
@@ -335,6 +347,13 @@ fn scf_config(
         },
         core_sites,
     })
+}
+
+const fn map_noncollinear_xc_route(route: NoncollinearXcRouteV1) -> NoncollinearXcRoute {
+    match route {
+        NoncollinearXcRouteV1::LocalSpinFrame => NoncollinearXcRoute::LocalSpinFrame,
+        NoncollinearXcRouteV1::MagnetizationField => NoncollinearXcRoute::MagnetizationField,
+    }
 }
 
 fn map_k_mesh(mesh: KMeshV1) -> ScfKMesh {

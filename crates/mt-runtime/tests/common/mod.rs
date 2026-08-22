@@ -46,7 +46,9 @@ pub fn sample_input() -> InputV1 {
                         }],
                     },
                     occupations: OccupationsV1::FermiDirac { temperature: 0.01 },
-                    xc: ExchangeCorrelationV1::LdaPw92 {},
+                    xc: ExchangeCorrelationV1::LdaPw92 {
+                        noncollinear_route: Default::default(),
+                    },
                     mixing: MixingV1::PulayAnderson {
                         beta: 0.4,
                         history: 6,
@@ -199,7 +201,9 @@ pub fn supported_input() -> InputV1 {
                     local_orbitals: Vec::new(),
                 },
                 occupations: OccupationsV1::FermiDirac { temperature: 0.02 },
-                xc: ExchangeCorrelationV1::LdaPw92 {},
+                xc: ExchangeCorrelationV1::LdaPw92 {
+                    noncollinear_route: Default::default(),
+                },
                 mixing: MixingV1::Linear { beta: 1.0 },
                 relativity: RelativityV1::Scalar {},
                 convergence: ConvergenceV1 {
