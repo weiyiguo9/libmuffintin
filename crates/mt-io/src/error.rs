@@ -12,7 +12,7 @@ pub enum IoError {
         expected: &'static str,
         found: String,
     },
-    #[error("unsupported {format} version {found}; supported version is {supported}")]
+    #[error("unsupported {format} version {found}; highest supported version is {supported}")]
     UnsupportedVersion {
         format: &'static str,
         supported: u32,
@@ -41,6 +41,16 @@ pub enum ValidationError {
     },
     #[error("{path} contains duplicate key {key:?}")]
     Duplicate { path: String, key: String },
+    #[error("{path} is missing required key {key:?}")]
+    Missing { path: String, key: String },
+    #[error("{path} layout differs from {reference}")]
+    LayoutMismatch { path: String, reference: String },
+    #[error("invalid {path}: expected {expected}, found {actual}")]
+    InvalidValue {
+        path: String,
+        expected: String,
+        actual: String,
+    },
     #[error("invalid LM channel at {path}: l={l}, m={m}")]
     InvalidLm { path: String, l: u32, m: i32 },
     #[error("{path} has {points} points; exponential meshes require at least 7")]

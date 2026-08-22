@@ -7,7 +7,7 @@ use crate::units::{EnergyUnitV1, InverseLengthUnitV1, LengthUnitV1};
 
 /// Stable discriminator written at the start of every snapshot.
 pub const SNAPSHOT_FORMAT: &str = "libmuffintin-snapshot";
-/// Only snapshot schema version currently supported.
+/// Legacy V1 snapshot schema version.
 pub const SNAPSHOT_VERSION: u32 = 1;
 
 /// A complete, canonical V1 muffin-tin input snapshot.
@@ -71,7 +71,7 @@ pub struct MetaV1 {
 }
 
 impl MetaV1 {
-    fn validate(&self) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self) -> Result<(), ValidationError> {
         nonempty("meta.title", &self.title)?;
         nonempty("meta.producer", &self.producer)?;
         nonempty("meta.energy_zero", &self.energy_zero)?;
@@ -153,7 +153,7 @@ pub struct LatticeV1 {
 }
 
 impl LatticeV1 {
-    fn validate(&self) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self) -> Result<(), ValidationError> {
         for (row, vector) in self.vectors.iter().enumerate() {
             for (column, &value) in vector.iter().enumerate() {
                 finite(format!("geometry.lattice.vectors[{row}][{column}]"), value)?;
@@ -281,7 +281,7 @@ pub struct ExponentialMeshSpecV1 {
 }
 
 impl ExponentialMeshSpecV1 {
-    fn validate(&self, path: &str) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, path: &str) -> Result<(), ValidationError> {
         positive(format!("{path}.first"), self.first)?;
         finite(format!("{path}.log_increment"), self.log_increment)?;
         if self.log_increment == 0.0 {
@@ -374,7 +374,7 @@ pub struct LinearizationV1 {
 }
 
 impl LinearizationV1 {
-    fn validate(&self, path: &str) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, path: &str) -> Result<(), ValidationError> {
         let mut angular_momenta = BTreeSet::new();
         for (index, parameter) in self.linearization_energies.iter().enumerate() {
             finite(
@@ -425,7 +425,7 @@ impl InterstitialV1 {
                 });
             }
         }
-        self.basis_hints.validate()
+        self.basis_hints.validate("interstitial.basis_hints")
     }
 }
 
@@ -469,12 +469,12 @@ pub struct BasisHintsV1 {
 }
 
 impl BasisHintsV1 {
-    fn validate(&self) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, path: &str) -> Result<(), ValidationError> {
         if let Some(value) = self.plane_wave_cutoff {
-            positive("interstitial.basis_hints.plane_wave_cutoff", value)?;
+            positive(format!("{path}.plane_wave_cutoff"), value)?;
         }
         if let Some(value) = self.coefficient_cutoff {
-            positive("interstitial.basis_hints.coefficient_cutoff", value)?;
+            positive(format!("{path}.coefficient_cutoff"), value)?;
         }
         Ok(())
     }
