@@ -1,4 +1,4 @@
-//! Deterministic QRCP, least squares, and Hermitian square roots.
+//! Deterministic QRCP, pivoted Cholesky, least squares, and Hermitian square roots.
 
 use crate::ThcError;
 use faer::{Mat, Side};
@@ -39,6 +39,111 @@ pub fn column_pivots(
     let r = qr.R();
     let r_diag = (0..rank).map(|index| r[(index, index)].norm()).collect();
     Ok((pivots, r_diag))
+}
+
+/// Matrix-free pivoted Cholesky of the column Gram $A^\dagger A$.
+///
+/// The input is a row-major `nrows × ncols` matrix. The routine never forms
+/// the dense `ncols × ncols` Gram: each selected Gram column is contracted
+/// directly from `matrix`. Returned diagonals are square roots of the Gram
+/// residual pivots, so they have the same scale as the QRCP $|R_{kk}|$
+/// diagnostics consumed by [`crate::select::RankPolicy`].
+pub fn pivoted_cholesky_pivots(
+    matrix: &[Complex64],
+    nrows: usize,
+    ncols: usize,
+    n_pivots: usize,
+) -> Result<(Vec<usize>, Vec<f64>), ThcError> {
+    if nrows == 0 || ncols == 0 || n_pivots == 0 {
+        return Err(ThcError::LinearAlgebra("empty pivoted-Cholesky matrix"));
+    }
+    if matrix.len() != nrows * ncols {
+        return Err(ThcError::PairBlockLength {
+            expected: nrows * ncols,
+            actual: matrix.len(),
+        });
+    }
+    if matrix
+        .iter()
+        .any(|value| !value.re.is_finite() || !value.im.is_finite())
+    {
+        return Err(ThcError::LinearAlgebra("non-finite pivoted-Cholesky entry"));
+    }
+
+    let rank = n_pivots.min(ncols);
+    let mut residual = vec![0.0_f64; ncols];
+    for column in 0..ncols {
+        residual[column] = (0..nrows)
+            .map(|row| matrix[row * ncols + column].norm_sqr())
+            .sum();
+        if !residual[column].is_finite() {
+            return Err(ThcError::LinearAlgebra(
+                "non-finite pivoted-Cholesky diagonal",
+            ));
+        }
+    }
+    let leading_scale = residual.iter().copied().fold(0.0_f64, f64::max);
+
+    let mut factors = vec![Complex64::default(); ncols * rank];
+    let mut selected = vec![false; ncols];
+    let mut pivots = Vec::with_capacity(rank);
+    let mut diagonal = Vec::with_capacity(rank);
+    for step in 0..rank {
+        let mut pivot = None;
+        for column in 0..ncols {
+            if selected[column] {
+                continue;
+            }
+            if pivot.is_none_or(|current| residual[column] > residual[current]) {
+                pivot = Some(column);
+            }
+        }
+        let pivot = pivot.expect("rank is capped by the number of columns");
+        let pivot_value = residual[pivot].max(0.0);
+        let pivot_sqrt = pivot_value.sqrt();
+        selected[pivot] = true;
+        pivots.push(pivot);
+        diagonal.push(pivot_sqrt);
+
+        if pivot_sqrt == 0.0 {
+            continue;
+        }
+        factors[pivot * rank + step] = Complex64::new(pivot_sqrt, 0.0);
+        for column in 0..ncols {
+            if selected[column] {
+                continue;
+            }
+            let mut gram = Complex64::default();
+            for row in 0..nrows {
+                gram += matrix[row * ncols + column].conj() * matrix[row * ncols + pivot];
+            }
+            for previous in 0..step {
+                gram -= factors[column * rank + previous] * factors[pivot * rank + previous].conj();
+            }
+            let factor = gram / pivot_sqrt;
+            if !factor.re.is_finite() || !factor.im.is_finite() {
+                return Err(ThcError::LinearAlgebra(
+                    "non-finite pivoted-Cholesky factor",
+                ));
+            }
+            factors[column * rank + step] = factor;
+            let updated = residual[column] - factor.norm_sqr();
+            if !updated.is_finite() {
+                return Err(ThcError::LinearAlgebra(
+                    "non-finite pivoted-Cholesky residual",
+                ));
+            }
+            let tolerance = 64.0 * f64::EPSILON * leading_scale * (nrows + step + 1) as f64;
+            if updated < -tolerance {
+                return Err(ThcError::LinearAlgebra(
+                    "negative pivoted-Cholesky residual",
+                ));
+            }
+            residual[column] = updated.max(0.0);
+        }
+        residual[pivot] = 0.0;
+    }
+    Ok((pivots, diagonal))
 }
 
 /// Least squares `min ||A X - B||` for tall or square $A$ (`m × n`), $B$ (`m × nrhs`).

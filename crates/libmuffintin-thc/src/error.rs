@@ -42,7 +42,7 @@ pub enum ThcError {
     #[error("Nμ must be positive")]
     EmptyRank,
     #[error(
-        "QRCP leading diagonal is absent, non-finite, or non-positive; threshold selection cannot choose a rank"
+        "L2 selector leading residual is absent, non-finite, or non-positive; threshold selection cannot choose a rank"
     )]
     DegenerateRank,
     #[error("pool factor must be an integer >= 1, got {0}")]

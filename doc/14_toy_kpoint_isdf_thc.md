@@ -57,7 +57,7 @@ inputs/seeds.
 
 | Name | Algorithm | Rank |
 |---|---|---|
-| `q0_l2` | Weighted QRCP / structured sketch of the $q=0$ pair block | exact $N_\mu$ or L2 threshold |
+| `q0_l2` | Weighted QRCP, pivoted Cholesky, or structured sketch of the $q=0$ pair block | exact $N_\mu$ or L2 threshold |
 | `allq_l2` | The same weighted selection on every canonical $q$ | exact $N_\mu$ or L2 threshold |
 | `allq_coulomb_pool` | All-q L2 pool with `pool_factor=2`, then Coulomb-metric QRCP to exact $N_\mu$ | exact $N_\mu$ only |
 
@@ -76,6 +76,15 @@ finite-$q$ channel.
 Provenance records strategy, seed, uniform shift, `pool_factor`/$N_\mu$,
 $q$ set, grid path, $\sqrt{w}$ weights, and the $(N_k,N_{\mathrm{orb}})$
 column window.
+
+`L2Engine::FullColumnPivotedQr` and `L2Engine::FullPivotedCholesky`
+operate on the same full weighted pair matrix. At fixed rank they are
+equivalent selector backends in exact arithmetic when pivots are well
+separated. The Cholesky path contracts columns of the point Gram matrix-free
+and returns the square root of each residual diagonal, on the same scale as
+QRCP $|R_{kk}|$. Near pivot ties or the numerical-rank floor, finite-precision
+pivot order may differ. `StructuredSketch` remains the lower-cost approximate
+path.
 
 ## 5. Coulomb boundary
 
@@ -136,9 +145,10 @@ Three test layers:
 3. Slow source-equivalent gate `source_equivalent_python_lapw_fixture`
    (ignored in ordinary workspace runs): reference 38x110+$20^3$, medium
    30x86+$18^3$, fine candidate 26x86+$18^3$, $N_\mu=96$, $|G|^2\le 12$,
-   `allq_l2` full QRCP, candidate-only selection/fit. Assert distinct-grid
-   reference convergence $\le 5\times10^{-2}$ and fine ERI-F / ERI-max /
-   seed-19 action $\le 8\times10^{-2}$. Python table values $2.498\times10^{-2}$,
+   `allq_l2` full selection, candidate-only selection/fit. The Python oracle
+   uses QRCP; Rust exercises both full QRCP and full pivoted Cholesky. Assert
+   distinct-grid reference convergence $\le 5\times10^{-2}$ and fine ERI-F /
+   ERI-max / seed-19 action $\le 8\times10^{-2}$. Python table values $2.498\times10^{-2}$,
    $4.932\times10^{-2}$, $4.560\times10^{-2}$, $6.230\times10^{-2}$ are
    evidence, not bit-identity targets.
 
@@ -161,6 +171,8 @@ nearly equal $10^{-14}$ numbers.
 ## 7. Public surface
 
 - `evaluate_pair_block` / `pair_density_oracle` — per-$q$ pair matrices
+- `L2Engine` / `RankPolicy` — structured sketch, full QRCP, or full pivoted
+  Cholesky with exact-rank or relative-residual termination
 - `select_points` / `run_thc` / `compare_strategies`
 - `fit_per_q` — per-$q$ $\zeta$ and weighted L2 / injected-Coulomb residuals
 - `interpolation_auxiliary` / `bloch_pair_vertices` — product IR

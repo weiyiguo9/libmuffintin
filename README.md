@@ -73,10 +73,11 @@ The current M-A through M-Ka implementation candidate provides:
 - `libmuffintin-thc` M-I: k-point ISDF/THC on a finite periodic toy basis.
   Pair columns use the canonical-$q$ / Umklapp gauge. Selectors `q0_l2`,
   `allq_l2`, and `allq_coulomb_pool` are compared at identical $N_\mu$. The
-  production L2 default is `allq_l2`. Coulomb-aware ranking consumes
-  injected pair-pair Grams; the crate does not assemble Weinert or SPEX
-  $V^q$. Recorded Python finite-cutoff numbers are candidate-oracle
-  evidence, not a real-material accuracy claim;
+  production L2 default is `allq_l2`; full selection can use either QRCP or
+  pivoted Cholesky without materializing the weighted point Gram.
+  Coulomb-aware ranking consumes injected pair-pair Grams; the crate does not
+  assemble Weinert or SPEX $V^q$. Recorded Python finite-cutoff numbers are
+  candidate-oracle evidence, not a real-material accuracy claim;
 - `libmuffintin-coulomb` M-J: a representation-neutral finite-$q$
   Weinert/SPEX Coulomb operator over `CompiledAuxiliaryBasis`. Mixed-product
   auxiliaries use `assemble_coulomb`. Interpolation-point auxiliaries use

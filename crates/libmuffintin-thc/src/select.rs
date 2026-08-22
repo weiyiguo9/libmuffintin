@@ -3,7 +3,7 @@
 use crate::ThcError;
 use crate::gram::CoulombGramSet;
 use crate::kmesh::KMesh;
-use crate::linalg::{column_pivots, hermitian_sqrt};
+use crate::linalg::{column_pivots, hermitian_sqrt, pivoted_cholesky_pivots};
 use crate::pair::{BlochOrbitals, PairBlock, PairColumnLayout, UmklappGauge, evaluate_pair_block};
 use libmuffintin_core::{Bohr, VolumeBohr3};
 use libmuffintin_product::{
@@ -55,7 +55,11 @@ pub const DEFAULT_SELECTOR: SelectorStrategy = SelectorStrategy::AllQL2;
 pub enum RankPolicy {
     /// Keep exactly `n_mu` interpolation points.
     Exact { n_mu: usize },
-    /// L2-only: stop when $|R_{kk}| < \mathrm{thresh}\,|R_{00}|$, capped at `n_max`.
+    /// L2-only: stop when the residual amplitude falls below
+    /// `thresh` times its leading value, capped at `n_max`.
+    ///
+    /// The amplitude is $|R_{kk}|$ for QRCP and the square root of the
+    /// residual Gram diagonal for pivoted Cholesky.
     Threshold { thresh: f64, n_max: usize },
 }
 
@@ -66,6 +70,8 @@ pub enum L2Engine {
     StructuredSketch { rows: usize },
     /// Full weighted QRCP from `thc_lapw_end_to_end_test.py:311-323`.
     FullColumnPivotedQr,
+    /// Matrix-free pivoted Cholesky of the full weighted point Gram.
+    FullPivotedCholesky,
 }
 
 impl Default for L2Engine {
@@ -157,8 +163,8 @@ pub struct SelectionProvenance {
 /// Shared interpolation-point set.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Selection {
-    /// Point indices in QRCP rank order. This order is diagnostic and does not
-    /// define the emitted auxiliary layout.
+    /// Point indices in selector-engine pivot order. This order is diagnostic
+    /// and does not define the emitted auxiliary layout.
     pub pivots: Vec<usize>,
     /// Selected points in canonical muffin-tin-then-interstitial layout order.
     /// THC fitting and emitted auxiliary objects use this ordering.
@@ -463,6 +469,15 @@ fn l2_pivots(
             core_orbital,
             n_keep,
         ),
+        L2Engine::FullPivotedCholesky => full_cholesky_pivots(
+            orbitals,
+            points,
+            weights,
+            mesh,
+            q0_only,
+            core_orbital,
+            n_keep,
+        ),
     }
 }
 
@@ -551,12 +566,60 @@ fn full_qr_pivots(
     pivots_from_pair_blocks(&blocks, weights, n_keep)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn full_cholesky_pivots(
+    orbitals: &BlochOrbitals,
+    points: &[[f64; 3]],
+    weights: &[f64],
+    mesh: &KMesh,
+    q0_only: bool,
+    core_orbital: Option<usize>,
+    n_keep: usize,
+) -> Result<(Vec<usize>, Vec<f64>), ThcError> {
+    let q_indices: Vec<usize> = if q0_only {
+        vec![0]
+    } else {
+        (0..mesh.len()).collect()
+    };
+    let mut blocks = Vec::with_capacity(q_indices.len());
+    for &iq in &q_indices {
+        blocks.push(evaluate_pair_block(
+            orbitals,
+            points,
+            mesh,
+            iq,
+            core_orbital,
+            UmklappGauge::Canonical,
+        )?);
+    }
+    cholesky_pivots_from_pair_blocks(&blocks, weights, n_keep)
+}
+
 /// Full weighted QRCP on already-evaluated pair blocks (test and pool helpers).
 pub fn pivots_from_pair_blocks(
     blocks: &[PairBlock],
     weights: &[f64],
     n_keep: usize,
 ) -> Result<(Vec<usize>, Vec<f64>), ThcError> {
+    let (stacked, nrows, n_pts) = stacked_weighted_pair_blocks(blocks, weights)?;
+    let (mut pivots, diag) = column_pivots(&stacked, nrows, n_pts)?;
+    pivots.truncate(n_keep.min(pivots.len()));
+    Ok((pivots, diag))
+}
+
+fn cholesky_pivots_from_pair_blocks(
+    blocks: &[PairBlock],
+    weights: &[f64],
+    n_keep: usize,
+) -> Result<(Vec<usize>, Vec<f64>), ThcError> {
+    let (stacked, nrows, n_pts) = stacked_weighted_pair_blocks(blocks, weights)?;
+    pivoted_cholesky_pivots(&stacked, nrows, n_pts, n_keep)
+}
+
+fn stacked_weighted_pair_blocks(
+    blocks: &[PairBlock],
+    weights: &[f64],
+) -> Result<(Vec<Complex64>, usize, usize), ThcError> {
     if blocks.is_empty() {
         return Err(ThcError::EmptyRank);
     }
@@ -593,9 +656,7 @@ pub fn pivots_from_pair_blocks(
             }
         }
     }
-    let (mut pivots, diag) = column_pivots(&stacked, nrows, n_pts)?;
-    pivots.truncate(n_keep.min(pivots.len()));
-    Ok((pivots, diag))
+    Ok((stacked, nrows, n_pts))
 }
 
 #[allow(clippy::too_many_arguments)]
