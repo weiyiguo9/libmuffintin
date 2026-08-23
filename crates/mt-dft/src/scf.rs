@@ -9,14 +9,15 @@ use crate::soc::FirstVariationWindow;
 use crate::xc::XcFunctional;
 use crate::xc_field::NoncollinearXcRoute;
 use crate::{
-    BandState, DensityMixer, EnergyError, MixStatus, MixingError, OccupationEnergy,
-    OccupationError, RegionalDensity, RegionalError, RegionalPotential, ScfEnergy,
-    TetrahedronDosBins, TetrahedronError, assemble_scf_energy, solve_fermi_dirac, solve_gaussian,
-    tetrahedron_dos_bins,
+    BandState, DensityMixer, EnergyError, GeneratedLinearizationEnergy,
+    LinearizationEnergyGenerator, MixStatus, MixingError, OccupationEnergy, OccupationError,
+    RegionalDensity, RegionalError, RegionalPotential, ScfEnergy, TetrahedronDosBins,
+    TetrahedronError, assemble_scf_energy, solve_fermi_dirac, solve_gaussian, tetrahedron_dos_bins,
 };
 
 const ELECTRON_TOLERANCE: f64 = 1.0e-12;
 const OCCUPATION_MAX_ITERATIONS: usize = 256;
+const BASIS_REFINEMENT_MAX_PASSES: usize = 16;
 
 /// A regular full-Brillouin-zone mesh in fractional reciprocal coordinates.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -30,37 +31,59 @@ pub struct ScfKMesh {
 pub struct ScfBasis {
     pub plane_wave_cutoff: f64,
     pub l_max: u32,
-    pub local_orbitals: Vec<ScfLocalOrbital>,
-    /// Bound signed-`kappa` Dirac local orbitals used only by full first variation.
-    pub relativistic_local_orbitals: Vec<ScfRelativisticLocalOrbital>,
+    /// Immutable, normalized channel requests for each outer SCF iteration.
+    pub channels: Vec<ScfChannelRecipe>,
+    /// Current-potential energies materialized from `channels`.
+    pub resolved_channels: Vec<ScfResolvedChannelEnergy>,
 }
 
-/// Construction route for one explicitly requested signed-kappa local orbital.
+/// Route-independent radial-channel identity.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum ScfChannelIdentity {
+    ScalarL { n: u32, l: u32 },
+    Kappa { n: u32, kappa: i32 },
+}
+
+/// Physical role assigned to one radial channel.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ScfLocalOrbitalKind {
+pub enum ScfChannelTreatment {
+    Core,
+    Valence,
     Lo,
     Hdlo,
 }
 
-/// One site-resolved spinor local-orbital request.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ScfLocalOrbital {
-    pub site: String,
-    pub kappa: i32,
-    pub energy: Hartree,
-    pub kind: ScfLocalOrbitalKind,
+/// Stable origin category retained with a normalized channel request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ScfChannelProvenance {
+    BuiltIn,
+    ExternalRecipe { source: Option<String> },
+    TaskDefault,
+    Species,
+    Site,
 }
 
-/// One site-resolved bound Dirac local orbital.
-///
-/// Keeping this request separate prevents scalar and second-variation routes
-/// from silently reducing a signed-`kappa` relativistic orbital to ordinary
-/// `l`-resolved LO data.
+/// One site-resolved normalized channel request.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScfRelativisticLocalOrbital {
+pub struct ScfChannelRecipe {
     pub site: String,
-    pub principal_quantum_number: u32,
-    pub kappa: i32,
+    pub identity: ScfChannelIdentity,
+    pub treatment: ScfChannelTreatment,
+    pub derivative_order: u32,
+    pub generator: LinearizationEnergyGenerator,
+    pub seed: Option<Hartree>,
+    pub provenance: ScfChannelProvenance,
+}
+
+/// One materialized channel energy and all generator components used to form it.
+///
+/// Scalar channels may retain both signed-`kappa` partner diagnostics while
+/// exposing their degeneracy-weighted average as `energy`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScfResolvedChannelEnergy {
+    pub recipe: ScfChannelRecipe,
+    pub energy: Hartree,
+    pub components: Vec<GeneratedLinearizationEnergy>,
 }
 
 /// Finite-temperature occupation functional used during SCF.
@@ -167,57 +190,62 @@ impl ScfConfig {
         if self.basis.l_max == 0 {
             return Err(ScfConfigError::ZeroLMax);
         }
-        for orbital in &self.basis.local_orbitals {
-            if orbital.site.trim().is_empty() {
-                return Err(ScfConfigError::EmptyLocalOrbitalSite);
-            }
-            if orbital.kappa == 0 {
-                return Err(ScfConfigError::ZeroLocalOrbitalKappa {
-                    site: orbital.site.clone(),
-                });
-            }
-            if !orbital.energy.get().is_finite() {
-                return Err(ScfConfigError::NonFiniteLocalOrbitalEnergy {
-                    site: orbital.site.clone(),
-                    energy: orbital.energy.get(),
-                });
-            }
-        }
-        for orbital in &self.basis.relativistic_local_orbitals {
-            if orbital.site.trim().is_empty() {
-                return Err(ScfConfigError::EmptyRelativisticLocalOrbitalSite);
-            }
-            if orbital.principal_quantum_number == 0 {
+        for recipe in &self.basis.channels {
+            validate_channel_recipe(recipe)?;
+            if matches!(self.relativity, ScfRelativity::SocSecondVariation { .. })
+                && matches!(recipe.identity, ScfChannelIdentity::Kappa { .. })
+                && matches!(
+                    recipe.treatment,
+                    ScfChannelTreatment::Lo | ScfChannelTreatment::Hdlo
+                )
+            {
                 return Err(
-                    ScfConfigError::ZeroRelativisticLocalOrbitalPrincipalQuantumNumber {
-                        site: orbital.site.clone(),
+                    ScfConfigError::SignedKappaLocalOrbitalUnsupportedInSecondVariation {
+                        site: recipe.site.clone(),
+                        identity: recipe.identity,
                     },
                 );
             }
-            let kappa = Kappa::new(orbital.kappa).map_err(|_| {
-                ScfConfigError::InvalidRelativisticLocalOrbitalKappa {
-                    site: orbital.site.clone(),
-                    kappa: orbital.kappa,
-                }
-            })?;
-            if !(1..=3).contains(&orbital.kappa) {
-                return Err(ScfConfigError::InvalidRelativisticLocalOrbitalKappa {
-                    site: orbital.site.clone(),
-                    kappa: orbital.kappa,
-                });
-            }
-            if orbital.principal_quantum_number < kappa.large_l() + 1 {
-                return Err(ScfConfigError::InvalidRelativisticLocalOrbitalState {
-                    site: orbital.site.clone(),
-                    principal_quantum_number: orbital.principal_quantum_number,
-                    kappa: orbital.kappa,
-                });
-            }
         }
-        if matches!(self.relativity, ScfRelativity::SocSecondVariation { .. })
-            && !self.basis.relativistic_local_orbitals.is_empty()
-        {
-            return Err(ScfConfigError::RelativisticLocalOrbitalUnsupportedInSecondVariation);
+        for resolved in &self.basis.resolved_channels {
+            validate_channel_recipe(&resolved.recipe)?;
+            if !self.basis.channels.contains(&resolved.recipe) {
+                return Err(ScfConfigError::ResolvedChannelRecipeNotRequested {
+                    site: resolved.recipe.site.clone(),
+                    identity: resolved.recipe.identity,
+                    derivative_order: resolved.recipe.derivative_order,
+                });
+            }
+            if !resolved.energy.get().is_finite() {
+                return Err(ScfConfigError::NonFiniteResolvedChannelEnergy {
+                    site: resolved.recipe.site.clone(),
+                    energy: resolved.energy.get(),
+                });
+            }
+            if resolved.components.is_empty() {
+                return Err(ScfConfigError::EmptyResolvedChannelComponents {
+                    site: resolved.recipe.site.clone(),
+                    identity: resolved.recipe.identity,
+                });
+            }
+            for (component, generated) in resolved.components.iter().enumerate() {
+                if let Some(seed) = generated.seed {
+                    if !seed.get().is_finite() {
+                        return Err(ScfConfigError::NonFiniteResolvedChannelComponentSeed {
+                            site: resolved.recipe.site.clone(),
+                            component,
+                            seed: seed.get(),
+                        });
+                    }
+                }
+                if !generated.energy.get().is_finite() {
+                    return Err(ScfConfigError::NonFiniteResolvedChannelComponent {
+                        site: resolved.recipe.site.clone(),
+                        component,
+                        energy: generated.energy.get(),
+                    });
+                }
+            }
         }
         let scale = match self.occupations {
             ScfOccupations::FermiDirac { temperature } => temperature.get(),
@@ -293,6 +321,46 @@ impl ScfConfig {
     }
 }
 
+fn validate_channel_recipe(recipe: &ScfChannelRecipe) -> Result<(), ScfConfigError> {
+    if recipe.site.trim().is_empty() {
+        return Err(ScfConfigError::EmptyChannelSite);
+    }
+    match recipe.identity {
+        ScfChannelIdentity::ScalarL { n, l } if n <= l => {
+            return Err(ScfConfigError::InvalidScalarChannelIdentity {
+                site: recipe.site.clone(),
+                n,
+                l,
+            });
+        }
+        ScfChannelIdentity::Kappa { n, kappa } => {
+            let kappa =
+                Kappa::new(kappa).map_err(|_| ScfConfigError::InvalidKappaChannelIdentity {
+                    site: recipe.site.clone(),
+                    n,
+                    kappa,
+                })?;
+            if n <= kappa.large_l() {
+                return Err(ScfConfigError::InvalidKappaChannelIdentity {
+                    site: recipe.site.clone(),
+                    n,
+                    kappa: kappa.get(),
+                });
+            }
+        }
+        ScfChannelIdentity::ScalarL { .. } => {}
+    }
+    if let Some(seed) = recipe.seed {
+        if !seed.get().is_finite() {
+            return Err(ScfConfigError::NonFiniteChannelSeed {
+                site: recipe.site.clone(),
+                seed: seed.get(),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Terms evaluated by the physics kernel after density synthesis.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScfEnergyTerms {
@@ -334,6 +402,8 @@ pub struct ScfIterationDiagnostic {
     pub density_rms: f64,
     pub energy_change: Option<Hartree>,
     pub energy: ScfEnergy,
+    /// Exact current-potential channel energies used for this iteration.
+    pub resolved_channels: Vec<ScfResolvedChannelEnergy>,
     /// Mixer status that produced the next input, or [`MixStatus::NotMixed`]
     /// when this iteration performed no mix.
     pub mixing: MixStatus,
@@ -345,7 +415,7 @@ pub struct ScfState {
     /// Accepted fixed-point input density that generated `potential`.
     pub density: RegionalDensity,
     pub potential: RegionalPotential,
-    /// Exact basis and signed-kappa local-orbital controls for frozen-potential consumers.
+    /// Exact materialized basis and channel energies for frozen-potential consumers.
     pub basis: ScfBasis,
     pub chemical_potential: Hartree,
     pub energy: ScfEnergy,
@@ -460,6 +530,25 @@ pub trait ScfPhysics {
 
     fn band_states<'a>(&self, bands: &'a Self::BandSolution) -> &'a [BandState];
 
+    /// Resolve generators that depend on the provisional spectrum in this outer iteration.
+    ///
+    /// Returning a replacement one-particle problem requests another band and
+    /// occupation pass against the same potential and immutable requested basis.
+    #[allow(clippy::too_many_arguments)]
+    fn refine_one_particle(
+        &mut self,
+        _iteration: usize,
+        _potential: &RegionalPotential,
+        _requested_basis: &ScfBasis,
+        _one_particle: &Self::OneParticle,
+        _bands: &Self::BandSolution,
+        _occupations: &[f64],
+        _chemical_potential: Hartree,
+        _relativity: ScfRelativity,
+    ) -> Result<Option<Self::OneParticle>, Self::Error> {
+        Ok(None)
+    }
+
     fn synthesize_valence_density(
         &mut self,
         iteration: usize,
@@ -541,24 +630,52 @@ pub fn run_scf<P: ScfPhysics>(
             core_eigenvalue_sum += contribution.eigenvalue_sum;
         }
 
-        let one_particle = physics
+        let mut one_particle = physics
             .assemble_one_particle(iteration, &potential, &config.basis, config.relativity)
             .map_err(|source| ScfError::Kernel {
                 operation: "radial/basis/H/S assembly",
                 source,
             })?;
-        let bands = physics
-            .solve_regular_bands(iteration, &one_particle, config.k_mesh, config.relativity)
-            .map_err(|source| ScfError::Kernel {
-                operation: "regular full-BZ band solve",
-                source,
-            })?;
-
-        let occupation = solve_occupations(
-            physics.band_states(&bands),
-            valence_electron_count,
-            config.occupations,
-        )?;
+        let (bands, occupation) = {
+            let mut passes = 0;
+            loop {
+                passes += 1;
+                let bands = physics
+                    .solve_regular_bands(iteration, &one_particle, config.k_mesh, config.relativity)
+                    .map_err(|source| ScfError::Kernel {
+                        operation: "regular full-BZ band solve",
+                        source,
+                    })?;
+                let occupation = solve_occupations(
+                    physics.band_states(&bands),
+                    valence_electron_count,
+                    config.occupations,
+                )?;
+                let refinement = physics
+                    .refine_one_particle(
+                        iteration,
+                        &potential,
+                        &config.basis,
+                        &one_particle,
+                        &bands,
+                        &occupation.occupations,
+                        occupation.chemical_potential,
+                        config.relativity,
+                    )
+                    .map_err(|source| ScfError::Kernel {
+                        operation: "spectral basis refinement",
+                        source,
+                    })?;
+                match refinement {
+                    None => break (bands, occupation),
+                    Some(_) if passes == BASIS_REFINEMENT_MAX_PASSES => {
+                        return Err(ScfError::BasisRefinementNotConverged { iteration, passes });
+                    }
+                    Some(refined) => one_particle = refined,
+                }
+            }
+        };
+        let materialized_basis = physics.retained_basis(&config.basis, &one_particle);
         let mut output_density = physics
             .synthesize_valence_density(iteration, &bands, &occupation.occupations)
             .map_err(|source| ScfError::Kernel {
@@ -602,6 +719,7 @@ pub fn run_scf<P: ScfPhysics>(
             density_rms,
             energy_change,
             energy,
+            resolved_channels: materialized_basis.resolved_channels.clone(),
             mixing: MixStatus::NotMixed,
         };
 
@@ -613,7 +731,7 @@ pub fn run_scf<P: ScfPhysics>(
             return Ok(ScfState {
                 density: input_density,
                 potential,
-                basis: physics.retained_basis(&config.basis, &one_particle),
+                basis: materialized_basis,
                 chemical_potential: occupation.chemical_potential,
                 energy,
                 relativity: config.relativity,
@@ -784,30 +902,52 @@ pub enum ScfConfigError {
     InvalidPlaneWaveCutoff(f64),
     #[error("l_max must be positive")]
     ZeroLMax,
-    #[error("local-orbital site must not be empty")]
-    EmptyLocalOrbitalSite,
-    #[error("local orbital on site {site:?} has kappa zero")]
-    ZeroLocalOrbitalKappa { site: String },
-    #[error("local orbital on site {site:?} has non-finite energy {energy} Ha")]
-    NonFiniteLocalOrbitalEnergy { site: String, energy: f64 },
-    #[error("relativistic local-orbital site must not be empty")]
-    EmptyRelativisticLocalOrbitalSite,
-    #[error("relativistic local orbital on site {site:?} has principal quantum number zero")]
-    ZeroRelativisticLocalOrbitalPrincipalQuantumNumber { site: String },
-    #[error("relativistic local orbital on site {site:?} has invalid kappa {kappa}")]
-    InvalidRelativisticLocalOrbitalKappa { site: String, kappa: i32 },
+    #[error("SCF channel site must not be empty")]
+    EmptyChannelSite,
+    #[error("SCF channel on site {site:?} has invalid scalar identity n={n}, l={l}")]
+    InvalidScalarChannelIdentity { site: String, n: u32, l: u32 },
+    #[error("SCF channel on site {site:?} has invalid signed-kappa identity n={n}, kappa={kappa}")]
+    InvalidKappaChannelIdentity { site: String, n: u32, kappa: i32 },
+    #[error("SCF channel on site {site:?} has non-finite seed {seed} Ha")]
+    NonFiniteChannelSeed { site: String, seed: f64 },
     #[error(
-        "relativistic local orbital on site {site:?} has invalid state n={principal_quantum_number}, kappa={kappa}"
+        "SOC second variation cannot represent signed-kappa local orbital {identity:?} on site {site:?}; use spinor first variation or remove the channel"
     )]
-    InvalidRelativisticLocalOrbitalState {
+    SignedKappaLocalOrbitalUnsupportedInSecondVariation {
         site: String,
-        principal_quantum_number: u32,
-        kappa: i32,
+        identity: ScfChannelIdentity,
     },
     #[error(
-        "SOC second variation cannot represent signed-kappa relativistic local orbitals; override their treatment to valence or use spinor first variation"
+        "resolved SCF channel on site {site:?} for {identity:?} at derivative order {derivative_order} has no matching requested recipe"
     )]
-    RelativisticLocalOrbitalUnsupportedInSecondVariation,
+    ResolvedChannelRecipeNotRequested {
+        site: String,
+        identity: ScfChannelIdentity,
+        derivative_order: u32,
+    },
+    #[error("resolved SCF channel on site {site:?} has non-finite energy {energy} Ha")]
+    NonFiniteResolvedChannelEnergy { site: String, energy: f64 },
+    #[error("resolved SCF channel on site {site:?} for {identity:?} has no generator components")]
+    EmptyResolvedChannelComponents {
+        site: String,
+        identity: ScfChannelIdentity,
+    },
+    #[error(
+        "resolved SCF channel component {component} on site {site:?} has non-finite energy {energy} Ha"
+    )]
+    NonFiniteResolvedChannelComponent {
+        site: String,
+        component: usize,
+        energy: f64,
+    },
+    #[error(
+        "resolved SCF channel component {component} on site {site:?} has non-finite seed {seed} Ha"
+    )]
+    NonFiniteResolvedChannelComponentSeed {
+        site: String,
+        component: usize,
+        seed: f64,
+    },
     #[error("occupation energy scale must be finite and positive, got {0} Ha")]
     InvalidOccupationScale(f64),
     #[error("SCF energy tolerance must be finite and positive, got {0} Ha")]
@@ -857,6 +997,10 @@ pub enum ScfError<E: Error + Send + Sync + 'static> {
         #[source]
         source: MixingError,
     },
+    #[error(
+        "spectral basis refinement did not converge at SCF iteration {iteration} after {passes} passes"
+    )]
+    BasisRefinementNotConverged { iteration: usize, passes: usize },
     #[error(transparent)]
     Occupation(#[from] OccupationError),
     #[error(transparent)]
@@ -903,7 +1047,26 @@ mod tests {
     use num_complex::Complex64;
 
     use super::*;
-    use crate::{InterstitialField, RegionalScalarField, RegularSpectrum};
+    use crate::{
+        InterstitialField, LinearizationEnergyDiagnostic, RegionalScalarField, RegularSpectrum,
+    };
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum MockRefinement {
+        None,
+        OncePerIteration,
+        NeverConverges,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct MockOneParticle {
+        generation: usize,
+    }
+
+    struct MockBandSolution {
+        generation: usize,
+        states: Vec<BandState>,
+    }
 
     struct MockPhysics {
         template: RegionalDensity,
@@ -911,6 +1074,10 @@ mod tests {
         events: Vec<String>,
         exchange_correlations: Vec<ScfExchangeCorrelation>,
         valence_occupation_sum: Option<f64>,
+        refinement: MockRefinement,
+        band_passes: Vec<(usize, usize)>,
+        refinement_occupation_sums: Vec<(usize, usize, f64)>,
+        density_generations: Vec<(usize, usize)>,
     }
 
     impl MockPhysics {
@@ -921,7 +1088,16 @@ mod tests {
                 events: Vec::new(),
                 exchange_correlations: Vec::new(),
                 valence_occupation_sum: None,
+                refinement: MockRefinement::None,
+                band_passes: Vec::new(),
+                refinement_occupation_sums: Vec::new(),
+                density_generations: Vec::new(),
             }
+        }
+
+        fn with_refinement(mut self, refinement: MockRefinement) -> Self {
+            self.refinement = refinement;
+            self
         }
 
         fn core_density(&self) -> RegionalDensity {
@@ -931,8 +1107,8 @@ mod tests {
 
     impl ScfPhysics for MockPhysics {
         type Error = Infallible;
-        type OneParticle = ();
-        type BandSolution = Vec<BandState>;
+        type OneParticle = MockOneParticle;
+        type BandSolution = MockBandSolution;
 
         fn initial_density(&mut self, _config: &ScfConfig) -> Result<RegionalDensity, Self::Error> {
             self.events.push("initial".to_owned());
@@ -981,13 +1157,31 @@ mod tests {
             _relativity: ScfRelativity,
         ) -> Result<Self::OneParticle, Self::Error> {
             self.events.push(format!("assemble:{iteration}"));
-            Ok(())
+            Ok(MockOneParticle { generation: 0 })
+        }
+
+        fn retained_basis(
+            &self,
+            requested: &ScfBasis,
+            one_particle: &Self::OneParticle,
+        ) -> ScfBasis {
+            let mut retained = requested.clone();
+            if one_particle.generation > 0 {
+                retained.resolved_channels = requested
+                    .channels
+                    .first()
+                    .cloned()
+                    .map(resolved_channel)
+                    .into_iter()
+                    .collect();
+            }
+            retained
         }
 
         fn solve_regular_bands(
             &mut self,
             iteration: usize,
-            _one_particle: &Self::OneParticle,
+            one_particle: &Self::OneParticle,
             _k_mesh: ScfKMesh,
             relativity: ScfRelativity,
         ) -> Result<Self::BandSolution, Self::Error> {
@@ -997,23 +1191,54 @@ mod tests {
                 ScfRelativity::SpinorFirstVariation => "spinor",
             };
             self.events.push(format!("bands:{iteration}:{route}"));
-            Ok(vec![
-                BandState::new(Hartree(-1.0), 1.0, 1),
-                BandState::new(Hartree(1.0), 1.0, 1),
-            ])
+            self.band_passes.push((iteration, one_particle.generation));
+            Ok(MockBandSolution {
+                generation: one_particle.generation,
+                states: vec![
+                    BandState::new(Hartree(-1.0), 1.0, 1),
+                    BandState::new(Hartree(1.0), 1.0, 1),
+                ],
+            })
         }
 
         fn band_states<'a>(&self, bands: &'a Self::BandSolution) -> &'a [BandState] {
-            bands
+            &bands.states
+        }
+
+        fn refine_one_particle(
+            &mut self,
+            iteration: usize,
+            _potential: &RegionalPotential,
+            _requested_basis: &ScfBasis,
+            one_particle: &Self::OneParticle,
+            _bands: &Self::BandSolution,
+            occupations: &[f64],
+            _chemical_potential: Hartree,
+            _relativity: ScfRelativity,
+        ) -> Result<Option<Self::OneParticle>, Self::Error> {
+            self.refinement_occupation_sums.push((
+                iteration,
+                one_particle.generation,
+                occupations.iter().sum(),
+            ));
+            let refine = match self.refinement {
+                MockRefinement::None => false,
+                MockRefinement::OncePerIteration => one_particle.generation == 0,
+                MockRefinement::NeverConverges => true,
+            };
+            Ok(refine.then_some(MockOneParticle {
+                generation: one_particle.generation + 1,
+            }))
         }
 
         fn synthesize_valence_density(
             &mut self,
             iteration: usize,
-            _bands: &Self::BandSolution,
+            bands: &Self::BandSolution,
             occupations: &[f64],
         ) -> Result<RegionalDensity, Self::Error> {
             self.valence_occupation_sum = Some(occupations.iter().sum());
+            self.density_generations.push((iteration, bands.generation));
             self.events.push(format!("valence:{iteration}"));
             Ok(regional_density(0.0, 0.1))
         }
@@ -1102,6 +1327,31 @@ mod tests {
         .unwrap()
     }
 
+    fn channel_recipe() -> ScfChannelRecipe {
+        ScfChannelRecipe {
+            site: "a".to_owned(),
+            identity: ScfChannelIdentity::Kappa { n: 2, kappa: 1 },
+            treatment: ScfChannelTreatment::Lo,
+            derivative_order: 0,
+            generator: LinearizationEnergyGenerator::Explicit,
+            seed: Some(Hartree(-0.25)),
+            provenance: ScfChannelProvenance::Site,
+        }
+    }
+
+    fn resolved_channel(recipe: ScfChannelRecipe) -> ScfResolvedChannelEnergy {
+        ScfResolvedChannelEnergy {
+            recipe,
+            energy: Hartree(-0.25),
+            components: vec![GeneratedLinearizationEnergy {
+                generator: LinearizationEnergyGenerator::Explicit,
+                seed: Some(Hartree(-0.25)),
+                energy: Hartree(-0.25),
+                diagnostic: LinearizationEnergyDiagnostic::Stored,
+            }],
+        }
+    }
+
     fn config(mixing: ScfMixing, occupations: ScfOccupations) -> ScfConfig {
         ScfConfig {
             electron_count: 1.0,
@@ -1112,8 +1362,8 @@ mod tests {
             basis: ScfBasis {
                 plane_wave_cutoff: 4.0,
                 l_max: 8,
-                local_orbitals: Vec::new(),
-                relativistic_local_orbitals: Vec::new(),
+                channels: Vec::new(),
+                resolved_channels: Vec::new(),
             },
             occupations,
             exchange_correlation: ScfExchangeCorrelation {
@@ -1147,27 +1397,20 @@ mod tests {
     }
 
     #[test]
-    fn second_variation_rejects_signed_kappa_relativistic_local_orbitals() {
+    fn second_variation_rejects_signed_kappa_local_orbitals() {
         let mut config = config(
             ScfMixing::Linear { alpha: 1.0 },
             ScfOccupations::FermiDirac {
                 temperature: Hartree(0.1),
             },
         );
-        config
-            .basis
-            .relativistic_local_orbitals
-            .push(ScfRelativisticLocalOrbital {
-                site: "a".to_owned(),
-                principal_quantum_number: 2,
-                kappa: 1,
-            });
-        let mut physics = MockPhysics::new(0.125);
+        config.basis.channels.push(channel_recipe());
         assert!(matches!(
-            run_scf(&mut physics, &config, None),
-            Err(ScfError::InvalidConfig(
-                ScfConfigError::RelativisticLocalOrbitalUnsupportedInSecondVariation
-            ))
+            config.validate(),
+            Err(ScfConfigError::SignedKappaLocalOrbitalUnsupportedInSecondVariation {
+                site,
+                identity: ScfChannelIdentity::Kappa { n: 2, kappa: 1 },
+            }) if site == "a"
         ));
     }
 
@@ -1228,6 +1471,64 @@ mod tests {
             ]
         );
         assert!(!physics.events.iter().any(|event| event == "dos"));
+    }
+
+    #[test]
+    fn spectral_refinement_repeats_bands_before_consuming_the_final_basis() {
+        let mut physics = MockPhysics::new(0.125).with_refinement(MockRefinement::OncePerIteration);
+        let mut config = config(
+            ScfMixing::Linear { alpha: 1.0 },
+            ScfOccupations::FermiDirac {
+                temperature: Hartree(0.1),
+            },
+        );
+        config.basis.channels.push(channel_recipe());
+
+        let state = run_scf(&mut physics, &config, None).unwrap();
+        assert_eq!(physics.band_passes, [(1, 0), (1, 1), (2, 0), (2, 1)]);
+        assert_eq!(physics.density_generations, [(1, 1), (2, 1)]);
+        assert_eq!(physics.refinement_occupation_sums.len(), 4);
+        assert!(
+            physics
+                .refinement_occupation_sums
+                .iter()
+                .all(|(_, _, sum)| (*sum - 0.75).abs() < ELECTRON_TOLERANCE)
+        );
+
+        let expected = vec![resolved_channel(channel_recipe())];
+        assert!(
+            state
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.resolved_channels == expected)
+        );
+        assert_eq!(state.basis.channels, vec![channel_recipe()]);
+        assert_eq!(state.basis.resolved_channels, expected);
+    }
+
+    #[test]
+    fn spectral_refinement_stops_after_sixteen_passes() {
+        let mut physics = MockPhysics::new(0.125).with_refinement(MockRefinement::NeverConverges);
+        let error = run_scf(
+            &mut physics,
+            &config(
+                ScfMixing::Linear { alpha: 1.0 },
+                ScfOccupations::FermiDirac {
+                    temperature: Hartree(0.1),
+                },
+            ),
+            None,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            ScfError::BasisRefinementNotConverged {
+                iteration: 1,
+                passes: BASIS_REFINEMENT_MAX_PASSES,
+            }
+        ));
+        assert_eq!(physics.band_passes.len(), BASIS_REFINEMENT_MAX_PASSES);
+        assert!(physics.density_generations.is_empty());
     }
 
     #[test]

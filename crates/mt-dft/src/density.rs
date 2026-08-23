@@ -15,12 +15,14 @@ use muffintin_sphere::{
     DensityProjectionError, HarmonicConvention, SphereField, SphereFieldError, SphereOrbital,
     SpinorSphereOrbital, project_orbital_pair_density, project_spinor_pair_density_components,
 };
+use muffintin_tensor::{Axis, DenseEigenvectors, DenseHermitianMatrix};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use std::f64::consts::PI;
 use thiserror::Error;
 
 const WEIGHT_TOLERANCE: f64 = 4096.0 * f64::EPSILON;
+const BAND_PROJECTION_TOLERANCE: f64 = 4096.0 * f64::EPSILON;
 const SPINOR_COUNT_TOLERANCE: f64 = 1.0e-9;
 
 /// One regular full-BZ scalar first-variation solution.
@@ -56,6 +58,78 @@ pub struct FullSpinorDensitySiteBasis {
     pub mesh: ExponentialMesh,
     pub channels: Vec<RelativisticChannel>,
     pub orbitals: Vec<SpinorSphereOrbital>,
+}
+
+/// Physical site projections of every eigenvector band.
+///
+/// The precompiled map first forms `d = P_site C`. For the selected site
+/// coordinates, each returned value is the full Hermitian quadratic form
+/// `d_selected^dagger S_selected d_selected`, including all overlap cross
+/// terms. The operation is independent of whether `projection` came from a
+/// scalar or spinor basis.
+pub fn physical_site_band_projections(
+    projection: &CompiledSiteProjection,
+    eigenvectors: &DenseEigenvectors,
+    site_overlap: &DenseHermitianMatrix,
+    selected_coordinates: &[usize],
+) -> Result<Vec<f64>, DensityError> {
+    let coordinate_count = projection.coordinate_count();
+    if site_overlap.axis() != Axis::SiteCoordinate {
+        return Err(DensityError::BandProjectionOverlapAxis {
+            actual: site_overlap.axis(),
+        });
+    }
+    if site_overlap.dimension() != coordinate_count {
+        return Err(DensityError::BandProjectionOverlapDimension {
+            expected: coordinate_count,
+            actual: site_overlap.dimension(),
+        });
+    }
+    let mut selected = vec![false; coordinate_count];
+    for &coordinate in selected_coordinates {
+        if coordinate >= coordinate_count {
+            return Err(DensityError::BandProjectionCoordinate {
+                coordinate,
+                coordinate_count,
+            });
+        }
+        if selected[coordinate] {
+            return Err(DensityError::DuplicateBandProjectionCoordinate { coordinate });
+        }
+        selected[coordinate] = true;
+    }
+
+    let projected = projection.project_eigenvectors(eigenvectors)?;
+    let mut weights = Vec::with_capacity(projected.band_count());
+    for band in 0..projected.band_count() {
+        let mut value = Complex64::new(0.0, 0.0);
+        let mut scale = 0.0;
+        for &left in selected_coordinates {
+            for &right in selected_coordinates {
+                let term = projected.at(left, band).conj()
+                    * site_overlap.at(left, right)
+                    * projected.at(right, band);
+                value += term;
+                scale += term.norm();
+            }
+        }
+        let tolerance = BAND_PROJECTION_TOLERANCE * scale.max(1.0);
+        if !value.re.is_finite() {
+            return Err(DensityError::NonFiniteBandProjection {
+                band,
+                projection: value.re,
+            });
+        }
+        if value.re < -tolerance {
+            return Err(DensityError::NegativeBandProjection {
+                band,
+                projection: value.re,
+                tolerance,
+            });
+        }
+        weights.push(value.re.max(0.0));
+    }
+    Ok(weights)
 }
 
 /// Synthesize charge and longitudinal magnetization from occupied collinear
@@ -1011,6 +1085,27 @@ pub enum DensityError {
         p: usize,
         q: usize,
     },
+    #[error("band-projection overlap axis is {actual}, expected SiteCoordinate")]
+    BandProjectionOverlapAxis { actual: Axis },
+    #[error("band-projection overlap has dimension {actual}, expected {expected} site coordinates")]
+    BandProjectionOverlapDimension { expected: usize, actual: usize },
+    #[error("selected band-projection coordinate {coordinate} is outside 0..{coordinate_count}")]
+    BandProjectionCoordinate {
+        coordinate: usize,
+        coordinate_count: usize,
+    },
+    #[error("selected band-projection coordinate {coordinate} appears more than once")]
+    DuplicateBandProjectionCoordinate { coordinate: usize },
+    #[error("band {band} has non-finite physical site projection {projection}")]
+    NonFiniteBandProjection { band: usize, projection: f64 },
+    #[error(
+        "band {band} has negative physical site projection {projection}, below allowed -{tolerance}"
+    )]
+    NegativeBandProjection {
+        band: usize,
+        projection: f64,
+        tolerance: f64,
+    },
     #[error(transparent)]
     Operator(#[from] OperatorError),
     #[error(transparent)]
@@ -1031,8 +1126,8 @@ pub enum DensityError {
 mod tests {
     use super::*;
     use muffintin_basis::{
-        ApwSiteGeometry, BasisLayout, Provenance, SpinorBasisLayout, SpinorCompiledBasis,
-        SpinorSiteLayout,
+        ApwSiteGeometry, BasisLayout, LocalOrbitalLayout, Provenance, SpinorBasisLayout,
+        SpinorCompiledBasis, SpinorSiteLayout,
     };
     use muffintin_core::{
         Bohr, Hartree, HermitianFourierField, InverseBohr, Kappa, ReciprocalLattice, Sphere,
@@ -1040,7 +1135,44 @@ mod tests {
     };
     use muffintin_envelope::PlaneWave;
     use muffintin_radial::{CoreState, RelativisticRole};
-    use muffintin_tensor::DenseEigenvectors;
+    use muffintin_tensor::{Axis, DenseEigenvectors, DenseHermitianMatrix};
+
+    #[test]
+    fn physical_site_band_projection_includes_nonorthogonal_cross_terms() {
+        let compiled = CompiledBasis {
+            layout: BasisLayout::new(0, vec![LocalOrbitalLayout::new(vec![2])]),
+            plane_waves: Vec::new(),
+            site_augmentations: vec![Vec::new()],
+            site_geometry: vec![ApwSiteGeometry {
+                position: [Bohr(0.0); 3],
+                radius: Bohr(1.0),
+            }],
+            provenance: Provenance::default(),
+        };
+        let projection = CompiledSiteProjection::scalar(&compiled, 0).unwrap();
+        let eigenvectors = DenseEigenvectors::from_host_column_major(
+            2,
+            1,
+            vec![Complex64::new(1.0, 0.0), Complex64::new(1.0, 0.0)],
+        )
+        .unwrap();
+        let overlap = DenseHermitianMatrix::from_host_row_major(
+            2,
+            Axis::SiteCoordinate,
+            vec![
+                Complex64::new(1.0, 0.0),
+                Complex64::new(0.5, 0.0),
+                Complex64::new(0.5, 0.0),
+                Complex64::new(1.0, 0.0),
+            ],
+        )
+        .unwrap();
+
+        let weights =
+            physical_site_band_projections(&projection, &eigenvectors, &overlap, &[0, 1]).unwrap();
+
+        assert_eq!(weights, vec![3.0]);
+    }
 
     fn interstitial_only_density(electrons: f64) -> RegionalDensity {
         let reciprocal = ReciprocalLattice::new([

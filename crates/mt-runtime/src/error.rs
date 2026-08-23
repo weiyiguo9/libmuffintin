@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
+use muffintin_core::Hartree;
 use muffintin_io::IoError;
 use thiserror::Error;
 
-use crate::{ChannelIdentity, ChannelRecipeError, TaskKind};
+use crate::{ChannelEnergyGenerator, ChannelIdentity, ChannelRecipeError, TaskKind};
 
 /// A syntactically valid input whose values violate the workflow contract.
 #[derive(Clone, Debug, Error, PartialEq)]
@@ -137,9 +138,35 @@ pub enum InputError {
         atomic_number: u16,
     },
     #[error(
-        "task {task_id:?} compiled recipe has not yet been materialized; this execution path requires energy-generator = \"frozen-snapshot\" with no recipe and empty channels"
+        "task {task_id:?} site {site:?} core channel {identity:?} has no matching occupation in the FLEUR neutral-atom default for Z={atomic_number}"
     )]
-    UnsupportedV2OrbitalConfiguration { task_id: String },
+    MissingCoreOccupation {
+        task_id: String,
+        site: String,
+        atomic_number: u8,
+        identity: ChannelIdentity,
+    },
+    #[error(
+        "task {task_id:?} cannot inject built-in base valence channel {identity:?} on site {site:?} under task-level explicit generation because the channel has no explicit Hartree seed; add explicit valence coverage for this angular channel"
+    )]
+    MissingExplicitBaseValenceSeed {
+        task_id: String,
+        site: String,
+        identity: ChannelIdentity,
+    },
+    #[error(
+        "task {task_id:?} site {site:?} has inconsistent built-in valence partners for n={n}, l={l}: first generator/seed are {first_generator:?}/{first_seed:?}, conflicting generator/seed are {conflicting_generator:?}/{conflicting_seed:?}"
+    )]
+    InconsistentBuiltInValencePartners {
+        task_id: String,
+        site: String,
+        n: u32,
+        l: u32,
+        first_generator: ChannelEnergyGenerator,
+        first_seed: Option<Hartree>,
+        conflicting_generator: ChannelEnergyGenerator,
+        conflicting_seed: Option<Hartree>,
+    },
     #[error(
         "task {task_id:?} site {site:?} channel {identity:?} requests derivative order {derivative_order}, which is not implemented"
     )]

@@ -4,17 +4,20 @@ use std::path::{Path, PathBuf};
 
 use muffintin_core::Hartree;
 use muffintin_dft::{
-    AtomicChannelTreatment, AtomicNumber, BandPathPoint, BandPathRequest, BandPathResult,
-    DosRequest, DosResult, FirstVariationWindow, NoncollinearXcRoute as ScfNoncollinearXcRoute,
-    ScfBasis, ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState, ScfExchangeCorrelation,
-    ScfKMesh, ScfMixing, ScfOccupations, ScfPhysics, ScfRelativisticLocalOrbital, ScfRelativity,
-    ScfState, XcFunctional, fleur_default_atomic_configuration, run_band_path, run_dos, run_scf,
+    AtomicNumber, BandPathPoint, BandPathRequest, BandPathResult, DosRequest, DosResult,
+    FirstVariationWindow, LinearizationEnergyGenerator,
+    NoncollinearXcRoute as ScfNoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
+    ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfConvergence,
+    ScfCoreSite, ScfCoreState, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations,
+    ScfPhysics, ScfRelativity, ScfState, XcFunctional, fleur_default_atomic_configuration,
+    run_band_path, run_dos, run_scf,
 };
 use muffintin_io::{SnapshotFile, SnapshotV2, snapshot_file_from_toml};
 
 use crate::input::parse_source;
 use crate::{
-    ChannelEnergyGenerator, ChannelRecipeArtifact, CompiledChannelRecipe, ExchangeCorrelation,
+    ChannelEnergyGenerator, ChannelIdentity, ChannelProvenance, ChannelRecipeArtifact,
+    ChannelTreatment, CompiledChannelRecipe, CompiledSiteRecipe, ExchangeCorrelation,
     ExternalChannelRecipe, Input, InputError, KMesh, Mixing, NoncollinearXcRoute, Occupations,
     RecipeSite, Relativity, Task, compile_channel_recipe, parse_channel_recipe_toml,
     parse_input_toml,
@@ -319,7 +322,7 @@ fn source_state<'a>(
         })
 }
 
-fn scf_config(task: &PreparedTask, snapshot: &SnapshotV2) -> Result<ScfConfig, InputError> {
+fn scf_config(task: &PreparedTask, _snapshot: &SnapshotV2) -> Result<ScfConfig, InputError> {
     let Task::DftScf {
         electron_count,
         k_mesh,
@@ -351,65 +354,21 @@ fn scf_config(task: &PreparedTask, snapshot: &SnapshotV2) -> Result<ScfConfig, I
         });
     }
 
-    if basis.energy_generator != Some(ChannelEnergyGenerator::FrozenSnapshot)
-        || basis.recipe.is_some()
-        || !basis.channels.is_empty()
-    {
-        return Err(InputError::UnsupportedV2OrbitalConfiguration {
-            task_id: task.id.clone(),
-        });
-    }
-    let mut atomic_configurations = Vec::with_capacity(snapshot.geometry.sites.len());
-    for site in &snapshot.geometry.sites {
-        let atomic_number = u8::try_from(site.atomic_number)
-            .ok()
-            .and_then(AtomicNumber::new)
-            .ok_or_else(|| InputError::UnsupportedAtomicNumber {
-                task_id: task.id.clone(),
-                site: site.id.clone(),
-                atomic_number: site.atomic_number,
-            })?;
-        let configuration = fleur_default_atomic_configuration(atomic_number);
-        atomic_configurations.push((site, configuration));
-    }
-    let core_sites = atomic_configurations
+    let channel_recipe = task
+        .channel_recipe
+        .as_ref()
+        .expect("prepared DFT SCF tasks always contain a compiled channel recipe");
+    let channels = map_basis_channels(
+        &task.id,
+        basis.l_max,
+        basis.energy_generator,
+        channel_recipe,
+    )?;
+    let core_sites = channel_recipe
+        .sites
         .iter()
-        .map(|(site, configuration)| ScfCoreSite {
-            id: site.id.clone(),
-            states: configuration
-                .occupations()
-                .iter()
-                .filter(|state| state.treatment == AtomicChannelTreatment::Core)
-                .map(|state| ScfCoreState {
-                    principal_quantum_number: u32::from(state.orbital.principal_quantum_number()),
-                    kappa: i32::from(state.orbital.kappa()),
-                    occupation: state.occupation,
-                })
-                .collect(),
-        })
-        .collect();
-    let relativistic_local_orbitals = if matches!(relativity, Relativity::Scalar {}) {
-        Vec::new()
-    } else {
-        atomic_configurations
-            .iter()
-            .flat_map(|(site, configuration)| {
-                configuration
-                    .occupations()
-                    .iter()
-                    .filter(|state| {
-                        state.treatment == AtomicChannelTreatment::RelativisticLocalOrbital
-                    })
-                    .map(|state| ScfRelativisticLocalOrbital {
-                        site: site.id.clone(),
-                        principal_quantum_number: u32::from(
-                            state.orbital.principal_quantum_number(),
-                        ),
-                        kappa: i32::from(state.orbital.kappa()),
-                    })
-            })
-            .collect()
-    };
+        .map(|site| map_core_site(&task.id, site))
+        .collect::<Result<_, _>>()?;
 
     Ok(ScfConfig {
         electron_count: *electron_count,
@@ -417,8 +376,8 @@ fn scf_config(task: &PreparedTask, snapshot: &SnapshotV2) -> Result<ScfConfig, I
         basis: ScfBasis {
             plane_wave_cutoff: basis.envelope.cutoff,
             l_max: basis.l_max,
-            local_orbitals: Vec::new(),
-            relativistic_local_orbitals,
+            channels,
+            resolved_channels: Vec::new(),
         },
         occupations: match occupations {
             Occupations::FermiDirac { temperature } => ScfOccupations::FermiDirac {
@@ -466,6 +425,208 @@ fn scf_config(task: &PreparedTask, snapshot: &SnapshotV2) -> Result<ScfConfig, I
     })
 }
 
+fn map_basis_channels(
+    task_id: &str,
+    l_max: u32,
+    task_generator: Option<ChannelEnergyGenerator>,
+    recipe: &CompiledChannelRecipe,
+) -> Result<Vec<ScfChannelRecipe>, InputError> {
+    let mut channels = Vec::new();
+    for site in &recipe.sites {
+        let mut site_channels = map_site_channels(task_id, site)?;
+        for l in 0..=l_max {
+            if site_channels.iter().any(|channel| {
+                channel.treatment == ScfChannelTreatment::Valence
+                    && scf_channel_angular_momentum(channel.identity) == l
+            }) {
+                continue;
+            }
+            let mut n = l + 1;
+            while site_channels.iter().any(|channel| {
+                scf_channel_angular_momentum(channel.identity) == l
+                    && scf_channel_principal_quantum_number(channel.identity) == n
+            }) {
+                n += 1;
+            }
+            let identity = ChannelIdentity::ScalarL { n, l };
+            let generator = task_generator.unwrap_or(ChannelEnergyGenerator::Atomic);
+            if generator == ChannelEnergyGenerator::Explicit {
+                return Err(InputError::MissingExplicitBaseValenceSeed {
+                    task_id: task_id.to_owned(),
+                    site: site.site.clone(),
+                    identity,
+                });
+            }
+            site_channels.push(ScfChannelRecipe {
+                site: site.site.clone(),
+                identity: ScfChannelIdentity::ScalarL { n, l },
+                treatment: ScfChannelTreatment::Valence,
+                derivative_order: 0,
+                generator: map_channel_energy_generator(generator),
+                seed: None,
+                provenance: ScfChannelProvenance::BuiltIn,
+            });
+        }
+        channels.extend(site_channels);
+    }
+    Ok(channels)
+}
+
+fn map_site_channels(
+    task_id: &str,
+    site: &CompiledSiteRecipe,
+) -> Result<Vec<ScfChannelRecipe>, InputError> {
+    let mut channels = Vec::with_capacity(site.channels.len());
+    let mut collapsed = BTreeMap::new();
+    for record in &site.channels {
+        let collapse_key = match (&record.provenance, record.treatment, record.identity) {
+            (
+                ChannelProvenance::BuiltIn,
+                ChannelTreatment::Valence,
+                ChannelIdentity::Kappa { n, kappa },
+            ) => Some((n, angular_momentum_from_kappa(kappa))),
+            _ => None,
+        };
+        let Some((n, l)) = collapse_key else {
+            channels.push(map_channel_recipe(&site.site, record));
+            continue;
+        };
+        if let Some(&(first_generator, first_seed)) = collapsed.get(&(n, l)) {
+            if first_generator != record.generator || first_seed != record.seed {
+                return Err(InputError::InconsistentBuiltInValencePartners {
+                    task_id: task_id.to_owned(),
+                    site: site.site.clone(),
+                    n,
+                    l,
+                    first_generator,
+                    first_seed,
+                    conflicting_generator: record.generator,
+                    conflicting_seed: record.seed,
+                });
+            }
+            continue;
+        }
+        collapsed.insert((n, l), (record.generator, record.seed));
+        let mut channel = map_channel_recipe(&site.site, record);
+        channel.identity = ScfChannelIdentity::ScalarL { n, l };
+        channels.push(channel);
+    }
+    Ok(channels)
+}
+
+fn map_channel_recipe(site: &str, record: &crate::ChannelRecipeRecord) -> ScfChannelRecipe {
+    ScfChannelRecipe {
+        site: site.to_owned(),
+        identity: match record.identity {
+            ChannelIdentity::ScalarL { n, l } => ScfChannelIdentity::ScalarL { n, l },
+            ChannelIdentity::Kappa { n, kappa } => ScfChannelIdentity::Kappa { n, kappa },
+        },
+        treatment: match record.treatment {
+            ChannelTreatment::Core => ScfChannelTreatment::Core,
+            ChannelTreatment::Valence => ScfChannelTreatment::Valence,
+            ChannelTreatment::Lo => ScfChannelTreatment::Lo,
+            ChannelTreatment::Hdlo => ScfChannelTreatment::Hdlo,
+        },
+        derivative_order: record.derivative_order,
+        generator: map_channel_energy_generator(record.generator),
+        seed: record.seed,
+        provenance: match &record.provenance {
+            ChannelProvenance::BuiltIn => ScfChannelProvenance::BuiltIn,
+            ChannelProvenance::ExternalRecipe { source } => ScfChannelProvenance::ExternalRecipe {
+                source: source.clone(),
+            },
+            ChannelProvenance::TaskDefault => ScfChannelProvenance::TaskDefault,
+            ChannelProvenance::Species => ScfChannelProvenance::Species,
+            ChannelProvenance::Site => ScfChannelProvenance::Site,
+        },
+    }
+}
+
+const fn map_channel_energy_generator(
+    generator: ChannelEnergyGenerator,
+) -> LinearizationEnergyGenerator {
+    match generator {
+        ChannelEnergyGenerator::Explicit => LinearizationEnergyGenerator::Explicit,
+        ChannelEnergyGenerator::Atomic => LinearizationEnergyGenerator::Atomic,
+        ChannelEnergyGenerator::BandCenter => LinearizationEnergyGenerator::BandCenter,
+        ChannelEnergyGenerator::LogDerivative => LinearizationEnergyGenerator::LogDerivative,
+        ChannelEnergyGenerator::BandCog => LinearizationEnergyGenerator::BandCog,
+        ChannelEnergyGenerator::FermiOffset => LinearizationEnergyGenerator::FermiOffset,
+        ChannelEnergyGenerator::FrozenSnapshot => LinearizationEnergyGenerator::FrozenSnapshot,
+    }
+}
+
+fn map_core_site(task_id: &str, site: &CompiledSiteRecipe) -> Result<ScfCoreSite, InputError> {
+    let configuration = fleur_default_atomic_configuration(site.atomic_number);
+    let mut states = Vec::new();
+    for record in site
+        .channels
+        .iter()
+        .filter(|record| record.treatment == ChannelTreatment::Core)
+    {
+        let mut matched = false;
+        for occupation in configuration.occupations().iter().filter(|occupation| {
+            let n = u32::from(occupation.orbital.principal_quantum_number());
+            let kappa = i32::from(occupation.orbital.kappa());
+            match record.identity {
+                ChannelIdentity::Kappa {
+                    n: requested_n,
+                    kappa: requested_kappa,
+                } => n == requested_n && kappa == requested_kappa,
+                ChannelIdentity::ScalarL { n: requested_n, l } => {
+                    n == requested_n && angular_momentum_from_kappa(kappa) == l
+                }
+            }
+        }) {
+            matched = true;
+            let state = ScfCoreState {
+                principal_quantum_number: u32::from(occupation.orbital.principal_quantum_number()),
+                kappa: i32::from(occupation.orbital.kappa()),
+                occupation: occupation.occupation,
+            };
+            if !states.iter().any(|present: &ScfCoreState| {
+                present.principal_quantum_number == state.principal_quantum_number
+                    && present.kappa == state.kappa
+            }) {
+                states.push(state);
+            }
+        }
+        if !matched {
+            return Err(InputError::MissingCoreOccupation {
+                task_id: task_id.to_owned(),
+                site: site.site.clone(),
+                atomic_number: site.atomic_number.get(),
+                identity: record.identity,
+            });
+        }
+    }
+    Ok(ScfCoreSite {
+        id: site.site.clone(),
+        states,
+    })
+}
+
+fn angular_momentum_from_kappa(kappa: i32) -> u32 {
+    if kappa > 0 {
+        kappa as u32
+    } else {
+        (-kappa - 1) as u32
+    }
+}
+
+fn scf_channel_angular_momentum(identity: ScfChannelIdentity) -> u32 {
+    match identity {
+        ScfChannelIdentity::ScalarL { l, .. } => l,
+        ScfChannelIdentity::Kappa { kappa, .. } => angular_momentum_from_kappa(kappa),
+    }
+}
+
+fn scf_channel_principal_quantum_number(identity: ScfChannelIdentity) -> u32 {
+    match identity {
+        ScfChannelIdentity::ScalarL { n, .. } | ScfChannelIdentity::Kappa { n, .. } => n,
+    }
+}
+
 const fn map_noncollinear_xc_route(route: NoncollinearXcRoute) -> ScfNoncollinearXcRoute {
     match route {
         NoncollinearXcRoute::LocalSpinFrame => ScfNoncollinearXcRoute::LocalSpinFrame,
@@ -504,4 +665,142 @@ fn resolve_input_relative_path(input_path: &Path, relative: &Path) -> PathBuf {
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(relative)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ChannelRecipeRecord, ChannelScope};
+
+    fn record(identity: ChannelIdentity, treatment: ChannelTreatment) -> ChannelRecipeRecord {
+        ChannelRecipeRecord {
+            scope: ChannelScope::Site {
+                name: "H-1".to_owned(),
+            },
+            identity,
+            treatment,
+            derivative_order: 0,
+            generator: ChannelEnergyGenerator::Atomic,
+            seed: None,
+            provenance: ChannelProvenance::BuiltIn,
+        }
+    }
+
+    #[test]
+    fn base_valence_coverage_uses_first_unrepresented_n_and_task_generator() {
+        let mut compiled_channels = vec![
+            record(
+                ChannelIdentity::Kappa { n: 1, kappa: -1 },
+                ChannelTreatment::Lo,
+            ),
+            record(
+                ChannelIdentity::Kappa { n: 2, kappa: 1 },
+                ChannelTreatment::Valence,
+            ),
+            record(
+                ChannelIdentity::Kappa { n: 2, kappa: -2 },
+                ChannelTreatment::Valence,
+            ),
+        ];
+        for record in &mut compiled_channels {
+            record.generator = ChannelEnergyGenerator::BandCog;
+        }
+        let recipe = CompiledChannelRecipe {
+            sites: vec![CompiledSiteRecipe {
+                site: "H-1".to_owned(),
+                atomic_number: AtomicNumber::new(1).unwrap(),
+                channels: compiled_channels,
+            }],
+        };
+
+        let channels =
+            map_basis_channels("scf", 2, Some(ChannelEnergyGenerator::BandCog), &recipe).unwrap();
+        let mut scalar_valence: Vec<_> = channels
+            .iter()
+            .filter(|channel| {
+                channel.provenance == ScfChannelProvenance::BuiltIn
+                    && channel.treatment == ScfChannelTreatment::Valence
+                    && matches!(channel.identity, ScfChannelIdentity::ScalarL { .. })
+            })
+            .map(|channel| channel.identity)
+            .collect();
+        scalar_valence.sort();
+        assert_eq!(
+            scalar_valence,
+            vec![
+                ScfChannelIdentity::ScalarL { n: 2, l: 0 },
+                ScfChannelIdentity::ScalarL { n: 2, l: 1 },
+                ScfChannelIdentity::ScalarL { n: 3, l: 2 },
+            ]
+        );
+        assert!(
+            channels
+                .iter()
+                .filter(|channel| channel.treatment == ScfChannelTreatment::Valence)
+                .all(|channel| channel.generator == LinearizationEnergyGenerator::BandCog)
+        );
+        assert!(!channels.iter().any(|channel| {
+            channel.treatment == ScfChannelTreatment::Valence
+                && matches!(channel.identity, ScfChannelIdentity::Kappa { .. })
+        }));
+    }
+
+    #[test]
+    fn built_in_valence_partners_must_have_matching_generator_and_seed() {
+        let first = record(
+            ChannelIdentity::Kappa { n: 2, kappa: 1 },
+            ChannelTreatment::Valence,
+        );
+        let mut conflicting = record(
+            ChannelIdentity::Kappa { n: 2, kappa: -2 },
+            ChannelTreatment::Valence,
+        );
+        conflicting.generator = ChannelEnergyGenerator::BandCog;
+        let recipe = CompiledChannelRecipe {
+            sites: vec![CompiledSiteRecipe {
+                site: "H-1".to_owned(),
+                atomic_number: AtomicNumber::new(1).unwrap(),
+                channels: vec![first, conflicting],
+            }],
+        };
+
+        assert!(matches!(
+            map_basis_channels("scf", 1, None, &recipe),
+            Err(InputError::InconsistentBuiltInValencePartners {
+                task_id,
+                site,
+                n: 2,
+                l: 1,
+                first_generator: ChannelEnergyGenerator::Atomic,
+                first_seed: None,
+                conflicting_generator: ChannelEnergyGenerator::BandCog,
+                conflicting_seed: None,
+            }) if task_id == "scf" && site == "H-1"
+        ));
+    }
+
+    #[test]
+    fn explicit_task_generator_rejects_seedless_base_valence_injection() {
+        let recipe = CompiledChannelRecipe {
+            sites: vec![CompiledSiteRecipe {
+                site: "H-1".to_owned(),
+                atomic_number: AtomicNumber::new(1).unwrap(),
+                channels: Vec::new(),
+            }],
+        };
+
+        assert!(matches!(
+            map_basis_channels(
+                "scf",
+                1,
+                Some(ChannelEnergyGenerator::Explicit),
+                &recipe,
+            ),
+            Err(InputError::MissingExplicitBaseValenceSeed {
+                task_id,
+                site,
+                identity: ChannelIdentity::ScalarL { n: 1, l: 0 },
+            }) if task_id == "scf" && site == "H-1"
+        ));
+    }
 }

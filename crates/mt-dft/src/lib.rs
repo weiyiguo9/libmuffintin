@@ -37,7 +37,8 @@ pub use core_potential::{
 pub use density::{
     CollinearKPoint, DensityError, FullSpinorDensitySiteBasis, FullSpinorKPoint, ScalarSiteBasis,
     add_core_density, core_shell_density, correct_electron_count, electron_count,
-    synthesize_collinear_valence_density, synthesize_full_spinor_valence_density,
+    physical_site_band_projections, synthesize_collinear_valence_density,
+    synthesize_full_spinor_valence_density,
 };
 pub use energy::{EnergyError, OccupationEnergy, ScfEnergy, assemble_scf_energy};
 pub use hartree::{
@@ -68,11 +69,11 @@ pub use scalar::{
 };
 pub use scf::{
     BandPathPoint, BandPathPointResult, BandPathRequest, BandPathResult, CoreContribution,
-    DosRequest, DosResult, ScfBasis, ScfConfig, ScfConfigError, ScfConvergence, ScfCoreSite,
-    ScfCoreState, ScfEnergyContext, ScfEnergyTerms, ScfError, ScfExchangeCorrelation,
-    ScfIterationDiagnostic, ScfKMesh, ScfLocalOrbital, ScfLocalOrbitalKind, ScfMixing,
-    ScfOccupations, ScfPhysics, ScfRelativisticLocalOrbital, ScfRelativity, ScfState,
-    run_band_path, run_dos, run_scf,
+    DosRequest, DosResult, ScfBasis, ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe,
+    ScfChannelTreatment, ScfConfig, ScfConfigError, ScfConvergence, ScfCoreSite, ScfCoreState,
+    ScfEnergyContext, ScfEnergyTerms, ScfError, ScfExchangeCorrelation, ScfIterationDiagnostic,
+    ScfKMesh, ScfMixing, ScfOccupations, ScfPhysics, ScfRelativity, ScfResolvedChannelEnergy,
+    ScfState, run_band_path, run_dos, run_scf,
 };
 pub use soc::{
     FirstVariationRoute, FirstVariationSubspace, FirstVariationWindow,
@@ -85,9 +86,9 @@ pub use spinor::{
     solve_full_spinor_first_variation,
 };
 pub use spinor_builder::{
-    BuiltSpinorLocalOrbital, SpinorBuilderError, SpinorIterationBasis, SpinorLocalOrbitalOrigin,
-    SpinorLocalOrbitalRequest, SpinorRadialSite, SpinorSiteInput, build_spinor_iteration_basis,
-    solve_spinor_k_point,
+    BuiltSpinorLocalOrbital, SpinorBuilderError, SpinorIterationBasis, SpinorLinearizationEnergy,
+    SpinorLocalOrbitalOrigin, SpinorLocalOrbitalRequest, SpinorRadialSite, SpinorSiteInput,
+    build_spinor_iteration_basis, solve_spinor_k_point,
 };
 pub use tetrahedron::{
     RegularSpectrum, TetrahedronDosBins, TetrahedronError, tetrahedron_dos_bins,

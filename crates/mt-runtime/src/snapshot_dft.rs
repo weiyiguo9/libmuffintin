@@ -10,23 +10,28 @@ use muffintin_core::{
     ReciprocalLattice, Sphere, StepFunctionError, VolumeBohr3,
 };
 use muffintin_dft::{
-    BandPathRequest, BandState, CollinearKPoint, CoreContribution, CoreDensityError,
-    CorePotentialBuildError, CorePotentialBuildSpec, CoreSpinPartition, DensityError,
-    ElectrostaticSpec, FirstVariationRoute, FirstVariationSubspace, FullSpinorKPoint,
-    InterstitialField, LocalPauliPotential, MuffinTinField, NoncollinearXcRoute, OccupationError,
-    RegionalCoreShellInput, RegionalDensity, RegionalElectrostaticError,
-    RegionalElectrostaticResult, RegionalPotential, RegionalScalarField, RegionalXcError,
-    RegionalXcResult, RegularSpectrum, ScalarBuilderError, ScalarIterationBasis,
-    ScalarLocalOrbitalRequest, ScalarSiteInput, ScfBasis, ScfConfig, ScfCoreSite, ScfEnergyContext,
-    ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfLocalOrbitalKind, ScfOccupations,
-    ScfPhysics, ScfRelativisticLocalOrbital, ScfRelativity, ScfState, SecondVariationError,
-    SpinorBuilderError, SpinorFirstVariationError, SpinorIterationBasis, SpinorLocalOrbitalRequest,
-    SpinorSiteInput, TetrahedronError, XcFieldSpec, build_collinear_scalar_iteration_bases,
-    build_extended_core_potentials, build_extended_snapshot_core_potentials,
-    build_regional_core_contribution, build_spinor_iteration_basis,
-    evaluate_regional_electrostatics, evaluate_regional_xc, solve_fermi_dirac, solve_gaussian,
-    solve_soc_second_variation, solve_spinor_k_point, synthesize_collinear_valence_density,
-    synthesize_full_spinor_valence_density,
+    AtomicEnergyRequest, BandPathRequest, BandState, CollinearKPoint, CoreContribution,
+    CoreDensityError, CorePotentialBuildError, CorePotentialBuildSpec, CoreSpinPartition,
+    DensityError, ElectrostaticSpec, FirstVariationRoute, FirstVariationSubspace, FullSpinorKPoint,
+    GeneratedLinearizationEnergy, InterstitialField, LinearizationEnergyDiagnostic,
+    LinearizationEnergyError, LinearizationEnergyGenerator, LocalPauliPotential, MuffinTinField,
+    NoncollinearXcRoute, OccupationError, PdosEnergySample, RegionalCoreShellInput,
+    RegionalDensity, RegionalElectrostaticError, RegionalElectrostaticResult, RegionalPotential,
+    RegionalScalarField, RegionalXcError, RegionalXcResult, RegularSpectrum, ScalarBuilderError,
+    ScalarIterationBasis, ScalarLocalOrbitalRequest, ScalarSiteInput, ScfBasis, ScfChannelIdentity,
+    ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfCoreSite, ScfEnergyContext,
+    ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfOccupations, ScfPhysics, ScfRelativity,
+    ScfResolvedChannelEnergy, ScfState, SecondVariationError, SpinorBuilderError,
+    SpinorFirstVariationError, SpinorIterationBasis, SpinorLinearizationEnergy,
+    SpinorLocalOrbitalRequest, SpinorSiteInput, TetrahedronError, XcFieldSpec,
+    build_collinear_scalar_iteration_bases, build_extended_core_potentials,
+    build_extended_snapshot_core_potentials, build_regional_core_contribution,
+    build_spinor_iteration_basis, evaluate_regional_electrostatics, evaluate_regional_xc,
+    generate_atomic_energy, generate_band_center_energy, generate_band_cog_energy,
+    generate_explicit_energy, generate_fermi_offset_energy, generate_frozen_snapshot_energy,
+    generate_log_derivative_energy, kappa_degeneracy_average, physical_site_band_projections,
+    solve_fermi_dirac, solve_gaussian, solve_soc_second_variation, solve_spinor_k_point,
+    synthesize_collinear_valence_density, synthesize_full_spinor_valence_density,
 };
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_io::{
@@ -35,11 +40,15 @@ use muffintin_io::{
     RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, SnapshotV2, SphericalChannelV2,
 };
 use muffintin_lapw::{Collinear, GeneralizedEigensolution, InterstitialPotential, LapwError};
-use muffintin_operators::{SiteSpinOrbitBlock, SocOperatorError};
+use muffintin_operators::{
+    CompiledSiteProjection, OperatorError, SiteSpinOrbitBlock, SocOperatorError,
+    SpinorSiteOperatorBlocks,
+};
 use muffintin_radial::{
     CoreBracketSearch, CoreDiracSpec, CorePotentialContinuationSpec, CoreState, DiracError,
-    EnergyBracket, ExtendedCorePotential, SpexSpinOrbitPotential, SpinOrbitRadialError,
-    isolate_core_dirac_bracket, solve_core_dirac, spex_spin_orbit_radial_shell,
+    EnergyBracket, ExtendedCorePotential, RadialEquation, SpexSpinOrbitPotential,
+    SpinOrbitRadialError, isolate_core_dirac_bracket, solve_core_dirac,
+    spex_spin_orbit_radial_shell,
 };
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
 use muffintin_tensor::{DenseEigenvectors, TensorError};
@@ -51,6 +60,8 @@ const OCCUPATION_TOLERANCE: f64 = 1.0e-12;
 const OCCUPATION_ITERATIONS: usize = 256;
 const SNAPSHOT_RADIUS_TOLERANCE: f64 = 1.0e-10;
 const TRANSVERSE_FIELD_TOLERANCE: f64 = 1.0e-10;
+const SPECTRAL_REFINEMENT_TOLERANCE: f64 = 1.0e-10;
+const DEFAULT_FERMI_OFFSET_HARTREE: f64 = -0.1;
 
 /// Snapshot-backed material kernel shared by SCF, bands, and DOS tasks.
 ///
@@ -67,7 +78,6 @@ pub struct SnapshotDftPhysics {
     restart_density: Option<RegionalDensity>,
     nuclear_charges: Vec<f64>,
     core_potentials: BTreeMap<usize, CorePotentialContext>,
-    relativistic_local_orbital_energies: BTreeMap<(String, u32, i32), Hartree>,
     density_template: Option<RegionalDensity>,
     energy_terms: BTreeMap<usize, ScfEnergyTerms>,
 }
@@ -130,6 +140,7 @@ enum SnapshotKPointSolution {
     },
     Spinor {
         basis: SpinorIterationBasis,
+        site_blocks: Vec<SpinorSiteOperatorBlocks>,
         solution: GeneralizedEigensolution,
         occupations: Range<usize>,
     },
@@ -219,7 +230,6 @@ impl SnapshotDftPhysics {
                 .map(|site| f64::from(site.atomic_number))
                 .collect(),
             core_potentials: BTreeMap::new(),
-            relativistic_local_orbital_energies: BTreeMap::new(),
             density_template: None,
             energy_terms: BTreeMap::new(),
         })
@@ -367,55 +377,6 @@ impl SnapshotDftPhysics {
         })
     }
 
-    fn basis_with_relativistic_local_orbitals(
-        &self,
-        basis: &ScfBasis,
-    ) -> Result<ScfBasis, SnapshotDftError> {
-        self.basis_with_relativistic_local_orbital_energies(
-            basis,
-            &self.relativistic_local_orbital_energies,
-        )
-    }
-
-    fn basis_with_relativistic_local_orbital_energies(
-        &self,
-        basis: &ScfBasis,
-        energies: &BTreeMap<(String, u32, i32), Hartree>,
-    ) -> Result<ScfBasis, SnapshotDftError> {
-        let mut resolved = basis.clone();
-        let replaced_channels = basis
-            .relativistic_local_orbitals
-            .iter()
-            .map(|request| (request.site.as_str(), request.kappa))
-            .collect::<BTreeSet<_>>();
-        resolved
-            .local_orbitals
-            .retain(|orbital| !replaced_channels.contains(&(orbital.site.as_str(), orbital.kappa)));
-        for request in &basis.relativistic_local_orbitals {
-            let key = (
-                request.site.clone(),
-                request.principal_quantum_number,
-                request.kappa,
-            );
-            let &energy = energies.get(&key).ok_or_else(|| {
-                SnapshotDftError::MissingRelativisticLocalOrbitalEnergy {
-                    site: request.site.clone(),
-                    principal_quantum_number: request.principal_quantum_number,
-                    kappa: request.kappa,
-                }
-            })?;
-            resolved
-                .local_orbitals
-                .push(muffintin_dft::ScfLocalOrbital {
-                    site: request.site.clone(),
-                    kappa: request.kappa,
-                    energy,
-                    kind: ScfLocalOrbitalKind::Lo,
-                });
-        }
-        Ok(resolved)
-    }
-
     fn solve_spinor_points(
         &self,
         potential: &RegionalPotential,
@@ -452,6 +413,7 @@ impl SnapshotDftPhysics {
                 energies: solved.solution.eigenvalues.clone(),
                 solution: SnapshotKPointSolution::Spinor {
                     basis: spinor_basis,
+                    site_blocks: solved.site_blocks,
                     solution: solved.solution,
                     occupations: start..end,
                 },
@@ -496,36 +458,9 @@ impl SnapshotDftPhysics {
                         .iter()
                         .map(|value| value.re / (4.0 * PI).sqrt())
                         .collect();
-                    let linearization_energies = (0..=basis.l_max)
-                        .map(|l| {
-                            template.linearization.get(&l).copied().ok_or_else(|| {
-                                SnapshotDftError::MissingLinearizationEnergy {
-                                    site: site.id.clone(),
-                                    spin,
-                                    l,
-                                }
-                            })
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let mut local_orbitals = template
-                        .local_orbitals
-                        .iter()
-                        .map(|&(l, energy)| ScalarLocalOrbitalRequest::Lo { l, energy })
-                        .collect::<Vec<_>>();
-                    for orbital in basis
-                        .local_orbitals
-                        .iter()
-                        .filter(|orbital| orbital.site == site.id)
-                    {
-                        let l = Kappa::new(orbital.kappa)?.large_l();
-                        local_orbitals.push(match orbital.kind {
-                            ScfLocalOrbitalKind::Lo => ScalarLocalOrbitalRequest::Lo {
-                                l,
-                                energy: orbital.energy,
-                            },
-                            ScfLocalOrbitalKind::Hdlo => ScalarLocalOrbitalRequest::Hdlo { l },
-                        });
-                    }
+                    let linearization_energies =
+                        self.scalar_linearization_energies(basis, &site.id, spin)?;
+                    let local_orbitals = self.scalar_local_orbitals(basis, &site.id, spin)?;
                     Ok(ScalarSiteInput {
                         position: site.position,
                         radius: site.radius,
@@ -572,81 +507,781 @@ impl SnapshotDftPhysics {
                     .iter()
                     .map(|value| value.re / (4.0 * PI).sqrt())
                     .collect();
-                let linearization_energies = (0..=basis.l_max)
-                    .map(|l| {
-                        let up = site.up.linearization.get(&l).copied().ok_or_else(|| {
-                            SnapshotDftError::MissingLinearizationEnergy {
-                                site: site.id.clone(),
-                                spin: 0,
-                                l,
-                            }
-                        })?;
-                        let down = site.down.linearization.get(&l).copied().ok_or_else(|| {
-                            SnapshotDftError::MissingLinearizationEnergy {
-                                site: site.id.clone(),
-                                spin: 1,
-                                l,
-                            }
-                        })?;
-                        Ok(Hartree(0.5 * (up.get() + down.get())))
-                    })
-                    .collect::<Result<Vec<_>, SnapshotDftError>>()?;
-                if site.up.local_orbitals.len() != site.down.local_orbitals.len()
-                    || site
-                        .up
-                        .local_orbitals
-                        .iter()
-                        .zip(&site.down.local_orbitals)
-                        .any(|(&(up_l, _), &(down_l, _))| up_l != down_l)
-                {
-                    return Err(SnapshotDftError::SpinorLocalOrbitalChannels {
-                        site: site.id.clone(),
-                    });
-                }
-                let mut local_orbitals = Vec::new();
-                for (&(l, up_energy), &(_, down_energy)) in
-                    site.up.local_orbitals.iter().zip(&site.down.local_orbitals)
-                {
-                    let energy = Hartree(0.5 * (up_energy.get() + down_energy.get()));
-                    for kappa in spinor_kappas_for_l(l)? {
-                        local_orbitals.push(SpinorLocalOrbitalRequest::Lo { kappa, energy });
-                    }
-                }
-                let explicit_kappas = basis
-                    .local_orbitals
-                    .iter()
-                    .filter(|orbital| orbital.site == site.id)
-                    .map(|orbital| Kappa::new(orbital.kappa))
-                    .collect::<Result<BTreeSet<_>, _>>()?;
-                // Snapshot LO energies are l-resolved and seed both j
-                // partners. Clear each explicitly controlled signed-kappa
-                // channel once, then retain every requested LO in that group.
-                local_orbitals.retain(|request| !explicit_kappas.contains(&request.kappa()));
-                for orbital in basis
-                    .local_orbitals
-                    .iter()
-                    .filter(|orbital| orbital.site == site.id)
-                {
-                    let kappa = Kappa::new(orbital.kappa)?;
-                    local_orbitals.push(match orbital.kind {
-                        ScfLocalOrbitalKind::Lo => SpinorLocalOrbitalRequest::Lo {
-                            kappa,
-                            energy: orbital.energy,
-                        },
-                        ScfLocalOrbitalKind::Hdlo => SpinorLocalOrbitalRequest::Hdlo { kappa },
-                    });
-                }
+                let linearization_energies = self.spinor_linearization_energies(basis, &site.id)?;
+                let local_orbitals = self.spinor_local_orbitals(basis, &site.id)?;
                 Ok(SpinorSiteInput {
                     position: site.position,
                     radius: site.radius,
                     mesh: site.up.mesh.clone(),
                     spherical_potential,
                     potential: LocalPauliPotential::new(scalar, magnetic)?,
+                    l_max: basis.l_max,
                     linearization_energies,
                     local_orbitals,
                 })
             })
             .collect()
+    }
+
+    fn scalar_linearization_energies(
+        &self,
+        basis: &ScfBasis,
+        site: &str,
+        spin: usize,
+    ) -> Result<Vec<Hartree>, SnapshotDftError> {
+        (0..=basis.l_max)
+            .map(|l| {
+                let channels = basis
+                    .resolved_channels
+                    .iter()
+                    .filter(|resolved| {
+                        resolved.recipe.site == site
+                            && resolved.recipe.treatment == ScfChannelTreatment::Valence
+                            && channel_l(resolved.recipe.identity) == l
+                    })
+                    .collect::<Vec<_>>();
+                let scalar = channels
+                    .iter()
+                    .filter(|resolved| {
+                        matches!(resolved.recipe.identity, ScfChannelIdentity::ScalarL { .. })
+                    })
+                    .copied()
+                    .collect::<Vec<_>>();
+                if scalar.len() == 1 && channels.len() == 1 {
+                    return Ok(spin_resolved_energy(scalar[0], spin));
+                }
+                if scalar.is_empty() && !channels.is_empty() {
+                    let n = channel_n(channels[0].recipe.identity);
+                    if channels
+                        .iter()
+                        .any(|resolved| channel_n(resolved.recipe.identity) != n)
+                    {
+                        return Err(SnapshotDftError::AmbiguousBaseChannel {
+                            site: site.to_owned(),
+                            l,
+                        });
+                    }
+                    let partners = channels
+                        .iter()
+                        .map(|resolved| match resolved.recipe.identity {
+                            ScfChannelIdentity::Kappa { kappa, .. } => {
+                                Ok((Kappa::new(kappa)?, resolved.energy))
+                            }
+                            ScfChannelIdentity::ScalarL { .. } => unreachable!(),
+                        })
+                        .collect::<Result<Vec<_>, SnapshotDftError>>()?;
+                    return kappa_degeneracy_average(l, &partners).map_err(|source| {
+                        SnapshotDftError::ScalarKappaAverage {
+                            site: site.to_owned(),
+                            l,
+                            source,
+                        }
+                    });
+                }
+                if channels.is_empty() {
+                    Err(SnapshotDftError::MissingMaterializedBaseChannel {
+                        site: site.to_owned(),
+                        l,
+                    })
+                } else {
+                    Err(SnapshotDftError::AmbiguousBaseChannel {
+                        site: site.to_owned(),
+                        l,
+                    })
+                }
+            })
+            .collect()
+    }
+
+    fn scalar_local_orbitals(
+        &self,
+        basis: &ScfBasis,
+        site: &str,
+        spin: usize,
+    ) -> Result<Vec<ScalarLocalOrbitalRequest>, SnapshotDftError> {
+        basis
+            .resolved_channels
+            .iter()
+            .filter(|resolved| {
+                resolved.recipe.site == site
+                    && matches!(resolved.recipe.identity, ScfChannelIdentity::ScalarL { .. })
+                    && matches!(
+                        resolved.recipe.treatment,
+                        ScfChannelTreatment::Lo | ScfChannelTreatment::Hdlo
+                    )
+            })
+            .map(|resolved| {
+                let l = channel_l(resolved.recipe.identity);
+                Ok(match resolved.recipe.treatment {
+                    ScfChannelTreatment::Lo => ScalarLocalOrbitalRequest::Lo {
+                        l,
+                        energy: spin_resolved_energy(resolved, spin),
+                    },
+                    ScfChannelTreatment::Hdlo => ScalarLocalOrbitalRequest::Hdlo { l },
+                    ScfChannelTreatment::Core | ScfChannelTreatment::Valence => unreachable!(),
+                })
+            })
+            .collect()
+    }
+
+    fn spinor_linearization_energies(
+        &self,
+        basis: &ScfBasis,
+        site: &str,
+    ) -> Result<Vec<SpinorLinearizationEnergy>, SnapshotDftError> {
+        let mut energies = Vec::new();
+        for l in 0..=basis.l_max {
+            let channels = basis
+                .resolved_channels
+                .iter()
+                .filter(|resolved| {
+                    resolved.recipe.site == site
+                        && resolved.recipe.treatment == ScfChannelTreatment::Valence
+                        && channel_l(resolved.recipe.identity) == l
+                })
+                .collect::<Vec<_>>();
+            let scalar = channels
+                .iter()
+                .filter(|resolved| {
+                    matches!(resolved.recipe.identity, ScfChannelIdentity::ScalarL { .. })
+                })
+                .copied()
+                .collect::<Vec<_>>();
+            if scalar.len() == 1 && channels.len() == 1 {
+                for kappa in spinor_kappas_for_l(l)? {
+                    energies.push(SpinorLinearizationEnergy {
+                        kappa,
+                        energy: scalar_component_energy(scalar[0], kappa),
+                    });
+                }
+                continue;
+            }
+            if scalar.is_empty() && !channels.is_empty() {
+                for kappa in spinor_kappas_for_l(l)? {
+                    let matches = channels
+                        .iter()
+                        .filter(|resolved| {
+                            matches!(
+                                resolved.recipe.identity,
+                                ScfChannelIdentity::Kappa {
+                                    kappa: candidate,
+                                    ..
+                                } if candidate == kappa.get()
+                            )
+                        })
+                        .copied()
+                        .collect::<Vec<_>>();
+                    if matches.len() != 1 {
+                        return Err(SnapshotDftError::MissingSpinorBaseChannel {
+                            site: site.to_owned(),
+                            l,
+                            kappa: kappa.get(),
+                        });
+                    }
+                    energies.push(SpinorLinearizationEnergy {
+                        kappa,
+                        energy: matches[0].energy,
+                    });
+                }
+                continue;
+            }
+            return Err(if channels.is_empty() {
+                SnapshotDftError::MissingMaterializedBaseChannel {
+                    site: site.to_owned(),
+                    l,
+                }
+            } else {
+                SnapshotDftError::AmbiguousBaseChannel {
+                    site: site.to_owned(),
+                    l,
+                }
+            });
+        }
+        Ok(energies)
+    }
+
+    fn spinor_local_orbitals(
+        &self,
+        basis: &ScfBasis,
+        site: &str,
+    ) -> Result<Vec<SpinorLocalOrbitalRequest>, SnapshotDftError> {
+        let mut orbitals = Vec::new();
+        for resolved in basis.resolved_channels.iter().filter(|resolved| {
+            resolved.recipe.site == site
+                && matches!(
+                    resolved.recipe.treatment,
+                    ScfChannelTreatment::Lo | ScfChannelTreatment::Hdlo
+                )
+        }) {
+            let kappas = match resolved.recipe.identity {
+                ScfChannelIdentity::ScalarL { l, .. } => spinor_kappas_for_l(l)?,
+                ScfChannelIdentity::Kappa { kappa, .. } => vec![Kappa::new(kappa)?],
+            };
+            for kappa in kappas {
+                orbitals.push(match resolved.recipe.treatment {
+                    ScfChannelTreatment::Lo => SpinorLocalOrbitalRequest::Lo {
+                        kappa,
+                        energy: scalar_component_energy(resolved, kappa),
+                    },
+                    ScfChannelTreatment::Hdlo => SpinorLocalOrbitalRequest::Hdlo { kappa },
+                    ScfChannelTreatment::Core | ScfChannelTreatment::Valence => unreachable!(),
+                });
+            }
+        }
+        Ok(orbitals)
+    }
+
+    fn materialize_current_basis(
+        &self,
+        iteration: usize,
+        potential: &RegionalPotential,
+        basis: &ScfBasis,
+    ) -> Result<ScfBasis, SnapshotDftError> {
+        let context = self
+            .core_potentials
+            .get(&iteration)
+            .ok_or(SnapshotDftError::MissingCoreContinuation(iteration))?;
+        let meshes = self.channel_meshes(basis)?;
+        let extended = build_extended_core_potentials(
+            &context.electrostatic,
+            &context.exchange_correlation,
+            &context.density,
+            &meshes,
+            context.spec,
+        )?;
+        self.materialize_nonspectral_basis(potential, basis, &extended)
+    }
+
+    fn materialize_nonspectral_basis(
+        &self,
+        potential: &RegionalPotential,
+        requested: &ScfBasis,
+        extended: &[muffintin_dft::BuiltExtendedCorePotential],
+    ) -> Result<ScfBasis, SnapshotDftError> {
+        self.require_potential_site_count(potential)?;
+        let mut basis = requested.clone();
+        basis.resolved_channels.clear();
+        let mut lo_ordinals = BTreeMap::<(String, u32), usize>::new();
+        for recipe in requested
+            .channels
+            .iter()
+            .filter(|recipe| recipe.treatment != ScfChannelTreatment::Core)
+        {
+            let site_index = self.site_index(&recipe.site)?;
+            let lo_ordinal = if recipe.treatment == ScfChannelTreatment::Lo {
+                let key = (recipe.site.clone(), channel_l(recipe.identity));
+                let ordinal = lo_ordinals.entry(key).or_default();
+                let current = *ordinal;
+                *ordinal += 1;
+                Some(current)
+            } else {
+                None
+            };
+            let generated = if matches!(
+                recipe.generator,
+                LinearizationEnergyGenerator::BandCog | LinearizationEnergyGenerator::FermiOffset
+            ) {
+                self.provisional_spectral_channel(recipe, lo_ordinal)?
+            } else {
+                self.materialize_potential_channel(
+                    recipe,
+                    site_index,
+                    potential,
+                    &extended[site_index].potential,
+                    lo_ordinal,
+                )?
+            };
+            basis.resolved_channels.push(generated);
+        }
+        Ok(basis)
+    }
+
+    fn materialize_potential_channel(
+        &self,
+        recipe: &ScfChannelRecipe,
+        site_index: usize,
+        potential: &RegionalPotential,
+        extended: &ExtendedCorePotential,
+        lo_ordinal: Option<usize>,
+    ) -> Result<ScfResolvedChannelEnergy, SnapshotDftError> {
+        let site = &self.sites[site_index];
+        let l = channel_l(recipe.identity);
+        let one = |generated: GeneratedLinearizationEnergy| ScfResolvedChannelEnergy {
+            recipe: recipe.clone(),
+            energy: generated.energy,
+            components: vec![generated],
+        };
+        let generated = match recipe.generator {
+            LinearizationEnergyGenerator::Explicit => {
+                let seed = recipe
+                    .seed
+                    .ok_or_else(|| SnapshotDftError::MissingChannelSeed {
+                        site: recipe.site.clone(),
+                        identity: recipe.identity,
+                        generator: recipe.generator,
+                    })?;
+                return generate_explicit_energy(seed)
+                    .map(one)
+                    .map_err(|source| channel_generator_error(recipe, source));
+            }
+            LinearizationEnergyGenerator::FrozenSnapshot => {
+                let up = self.snapshot_anchor_spin(recipe, lo_ordinal, 0)?;
+                let down = self.snapshot_anchor_spin(recipe, lo_ordinal, 1)?;
+                let mut components = vec![
+                    generate_frozen_snapshot_energy(up)
+                        .map_err(|source| channel_generator_error(recipe, source))?,
+                ];
+                let energy = if site.nonmagnetic_scalar {
+                    up
+                } else {
+                    components.push(
+                        generate_frozen_snapshot_energy(down)
+                            .map_err(|source| channel_generator_error(recipe, source))?,
+                    );
+                    Hartree(0.5 * (up.get() + down.get()))
+                };
+                return Ok(ScfResolvedChannelEnergy {
+                    recipe: recipe.clone(),
+                    energy,
+                    components,
+                });
+            }
+            LinearizationEnergyGenerator::Atomic => {
+                let kappas = channel_kappas(recipe.identity)?;
+                let mut components = Vec::with_capacity(kappas.len());
+                let mut partner_energies = Vec::with_capacity(kappas.len());
+                for kappa in kappas {
+                    let state = CoreState::new(channel_n(recipe.identity), kappa)?;
+                    let generated = generate_atomic_energy(
+                        &extended.mesh,
+                        &extended.values,
+                        AtomicEnergyRequest::new(
+                            state,
+                            self.nuclear_charges[site_index],
+                            site.radius,
+                        ),
+                    )
+                    .map_err(|source| channel_generator_error(recipe, source))?;
+                    partner_energies.push((kappa, generated.energy));
+                    components.push(generated);
+                }
+                let energy = match recipe.identity {
+                    ScfChannelIdentity::ScalarL { .. } => {
+                        kappa_degeneracy_average(l, &partner_energies)
+                            .map_err(|source| channel_generator_error(recipe, source))?
+                    }
+                    ScfChannelIdentity::Kappa { .. } => components[0].energy,
+                };
+                return Ok(ScfResolvedChannelEnergy {
+                    recipe: recipe.clone(),
+                    energy,
+                    components,
+                });
+            }
+            LinearizationEnergyGenerator::BandCenter
+            | LinearizationEnergyGenerator::LogDerivative => {
+                if matches!(recipe.identity, ScfChannelIdentity::Kappa { .. }) {
+                    return Err(SnapshotDftError::ScalarGeneratorRequiresLIdentity {
+                        site: recipe.site.clone(),
+                        identity: recipe.identity,
+                        generator: recipe.generator,
+                    });
+                }
+                let seed = recipe
+                    .seed
+                    .unwrap_or(self.snapshot_anchor(recipe, lo_ordinal)?);
+                let spherical = spherical_scalar_potential(potential, site_index, &site.id)?;
+                if recipe.generator == LinearizationEnergyGenerator::BandCenter {
+                    generate_band_center_energy(
+                        &site.up.mesh,
+                        &spherical,
+                        RadialEquation::ScalarKoellingHarmon,
+                        l,
+                        seed,
+                    )
+                } else {
+                    generate_log_derivative_energy(
+                        &site.up.mesh,
+                        &spherical,
+                        RadialEquation::ScalarKoellingHarmon,
+                        channel_n(recipe.identity),
+                        l,
+                        seed,
+                        InverseBohr(-(f64::from(l) + 1.0) / site.radius.get()),
+                    )
+                }
+            }
+            LinearizationEnergyGenerator::BandCog | LinearizationEnergyGenerator::FermiOffset => {
+                unreachable!("spectral generators are materialized after occupations")
+            }
+        };
+        generated
+            .map(one)
+            .map_err(|source| channel_generator_error(recipe, source))
+    }
+
+    fn provisional_spectral_channel(
+        &self,
+        recipe: &ScfChannelRecipe,
+        lo_ordinal: Option<usize>,
+    ) -> Result<ScfResolvedChannelEnergy, SnapshotDftError> {
+        let energy = self.snapshot_anchor(recipe, lo_ordinal)?;
+        Ok(ScfResolvedChannelEnergy {
+            recipe: recipe.clone(),
+            energy,
+            components: vec![GeneratedLinearizationEnergy {
+                generator: recipe.generator,
+                seed: Some(energy),
+                energy,
+                diagnostic: LinearizationEnergyDiagnostic::Stored,
+            }],
+        })
+    }
+
+    fn snapshot_anchor(
+        &self,
+        recipe: &ScfChannelRecipe,
+        lo_ordinal: Option<usize>,
+    ) -> Result<Hartree, SnapshotDftError> {
+        let site_index = self.site_index(&recipe.site)?;
+        let up = self.snapshot_anchor_spin(recipe, lo_ordinal, 0)?;
+        let down = self.snapshot_anchor_spin(recipe, lo_ordinal, 1)?;
+        Ok(if self.sites[site_index].nonmagnetic_scalar {
+            up
+        } else {
+            Hartree(0.5 * (up.get() + down.get()))
+        })
+    }
+
+    fn snapshot_anchor_spin(
+        &self,
+        recipe: &ScfChannelRecipe,
+        lo_ordinal: Option<usize>,
+        spin: usize,
+    ) -> Result<Hartree, SnapshotDftError> {
+        let site_index = self.site_index(&recipe.site)?;
+        let site = &self.sites[site_index];
+        let l = channel_l(recipe.identity);
+        let radial = if spin == 0 { &site.up } else { &site.down };
+        match recipe.treatment {
+            ScfChannelTreatment::Lo => {
+                let ordinal =
+                    lo_ordinal.ok_or_else(|| SnapshotDftError::MissingFrozenSnapshotAnchor {
+                        site: recipe.site.clone(),
+                        identity: recipe.identity,
+                        treatment: recipe.treatment,
+                    })?;
+                radial
+                    .local_orbitals
+                    .iter()
+                    .filter(|(candidate_l, _)| *candidate_l == l)
+                    .nth(ordinal)
+                    .map(|(_, energy)| *energy)
+                    .ok_or_else(|| SnapshotDftError::MissingFrozenSnapshotLo {
+                        site: site.id.clone(),
+                        l,
+                        ordinal,
+                        spin,
+                    })
+            }
+            ScfChannelTreatment::Core
+            | ScfChannelTreatment::Valence
+            | ScfChannelTreatment::Hdlo => radial.linearization.get(&l).copied().ok_or_else(|| {
+                SnapshotDftError::MissingFrozenSnapshotBase {
+                    site: site.id.clone(),
+                    l,
+                    spin,
+                }
+            }),
+        }
+    }
+
+    fn channel_meshes(&self, basis: &ScfBasis) -> Result<Vec<ExponentialMesh>, SnapshotDftError> {
+        self.sites
+            .iter()
+            .enumerate()
+            .map(|(site_index, site)| {
+                let maximum_n = basis
+                    .channels
+                    .iter()
+                    .filter(|recipe| recipe.site == site.id)
+                    .map(|recipe| channel_n(recipe.identity))
+                    .max()
+                    .unwrap_or(1);
+                let orbital_scale =
+                    f64::from(maximum_n).powi(2) / self.nuclear_charges[site_index].max(1.0);
+                let outer_radius = (4.0 * site.radius.get()).max(40.0 * orbital_scale);
+                extend_mesh(&site.up.mesh, outer_radius)
+            })
+            .collect()
+    }
+
+    fn site_index(&self, site: &str) -> Result<usize, SnapshotDftError> {
+        self.sites
+            .iter()
+            .position(|candidate| candidate.id == site)
+            .ok_or_else(|| SnapshotDftError::UnknownCoreSite(site.to_owned()))
+    }
+
+    fn refine_spectral_basis(
+        &self,
+        requested: &ScfBasis,
+        one_particle: &SnapshotOneParticle,
+        bands: &SnapshotBandSolution,
+        occupations: &[f64],
+        chemical_potential: Hartree,
+        relativity: ScfRelativity,
+    ) -> Result<Option<SnapshotOneParticle>, SnapshotDftError> {
+        let spectral = requested
+            .channels
+            .iter()
+            .filter(|recipe| {
+                recipe.treatment != ScfChannelTreatment::Core
+                    && matches!(
+                        recipe.generator,
+                        LinearizationEnergyGenerator::BandCog
+                            | LinearizationEnergyGenerator::FermiOffset
+                    )
+            })
+            .collect::<Vec<_>>();
+        if spectral.is_empty() {
+            return Ok(None);
+        }
+        self.validate_band_cog_projection_keys(&spectral, relativity)?;
+        let mut basis = one_particle.basis.clone();
+        let mut changed = false;
+        for recipe in spectral {
+            let resolved = match recipe.generator {
+                LinearizationEnergyGenerator::BandCog
+                    if relativity == ScfRelativity::SpinorFirstVariation
+                        && matches!(recipe.identity, ScfChannelIdentity::ScalarL { .. }) =>
+                {
+                    let l = channel_l(recipe.identity);
+                    let mut components = Vec::new();
+                    let mut partner_energies = Vec::new();
+                    for kappa in spinor_kappas_for_l(l)? {
+                        let mut partner = recipe.clone();
+                        partner.identity = ScfChannelIdentity::Kappa {
+                            n: channel_n(recipe.identity),
+                            kappa: kappa.get(),
+                        };
+                        let generated = generate_band_cog_energy(&self.band_cog_samples(
+                            bands,
+                            occupations,
+                            &partner,
+                            relativity,
+                        )?)
+                        .map_err(|source| channel_generator_error(recipe, source))?;
+                        partner_energies.push((kappa, generated.energy));
+                        components.push(generated);
+                    }
+                    ScfResolvedChannelEnergy {
+                        recipe: recipe.clone(),
+                        energy: kappa_degeneracy_average(l, &partner_energies)
+                            .map_err(|source| channel_generator_error(recipe, source))?,
+                        components,
+                    }
+                }
+                LinearizationEnergyGenerator::BandCog => {
+                    let generated = generate_band_cog_energy(&self.band_cog_samples(
+                        bands,
+                        occupations,
+                        recipe,
+                        relativity,
+                    )?)
+                    .map_err(|source| channel_generator_error(recipe, source))?;
+                    ScfResolvedChannelEnergy {
+                        recipe: recipe.clone(),
+                        energy: generated.energy,
+                        components: vec![generated],
+                    }
+                }
+                LinearizationEnergyGenerator::FermiOffset => {
+                    let generated = generate_fermi_offset_energy(
+                        chemical_potential,
+                        recipe.seed.unwrap_or(Hartree(DEFAULT_FERMI_OFFSET_HARTREE)),
+                    )
+                    .map_err(|source| channel_generator_error(recipe, source))?;
+                    ScfResolvedChannelEnergy {
+                        recipe: recipe.clone(),
+                        energy: generated.energy,
+                        components: vec![generated],
+                    }
+                }
+                _ => unreachable!(),
+            };
+            let old = basis
+                .resolved_channels
+                .iter()
+                .position(|candidate| candidate.recipe == *recipe)
+                .ok_or_else(|| SnapshotDftError::MissingProvisionalChannel {
+                    site: recipe.site.clone(),
+                    identity: recipe.identity,
+                    generator: recipe.generator,
+                })?;
+            let previous = &basis.resolved_channels[old];
+            let provisional = previous
+                .components
+                .iter()
+                .any(|component| component.diagnostic == LinearizationEnergyDiagnostic::Stored);
+            let scale = previous
+                .energy
+                .get()
+                .abs()
+                .max(resolved.energy.get().abs())
+                .max(1.0);
+            changed |= provisional
+                || (resolved.energy.get() - previous.energy.get()).abs()
+                    > SPECTRAL_REFINEMENT_TOLERANCE * scale;
+            basis.resolved_channels[old] = resolved;
+        }
+        Ok(changed.then(|| SnapshotOneParticle {
+            potential: one_particle.potential.clone(),
+            basis,
+        }))
+    }
+
+    fn validate_band_cog_projection_keys(
+        &self,
+        spectral: &[&ScfChannelRecipe],
+        relativity: ScfRelativity,
+    ) -> Result<(), SnapshotDftError> {
+        let band_cog = spectral
+            .iter()
+            .copied()
+            .filter(|recipe| recipe.generator == LinearizationEnergyGenerator::BandCog)
+            .collect::<Vec<_>>();
+        for (index, recipe) in band_cog.iter().enumerate() {
+            let duplicate = band_cog[..index].iter().any(|prior| {
+                prior.site == recipe.site
+                    && match relativity {
+                        ScfRelativity::SpinorFirstVariation => prior.identity == recipe.identity,
+                        ScfRelativity::Scalar | ScfRelativity::SocSecondVariation { .. } => {
+                            channel_l(prior.identity) == channel_l(recipe.identity)
+                        }
+                    }
+            });
+            if duplicate {
+                return Err(SnapshotDftError::AmbiguousBandCogProjection {
+                    site: recipe.site.clone(),
+                    identity: recipe.identity,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn band_cog_samples(
+        &self,
+        bands: &SnapshotBandSolution,
+        occupations: &[f64],
+        recipe: &ScfChannelRecipe,
+        relativity: ScfRelativity,
+    ) -> Result<Vec<PdosEnergySample>, SnapshotDftError> {
+        if occupations.len() != bands.states.len() {
+            return Err(SnapshotDftError::OccupationCount {
+                expected: bands.states.len(),
+                actual: occupations.len(),
+            });
+        }
+        let site = self.site_index(&recipe.site)?;
+        let l = channel_l(recipe.identity);
+        let mut samples = Vec::new();
+        for point in &bands.points {
+            match &point.solution {
+                SnapshotKPointSolution::Collinear {
+                    bases,
+                    solutions,
+                    up_occupations,
+                    down_occupations,
+                } => {
+                    if matches!(recipe.identity, ScfChannelIdentity::Kappa { .. }) {
+                        return Err(SnapshotDftError::KappaBandCogUnavailableInScalar {
+                            site: recipe.site.clone(),
+                            identity: recipe.identity,
+                        });
+                    }
+                    let up = scalar_channel_band_weights(
+                        &bases.up,
+                        &solutions.up.eigenvectors,
+                        site,
+                        l,
+                    )?;
+                    let down = scalar_channel_band_weights(
+                        &bases.down,
+                        &solutions.down.eigenvectors,
+                        site,
+                        l,
+                    )?;
+                    if matches!(relativity, ScfRelativity::SocSecondVariation { .. }) {
+                        if up_occupations != down_occupations || up.len() != down.len() {
+                            return Err(SnapshotDftError::InconsistentRelativityRoute);
+                        }
+                        for band in 0..up.len() {
+                            let global = up_occupations.start + band;
+                            samples.push(PdosEnergySample::new(
+                                bands.states[global],
+                                occupations[global],
+                                up[band] + down[band],
+                            ));
+                        }
+                    } else {
+                        append_pdos_samples(
+                            &mut samples,
+                            &bands.states,
+                            occupations,
+                            up_occupations,
+                            &up,
+                        )?;
+                        append_pdos_samples(
+                            &mut samples,
+                            &bands.states,
+                            occupations,
+                            down_occupations,
+                            &down,
+                        )?;
+                    }
+                }
+                SnapshotKPointSolution::Spinor {
+                    basis,
+                    site_blocks,
+                    solution,
+                    occupations: state_range,
+                } => {
+                    let kappas = channel_kappas(recipe.identity)?
+                        .into_iter()
+                        .map(Kappa::get)
+                        .collect::<BTreeSet<_>>();
+                    let density_site = &basis.density_sites[site];
+                    let coordinates = density_site
+                        .orbitals
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, orbital)| kappas.contains(&orbital.channel().kappa().get()))
+                        .map(|(coordinate, _)| coordinate)
+                        .collect::<Vec<_>>();
+                    let projection = CompiledSiteProjection::spinor(
+                        &basis.compiled,
+                        site,
+                        &density_site.channels,
+                    )?;
+                    let weights = physical_site_band_projections(
+                        &projection,
+                        &solution.eigenvectors,
+                        &site_blocks[site].overlap,
+                        &coordinates,
+                    )?;
+                    append_pdos_samples(
+                        &mut samples,
+                        &bands.states,
+                        occupations,
+                        state_range,
+                        &weights,
+                    )?;
+                }
+            }
+        }
+        Ok(samples)
     }
 
     fn plane_wave_envelope(
@@ -832,6 +1467,7 @@ impl SnapshotDftPhysics {
                             basis,
                             solution,
                             occupations: band_occupations,
+                            ..
                         } => Ok(FullSpinorKPoint {
                             weight: point.weight,
                             compiled: &basis.compiled,
@@ -935,42 +1571,10 @@ impl SnapshotDftPhysics {
         )?)
     }
 
-    fn resolve_relativistic_local_orbitals_for_site(
-        &mut self,
-        site_index: usize,
-        extended: &ExtendedCorePotential,
-        requests: &[ScfRelativisticLocalOrbital],
-    ) -> Result<(), SnapshotDftError> {
-        let site_id = self.sites[site_index].id.clone();
-        let requests = requests
-            .iter()
-            .filter(|request| request.site == site_id)
-            .cloned()
-            .collect::<Vec<_>>();
-        for request in requests {
-            let solution = self.solve_bound_dirac_state(
-                site_index,
-                request.principal_quantum_number,
-                request.kappa,
-                extended,
-            )?;
-            self.relativistic_local_orbital_energies.insert(
-                (
-                    request.site,
-                    request.principal_quantum_number,
-                    request.kappa,
-                ),
-                solution.energy,
-            );
-        }
-        Ok(())
-    }
-
     fn extended_core_meshes(
         &self,
         requested_site: usize,
         states: &[muffintin_dft::ScfCoreState],
-        relativistic_local_orbitals: &[ScfRelativisticLocalOrbital],
     ) -> Result<Vec<ExponentialMesh>, SnapshotDftError> {
         self.sites
             .iter()
@@ -980,12 +1584,6 @@ impl SnapshotDftPhysics {
                     states
                         .iter()
                         .map(|state| state.principal_quantum_number)
-                        .chain(
-                            relativistic_local_orbitals
-                                .iter()
-                                .filter(|request| request.site == site.id)
-                                .map(|request| request.principal_quantum_number),
-                        )
                         .max()
                         .unwrap_or(1)
                 } else {
@@ -993,46 +1591,6 @@ impl SnapshotDftPhysics {
                 };
                 // Forty hydrogenic length scales leave an exponentially small
                 // bound tail; four MT radii also cover compact deep cores.
-                let orbital_scale =
-                    f64::from(maximum_n).powi(2) / self.nuclear_charges[site_index].max(1.0);
-                let outer_radius = (4.0 * site.radius.get()).max(40.0 * orbital_scale);
-                extend_mesh(&site.up.mesh, outer_radius)
-            })
-            .collect()
-    }
-
-    fn initial_core_meshes(
-        &self,
-        core_sites: &[ScfCoreSite],
-        relativistic_local_orbitals: &[ScfRelativisticLocalOrbital],
-    ) -> Result<Vec<ExponentialMesh>, SnapshotDftError> {
-        self.sites
-            .iter()
-            .enumerate()
-            .map(|(site_index, site)| {
-                let maximum_n = core_sites
-                    .iter()
-                    .find(|core| core.id == site.id)
-                    .and_then(|core| {
-                        core.states
-                            .iter()
-                            .map(|state| state.principal_quantum_number)
-                            .chain(
-                                relativistic_local_orbitals
-                                    .iter()
-                                    .filter(|request| request.site == site.id)
-                                    .map(|request| request.principal_quantum_number),
-                            )
-                            .max()
-                    })
-                    .or_else(|| {
-                        relativistic_local_orbitals
-                            .iter()
-                            .filter(|request| request.site == site.id)
-                            .map(|request| request.principal_quantum_number)
-                            .max()
-                    })
-                    .unwrap_or(1);
                 let orbital_scale =
                     f64::from(maximum_n).powi(2) / self.nuclear_charges[site_index].max(1.0);
                 let outer_radius = (4.0 * site.radius.get()).max(40.0 * orbital_scale);
@@ -1081,65 +1639,59 @@ impl ScfPhysics for SnapshotDftPhysics {
     type BandSolution = SnapshotBandSolution;
 
     fn initial_density(&mut self, config: &ScfConfig) -> Result<RegionalDensity, Self::Error> {
-        let relativistic_local_orbitals =
-            if config.relativity == ScfRelativity::SpinorFirstVariation {
-                config.basis.relativistic_local_orbitals.as_slice()
-            } else {
-                &[]
-            };
-        self.relativistic_local_orbital_energies.clear();
         if let Some(density) = &self.restart_density {
             self.density_template = Some(density.clone());
             return Ok(density.clone());
         }
-        let needs_extended_states = config.core_sites.iter().any(|site| !site.states.is_empty())
-            || !relativistic_local_orbitals.is_empty();
-        let initial_extended = if needs_extended_states {
-            let meshes =
-                self.initial_core_meshes(&config.core_sites, relativistic_local_orbitals)?;
-            Some(build_extended_snapshot_core_potentials(
-                &self.frozen_potential,
-                &self.geometry,
-                &self.nuclear_charges,
-                &meshes,
-                CorePotentialContinuationSpec::default(),
-            )?)
-        } else {
-            None
-        };
-        if config.relativity == ScfRelativity::SpinorFirstVariation {
-            if let Some(extended) = &initial_extended {
-                for (site_index, potential) in extended.iter().enumerate() {
-                    self.resolve_relativistic_local_orbitals_for_site(
-                        site_index,
-                        &potential.potential,
-                        relativistic_local_orbitals,
-                    )?;
-                }
-            }
-        }
-        let basis = if config.relativity == ScfRelativity::SpinorFirstVariation {
-            self.basis_with_relativistic_local_orbitals(&config.basis)?
-        } else {
-            config.basis.clone()
-        };
-        let one_particle = SnapshotOneParticle {
+        let meshes = self.channel_meshes(&config.basis)?;
+        let initial_extended = build_extended_snapshot_core_potentials(
+            &self.frozen_potential,
+            &self.geometry,
+            &self.nuclear_charges,
+            &meshes,
+            CorePotentialContinuationSpec::default(),
+        )?;
+        let basis = self.materialize_nonspectral_basis(
+            &self.frozen_potential,
+            &config.basis,
+            &initial_extended,
+        )?;
+        let mut one_particle = SnapshotOneParticle {
             potential: self.frozen_potential.clone(),
             basis,
         };
         let points = regular_k_points(config.k_mesh)?;
-        let bands = self.solve_points(
-            &one_particle.potential,
-            &one_particle.basis,
-            &points,
-            config.relativity,
-        )?;
-        let occupations = solve_initial_occupations(&bands.states, config)?;
+        let (bands, occupations) = {
+            let mut passes = 0;
+            loop {
+                passes += 1;
+                let bands = self.solve_points(
+                    &one_particle.potential,
+                    &one_particle.basis,
+                    &points,
+                    config.relativity,
+                )?;
+                let occupation = solve_initial_occupations(&bands.states, config)?;
+                match self.refine_spectral_basis(
+                    &config.basis,
+                    &one_particle,
+                    &bands,
+                    &occupation.occupations,
+                    occupation.chemical_potential,
+                    config.relativity,
+                )? {
+                    None => break (bands, occupation.occupations),
+                    Some(_) if passes == 16 => {
+                        return Err(SnapshotDftError::InitialBasisRefinementNotConverged {
+                            passes,
+                        });
+                    }
+                    Some(refined) => one_particle = refined,
+                }
+            }
+        };
         let mut density = self.synthesize(&bands, &occupations)?;
         if config.core_sites.iter().any(|site| !site.states.is_empty()) {
-            let extended = initial_extended
-                .as_ref()
-                .expect("core states require an initial extended potential");
             for site in &config.core_sites {
                 if site.states.is_empty() {
                     continue;
@@ -1149,8 +1701,11 @@ impl ScfPhysics for SnapshotDftPhysics {
                     .iter()
                     .position(|candidate| candidate.id == site.id)
                     .ok_or_else(|| SnapshotDftError::UnknownCoreSite(site.id.clone()))?;
-                let contribution =
-                    self.core_contribution(site, &extended[site_index].potential, &density)?;
+                let contribution = self.core_contribution(
+                    site,
+                    &initial_extended[site_index].potential,
+                    &density,
+                )?;
                 density.add_scaled(1.0, &contribution.density)?;
             }
         }
@@ -1219,8 +1774,8 @@ impl ScfPhysics for SnapshotDftPhysics {
         iteration: usize,
         site: &ScfCoreSite,
         _potential: &RegionalPotential,
-        basis: &ScfBasis,
-        relativity: ScfRelativity,
+        _basis: &ScfBasis,
+        _relativity: ScfRelativity,
     ) -> Result<CoreContribution, Self::Error> {
         let template = self
             .density_template
@@ -1237,35 +1792,6 @@ impl ScfPhysics for SnapshotDftPhysics {
             .iter()
             .position(|candidate| candidate.id == site.id)
             .ok_or_else(|| SnapshotDftError::UnknownCoreSite(site.id.clone()))?;
-        let relativistic_local_orbitals = if relativity == ScfRelativity::SpinorFirstVariation {
-            basis.relativistic_local_orbitals.as_slice()
-        } else {
-            &[]
-        };
-        let has_relativistic_local_orbitals = relativistic_local_orbitals
-            .iter()
-            .any(|request| request.site == site.id);
-        if site.states.is_empty() && !has_relativistic_local_orbitals {
-            return Ok(CoreContribution {
-                site_id: site.id.clone(),
-                density: template.zero_like(),
-                eigenvalue_sum: Hartree(0.0),
-            });
-        }
-        let meshes =
-            self.extended_core_meshes(site_index, &site.states, relativistic_local_orbitals)?;
-        let continued = build_extended_core_potentials(
-            &context.electrostatic,
-            &context.exchange_correlation,
-            &context.density,
-            &meshes,
-            context.spec,
-        )?;
-        self.resolve_relativistic_local_orbitals_for_site(
-            site_index,
-            &continued[site_index].potential,
-            relativistic_local_orbitals,
-        )?;
         if site.states.is_empty() {
             return Ok(CoreContribution {
                 site_id: site.id.clone(),
@@ -1273,21 +1799,25 @@ impl ScfPhysics for SnapshotDftPhysics {
                 eigenvalue_sum: Hartree(0.0),
             });
         }
+        let meshes = self.extended_core_meshes(site_index, &site.states)?;
+        let continued = build_extended_core_potentials(
+            &context.electrostatic,
+            &context.exchange_correlation,
+            &context.density,
+            &meshes,
+            context.spec,
+        )?;
         self.core_contribution(site, &continued[site_index].potential, &template)
     }
 
     fn assemble_one_particle(
         &mut self,
-        _iteration: usize,
+        iteration: usize,
         potential: &RegionalPotential,
         basis: &ScfBasis,
-        relativity: ScfRelativity,
+        _relativity: ScfRelativity,
     ) -> Result<Self::OneParticle, Self::Error> {
-        let basis = if relativity == ScfRelativity::SpinorFirstVariation {
-            self.basis_with_relativistic_local_orbitals(basis)?
-        } else {
-            basis.clone()
-        };
+        let basis = self.materialize_current_basis(iteration, potential, basis)?;
         Ok(SnapshotOneParticle {
             potential: potential.clone(),
             basis,
@@ -1315,6 +1845,27 @@ impl ScfPhysics for SnapshotDftPhysics {
 
     fn band_states<'a>(&self, bands: &'a Self::BandSolution) -> &'a [BandState] {
         &bands.states
+    }
+
+    fn refine_one_particle(
+        &mut self,
+        _iteration: usize,
+        _potential: &RegionalPotential,
+        requested_basis: &ScfBasis,
+        one_particle: &Self::OneParticle,
+        bands: &Self::BandSolution,
+        occupations: &[f64],
+        chemical_potential: Hartree,
+        relativity: ScfRelativity,
+    ) -> Result<Option<Self::OneParticle>, Self::Error> {
+        self.refine_spectral_basis(
+            requested_basis,
+            one_particle,
+            bands,
+            occupations,
+            chemical_potential,
+            relativity,
+        )
     }
 
     fn synthesize_valence_density(
@@ -1822,10 +2373,156 @@ fn spinor_kappas_for_l(l: u32) -> Result<Vec<Kappa>, SnapshotDftError> {
     Ok(kappas)
 }
 
+fn channel_l(identity: ScfChannelIdentity) -> u32 {
+    match identity {
+        ScfChannelIdentity::ScalarL { l, .. } => l,
+        ScfChannelIdentity::Kappa { kappa, .. } if kappa > 0 => kappa as u32,
+        ScfChannelIdentity::Kappa { kappa, .. } => (-kappa - 1) as u32,
+    }
+}
+
+fn channel_n(identity: ScfChannelIdentity) -> u32 {
+    match identity {
+        ScfChannelIdentity::ScalarL { n, .. } | ScfChannelIdentity::Kappa { n, .. } => n,
+    }
+}
+
+fn channel_kappas(identity: ScfChannelIdentity) -> Result<Vec<Kappa>, SnapshotDftError> {
+    match identity {
+        ScfChannelIdentity::ScalarL { l, .. } => spinor_kappas_for_l(l),
+        ScfChannelIdentity::Kappa { kappa, .. } => Ok(vec![Kappa::new(kappa)?]),
+    }
+}
+
+fn scalar_component_energy(resolved: &ScfResolvedChannelEnergy, kappa: Kappa) -> Hartree {
+    if let Some(energy) =
+        resolved
+            .components
+            .iter()
+            .find_map(|component| match component.diagnostic {
+                LinearizationEnergyDiagnostic::Atomic { state, .. } if state.kappa == kappa => {
+                    Some(component.energy)
+                }
+                _ => None,
+            })
+    {
+        return energy;
+    }
+    if resolved.recipe.generator == LinearizationEnergyGenerator::BandCog
+        && let ScfChannelIdentity::ScalarL { l, .. } = resolved.recipe.identity
+        && let Ok(kappas) = spinor_kappas_for_l(l)
+        && kappas.len() == resolved.components.len()
+        && let Some(index) = kappas.iter().position(|candidate| *candidate == kappa)
+    {
+        return resolved.components[index].energy;
+    }
+    resolved.energy
+}
+
+fn spin_resolved_energy(resolved: &ScfResolvedChannelEnergy, spin: usize) -> Hartree {
+    if resolved.recipe.generator == LinearizationEnergyGenerator::FrozenSnapshot
+        && resolved.components.len() == 2
+    {
+        resolved.components[spin].energy
+    } else {
+        resolved.energy
+    }
+}
+
+fn channel_generator_error(
+    recipe: &ScfChannelRecipe,
+    source: LinearizationEnergyError,
+) -> SnapshotDftError {
+    SnapshotDftError::ChannelGenerator {
+        site: recipe.site.clone(),
+        identity: recipe.identity,
+        treatment: recipe.treatment,
+        generator: recipe.generator,
+        source,
+    }
+}
+
+fn spherical_scalar_potential(
+    potential: &RegionalPotential,
+    site_index: usize,
+    site: &str,
+) -> Result<Vec<f64>, SnapshotDftError> {
+    let monopole = potential.scalar().muffin_tins()[site_index]
+        .field()
+        .channel(0, 0)
+        .ok_or_else(|| SnapshotDftError::MissingMonopole(site.to_owned()))?;
+    monopole
+        .iter()
+        .enumerate()
+        .map(|(radial, value)| {
+            if value.im.abs() > TRANSVERSE_FIELD_TOLERANCE * (1.0 + value.re.abs()) {
+                return Err(SnapshotDftError::NonRealMonopole {
+                    site: site.to_owned(),
+                    radial,
+                    value: *value,
+                });
+            }
+            Ok(value.re / (4.0 * PI).sqrt())
+        })
+        .collect()
+}
+
+fn scalar_channel_band_weights(
+    basis: &ScalarIterationBasis,
+    eigenvectors: &DenseEigenvectors,
+    site: usize,
+    l: u32,
+) -> Result<Vec<f64>, SnapshotDftError> {
+    let coordinates = basis.density_sites[site]
+        .orbitals
+        .iter()
+        .enumerate()
+        .filter(|(_, orbital)| orbital.angular().l == l)
+        .map(|(coordinate, _)| coordinate)
+        .collect::<Vec<_>>();
+    let projection = CompiledSiteProjection::scalar(&basis.compiled, site)?;
+    Ok(physical_site_band_projections(
+        &projection,
+        eigenvectors,
+        &basis.site_blocks[site].overlap,
+        &coordinates,
+    )?)
+}
+
+fn append_pdos_samples(
+    samples: &mut Vec<PdosEnergySample>,
+    states: &[BandState],
+    occupations: &[f64],
+    range: &Range<usize>,
+    projections: &[f64],
+) -> Result<(), SnapshotDftError> {
+    if range.len() != projections.len() || range.end > states.len() || range.end > occupations.len()
+    {
+        return Err(SnapshotDftError::BandProjectionCount {
+            states: range.len(),
+            projections: projections.len(),
+        });
+    }
+    for (band, &projection) in projections.iter().enumerate() {
+        let global = range.start + band;
+        samples.push(PdosEnergySample::new(
+            states[global],
+            occupations[global],
+            projection,
+        ));
+    }
+    Ok(())
+}
+
+struct InitialOccupationSolution {
+    chemical_potential: Hartree,
+    occupations: Vec<f64>,
+}
+
 fn solve_initial_occupations(
     states: &[BandState],
     config: &ScfConfig,
-) -> Result<Vec<f64>, SnapshotDftError> {
+) -> Result<InitialOccupationSolution, SnapshotDftError> {
     let core: f64 = config
         .core_sites
         .iter()
@@ -1833,27 +2530,31 @@ fn solve_initial_occupations(
         .map(|state| state.occupation)
         .sum();
     let electrons = config.electron_count - core;
-    Ok(match config.occupations {
+    let (chemical_potential, occupations) = match config.occupations {
         ScfOccupations::FermiDirac { temperature } => {
-            solve_fermi_dirac(
+            let solved = solve_fermi_dirac(
                 states,
                 electrons,
                 temperature,
                 OCCUPATION_TOLERANCE,
                 OCCUPATION_ITERATIONS,
-            )?
-            .occupations
+            )?;
+            (solved.chemical_potential, solved.occupations)
         }
         ScfOccupations::Gaussian { width } => {
-            solve_gaussian(
+            let solved = solve_gaussian(
                 states,
                 electrons,
                 width,
                 OCCUPATION_TOLERANCE,
                 OCCUPATION_ITERATIONS,
-            )?
-            .occupations
+            )?;
+            (solved.chemical_potential, solved.occupations)
         }
+    };
+    Ok(InitialOccupationSolution {
+        chemical_potential,
+        occupations,
     })
 }
 
@@ -1987,6 +2688,8 @@ pub enum SnapshotDftError {
     #[error(transparent)]
     SocOperator(#[from] SocOperatorError),
     #[error(transparent)]
+    Operator(#[from] OperatorError),
+    #[error(transparent)]
     Tensor(#[from] TensorError),
     #[error(transparent)]
     Lapw(#[from] LapwError),
@@ -2042,6 +2745,91 @@ pub enum SnapshotDftError {
     },
     #[error("site {0:?} potential has no spherical monopole")]
     MissingMonopole(String),
+    #[error("site {site:?} scalar monopole at radial index {radial} is not real: {value}")]
+    NonRealMonopole {
+        site: String,
+        radial: usize,
+        value: Complex64,
+    },
+    #[error(
+        "site {site:?} channel {identity:?} ({treatment:?}, {generator:?}) energy generation failed: {source}"
+    )]
+    ChannelGenerator {
+        site: String,
+        identity: ScfChannelIdentity,
+        treatment: ScfChannelTreatment,
+        generator: LinearizationEnergyGenerator,
+        #[source]
+        source: LinearizationEnergyError,
+    },
+    #[error("site {site:?} signed-kappa valence partners cannot form scalar l={l}: {source}")]
+    ScalarKappaAverage {
+        site: String,
+        l: u32,
+        #[source]
+        source: LinearizationEnergyError,
+    },
+    #[error("site {site:?} channel {identity:?} generator {generator:?} requires a recipe seed")]
+    MissingChannelSeed {
+        site: String,
+        identity: ScfChannelIdentity,
+        generator: LinearizationEnergyGenerator,
+    },
+    #[error(
+        "site {site:?} channel {identity:?} generator {generator:?} requires an l-resolved identity"
+    )]
+    ScalarGeneratorRequiresLIdentity {
+        site: String,
+        identity: ScfChannelIdentity,
+        generator: LinearizationEnergyGenerator,
+    },
+    #[error("site {site:?} has no materialized valence base for l={l}")]
+    MissingMaterializedBaseChannel { site: String, l: u32 },
+    #[error("site {site:?} has ambiguous materialized valence bases for l={l}")]
+    AmbiguousBaseChannel { site: String, l: u32 },
+    #[error("site {site:?} is missing the spinor base l={l}, kappa={kappa}")]
+    MissingSpinorBaseChannel { site: String, l: u32, kappa: i32 },
+    #[error(
+        "site {site:?} channel {identity:?} ({treatment:?}) has no matching frozen-snapshot anchor"
+    )]
+    MissingFrozenSnapshotAnchor {
+        site: String,
+        identity: ScfChannelIdentity,
+        treatment: ScfChannelTreatment,
+    },
+    #[error("site {site:?}, spin {spin} has no frozen-snapshot base anchor for l={l}")]
+    MissingFrozenSnapshotBase { site: String, l: u32, spin: usize },
+    #[error(
+        "site {site:?}, spin {spin} has no frozen-snapshot LO anchor for l={l}, ordinal={ordinal}"
+    )]
+    MissingFrozenSnapshotLo {
+        site: String,
+        l: u32,
+        ordinal: usize,
+        spin: usize,
+    },
+    #[error(
+        "site {site:?} channel {identity:?} generator {generator:?} has no provisional materialized value"
+    )]
+    MissingProvisionalChannel {
+        site: String,
+        identity: ScfChannelIdentity,
+        generator: LinearizationEnergyGenerator,
+    },
+    #[error("site {site:?} channel {identity:?} has an ambiguous n-resolved band-cog projection")]
+    AmbiguousBandCogProjection {
+        site: String,
+        identity: ScfChannelIdentity,
+    },
+    #[error("site {site:?} signed channel {identity:?} cannot be projected in a scalar band solve")]
+    KappaBandCogUnavailableInScalar {
+        site: String,
+        identity: ScfChannelIdentity,
+    },
+    #[error("band projection returned {projections} values for {states} states")]
+    BandProjectionCount { states: usize, projections: usize },
+    #[error("initial frozen-potential basis refinement did not converge after {passes} passes")]
+    InitialBasisRefinementNotConverged { passes: usize },
     #[error("site {site:?}, spin {spin} has no linearization energy for l={l}")]
     MissingLinearizationEnergy { site: String, spin: usize, l: u32 },
     #[error(
@@ -2212,8 +3000,27 @@ mod tests {
             basis: ScfBasis {
                 plane_wave_cutoff: 0.5,
                 l_max: 1,
-                local_orbitals: Vec::new(),
-                relativistic_local_orbitals: Vec::new(),
+                channels: vec![
+                    ScfChannelRecipe {
+                        site: "H-1".to_owned(),
+                        identity: ScfChannelIdentity::ScalarL { n: 1, l: 0 },
+                        treatment: ScfChannelTreatment::Valence,
+                        derivative_order: 0,
+                        generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                        seed: None,
+                        provenance: muffintin_dft::ScfChannelProvenance::BuiltIn,
+                    },
+                    ScfChannelRecipe {
+                        site: "H-1".to_owned(),
+                        identity: ScfChannelIdentity::ScalarL { n: 2, l: 1 },
+                        treatment: ScfChannelTreatment::Valence,
+                        derivative_order: 0,
+                        generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                        seed: None,
+                        provenance: muffintin_dft::ScfChannelProvenance::BuiltIn,
+                    },
+                ],
+                resolved_channels: Vec::new(),
             },
             occupations: ScfOccupations::FermiDirac {
                 temperature: Hartree(0.02),
@@ -2349,9 +3156,28 @@ mod tests {
     #[test]
     fn frozen_snapshot_produces_initial_density_without_fake_atomic_g_zero() {
         let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
-        let density = physics
-            .initial_density(&config(ScfRelativity::Scalar))
+        let config = config(ScfRelativity::Scalar);
+        let meshes = physics.channel_meshes(&config.basis).unwrap();
+        let extended = build_extended_snapshot_core_potentials(
+            &physics.frozen_potential,
+            &physics.geometry,
+            &physics.nuclear_charges,
+            &meshes,
+            CorePotentialContinuationSpec::default(),
+        )
+        .unwrap();
+        let materialized = physics
+            .materialize_nonspectral_basis(&physics.frozen_potential, &config.basis, &extended)
             .unwrap();
+        assert_eq!(
+            materialized.resolved_channels[0].energy.get().to_bits(),
+            (-0.3_f64).to_bits()
+        );
+        assert_eq!(
+            materialized.resolved_channels[1].energy.get().to_bits(),
+            (-0.15_f64).to_bits()
+        );
+        let density = physics.initial_density(&config).unwrap();
         assert!((muffintin_dft::electron_count(&density).unwrap() - 1.0).abs() < 1.0e-10);
         assert!(
             density
@@ -2364,11 +3190,133 @@ mod tests {
     }
 
     #[test]
+    fn magnetic_frozen_snapshot_does_not_turn_spin_splitting_into_kappa_splitting() {
+        let mut snapshot = snapshot_v1();
+        let mut up = snapshot.geometry.sites[0].spins[0].clone();
+        up.spin = SpinTagV1::Up;
+        up.linearization.linearization_energies[1].energy = -0.14;
+        let mut down = up.clone();
+        down.spin = SpinTagV1::Down;
+        down.linearization.linearization_energies[1].energy = -0.16;
+        snapshot.geometry.sites[0].spins = vec![up, down];
+        let physics = SnapshotDftPhysics::new(&snapshot.normalize_v2().unwrap()).unwrap();
+        let basis = config(ScfRelativity::SpinorFirstVariation).basis;
+        let meshes = physics.channel_meshes(&basis).unwrap();
+        let extended = build_extended_snapshot_core_potentials(
+            &physics.frozen_potential,
+            &physics.geometry,
+            &physics.nuclear_charges,
+            &meshes,
+            CorePotentialContinuationSpec::default(),
+        )
+        .unwrap();
+        let materialized = physics
+            .materialize_nonspectral_basis(&physics.frozen_potential, &basis, &extended)
+            .unwrap();
+        assert_eq!(
+            physics
+                .scalar_linearization_energies(&materialized, "H-1", 0)
+                .unwrap()[1]
+                .get()
+                .to_bits(),
+            (-0.14_f64).to_bits()
+        );
+        assert_eq!(
+            physics
+                .scalar_linearization_energies(&materialized, "H-1", 1)
+                .unwrap()[1]
+                .get()
+                .to_bits(),
+            (-0.16_f64).to_bits()
+        );
+        let spinor = physics
+            .spinor_linearization_energies(&materialized, "H-1")
+            .unwrap();
+        let p = spinor
+            .iter()
+            .filter(|parameter| parameter.kappa.large_l() == 1)
+            .map(|parameter| parameter.energy)
+            .collect::<Vec<_>>();
+        assert_eq!(p.len(), 2);
+        assert_eq!(p[0].get().to_bits(), p[1].get().to_bits());
+        assert_eq!(p[0], Hartree(0.5 * (-0.14 - 0.16)));
+    }
+
+    #[test]
+    fn atomic_recipe_materializes_from_the_current_extended_potential() {
+        let physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+        let mut config = config(ScfRelativity::Scalar);
+        for channel in &mut config.basis.channels {
+            if channel_l(channel.identity) == 0 {
+                channel.generator = LinearizationEnergyGenerator::Atomic;
+            }
+        }
+        let meshes = physics.channel_meshes(&config.basis).unwrap();
+        let extended = build_extended_snapshot_core_potentials(
+            &physics.frozen_potential,
+            &physics.geometry,
+            &physics.nuclear_charges,
+            &meshes,
+            CorePotentialContinuationSpec::default(),
+        )
+        .unwrap();
+        let first = physics
+            .materialize_nonspectral_basis(&physics.frozen_potential, &config.basis, &extended)
+            .unwrap();
+        let second = physics
+            .materialize_nonspectral_basis(&physics.frozen_potential, &config.basis, &extended)
+            .unwrap();
+        let atomic = first
+            .resolved_channels
+            .iter()
+            .find(|resolved| resolved.recipe.generator == LinearizationEnergyGenerator::Atomic)
+            .unwrap();
+        assert_eq!(atomic.components.len(), 1);
+        assert_eq!(atomic.energy, second.resolved_channels[0].energy);
+    }
+
+    #[test]
     fn scalar_single_site_snapshot_runs_two_iteration_scf_smoke() {
         let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
         let state = run_scf(&mut physics, &config(ScfRelativity::Scalar), None).unwrap();
         assert_eq!(state.iterations(), 2);
         assert_eq!(state.relativity, ScfRelativity::Scalar);
+    }
+
+    #[test]
+    fn fermi_offset_refines_inside_each_scf_iteration() {
+        let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+        let mut config = config(ScfRelativity::Scalar);
+        let channel = &mut config.basis.channels[0];
+        channel.generator = LinearizationEnergyGenerator::FermiOffset;
+        channel.seed = Some(Hartree(-0.1));
+        let state = run_scf(&mut physics, &config, None).unwrap();
+        assert!(state.diagnostics.iter().all(|diagnostic| {
+            diagnostic.resolved_channels.iter().any(|resolved| {
+                resolved.recipe.generator == LinearizationEnergyGenerator::FermiOffset
+                    && matches!(
+                        resolved.components[0].diagnostic,
+                        LinearizationEnergyDiagnostic::FermiOffset { .. }
+                    )
+            })
+        }));
+    }
+
+    #[test]
+    fn band_cog_uses_physical_projection_inside_the_scf_iteration() {
+        let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+        let mut config = config(ScfRelativity::Scalar);
+        config.basis.channels[0].generator = LinearizationEnergyGenerator::BandCog;
+        let state = run_scf(&mut physics, &config, None).unwrap();
+        assert!(state.diagnostics.iter().all(|diagnostic| {
+            diagnostic.resolved_channels.iter().any(|resolved| {
+                resolved.recipe.generator == LinearizationEnergyGenerator::BandCog
+                    && matches!(
+                        resolved.components[0].diagnostic,
+                        LinearizationEnergyDiagnostic::BandCog { .. }
+                    )
+            })
+        }));
     }
 
     #[test]
@@ -2462,40 +3410,41 @@ mod tests {
     }
 
     #[test]
-    fn signed_kappa_workflow_lo_overrides_only_its_inherited_spinor_partner() {
+    fn signed_kappa_recipe_keeps_multiple_spinor_local_orbitals() {
         let mut snapshot = snapshot_v1();
         let spin = &mut snapshot.geometry.sites[0].spins[0];
         spin.radial_equation = RadialEquationTagV1::FullyRelativisticDirac;
-        spin.linearization
-            .local_orbital_energies
-            .push(EnergyParameterV1 {
-                l: 1,
-                energy: -0.25,
-            });
         let physics = SnapshotDftPhysics::new(&snapshot.normalize_v2().unwrap()).unwrap();
         let mut basis = config(ScfRelativity::SpinorFirstVariation).basis;
-        basis.local_orbitals.push(muffintin_dft::ScfLocalOrbital {
-            site: "H-1".to_owned(),
-            kappa: 1,
-            energy: Hartree(-0.1),
-            kind: ScfLocalOrbitalKind::Lo,
-        });
-        basis.local_orbitals.push(muffintin_dft::ScfLocalOrbital {
-            site: "H-1".to_owned(),
-            kappa: 1,
-            energy: Hartree(-0.05),
-            kind: ScfLocalOrbitalKind::Lo,
-        });
+        for (n, energy) in [(2, -0.1), (3, -0.05)] {
+            basis.channels.push(ScfChannelRecipe {
+                site: "H-1".to_owned(),
+                identity: ScfChannelIdentity::Kappa { n, kappa: 1 },
+                treatment: ScfChannelTreatment::Lo,
+                derivative_order: 0,
+                generator: LinearizationEnergyGenerator::Explicit,
+                seed: Some(Hartree(energy)),
+                provenance: muffintin_dft::ScfChannelProvenance::Site,
+            });
+        }
+        let meshes = physics.channel_meshes(&basis).unwrap();
+        let extended = build_extended_snapshot_core_potentials(
+            &physics.frozen_potential,
+            &physics.geometry,
+            &physics.nuclear_charges,
+            &meshes,
+            CorePotentialContinuationSpec::default(),
+        )
+        .unwrap();
+        let basis = physics
+            .materialize_nonspectral_basis(&physics.frozen_potential, &basis, &extended)
+            .unwrap();
         let inputs = physics
             .spinor_site_inputs(&physics.frozen_potential, &basis)
             .unwrap();
         assert_eq!(
             inputs[0].local_orbitals,
             vec![
-                SpinorLocalOrbitalRequest::Lo {
-                    kappa: Kappa::new(-2).unwrap(),
-                    energy: Hartree(-0.25),
-                },
                 SpinorLocalOrbitalRequest::Lo {
                     kappa: Kappa::new(1).unwrap(),
                     energy: Hartree(-0.1),
@@ -2509,58 +3458,35 @@ mod tests {
     }
 
     #[test]
-    fn multiple_relativistic_local_orbitals_share_one_signed_kappa_without_overwrite() {
-        let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
-        let mut basis = config(ScfRelativity::SpinorFirstVariation).basis;
-        basis.local_orbitals.push(muffintin_dft::ScfLocalOrbital {
+    fn scalar_route_omits_signed_kappa_local_orbitals() {
+        let physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+        let mut basis = config(ScfRelativity::Scalar).basis;
+        basis.channels.push(ScfChannelRecipe {
             site: "H-1".to_owned(),
-            kappa: -2,
-            energy: Hartree(-0.2),
-            kind: ScfLocalOrbitalKind::Lo,
+            identity: ScfChannelIdentity::Kappa { n: 2, kappa: 1 },
+            treatment: ScfChannelTreatment::Lo,
+            derivative_order: 0,
+            generator: LinearizationEnergyGenerator::Explicit,
+            seed: Some(Hartree(-0.1)),
+            provenance: muffintin_dft::ScfChannelProvenance::Site,
         });
-        basis
-            .relativistic_local_orbitals
-            .push(ScfRelativisticLocalOrbital {
-                site: "H-1".to_owned(),
-                principal_quantum_number: 2,
-                kappa: 1,
-            });
-        basis
-            .relativistic_local_orbitals
-            .push(ScfRelativisticLocalOrbital {
-                site: "H-1".to_owned(),
-                principal_quantum_number: 3,
-                kappa: 1,
-            });
-        physics
-            .relativistic_local_orbital_energies
-            .insert(("H-1".to_owned(), 2, 1), Hartree(-0.125));
-        physics
-            .relativistic_local_orbital_energies
-            .insert(("H-1".to_owned(), 3, 1), Hartree(-0.055));
-
-        let resolved = physics
-            .basis_with_relativistic_local_orbitals(&basis)
+        let meshes = physics.channel_meshes(&basis).unwrap();
+        let extended = build_extended_snapshot_core_potentials(
+            &physics.frozen_potential,
+            &physics.geometry,
+            &physics.nuclear_charges,
+            &meshes,
+            CorePotentialContinuationSpec::default(),
+        )
+        .unwrap();
+        let basis = physics
+            .materialize_nonspectral_basis(&physics.frozen_potential, &basis, &extended)
             .unwrap();
-        assert!(
-            resolved
-                .local_orbitals
-                .iter()
-                .any(|orbital| { orbital.kappa == -2 && orbital.energy == Hartree(-0.2) })
-        );
-        assert!(
-            resolved
-                .local_orbitals
-                .iter()
-                .any(|orbital| { orbital.kappa == 1 && orbital.energy == Hartree(-0.125) })
-        );
-        assert!(
-            resolved
-                .local_orbitals
-                .iter()
-                .any(|orbital| { orbital.kappa == 1 && orbital.energy == Hartree(-0.055) })
-        );
-        assert_eq!(resolved.local_orbitals.len(), 3);
+        let inputs = physics
+            .scalar_site_inputs(&physics.frozen_potential, &basis)
+            .unwrap();
+        assert!(inputs.up[0].local_orbitals.is_empty());
+        assert!(inputs.down[0].local_orbitals.is_empty());
     }
 
     #[test]

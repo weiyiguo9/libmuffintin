@@ -41,6 +41,13 @@ impl SpinorLocalOrbitalRequest {
     }
 }
 
+/// Base linearization energy for one explicitly signed Dirac channel.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpinorLinearizationEnergy {
+    pub kappa: Kappa,
+    pub energy: Hartree,
+}
+
 /// Complete physical input for one full-spinor muffin-tin site.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpinorSiteInput {
@@ -51,8 +58,10 @@ pub struct SpinorSiteInput {
     pub spherical_potential: Vec<f64>,
     /// Full local `V0 I + B . sigma` potential used by first variation.
     pub potential: LocalPauliPotential,
-    /// `linearization_energies[l]`; both signed-`kappa` partners inherit it.
-    pub linearization_energies: Vec<Hartree>,
+    /// Largest orbital angular momentum represented by the base radial set.
+    pub l_max: u32,
+    /// One base energy for every signed `kappa` through `l_max`.
+    pub linearization_energies: Vec<SpinorLinearizationEnergy>,
     pub local_orbitals: Vec<SpinorLocalOrbitalRequest>,
 }
 
@@ -187,23 +196,60 @@ fn build_site(site: usize, input: &SpinorSiteInput) -> Result<BuiltSite, SpinorB
             actual: input.spherical_potential.len(),
         });
     }
-    if input.linearization_energies.is_empty() {
-        return Err(SpinorBuilderError::MissingLinearizationEnergies { site });
-    }
     validate_full_potential(site, input)?;
 
-    let mut solutions = Vec::new();
-    for (l, &energy) in input.linearization_energies.iter().enumerate() {
-        let l = u32::try_from(l).map_err(|_| SpinorBuilderError::AngularMomentumOverflow)?;
-        for kappa in kappas_for_l(l)? {
-            solutions.push(solve_valence_dirac(
-                &input.mesh,
-                &input.spherical_potential,
-                ValenceDiracSpec::new(kappa, energy)?,
-            )?);
+    let mut linearization_energies = input.linearization_energies.clone();
+    linearization_energies.sort_by_key(|parameter| parameter.kappa.get());
+    for parameter in &linearization_energies {
+        if !parameter.energy.get().is_finite() {
+            return Err(SpinorBuilderError::NonFiniteBaseLinearizationEnergy {
+                site,
+                kappa: parameter.kappa.get(),
+                energy: parameter.energy,
+            });
+        }
+        if parameter.kappa.large_l() > input.l_max {
+            return Err(SpinorBuilderError::BaseLinearizationKappaOutOfRange {
+                site,
+                kappa: parameter.kappa.get(),
+                l_max: input.l_max,
+            });
         }
     }
-    solutions.sort_unstable_by_key(|solution| solution.kappa.get());
+    if let Some(duplicate) = linearization_energies
+        .windows(2)
+        .find(|pair| pair[0].kappa == pair[1].kappa)
+    {
+        return Err(SpinorBuilderError::DuplicateBaseLinearizationEnergy {
+            site,
+            kappa: duplicate[0].kappa.get(),
+        });
+    }
+    for l in 0..=input.l_max {
+        for kappa in kappas_for_l(l)? {
+            if linearization_energies
+                .binary_search_by_key(&kappa.get(), |parameter| parameter.kappa.get())
+                .is_err()
+            {
+                return Err(SpinorBuilderError::MissingBaseLinearizationEnergy {
+                    site,
+                    kappa: kappa.get(),
+                    l,
+                });
+            }
+        }
+    }
+
+    let solutions = linearization_energies
+        .iter()
+        .map(|parameter| {
+            solve_valence_dirac(
+                &input.mesh,
+                &input.spherical_potential,
+                ValenceDiracSpec::new(parameter.kappa, parameter.energy)?,
+            )
+        })
+        .collect::<Result<Vec<_>, DiracError>>()?;
 
     let mut local_orbitals = vec![Vec::new(); solutions.len()];
     for &request in &input.local_orbitals {
@@ -213,7 +259,7 @@ fn build_site(site: usize, input: &SpinorSiteInput) -> Result<BuiltSite, SpinorB
             .map_err(|_| SpinorBuilderError::LocalOrbitalKappa {
                 site,
                 kappa: kappa.get(),
-                l_max: input.linearization_energies.len() - 1,
+                l_max: input.l_max,
             })?;
         let base = &solutions[shell];
         let built = match request {
@@ -594,16 +640,22 @@ pub enum SpinorBuilderError {
         expected: Complex64,
         actual: Complex64,
     },
-    #[error("site {site} has no linearization energies")]
-    MissingLinearizationEnergies { site: usize },
-    #[error("angular momentum does not fit the signed-kappa representation")]
-    AngularMomentumOverflow,
-    #[error("site {site} local orbital kappa={kappa} exceeds l_max={l_max}")]
-    LocalOrbitalKappa {
+    #[error("site {site} has duplicate base linearization energy for kappa={kappa}")]
+    DuplicateBaseLinearizationEnergy { site: usize, kappa: i32 },
+    #[error("site {site} base energy for kappa={kappa} is not finite: {energy}")]
+    NonFiniteBaseLinearizationEnergy {
         site: usize,
         kappa: i32,
-        l_max: usize,
+        energy: Hartree,
     },
+    #[error("site {site} is missing the l={l}, kappa={kappa} base linearization energy")]
+    MissingBaseLinearizationEnergy { site: usize, l: u32, kappa: i32 },
+    #[error("site {site} base kappa={kappa} exceeds l_max={l_max}")]
+    BaseLinearizationKappaOutOfRange { site: usize, kappa: i32, l_max: u32 },
+    #[error("angular momentum does not fit the signed-kappa representation")]
+    AngularMomentumOverflow,
+    #[error("site {site} local orbital kappa={kappa} is absent through l_max={l_max}")]
+    LocalOrbitalKappa { site: usize, kappa: i32, l_max: u32 },
     #[error("site {site} kappa={kappa} local-orbital energy {energy} is not distinct")]
     LocalOrbitalEnergyNotDistinct {
         site: usize,
@@ -687,7 +739,21 @@ mod tests {
                 [field(mesh, 0.0), field(mesh, 0.0), field(mesh, 0.0)],
             )
             .unwrap(),
-            linearization_energies: vec![Hartree(0.2), Hartree(0.28)],
+            l_max: 1,
+            linearization_energies: vec![
+                SpinorLinearizationEnergy {
+                    kappa: Kappa::new(1).unwrap(),
+                    energy: Hartree(0.34),
+                },
+                SpinorLinearizationEnergy {
+                    kappa: Kappa::new(-1).unwrap(),
+                    energy: Hartree(0.2),
+                },
+                SpinorLinearizationEnergy {
+                    kappa: Kappa::new(-2).unwrap(),
+                    energy: Hartree(0.28),
+                },
+            ],
             local_orbitals: vec![
                 SpinorLocalOrbitalRequest::Lo {
                     kappa,
@@ -699,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    fn l_energies_expand_to_both_j_partners_and_keep_p_half_los() {
+    fn signed_kappa_energies_remain_distinct_and_keep_p_half_los() {
         let mesh = mesh();
         let built =
             build_spinor_iteration_basis(&envelope(), &geometry(&mesh), &[input(&mesh)]).unwrap();
@@ -710,7 +776,7 @@ mod tests {
                 .iter()
                 .map(|solution| (solution.kappa.get(), solution.energy))
                 .collect::<Vec<_>>(),
-            vec![(-2, Hartree(0.28)), (-1, Hartree(0.2)), (1, Hartree(0.28))]
+            vec![(-2, Hartree(0.28)), (-1, Hartree(0.2)), (1, Hartree(0.34))]
         );
         assert_eq!(radial.local_orbitals[2].len(), 2);
         assert!(radial.local_orbitals[2].iter().all(|local| {
@@ -739,6 +805,60 @@ mod tests {
                 && orbital.q().len() == mesh.len()
                 && orbital.q().iter().any(|value| value.abs() > 0.0)
         }));
+    }
+
+    #[test]
+    fn duplicate_base_kappa_is_a_typed_error() {
+        let mesh = mesh();
+        let mut input = input(&mesh);
+        input
+            .linearization_energies
+            .push(SpinorLinearizationEnergy {
+                kappa: Kappa::new(-2).unwrap(),
+                energy: Hartree(0.31),
+            });
+        let error =
+            build_spinor_iteration_basis(&envelope(), &geometry(&mesh), &[input]).unwrap_err();
+        assert!(matches!(
+            error,
+            SpinorBuilderError::DuplicateBaseLinearizationEnergy { site: 0, kappa: -2 }
+        ));
+    }
+
+    #[test]
+    fn missing_base_partner_is_a_typed_error() {
+        let mesh = mesh();
+        let mut input = input(&mesh);
+        input
+            .linearization_energies
+            .retain(|parameter| parameter.kappa.get() != 1);
+        let error =
+            build_spinor_iteration_basis(&envelope(), &geometry(&mesh), &[input]).unwrap_err();
+        assert!(matches!(
+            error,
+            SpinorBuilderError::MissingBaseLinearizationEnergy {
+                site: 0,
+                l: 1,
+                kappa: 1
+            }
+        ));
+    }
+
+    #[test]
+    fn non_finite_base_energy_is_a_typed_error() {
+        let mesh = mesh();
+        let mut input = input(&mesh);
+        input.linearization_energies[0].energy = Hartree(f64::NAN);
+        let error =
+            build_spinor_iteration_basis(&envelope(), &geometry(&mesh), &[input]).unwrap_err();
+        assert!(matches!(
+            error,
+            SpinorBuilderError::NonFiniteBaseLinearizationEnergy {
+                site: 0,
+                kappa: 1,
+                energy
+            } if energy.get().is_nan()
+        ));
     }
 
     #[test]
