@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use muffintin::{
-    BandPathPointV1, BasisV1, ConvergenceV1, ElectronicStateOverrideV1, ElectronicStateTreatmentV1,
-    EnergyWindowV1, ExchangeCorrelationV1, InputV1, KMeshV1, LocalOrbitalKindV1, LocalOrbitalV1,
-    MixingV1, OccupationsV1, RelativityV1, TaskV1, WorkflowV1, input_to_toml,
+    BandPathPoint, Basis, Convergence, ElectronicStateOverride, ElectronicStateTreatment,
+    EnergyWindow, ExchangeCorrelation, Input, KMesh, LocalOrbital, LocalOrbitalKind, Mixing,
+    Occupations, Relativity, Task, Workflow, input_to_toml,
 };
 use muffintin_io::{
     AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1,
@@ -19,67 +19,67 @@ use muffintin_io::{
     snapshot_to_toml,
 };
 
-pub fn sample_input() -> InputV1 {
-    InputV1::new(
+pub fn sample_input() -> Input {
+    Input::new(
         PathBuf::from("data/snapshot.toml"),
-        WorkflowV1 {
+        Workflow {
             tasks: vec!["scf".to_owned(), "bands".to_owned(), "dos".to_owned()],
         },
         BTreeMap::from([
             (
                 "scf".to_owned(),
-                TaskV1::DftScf {
+                Task::DftScf {
                     source: None,
                     electron_count: 14.0,
-                    k_mesh: KMeshV1 {
+                    k_mesh: KMesh {
                         mesh: [4, 4, 4],
                         shift: [0.5, 0.5, 0.5],
                     },
-                    basis: BasisV1 {
+                    basis: Basis {
                         plane_wave_cutoff: 4.0,
                         l_max: 8,
-                        local_orbitals: vec![LocalOrbitalV1 {
+                        local_orbitals: vec![LocalOrbital {
                             site: "Si-1".to_owned(),
                             kappa: 1,
                             energy: -0.15,
-                            kind: LocalOrbitalKindV1::Lo,
+                            kind: LocalOrbitalKind::Lo,
                         }],
                     },
-                    occupations: OccupationsV1::FermiDirac { temperature: 0.01 },
-                    xc: ExchangeCorrelationV1::LdaPw92 {
+                    occupations: Occupations::FermiDirac { temperature: 0.01 },
+                    xc: ExchangeCorrelation::LdaPw92 {
                         noncollinear_route: Default::default(),
                     },
-                    mixing: MixingV1::PulayAnderson {
+                    mixing: Mixing::PulayAnderson {
                         beta: 0.4,
                         history: 6,
                     },
-                    relativity: RelativityV1::SocSecondVariation {
+                    relativity: Relativity::SocSecondVariation {
                         band_window: [0, 12],
                     },
-                    convergence: ConvergenceV1 {
+                    convergence: Convergence {
                         energy_tolerance: 1.0e-8,
                         density_tolerance: 1.0e-7,
                         max_iterations: 80,
                     },
-                    state_overrides: vec![ElectronicStateOverrideV1 {
+                    state_overrides: vec![ElectronicStateOverride {
                         site: "Si-1".to_owned(),
                         principal_quantum_number: 2,
                         kappa: 1,
-                        treatment: ElectronicStateTreatmentV1::Valence,
+                        treatment: ElectronicStateTreatment::Valence,
                     }],
                 },
             ),
             (
                 "bands".to_owned(),
-                TaskV1::DftBands {
+                Task::DftBands {
                     source: "scf.state".to_owned(),
                     bands: 12,
                     path: vec![
-                        BandPathPointV1 {
+                        BandPathPoint {
                             label: "G".to_owned(),
                             k: [0.0, 0.0, 0.0],
                         },
-                        BandPathPointV1 {
+                        BandPathPoint {
                             label: "X".to_owned(),
                             k: [0.5, 0.0, 0.0],
                         },
@@ -88,13 +88,13 @@ pub fn sample_input() -> InputV1 {
             ),
             (
                 "dos".to_owned(),
-                TaskV1::DftDos {
+                Task::DftDos {
                     source: "scf.state".to_owned(),
-                    k_mesh: KMeshV1 {
+                    k_mesh: KMesh {
                         mesh: [8, 8, 8],
                         shift: [0.0, 0.0, 0.0],
                     },
-                    energy_window: EnergyWindowV1 {
+                    energy_window: EnergyWindow {
                         minimum: -1.0,
                         maximum: 1.0,
                     },
@@ -180,33 +180,33 @@ pub fn sample_snapshot() -> SnapshotV1 {
     )
 }
 
-pub fn supported_input() -> InputV1 {
-    InputV1::new(
+pub fn supported_input() -> Input {
+    Input::new(
         PathBuf::from("data/snapshot.toml"),
-        WorkflowV1 {
+        Workflow {
             tasks: vec!["scf".to_owned()],
         },
         BTreeMap::from([(
             "scf".to_owned(),
-            TaskV1::DftScf {
+            Task::DftScf {
                 source: None,
                 electron_count: 1.0,
-                k_mesh: KMeshV1 {
+                k_mesh: KMesh {
                     mesh: [1, 1, 1],
                     shift: [0.0; 3],
                 },
-                basis: BasisV1 {
+                basis: Basis {
                     plane_wave_cutoff: 0.5,
                     l_max: 1,
                     local_orbitals: Vec::new(),
                 },
-                occupations: OccupationsV1::FermiDirac { temperature: 0.02 },
-                xc: ExchangeCorrelationV1::LdaPw92 {
+                occupations: Occupations::FermiDirac { temperature: 0.02 },
+                xc: ExchangeCorrelation::LdaPw92 {
                     noncollinear_route: Default::default(),
                 },
-                mixing: MixingV1::Linear { beta: 1.0 },
-                relativity: RelativityV1::Scalar {},
-                convergence: ConvergenceV1 {
+                mixing: Mixing::Linear { beta: 1.0 },
+                relativity: Relativity::Scalar {},
+                convergence: Convergence {
                     energy_tolerance: 1.0e100,
                     density_tolerance: 1.0e100,
                     max_iterations: 2,

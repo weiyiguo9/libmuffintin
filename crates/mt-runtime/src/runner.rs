@@ -5,19 +5,18 @@ use std::path::{Path, PathBuf};
 use muffintin_core::Hartree;
 use muffintin_dft::{
     AtomicChannelTreatment, AtomicNumber, BandPathPoint, BandPathRequest, BandPathResult,
-    DosRequest, DosResult, FirstVariationWindow, NoncollinearXcRoute, RelativisticOrbital,
-    ScfBasis, ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState, ScfExchangeCorrelation,
-    ScfKMesh, ScfLocalOrbital, ScfLocalOrbitalKind, ScfMixing, ScfOccupations, ScfPhysics,
-    ScfRelativisticLocalOrbital, ScfRelativity, ScfState, XcFunctional,
+    DosRequest, DosResult, FirstVariationWindow, NoncollinearXcRoute as ScfNoncollinearXcRoute,
+    RelativisticOrbital, ScfBasis, ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState,
+    ScfExchangeCorrelation, ScfKMesh, ScfLocalOrbital, ScfLocalOrbitalKind, ScfMixing,
+    ScfOccupations, ScfPhysics, ScfRelativisticLocalOrbital, ScfRelativity, ScfState, XcFunctional,
     fleur_default_atomic_configuration, run_band_path, run_dos, run_scf,
 };
 use muffintin_io::{SnapshotFile, SnapshotV2, snapshot_file_from_toml};
 
 use crate::input::parse_source;
 use crate::{
-    ElectronicStateTreatmentV1, ExchangeCorrelationV1, InputError, InputV1, KMeshV1,
-    LocalOrbitalKindV1, MixingV1, NoncollinearXcRouteV1, OccupationsV1, RelativityV1, TaskV1,
-    parse_input_toml,
+    ElectronicStateTreatment, ExchangeCorrelation, Input, InputError, KMesh, LocalOrbitalKind,
+    Mixing, NoncollinearXcRoute, Occupations, Relativity, Task, parse_input_toml,
 };
 
 /// A source reference resolved against the workflow's stable task order.
@@ -32,7 +31,7 @@ pub struct PreparedSource {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreparedTask {
     pub id: String,
-    pub task: TaskV1,
+    pub task: Task,
     pub source: Option<PreparedSource>,
 }
 
@@ -68,7 +67,7 @@ pub struct WorkflowResult {
 
 /// Validate and resolve an already decoded input and snapshot without filesystem access.
 pub fn prepare_input(
-    input: &InputV1,
+    input: &Input,
     snapshot: SnapshotFile,
 ) -> Result<PreparedWorkflow, InputError> {
     input.validate()?;
@@ -83,13 +82,13 @@ pub fn prepare_input(
         let task = input.task[id].clone();
         let source = task.source().map(|source| {
             let (task_id, output) = parse_source(source)
-                .expect("InputV1::validate accepted only syntactically valid sources");
+                .expect("Input::validate accepted only syntactically valid sources");
             let task_index = input
                 .workflow
                 .tasks
                 .iter()
                 .position(|candidate| candidate == task_id)
-                .expect("InputV1::validate accepted only existing source tasks");
+                .expect("Input::validate accepted only existing source tasks");
             PreparedSource {
                 task_index,
                 task_id: task_id.to_owned(),
@@ -139,7 +138,7 @@ pub fn execute_prepared_with<P: ScfPhysics>(
     for task in &workflow.tasks {
         let source = source_state(task, &results)?;
         let result = match &task.task {
-            TaskV1::DftScf { .. } => {
+            Task::DftScf { .. } => {
                 let config = scf_config(&task.id, &task.task, &workflow.snapshot)?;
                 let state = run_scf(physics, &config, source).map_err(|source| {
                     InputError::TaskExecution {
@@ -150,7 +149,7 @@ pub fn execute_prepared_with<P: ScfPhysics>(
                 })?;
                 TaskResult::Scf(Box::new(state))
             }
-            TaskV1::DftBands { bands, path, .. } => {
+            Task::DftBands { bands, path, .. } => {
                 let state = source.ok_or_else(|| InputError::UnavailableScfSource {
                     task_id: task.id.clone(),
                 })?;
@@ -173,7 +172,7 @@ pub fn execute_prepared_with<P: ScfPhysics>(
                 })?;
                 TaskResult::Bands(bands)
             }
-            TaskV1::DftDos {
+            Task::DftDos {
                 k_mesh,
                 energy_window,
                 points,
@@ -219,12 +218,8 @@ fn source_state<'a>(
         })
 }
 
-fn scf_config(
-    task_id: &str,
-    task: &TaskV1,
-    snapshot: &SnapshotV2,
-) -> Result<ScfConfig, InputError> {
-    let TaskV1::DftScf {
+fn scf_config(task_id: &str, task: &Task, snapshot: &SnapshotV2) -> Result<ScfConfig, InputError> {
+    let Task::DftScf {
         electron_count,
         k_mesh,
         basis,
@@ -324,7 +319,7 @@ fn scf_config(
                 .collect(),
         })
         .collect();
-    let relativistic_local_orbitals = if matches!(relativity, RelativityV1::Scalar {}) {
+    let relativistic_local_orbitals = if matches!(relativity, Relativity::Scalar {}) {
         Vec::new()
     } else {
         atomic_configurations
@@ -361,49 +356,49 @@ fn scf_config(
                     kappa: orbital.kappa,
                     energy: Hartree(orbital.energy),
                     kind: match orbital.kind {
-                        LocalOrbitalKindV1::Lo => ScfLocalOrbitalKind::Lo,
-                        LocalOrbitalKindV1::Hdlo => ScfLocalOrbitalKind::Hdlo,
+                        LocalOrbitalKind::Lo => ScfLocalOrbitalKind::Lo,
+                        LocalOrbitalKind::Hdlo => ScfLocalOrbitalKind::Hdlo,
                     },
                 })
                 .collect(),
             relativistic_local_orbitals,
         },
         occupations: match occupations {
-            OccupationsV1::FermiDirac { temperature } => ScfOccupations::FermiDirac {
+            Occupations::FermiDirac { temperature } => ScfOccupations::FermiDirac {
                 temperature: Hartree(*temperature),
             },
-            OccupationsV1::Gaussian { width } => ScfOccupations::Gaussian {
+            Occupations::Gaussian { width } => ScfOccupations::Gaussian {
                 width: Hartree(*width),
             },
         },
         exchange_correlation: match xc {
-            ExchangeCorrelationV1::LdaPw92 { noncollinear_route } => ScfExchangeCorrelation {
+            ExchangeCorrelation::LdaPw92 { noncollinear_route } => ScfExchangeCorrelation {
                 functional: XcFunctional::LdaPw92,
                 noncollinear_route: map_noncollinear_xc_route(*noncollinear_route),
             },
-            ExchangeCorrelationV1::Pbe { noncollinear_route } => ScfExchangeCorrelation {
+            ExchangeCorrelation::Pbe { noncollinear_route } => ScfExchangeCorrelation {
                 functional: XcFunctional::Pbe,
                 noncollinear_route: map_noncollinear_xc_route(*noncollinear_route),
             },
         },
         mixing: match mixing {
-            MixingV1::Linear { beta } => ScfMixing::Linear { alpha: *beta },
-            MixingV1::Broyden2 { beta, history } => ScfMixing::Broyden2 {
+            Mixing::Linear { beta } => ScfMixing::Linear { alpha: *beta },
+            Mixing::Broyden2 { beta, history } => ScfMixing::Broyden2 {
                 alpha: *beta,
                 history: *history,
             },
-            MixingV1::PulayAnderson { beta, history } => ScfMixing::PulayAnderson {
+            Mixing::PulayAnderson { beta, history } => ScfMixing::PulayAnderson {
                 alpha: *beta,
                 history: *history,
             },
         },
         relativity: match relativity {
-            RelativityV1::Scalar {} => ScfRelativity::Scalar,
-            RelativityV1::SocSecondVariation { band_window } => ScfRelativity::SocSecondVariation {
+            Relativity::Scalar {} => ScfRelativity::Scalar,
+            Relativity::SocSecondVariation { band_window } => ScfRelativity::SocSecondVariation {
                 window: FirstVariationWindow::new(band_window[0], band_window[1])
                     .expect("validated runtime second-variation window is nonempty"),
             },
-            RelativityV1::SpinorFirstVariation {} => ScfRelativity::SpinorFirstVariation,
+            Relativity::SpinorFirstVariation {} => ScfRelativity::SpinorFirstVariation,
         },
         convergence: ScfConvergence {
             energy_tolerance: Hartree(convergence.energy_tolerance),
@@ -414,24 +409,24 @@ fn scf_config(
     })
 }
 
-const fn map_state_treatment(treatment: ElectronicStateTreatmentV1) -> AtomicChannelTreatment {
+const fn map_state_treatment(treatment: ElectronicStateTreatment) -> AtomicChannelTreatment {
     match treatment {
-        ElectronicStateTreatmentV1::Core => AtomicChannelTreatment::Core,
-        ElectronicStateTreatmentV1::Valence => AtomicChannelTreatment::Valence,
-        ElectronicStateTreatmentV1::RelativisticLocalOrbital => {
+        ElectronicStateTreatment::Core => AtomicChannelTreatment::Core,
+        ElectronicStateTreatment::Valence => AtomicChannelTreatment::Valence,
+        ElectronicStateTreatment::RelativisticLocalOrbital => {
             AtomicChannelTreatment::RelativisticLocalOrbital
         }
     }
 }
 
-const fn map_noncollinear_xc_route(route: NoncollinearXcRouteV1) -> NoncollinearXcRoute {
+const fn map_noncollinear_xc_route(route: NoncollinearXcRoute) -> ScfNoncollinearXcRoute {
     match route {
-        NoncollinearXcRouteV1::LocalSpinFrame => NoncollinearXcRoute::LocalSpinFrame,
-        NoncollinearXcRouteV1::MagnetizationField => NoncollinearXcRoute::MagnetizationField,
+        NoncollinearXcRoute::LocalSpinFrame => ScfNoncollinearXcRoute::LocalSpinFrame,
+        NoncollinearXcRoute::MagnetizationField => ScfNoncollinearXcRoute::MagnetizationField,
     }
 }
 
-fn map_k_mesh(mesh: KMeshV1) -> ScfKMesh {
+fn map_k_mesh(mesh: KMesh) -> ScfKMesh {
     ScfKMesh {
         divisions: mesh
             .mesh

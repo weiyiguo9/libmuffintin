@@ -12,20 +12,20 @@ pub const INPUT_FORMAT: &str = "libmuffintin-input";
 /// Only runtime input schema version currently supported.
 pub const INPUT_VERSION: u32 = 1;
 
-/// A complete V1 workflow input.
+/// A complete workflow input in the currently supported schema.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct InputV1 {
+pub struct Input {
     pub format: String,
     pub version: u32,
     /// Snapshot path relative to the input file that names this workflow.
     pub snapshot: PathBuf,
-    pub workflow: WorkflowV1,
-    pub task: BTreeMap<String, TaskV1>,
+    pub workflow: Workflow,
+    pub task: BTreeMap<String, Task>,
 }
 
-impl InputV1 {
-    pub fn new(snapshot: PathBuf, workflow: WorkflowV1, task: BTreeMap<String, TaskV1>) -> Self {
+impl Input {
+    pub fn new(snapshot: PathBuf, workflow: Workflow, task: BTreeMap<String, Task>) -> Self {
         Self {
             format: INPUT_FORMAT.to_owned(),
             version: INPUT_VERSION,
@@ -75,51 +75,51 @@ impl InputV1 {
 /// Ordered workflow declaration. The map under `[task]` does not define execution order.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct WorkflowV1 {
+pub struct Workflow {
     pub tasks: Vec<String>,
 }
 
 /// Runtime task declaration, discriminated by the TOML `kind` field.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
-pub enum TaskV1 {
+pub enum Task {
     #[serde(rename = "dft-scf", rename_all = "kebab-case")]
     DftScf {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         source: Option<String>,
         electron_count: f64,
-        k_mesh: KMeshV1,
-        basis: BasisV1,
-        occupations: OccupationsV1,
-        xc: ExchangeCorrelationV1,
-        mixing: MixingV1,
-        relativity: RelativityV1,
-        convergence: ConvergenceV1,
+        k_mesh: KMesh,
+        basis: Basis,
+        occupations: Occupations,
+        xc: ExchangeCorrelation,
+        mixing: Mixing,
+        relativity: Relativity,
+        convergence: Convergence,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        state_overrides: Vec<ElectronicStateOverrideV1>,
+        state_overrides: Vec<ElectronicStateOverride>,
     },
     #[serde(rename = "dft-bands", rename_all = "kebab-case")]
     DftBands {
         source: String,
         bands: u32,
-        path: Vec<BandPathPointV1>,
+        path: Vec<BandPathPoint>,
     },
     #[serde(rename = "dft-dos", rename_all = "kebab-case")]
     DftDos {
         source: String,
-        k_mesh: KMeshV1,
-        energy_window: EnergyWindowV1,
+        k_mesh: KMesh,
+        energy_window: EnergyWindow,
         points: usize,
         broadening: f64,
     },
 }
 
-impl TaskV1 {
-    pub const fn kind(&self) -> TaskKindV1 {
+impl Task {
+    pub const fn kind(&self) -> TaskKind {
         match self {
-            Self::DftScf { .. } => TaskKindV1::DftScf,
-            Self::DftBands { .. } => TaskKindV1::DftBands,
-            Self::DftDos { .. } => TaskKindV1::DftDos,
+            Self::DftScf { .. } => TaskKind::DftScf,
+            Self::DftBands { .. } => TaskKind::DftBands,
+            Self::DftDos { .. } => TaskKind::DftDos,
         }
     }
 
@@ -197,16 +197,16 @@ impl TaskV1 {
     }
 }
 
-/// Closed set of executable task kinds in input V1.
+/// Closed set of executable task kinds in the workflow input.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum TaskKindV1 {
+pub enum TaskKind {
     DftScf,
     DftBands,
     DftDos,
 }
 
-impl fmt::Display for TaskKindV1 {
+impl fmt::Display for TaskKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
             Self::DftScf => "dft-scf",
@@ -220,12 +220,12 @@ impl fmt::Display for TaskKindV1 {
 /// Regular full-Brillouin-zone mesh in reciprocal fractional coordinates.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct KMeshV1 {
+pub struct KMesh {
     pub mesh: [u32; 3],
     pub shift: [f64; 3],
 }
 
-impl KMeshV1 {
+impl KMesh {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
         for (axis, &count) in self.mesh.iter().enumerate() {
             if count == 0 {
@@ -244,14 +244,14 @@ impl KMeshV1 {
 /// Minimal LAPW basis controls shared by the DFT workflow.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct BasisV1 {
+pub struct Basis {
     pub plane_wave_cutoff: f64,
     pub l_max: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub local_orbitals: Vec<LocalOrbitalV1>,
+    pub local_orbitals: Vec<LocalOrbital>,
 }
 
-impl BasisV1 {
+impl Basis {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
         positive(format!("{path}.plane-wave-cutoff"), self.plane_wave_cutoff)?;
         if self.l_max == 0 {
@@ -269,7 +269,7 @@ impl BasisV1 {
 /// Construction route for a signed-kappa spinor local orbital.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum LocalOrbitalKindV1 {
+pub enum LocalOrbitalKind {
     Lo,
     Hdlo,
 }
@@ -277,14 +277,14 @@ pub enum LocalOrbitalKindV1 {
 /// One site-resolved local-orbital request in Hartree units.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct LocalOrbitalV1 {
+pub struct LocalOrbital {
     pub site: String,
     pub kappa: i32,
     pub energy: f64,
-    pub kind: LocalOrbitalKindV1,
+    pub kind: LocalOrbitalKind,
 }
 
-impl LocalOrbitalV1 {
+impl LocalOrbital {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
         nonempty(format!("{path}.site"), &self.site)?;
         if self.kappa == 0 {
@@ -299,14 +299,14 @@ impl LocalOrbitalV1 {
 /// Typed occupation model and its energy-scale parameter, in Hartree.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
-pub enum OccupationsV1 {
+pub enum Occupations {
     #[serde(rename = "fermi-dirac", rename_all = "kebab-case")]
     FermiDirac { temperature: f64 },
     #[serde(rename = "gaussian", rename_all = "kebab-case")]
     Gaussian { width: f64 },
 }
 
-impl OccupationsV1 {
+impl Occupations {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
         match self {
             Self::FermiDirac { temperature } => {
@@ -320,27 +320,27 @@ impl OccupationsV1 {
 /// Exchange-correlation functional used to construct the local potential.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
-pub enum ExchangeCorrelationV1 {
+pub enum ExchangeCorrelation {
     #[serde(rename = "lda-pw92")]
     LdaPw92 {
         #[serde(default, rename = "noncollinear-route")]
-        noncollinear_route: NoncollinearXcRouteV1,
+        noncollinear_route: NoncollinearXcRoute,
     },
     #[serde(rename = "pbe")]
     Pbe {
         #[serde(default, rename = "noncollinear-route")]
-        noncollinear_route: NoncollinearXcRouteV1,
+        noncollinear_route: NoncollinearXcRoute,
     },
 }
 
-impl ExchangeCorrelationV1 {
+impl ExchangeCorrelation {
     const fn validate(self) {}
 }
 
 /// Noncollinear reduction used by the pointwise XC kernel.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum NoncollinearXcRouteV1 {
+pub enum NoncollinearXcRoute {
     /// Rotate derivatives into the instantaneous magnetization direction.
     #[default]
     LocalSpinFrame,
@@ -351,7 +351,7 @@ pub enum NoncollinearXcRouteV1 {
 /// Density-mixing algorithm and history controls.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
-pub enum MixingV1 {
+pub enum Mixing {
     #[serde(rename = "linear", rename_all = "kebab-case")]
     Linear { beta: f64 },
     #[serde(rename = "broyden2", rename_all = "kebab-case")]
@@ -360,7 +360,7 @@ pub enum MixingV1 {
     PulayAnderson { beta: f64, history: usize },
 }
 
-impl MixingV1 {
+impl Mixing {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
         let (beta, history) = match self {
             Self::Linear { beta } => (*beta, None),
@@ -385,7 +385,7 @@ impl MixingV1 {
 /// Relativistic one-particle formulation.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
-pub enum RelativityV1 {
+pub enum Relativity {
     #[serde(rename = "scalar")]
     Scalar {},
     #[serde(rename = "soc-second-variation", rename_all = "kebab-case")]
@@ -394,7 +394,7 @@ pub enum RelativityV1 {
     SpinorFirstVariation {},
 }
 
-impl RelativityV1 {
+impl Relativity {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
         if let Self::SocSecondVariation { band_window } = self {
             if band_window[0] >= band_window[1] {
@@ -412,13 +412,13 @@ impl RelativityV1 {
 /// Stopping criteria for an SCF task.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct ConvergenceV1 {
+pub struct Convergence {
     pub energy_tolerance: f64,
     pub density_tolerance: f64,
     pub max_iterations: usize,
 }
 
-impl ConvergenceV1 {
+impl Convergence {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
         positive(format!("{path}.energy-tolerance"), self.energy_tolerance)?;
         positive(format!("{path}.density-tolerance"), self.density_tolerance)?;
@@ -434,7 +434,7 @@ impl ConvergenceV1 {
 /// Treatment assigned to one occupied atomic Dirac channel.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum ElectronicStateTreatmentV1 {
+pub enum ElectronicStateTreatment {
     Core,
     Valence,
     RelativisticLocalOrbital,
@@ -443,14 +443,14 @@ pub enum ElectronicStateTreatmentV1 {
 /// Per-site override applied after the FLEUR element default is expanded to signed kappa.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct ElectronicStateOverrideV1 {
+pub struct ElectronicStateOverride {
     pub site: String,
     pub principal_quantum_number: u32,
     pub kappa: i32,
-    pub treatment: ElectronicStateTreatmentV1,
+    pub treatment: ElectronicStateTreatment,
 }
 
-impl ElectronicStateOverrideV1 {
+impl ElectronicStateOverride {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
         nonempty(format!("{path}.site"), &self.site)?;
         if self.principal_quantum_number == 0 {
@@ -463,7 +463,7 @@ impl ElectronicStateOverrideV1 {
                 path: format!("{path}.kappa"),
             });
         }
-        if self.treatment == ElectronicStateTreatmentV1::RelativisticLocalOrbital
+        if self.treatment == ElectronicStateTreatment::RelativisticLocalOrbital
             && !(1..=3).contains(&self.kappa)
         {
             return Err(InputValidationError::InvalidRelativisticLocalOrbitalKappa {
@@ -478,12 +478,12 @@ impl ElectronicStateOverrideV1 {
 /// One labeled reciprocal-space point in an ordered band path.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct BandPathPointV1 {
+pub struct BandPathPoint {
     pub label: String,
     pub k: [f64; 3],
 }
 
-impl BandPathPointV1 {
+impl BandPathPoint {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
         nonempty(format!("{path}.label"), &self.label)?;
         for (axis, &coordinate) in self.k.iter().enumerate() {
@@ -496,12 +496,12 @@ impl BandPathPointV1 {
 /// DOS sampling window in Hartree relative to the snapshot energy zero.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct EnergyWindowV1 {
+pub struct EnergyWindow {
     pub minimum: f64,
     pub maximum: f64,
 }
 
-impl EnergyWindowV1 {
+impl EnergyWindow {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
         finite(format!("{path}.minimum"), self.minimum)?;
         finite(format!("{path}.maximum"), self.maximum)?;
@@ -516,15 +516,15 @@ impl EnergyWindowV1 {
     }
 }
 
-/// Parse and validate deterministic V1 input TOML without touching the filesystem.
-pub fn parse_input_toml(text: &str) -> Result<InputV1, InputError> {
-    let input: InputV1 = toml::from_str(text)?;
+/// Parse and validate deterministic input TOML without touching the filesystem.
+pub fn parse_input_toml(text: &str) -> Result<Input, InputError> {
+    let input: Input = toml::from_str(text)?;
     input.validate()?;
     Ok(input)
 }
 
-/// Serialize a validated V1 input as deterministic pretty TOML.
-pub fn input_to_toml(input: &InputV1) -> Result<String, InputError> {
+/// Serialize a validated input as deterministic pretty TOML.
+pub fn input_to_toml(input: &Input) -> Result<String, InputError> {
     input.validate()?;
     let mut text = toml::to_string_pretty(input)?;
     if !text.ends_with('\n') {
@@ -545,7 +545,7 @@ fn validate_snapshot_path(path: &std::path::Path) -> Result<(), InputValidationE
     Ok(())
 }
 
-fn validate_task_sets(input: &InputV1) -> Result<(), InputValidationError> {
+fn validate_task_sets(input: &Input) -> Result<(), InputValidationError> {
     if input.workflow.tasks.is_empty() {
         return Err(InputValidationError::EmptyWorkflow);
     }
@@ -580,11 +580,11 @@ fn validate_task_id(id: &str) -> Result<(), InputValidationError> {
 }
 
 fn validate_source(
-    input: &InputV1,
+    input: &Input,
     positions: &BTreeMap<&str, usize>,
     consumer_index: usize,
     task_id: &str,
-    task: &TaskV1,
+    task: &Task,
     source: &str,
 ) -> Result<(), InputValidationError> {
     let Some((source_task, output)) = parse_source(source) else {
@@ -606,7 +606,7 @@ fn validate_source(
         });
     }
     let producer = &input.task[source_task];
-    if producer.kind() != TaskKindV1::DftScf || output != "state" {
+    if producer.kind() != TaskKind::DftScf || output != "state" {
         return Err(InputValidationError::IncompatibleSource {
             task_id: task_id.to_owned(),
             task_kind: task.kind(),

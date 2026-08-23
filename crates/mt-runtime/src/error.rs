@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use muffintin_io::IoError;
 use thiserror::Error;
 
-use crate::TaskKindV1;
+use crate::TaskKind;
 
-/// A syntactically valid input whose values violate the V1 workflow contract.
+/// A syntactically valid input whose values violate the workflow contract.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum InputValidationError {
     #[error("snapshot path must not be empty")]
@@ -39,7 +39,7 @@ pub enum InputValidationError {
     )]
     IncompatibleSource {
         task_id: String,
-        task_kind: TaskKindV1,
+        task_kind: TaskKind,
         source_ref: String,
     },
     #[error("{path} must not be empty")]
@@ -143,7 +143,7 @@ pub enum InputError {
     #[error("task {task_id:?} ({kind}) failed: {source}")]
     TaskExecution {
         task_id: String,
-        kind: TaskKindV1,
+        kind: TaskKind,
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },

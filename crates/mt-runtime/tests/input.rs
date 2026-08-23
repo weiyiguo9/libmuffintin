@@ -3,8 +3,8 @@ mod common;
 use std::path::PathBuf;
 
 use muffintin::{
-    ExchangeCorrelationV1, InputError, InputValidationError, MixingV1, NoncollinearXcRouteV1,
-    RelativityV1, TaskV1, input_to_toml, load_input_path, parse_input_toml, prepare_input,
+    ExchangeCorrelation, InputError, InputValidationError, Mixing, NoncollinearXcRoute, Relativity,
+    Task, input_to_toml, load_input_path, parse_input_toml, prepare_input,
 };
 use muffintin_io::SnapshotFile;
 
@@ -28,13 +28,13 @@ fn xc_noncollinear_route_defaults_to_local_spin_frame() {
     let without_route = encoded.replace("noncollinear-route = \"local-spin-frame\"\n", "");
     assert_ne!(without_route, encoded);
     let decoded = parse_input_toml(&without_route).unwrap();
-    let TaskV1::DftScf { xc, .. } = &decoded.task["scf"] else {
+    let Task::DftScf { xc, .. } = &decoded.task["scf"] else {
         unreachable!()
     };
     assert_eq!(
         *xc,
-        ExchangeCorrelationV1::LdaPw92 {
-            noncollinear_route: NoncollinearXcRouteV1::LocalSpinFrame,
+        ExchangeCorrelation::LdaPw92 {
+            noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
         }
     );
 }
@@ -64,7 +64,7 @@ fn nested_arrays_and_subblocks_are_preserved() {
     );
 
     let decoded = parse_input_toml(&encoded).unwrap();
-    let TaskV1::DftScf {
+    let Task::DftScf {
         state_overrides, ..
     } = &decoded.task["scf"]
     else {
@@ -72,7 +72,7 @@ fn nested_arrays_and_subblocks_are_preserved() {
     };
     assert_eq!(state_overrides.len(), 1);
 
-    let TaskV1::DftScf {
+    let Task::DftScf {
         basis, relativity, ..
     } = &decoded.task["scf"]
     else {
@@ -81,7 +81,7 @@ fn nested_arrays_and_subblocks_are_preserved() {
     assert_eq!(basis.local_orbitals.len(), 1);
     assert!(matches!(
         relativity,
-        RelativityV1::SocSecondVariation {
+        Relativity::SocSecondVariation {
             band_window: [0, 12]
         }
     ));
@@ -173,7 +173,7 @@ fn task_ids_and_sources_are_strictly_validated() {
     ));
 
     let mut incompatible = sample_input();
-    let TaskV1::DftDos { source, .. } = incompatible.task.get_mut("dos").unwrap() else {
+    let Task::DftDos { source, .. } = incompatible.task.get_mut("dos").unwrap() else {
         panic!("dos task changed kind");
     };
     *source = "bands.state".to_owned();
@@ -188,7 +188,7 @@ fn task_ids_and_sources_are_strictly_validated() {
 #[test]
 fn physical_numbers_and_nonzero_controls_are_validated() {
     let mut input = sample_input();
-    let TaskV1::DftScf { electron_count, .. } = input.task.get_mut("scf").unwrap() else {
+    let Task::DftScf { electron_count, .. } = input.task.get_mut("scf").unwrap() else {
         panic!("scf task changed kind");
     };
     *electron_count = f64::INFINITY;
@@ -200,7 +200,7 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
     ));
 
     let mut input = sample_input();
-    let TaskV1::DftScf { k_mesh, .. } = input.task.get_mut("scf").unwrap() else {
+    let Task::DftScf { k_mesh, .. } = input.task.get_mut("scf").unwrap() else {
         panic!("scf task changed kind");
     };
     k_mesh.mesh[1] = 0;
@@ -210,10 +210,10 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
     ));
 
     let mut input = sample_input();
-    let TaskV1::DftScf { mixing, .. } = input.task.get_mut("scf").unwrap() else {
+    let Task::DftScf { mixing, .. } = input.task.get_mut("scf").unwrap() else {
         panic!("scf task changed kind");
     };
-    *mixing = MixingV1::Broyden2 {
+    *mixing = Mixing::Broyden2 {
         beta: 0.4,
         history: 0,
     };
@@ -227,7 +227,7 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
     ));
 
     let mut input = sample_input();
-    let TaskV1::DftScf {
+    let Task::DftScf {
         state_overrides, ..
     } = input.task.get_mut("scf").unwrap()
     else {
@@ -240,7 +240,7 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
     ));
 
     let mut input = sample_input();
-    let TaskV1::DftScf { basis, .. } = input.task.get_mut("scf").unwrap() else {
+    let Task::DftScf { basis, .. } = input.task.get_mut("scf").unwrap() else {
         panic!("scf task changed kind");
     };
     basis.local_orbitals[0].energy = f64::NAN;
@@ -252,7 +252,7 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
     ));
 
     let mut input = sample_input();
-    let TaskV1::DftScf { basis, .. } = input.task.get_mut("scf").unwrap() else {
+    let Task::DftScf { basis, .. } = input.task.get_mut("scf").unwrap() else {
         panic!("scf task changed kind");
     };
     basis.local_orbitals[0].kappa = 0;
@@ -262,10 +262,10 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
     ));
 
     let mut input = sample_input();
-    let TaskV1::DftScf { relativity, .. } = input.task.get_mut("scf").unwrap() else {
+    let Task::DftScf { relativity, .. } = input.task.get_mut("scf").unwrap() else {
         panic!("scf task changed kind");
     };
-    *relativity = RelativityV1::SocSecondVariation {
+    *relativity = Relativity::SocSecondVariation {
         band_window: [4, 4],
     };
     assert!(matches!(
