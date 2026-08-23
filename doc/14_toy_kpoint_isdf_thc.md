@@ -9,7 +9,7 @@ kinematics remain [13](13_product_space_and_lapw_mpb.md). Grids remain
 
 `libmuffintin-thc` compresses orbital-pair densities on a **finite
 deterministic periodic toy basis**. Selection is k-point ISDF: one
-interpolation-point set shared across canonical $q$, with per-$q$
+interpolation-point set shared across canonical $q$, with per $q$
 interpolation vectors $\zeta^q$. The crate consumes the M-H product IR
 (`ProductPartition`, `TransferQ`, `OrbitalPair`, `PairVertex`) and emits
 `CompiledAuxiliaryBasis` interpolation-point payloads.
@@ -33,7 +33,7 @@ behaviour. There is no compatibility shim and no empty MPB payload for THC.
 
 A mesh $q$ is a k-mesh index plus the Cartesian $2\pi q/a$ stored on
 `TransferQ` (zero Umklapp for on-mesh $q$). Pair columns use the positive
-phase that keeps $\rho^q$ in the canonical-$q$ gauge:
+phase that keeps $\rho^q$ in the canonical $q$ gauge:
 
 ```math
 \rho^q_{k,ij}(r)
@@ -46,7 +46,7 @@ $G_{\mathrm{wrap}}$, matching `scratch/thc_mt_kpoint_test.py` lines 134–139
 and 153–161 and `scratch/thc_lapw_end_to_end_test.py` lines 285–307.
 
 Column order is $(k,i,j)$ with $k$ slowest and $j$ fastest. $q=0$ and
-finite-$q$ blocks share that convention. Omitting, sign-flipping, or
+finite $q$ blocks share that convention. Omitting, sign-flipping, or
 double-counting $G_{\mathrm{wrap}}$ changes the pair matrix relative to an
 independent column oracle.
 
@@ -66,14 +66,14 @@ Coulomb-pool mode cannot use threshold termination: the pool residual and
 the rerank residual have different meanings.
 
 The production L2 default is `allq_l2`. That is the scratch headline
-(`thc_mt_kpoint_test.py` all-q, seed 7) and the unique finite-$q$/Umklapp-safe
-choice supported by the q=0 hide regression. `allq_coulomb_pool` is
+(`thc_mt_kpoint_test.py` all-q, seed 7) and the unique choice known to be
+Umklapp-safe at finite $q$, supported by the q=0 hide regression. `allq_coulomb_pool` is
 implemented as specified in the v0.2 plan; the Python scripts did **not**
 validate that two-stage path. `q0_l2` is a CoQuí-compatibility / debug
 baseline and must not be the default: a q=0-only selection can hide a
-finite-$q$ channel.
+finite $q$ channel.
 
-Provenance records strategy, seed, uniform shift, `pool_factor`/$N_\mu$,
+Provenance records strategy, seed, uniform shift, `pool_factor`, $N_\mu$,
 $q$ set, grid path, $\sqrt{w}$ weights, and the $(N_k,N_{\mathrm{orb}})$
 column window.
 
@@ -117,7 +117,7 @@ $V^{\mathrm{MPB}}=V^{\mathrm{THC}}$ when the spans differ.
 
 Every injected Gram used for a Coulomb residual is checked for q-index,
 exact `TransferQ`, exact `PairColumnLayout`, and resulting dimension before
-whitening, including `q0_l2` and `allq_l2`. The worst finite-$q$ Coulomb
+whitening, including `q0_l2` and `allq_l2`. The worst finite $q$ Coulomb
 metric is the max Coulomb residual over nonzero $q$, independent of the
 L2-worst $q$.
 
@@ -143,8 +143,8 @@ Three test layers:
    peaked toy. Python did not implement `allq_coulomb_pool`; the $8\times10^{-2}$
    gate is not claimed for the pool.
 3. Slow source-equivalent gate `source_equivalent_python_lapw_fixture`
-   (ignored in ordinary workspace runs): reference 38x110+$20^3$, medium
-   30x86+$18^3$, fine candidate 26x86+$18^3$, $N_\mu=96$, $|G|^2\le 12$,
+   (ignored in ordinary workspace runs): reference 38x110 + $20^3$, medium
+   30x86 + $18^3$, fine candidate 26x86 + $18^3$, $N_\mu=96$, $|G|^2\le 12$,
    `allq_l2` full selection, candidate-only selection/fit. The Python oracle
    uses QRCP; Rust exercises both full QRCP and full pivoted Cholesky. Assert
    distinct-grid reference convergence $\le 5\times10^{-2}$ and fine ERI-F /
@@ -163,18 +163,18 @@ Three test layers:
 | Umklapp probe | $\lvert\rho+i\rvert<2\times10^{-14}$ | algebraic regression |
 
 The q=0 vs all-q table at $N_\mu=48$ on adaptive nrad=20 does **not** by
-itself show a finite-$q$ hide (both are $\sim10^{-13}$). The hide is
+itself show a finite $q$ hide (both are $\sim10^{-13}$). The hide is
 demonstrated by a constructed two-channel pair block and by the Umklapp
 algebra. That is why the default is `allq_l2`, not a taste choice between
 nearly equal $10^{-14}$ numbers.
 
 ## 7. Public surface
 
-- `evaluate_pair_block` / `pair_density_oracle` — per-$q$ pair matrices
+- `evaluate_pair_block` / `pair_density_oracle` — pair matrices for each $q$
 - `L2Engine` / `RankPolicy` — structured sketch, full QRCP, or full pivoted
   Cholesky with exact-rank or relative-residual termination
 - `select_points` / `run_thc` / `compare_strategies`
-- `fit_per_q` — per-$q$ $\zeta$ and weighted L2 / injected-Coulomb residuals
+- `fit_per_q` — $\zeta$ and weighted L2 / injected-Coulomb residuals for each $q$
 - `interpolation_auxiliary` / `bloch_pair_vertices` — product IR
 - `InjectedCoulombGram` — explicit Coulomb data contract
 - `toy::compare_candidate_eri_action` — candidate-oracle ERI/action vs a

@@ -50,10 +50,10 @@ D(E)=R\frac{U_r(E)}{U(E)}
 
 The pair $(U,U_r)$, not $D$ alone, is required for boundary matching.
 
-## 2. Koelling--Harmon scalar-relativistic equation
+## 2. Koelling–Harmon scalar-relativistic equation
 
 The scalar-relativistic approximation keeps the relativistic radial mass but
-averages away explicit spin--orbit coupling.  Define
+averages away explicit spin–orbit coupling.  Define
 
 ```math
 M(r,E)=1+\frac{E-V(r)}{2c^2},
@@ -87,13 +87,13 @@ normalization is
 ```
 
 This order of operations matters: normalize with $Q$, not with the scaled
-Runge--Kutta variable $\widetilde Q$.  SPEX performs the division and norm at
+Runge–Kutta variable $\widetilde Q$.  SPEX performs the division and norm at
 `src/dirac.f:194-204`.
 
 The scalar-relativistic angular function remains $Y_{lm}$ times an
 independent Pauli spin label.  Although two radial arrays $(P,Q)$ are
 returned, this is a functional two-component scalar-relativistic valence
-description, not the four-component $\kappa$-resolved Dirac spinor of [06].
+description, not the four-component Dirac spinor resolved by $\kappa$ of [06].
 
 ## 3. Energy derivative
 

@@ -1,7 +1,7 @@
 # 06. Four-component Dirac core and valence radial states
 
 This note defines the relativistic objects that cannot be represented by the
-scalar Koelling--Harmon label alone.  It also separates a production core-state
+scalar Koelling–Harmon label alone.  It also separates a production core-state
 solver from the regular fixed-energy four-component valence radial substrate.
 The SRA-LAPW consumer is specified in
 [16](16_relativistic_spinor_substrate.md). All equations written as
@@ -196,25 +196,24 @@ arrays:
 | model | radial unknowns | angular object | channel label | intended role |
 |---|---|---|---|---|
 | Schrödinger | $P$ | $Y_{lm}\chi_s$ | $l,s$ | analytic/reference valence |
-| scalar Koelling--Harmon | $P,Q$ | $Y_{lm}\chi_s$ | $l,s$ | v0.1 functional 2c valence |
+| scalar Koelling–Harmon | $P,Q$ | $Y_{lm}\chi_s$ | $l,s$ | v0.1 functional 2c valence |
 | Dirac 4c | $P_\kappa,Q_\kappa$ | $(\Omega_\kappa,\Omega_{-\kappa})$ | $\kappa,m_j$ | core and typed valence substrate |
 
-Koelling--Harmon returns a “small” radial correction, but it has no explicit
+Koelling–Harmon returns a “small” radial correction, but it has no explicit
 $j=l\pm1/2$ splitting and no spin-angular entanglement.  It is therefore a
 functional two-component scalar-relativistic valence formulation.  A true 4c
-valence implementation needs $\kappa$-resolved homogeneous solutions,
+valence implementation needs homogeneous solutions resolved by $\kappa$,
 energy derivatives, relativistic envelope expansions, typed boundary
 adapters, and compatible Hamiltonian/overlap assembly. M-Ka now supplies the
 central-potential real-energy solution and makes its analytic first and second
 energy derivatives part of the active contract.  The fixed normalized gauge
 requires
 $\langle R_\kappa|\dot R_\kappa\rangle=0$ and
-$\langle R_\kappa|\ddot R_\kappa\rangle
-=-\langle\dot R_\kappa|\dot R_\kappa\rangle$.  M-Ka preserves the physical
+$\langle R_\kappa|\ddot R_\kappa\rangle=-\langle\dot R_\kappa|\dot R_\kappa\rangle$.  M-Ka preserves the physical
 $(P,Q,P',Q')$ trace and exposes SRA as a separate lossy large-component
 adapter, including the confined HDLO specified in [16]. It does not silently
-fall back to Koelling--Harmon. Complex-energy scattering and coupled-$\kappa$
-magnetic radial equations remain outside this contract. FRA is only a
+fall back to Koelling–Harmon. Complex-energy scattering and magnetic radial
+Dirac equations coupled in $\kappa$ remain outside this contract. FRA is only a
 far-future non-production research option: it is outside v0.2 and the current
 acceptance boundary, and no FRA request API is created.
 

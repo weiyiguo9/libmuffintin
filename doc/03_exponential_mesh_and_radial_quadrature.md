@@ -62,7 +62,7 @@ is negligible.  Sign changes, zeros, nonfinite $p$, or $p\leq-1$ must not
 be hidden by the power-law extrapolation.  SPEX's corresponding correction is
 at the start of `src/numerics.f:7-123`.
 
-## 3. Seven-point closed Newton--Cotes panel
+## 3. Seven-point closed Newton–Cotes panel
 
 On a panel of six logarithmic steps, let $t=(x-x_0)/h$ and interpolate the
 seven samples $F(x_0+jh)$, $j=0,\ldots,6$, by

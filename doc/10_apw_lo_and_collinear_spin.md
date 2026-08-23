@@ -28,7 +28,7 @@ coordinates, not additional global basis columns.
 
 SPEX states the global `[APW][LO]` order at `hamilton.f:801-804`. Its LO count
 and site offsets are formed at `hamilton.f:1212-1223`; the explicit
-$l$, $m$, $n$ indexing is visible in the APW--LO and LO--LO assembly at
+$l$, $m$, $n$ indexing is visible in the APW–LO and LO–LO assembly at
 `hamilton.f:1331-1393,1473-1510`.
 
 ## 2. Local-orbital boundary condition
@@ -52,7 +52,7 @@ Both equations are required. They make an LO strictly confined to its
 muffin-tin sphere, so it has no interstitial tail and needs no plane-wave
 matching column. SPEX forms the coefficients from the APW boundary inverse and
 applies the same combination to both scalar-relativistic radial components at
-`hamilton.f:372-392`. The resulting APW--APW, APW--LO, and LO--LO radial blocks
+`hamilton.f:372-392`. The resulting APW–APW, APW–LO, and LO–LO radial blocks
 are named `hmt1`, `hmt2`, and `hmt3`; their meanings and normalized-
 $\dot u$ convention are recorded at `hamilton.f:286-295`, and their
 spherical assembly is shown at `hamilton.f:396-459`.
@@ -70,8 +70,8 @@ $P_{a\sigma}$ from global basis columns to those site coordinates:
 - an LO column belonging to another site is zero.
 
 Let $`S^{a\sigma}_{\mathrm{MT}}`$ and $`H^{a\sigma}_{\mathrm{MT}}`$ be the full site
-matrices in those same coordinates, including all APW--APW, APW--LO, and
-LO--LO blocks. Then both operators obey the same congruence:
+matrices in those same coordinates, including all APW–APW, APW–LO, and
+LO–LO blocks. Then both operators obey the same congruence:
 
 ```math
  S_\sigma=S^I+\sum_a P_{a\sigma}^{\dagger}
@@ -81,15 +81,15 @@ LO--LO blocks. Then both operators obey the same congruence:
  H^{a\sigma}_{\rm MT}P_{a\sigma}.
 ```
 
-The interstitial matrices $S^I$ and $H^I_\sigma$ occupy only the PW--PW
+The interstitial matrices $S^I$ and $H^I_\sigma$ occupy only the PW–PW
 corner because every LO has zero value and slope at the sphere boundary. This
 single $P^\dagger X P$ rule is normative; separately coded block formulas
 must be equivalent to it and must not reorder one operator differently from
 the other. The numerical evaluation of that congruence is the local tensor
 substrate in [11](11_tensorized_numerical_substrate.md). SPEX builds the
-interstitial PW corner at `hamilton.f:938-999`, the APW--APW projection at
-`hamilton.f:1023-1207`, the APW--LO blocks at `hamilton.f:1212-1393`, and
-the LO--LO blocks at `hamilton.f:1397-1510`.
+interstitial PW corner at `hamilton.f:938-999`, the APW–APW projection at
+`hamilton.f:1023-1207`, the APW–LO blocks at `hamilton.f:1212-1393`, and
+the LO–LO blocks at `hamilton.f:1397-1510`.
 
 ## 4. Collinear spin without SOC
 

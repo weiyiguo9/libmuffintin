@@ -41,8 +41,8 @@ that `Kappa` list; no consumer may infer an alternative ordering from a flat
 offset.  Duplicate $\kappa$, $\kappa=0$, an even $2\mu$, and an out-of-range
 $2\mu$ are rejected.
 
-With normalized Condon--Shortley spherical harmonics, the real
-Clebsch--Gordan phase is fixed by the standard Wigner-$3j$ relation
+With normalized Condon–Shortley spherical harmonics, the real
+Clebsch–Gordan phase is fixed by the standard Wigner $3j$ relation
 
 ```math
 \left\langle lm,\frac12s\middle|j\mu\right\rangle
@@ -62,11 +62,10 @@ Y_{l(\kappa)m}(\hat r)\chi_s },
 ```
 
 Here $s=\pm\tfrac12$ and the Pauli basis is ordered
-$(\chi_{+1/2},\chi_{-1/2})$.  The Clebsch--Gordan table, spinor harmonic, and
+$(\chi_{+1/2},\chi_{-1/2})$.  The Clebsch–Gordan table, spinor harmonic, and
 channel enumerator are one shared implementation rather than separate
 crate-local copies.  They must give
-$\int\Omega_{\Lambda}^{\dagger}\Omega_{\Lambda'}d\hat r
-=\delta_{\Lambda\Lambda'}$.
+$\int\Omega_{\Lambda}^{\dagger}\Omega_{\Lambda'}d\hat r=\delta_{\Lambda\Lambda'}$.
 
 ## 2. Central-field Dirac solution and energy derivatives
 
@@ -229,7 +228,7 @@ column is consumed by the confined HDLO construction below.  The interstitial
 envelope is a two-component Pauli plane wave and has no small component.
 Inside a sphere, the matched coefficients
 multiply both physical radial components of each Dirac solution.  This is the
-declared SRA approximation, including its Schlosser--Marcus surface
+declared SRA approximation, including its Schlosser–Marcus surface
 convention; absence of an interstitial small component is not permission to
 substitute scalar-relativistic radial data. FRA is not exposed by this path.
 
@@ -264,7 +263,7 @@ function.  The HDLO is a site-local orbital and has no interstitial tail.
 For one normalized angular channel, let $I$ and $t$ denote the interstitial
 and muffin-tin large-component traces and let the prime denote the outward
 normal derivative. In the library's Hartree convention, $T=-\nabla^2/2$, the
-bilinear Schlosser--Marcus correction is
+bilinear Schlosser–Marcus correction is
 
 ```math
 \Delta T_{LR}=-\frac{R^2}{4}
@@ -298,7 +297,7 @@ Gaunt factors,
 \Omega_{-\kappa'\mu'}.
 ```
 
-Their Clebsch--Gordan reductions are evaluated independently:
+Their Clebsch–Gordan reductions are evaluated independently:
 
 ```math
 \mathcal G^{PP}_{LM}
@@ -327,8 +326,8 @@ integrals and angular factors remain separate in `SpinorSphereOrbital` and
 its operator blocks; collapsing them into one effective Gaunt factor loses
 the distinct $l(\kappa)$ and $l(-\kappa)$ selection rules.  Non-spherical
 $V_{LM}$ may couple different $\Lambda$ and $\Lambda'$, but that sphere
-coupling does not turn the central-field radial solver into a coupled-$\kappa$
-solver.
+coupling does not turn the central-field radial solver into a radial Dirac
+solver coupled in $\kappa$.
 
 ## 5. SRA plane-wave projection and basis order
 
@@ -399,13 +398,13 @@ SRA pair $(U,U_r)$.
 ## 7. Explicit non-goals and failure boundaries
 
 M-Ka is SRA-only and does not provide FRA-LAPW or relativistic interstitial
-plane waves; radial magnetic fields or general coupled-$\kappa$ Dirac
-equations; spinor product, MPB, or THC identities; density and potential
+plane waves; radial magnetic fields or general Dirac equations coupled in
+$\kappa$; spinor product, MPB, or THC identities; density and potential
 synthesis; occupations, XC, mixing, or SCF.  It does not add
 `kappa` to scalar `ProductRadialId`; the relativistic orbital/product bridge
 belongs to M-L. Scattering and magnetic-radial request APIs are likewise not
 part of this milestone; absence of those modes must not be represented by a
-fallback to SRA, Koelling--Harmon, or scalar data.
+fallback to SRA, Koelling–Harmon, or scalar data.
 
 ### Far-future FRA research option
 
@@ -422,7 +421,7 @@ must not widen or silently alter the present SRA contract.
 M-Ka is accepted only when all of the following are demonstrated:
 
 1. Complete deterministic $(\kappa,2\mu)$ enumeration, rejection of invalid
-   labels, normalized spinor harmonics, and a fixed Clebsch--Gordan phase.
+   labels, normalized spinor harmonics, and a fixed Clebsch–Gordan phase.
 2. Dirac ODE residuals for $(P,Q)$, $(\dot P,\dot Q)$, and
    $(\ddot P,\ddot Q)$ using physical public components, with internal $cQ$
    scaling invisible at the API boundary.
@@ -430,9 +429,8 @@ M-Ka is accepted only when all of the following are demonstrated:
    and second energy derivatives on the mesh and for every entry of the full
    Dirac boundary traces.
 4. Unit radial norm, $\langle R_\kappa|\dot R_\kappa\rangle=0$, and the exact
-   identity
-   $\langle R_\kappa|\ddot R_\kappa\rangle
-   =-\langle\dot R_\kappa|\dot R_\kappa\rangle$ in the fixed gauge.
+   identity $\langle R_\kappa|\ddot R_\kappa\rangle=-\langle\dot R_\kappa|\dot R_\kappa\rangle$
+   in the fixed gauge.
 5. Independent oracle values for $PP$ and $QQ$ spinor Gaunt reductions,
    including non-diagonal channel blocks and Hermitian conjugation checks.
 6. SRA $(U,U_r)$, $(\dot U,\dot U_r)$, and
@@ -444,11 +442,11 @@ M-Ka is accepted only when all of the following are demonstrated:
    harmonic evaluation.
 8. Hermitian spinor $H$ and $S$, positive retained overlap, and bounded
    generalized-eigen residuals from the common projection congruence.
-9. A large-$c$ reduction in which one repository-local scalar LAPW frozen fixture is
+9. A large $c$ reduction in which one repository-local scalar LAPW frozen fixture is
    duplicated across the two Pauli-spin blocks, after the unitary
    coupled/uncoupled angular transformation.
 
-The second-derivative/HDLO gate and the item 9 repository-local large-$c$
+The second-derivative/HDLO gate and the item 9 repository-local large $c$
 fixture are implemented and exercised by focused regression tests.  This does
 not claim completion of the full M-Ka acceptance list or cross-code validation
 against a FlapwMBPT/source-equivalent band fixture. FRA is deliberately excluded

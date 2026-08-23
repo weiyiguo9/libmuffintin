@@ -86,7 +86,7 @@ indices is an explicit index operation; it is not a second contraction.
 Interstitial Fourier and step-function assembly remain ordinary physical
 loops.
 
-The same congruence supplies APW--APW, APW--LO, and LO--LO entries. Complex
+The same congruence supplies APW–APW, APW–LO, and LO–LO entries. Complex
 conjugation is $P^*$ in the first operand, so a nonzero site phase already
 stored in the APW coefficients is conjugated exactly once.
 
@@ -130,7 +130,7 @@ for the eigenvalue scale, and `ib,ib->b` for the squared column norms.
 ## 6. Acceptance
 
 M-Fb1 requires `einsum("ci,cd,dj->ij", ...)` through RSTSR+TBLIS to match
-direct analytic APW--APW, APW--LO, and LO--LO values, including complex
+direct analytic APW–APW, APW–LO, and LO–LO values, including complex
 conjugation and a nonzero $k$ site phase; a no-LO site must reduce to the
 APW-only congruence; the scattered global matrices remain Hermitian; axis and
 shape errors are traceable; and every existing M-F $H$, $S$, retained rank,

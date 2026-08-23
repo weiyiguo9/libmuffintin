@@ -6,7 +6,7 @@ This note fixes the angular and reciprocal-space formulas used by
 ## 1. Complex spherical harmonics and storage
 
 Let $P_l^m(x)$ denote the associated Legendre function without an embedded
-Condon--Shortley phase.  The normalized complex harmonic is
+Condon–Shortley phase.  The normalized complex harmonic is
 
 ```math
 Y_{lm}(\theta,\phi)=(-1)^m
@@ -22,7 +22,7 @@ Y_{l,-m}=(-1)^mY_{lm}^{*}.
 
 Hence $Y_{00}=1/\sqrt{4\pi}$,
 $\int Y_{lm}^{*}Y_{l'm'}d\Omega=\delta_{ll'}\delta_{mm'}$, and the
-Condon--Shortley phase is explicit.  If a special-function library instead
+Condon–Shortley phase is explicit.  If a special-function library instead
 builds $(-1)^m$ into its associated Legendre function, the prefactor above
 must be omitted exactly once.
 

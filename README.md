@@ -22,7 +22,7 @@ The current M-A through M-Kb implementation candidate provides:
   with analytic second energy derivatives and confined SRA HDLOs;
 - `libmuffintin-grid`: typed atom-centred, uniform, interstitial, and stable composite
   quadrature grids, with an optional `rstsr` tensor conversion feature;
-- `libmuffintin-sphere`: $(L,M)$-resolved sphere fields and Gaunt-weighted radial matrix
+- `libmuffintin-sphere`: sphere fields resolved in $(L,M)$ and Gaunt-weighted radial matrix
   elements for complex or real harmonics, plus a parallel typed spinor path
   that keeps the large-large and small-small radial/angular factors separate;
 - `libmuffintin-io`: independently versioned, human-diffable TOML formats for physical
@@ -50,9 +50,9 @@ The current M-A through M-Kb implementation candidate provides:
   explicit `BasisSpec` route must not call `recipes::lapw()`. M-Ka adds a
   parallel `SpinorCompiledBasis`, `spin * n_g + g` Pauli-PW order, typed
   spinor site projection, equal-spin SRA interstitial assembly, and an
-  explicit Hartree-convention Schlosser--Marcus surface bilinear form. The
+  explicit Hartree-convention Schlosser–Marcus surface bilinear form. The
   analytic second-derivative/HDLO path and a repository-local non-empty-sphere
-  large-$c$ frozen-fixture reduction are internally tested; this is not yet a
+  large $c$ frozen-fixture reduction are internally tested; this is not yet a
   completed M-Ka acceptance or a cross-code validation against a frozen
   FlapwMBPT/source-equivalent band fixture;
 - `libmuffintin-auxiliary-ir` and `libmuffintin-mpb` M-H: a historical-method-name-free
@@ -63,19 +63,19 @@ The current M-A through M-Kb implementation candidate provides:
   interstitial order). The MPB auxiliary $|q+G|\le g_{\mathrm{cut}}$ set is
   constructed separately in `libmuffintin-mpb` and is not the raw pair
   support. `TOL` is recorded on the retained auxiliary basis only.
-  Finite-$q$ kinematics, Umklapp, and analytic interstitial pair vertices
+  Finite $q$ kinematics, Umklapp, and analytic interstitial pair vertices
   are included. There is no live SPEX untruncated numerical dump.
   `CompiledAuxiliaryBasis` stores a typed mixed-product or
   interpolation-point payload. Production $V^q$ is M-J;
 - `libmuffintin-thc` M-I: k-point ISDF/THC on a finite periodic toy basis.
-  Pair columns use the canonical-$q$ / Umklapp gauge. Selectors `q0_l2`,
+  Pair columns use the canonical $q$ / Umklapp gauge. Selectors `q0_l2`,
   `allq_l2`, and `allq_coulomb_pool` are compared at identical $N_\mu$. The
   production L2 default is `allq_l2`; full selection can use either QRCP or
   pivoted Cholesky without materializing the weighted point Gram.
   Coulomb-aware ranking consumes injected pair-pair Grams; the crate does not
   assemble Weinert or SPEX $V^q$. Recorded Python finite-cutoff numbers are
   candidate-oracle evidence, not a real-material accuracy claim;
-- `libmuffintin-coulomb` M-J: a representation-neutral finite-$q$
+- `libmuffintin-coulomb` M-J: a representation-neutral finite $q$
   Weinert/SPEX Coulomb operator over `CompiledAuxiliaryBasis`. Mixed-product
   auxiliaries use `assemble_coulomb`. Interpolation-point auxiliaries use
   `assemble_sampled_coulomb` with parent-grid $\zeta^q$ samples (not
@@ -84,8 +84,8 @@ The current M-A through M-Kb implementation candidate provides:
   `libmuffintin-mpb` or `libmuffintin-thc` types. Direct Ewald-summed
   $1/r$ is a toy oracle only. There is no live SPEX $V^q$ dump and no
   Coulomb/THC/GW production consumer;
-- `libmuffintin-dft` M-Kb: unified charge-plus-Cartesian-magnetization density synthesis with the physical step-function metric; per-iteration four-component $P^2+Q^2$ core density; general Weinert electronic Hartree plus periodic nuclei; LDA/PW92 and PBE with `LocalSpinFrame` and `MagnetizationField` noncollinear reductions; overflow-safe Fermi--Dirac and Gaussian occupations with their distinct variational corrections; linear, type-2 Broyden, and Pulay--Anderson mixing; total-energy and SCF state machines; scalar Koelling--Harmon, optional nonmagnetic SOC second variation, and a noncollinear four-component first-variation route; frozen-potential bands; and regular-mesh tetrahedron DOS. State degeneracy and total-versus-core electron counting are explicit.
-- `libmuffintin-runtime`: the single `muffintin` binary plus a reusable library boundary. One versioned TOML input carries an ordered `workflow.tasks` array and `[task.<id>]` blocks with nested arrays and subblocks; later tasks consume typed outputs such as `scf.state`. Core/valence partitions come from the typed FLEUR `default.econfig` catalogue for $Z=1\ldots103$, followed by signed-$\kappa$ treatment overrides; full first variation automatically selects sixth-period $5p_{1/2}$ and supported seventh-period $6p_{1/2}$ relativistic local orbitals. The registry currently executes DFT SCF, bands, and DOS and is intentionally not DFT-named so future THC tasks and a Python interface can share the same modular runtime.
+- `libmuffintin-dft` M-Kb: unified charge-plus-Cartesian-magnetization density synthesis with the physical step-function metric; per-iteration four-component $P^2+Q^2$ core density; general Weinert electronic Hartree plus periodic nuclei; LDA/PW92 and PBE with `LocalSpinFrame` and `MagnetizationField` noncollinear reductions; overflow-safe Fermi–Dirac and Gaussian occupations with their distinct variational corrections; linear, type-2 Broyden, and Pulay–Anderson mixing; total-energy and SCF state machines; scalar Koelling–Harmon, optional nonmagnetic SOC second variation, and a noncollinear four-component first-variation route; frozen-potential bands; and regular-mesh tetrahedron DOS. State degeneracy and total-versus-core electron counting are explicit.
+- `libmuffintin-runtime`: the single `muffintin` binary plus a reusable library boundary. One versioned TOML input carries an ordered `workflow.tasks` array and `[task.<id>]` blocks with nested arrays and subblocks; later tasks consume typed outputs such as `scf.state`. Core/valence partitions come from the typed FLEUR `default.econfig` catalogue for $Z=1\ldots103$, followed by treatment overrides for signed $\kappa$; full first variation automatically selects sixth-period $5p_{1/2}$ and supported seventh-period $6p_{1/2}$ relativistic local orbitals. The registry currently executes DFT SCF, bands, and DOS and is intentionally not DFT-named so future THC tasks and a Python interface can share the same modular runtime.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.

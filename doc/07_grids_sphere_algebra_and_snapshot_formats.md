@@ -117,7 +117,7 @@ consumes; no producer-specific parser is part of M-C.
 
 The canonical grid storage is the typed Rust point sequence above.  With the
 `libmuffintin-grid/rstsr` feature, callers may materialize positions as an $(N,3)$
-RSTSR tensor and weights as an $N$-vector.  This conversion is an optional
+RSTSR tensor and weights as a vector of length $N$.  This conversion is an optional
 consumer boundary only: `libmuffintin-core`, `libmuffintin-radial`, `libmuffintin-sphere`, and `libmuffintin-io` do not
 depend on a tensor implementation.  LAPW dense linear algebra uses `faer`
 directly.  A later tensor backend can consequently replace RSTSR without

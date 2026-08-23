@@ -23,7 +23,7 @@ $V(r) = v_{00}(r)/\sqrt{4\pi}$ at the input boundary.
 
 ## Spherical harmonics and indexing
 
-Complex harmonics are orthonormal Condon--Shortley harmonics
+Complex harmonics are orthonormal Condon–Shortley harmonics
 
 ```math
 Y_{lm}(\theta,\phi)
@@ -31,7 +31,7 @@ Y_{lm}(\theta,\phi)
   P_l^m(\cos\theta)\exp(im\phi),
 ```
 
-where $P_l^m$ includes the Condon--Shortley phase. Therefore
+where $P_l^m$ includes the Condon–Shortley phase. Therefore
 $Y_{l,-m} = (-1)^m Y_{lm}^*$ and $Y_{11}$ has a minus sign.
 
 The zero-based index is
@@ -58,7 +58,7 @@ Thus the $l=1$ order $m=-1,0,1$ is proportional to $y,z,x$.
 
 ## Wigner 3j and Gaunt convention
 
-`wigner_3j` uses the standard Racah/Condon--Shortley convention for integer
+`wigner_3j` uses the standard Racah/Condon–Shortley convention for integer
 angular momenta. `gaunt` exactly matches `src/numerics.f` in SPEX:
 
 ```math
@@ -79,7 +79,7 @@ r_i = r_0\exp(ih), \qquad i=0,\ldots,N-1.
 ```
 
 `ExponentialMesh` reproduces SPEX `src/numerics.f:intgr_init`: a seventh-order
-closed Newton--Cotes (Weddle-like) block with weights
+closed Newton–Cotes (Weddle-like) block with weights
 $[41,216,27,272,27,216,41]hr/140$ on six-interval blocks, preceded when
 needed by SPEX's tabulated seven-point Lagrange end rule. The radial Jacobian
 $dr = r\,dx$ is already in the weights.
@@ -107,7 +107,7 @@ periodic nearest-image distance in the full direct-lattice metric.
 
 ## Sphere-field convention
 
-`SphereField` always names either the complex Condon--Shortley or real tesseral
+`SphereField` always names either the complex Condon–Shortley or real tesseral
 harmonic basis. Its samples are coefficients of normalized harmonics. Thus a
 constant physical scalar $v$ is represented by the $(0,0)$ coefficient
 $\sqrt{4\pi}v$. A sphere matrix element is the sum of the corresponding Gaunt
@@ -134,7 +134,7 @@ Direct and reciprocal primitive vectors obey
 \mathbf a_i\cdot\mathbf b_j = 2\pi\delta_{ij}.
 ```
 
-$\mathbf G = \sum_i n_i\mathbf b_i$. A $\mathbf G$-vector set includes every
+$\mathbf G = \sum_i n_i\mathbf b_i$. A set of $\mathbf G$ vectors includes every
 integer vector satisfying the **Cartesian** norm test
 $|\mathbf G| \leq G_{\max}$; it is not an integer cube or a
 component-wise cutoff. Enumeration bounds use the reciprocal dual basis, so
@@ -162,7 +162,7 @@ small-argument series.
 For a plane-wave set selected by $|\mathbf k+\mathbf G|$ or
 $|\mathbf G| \leq G_{\max}$, overlap and interstitial matrix elements need
 $\Theta_I(\mathbf G-\mathbf G')$. The coefficient table must therefore be
-complete for all actual pair differences. A $\mathbf k$-independent safe bound
+complete for all actual pair differences. A safe bound independent of $\mathbf k$
 for an origin-centered $|\mathbf G| \leq G_{\max}$ set is **$2G_{\max}$**.
 Truncating the step table at $G_{\max}$ is not allowed. Consumers should
 enumerate the basis first, form its actual differences when possible, and
@@ -262,9 +262,9 @@ coefficient tensor $P$ has axes $[\text{site coordinates}][\text{site basis}]$.
 Each site remains a separate tensor; sites are not padded into one rectangle.
 The einsum layer may run on RSTSR+TBLIS or, later, tenferro-rs; the subscripts
 are the contract. Interstitial terms occupy only the plane-wave corner. An APW
-coefficient already contains $\exp(i\mathbf q\cdot\mathbf R_a)$; APW--LO terms
+coefficient already contains $\exp(i\mathbf q\cdot\mathbf R_a)$; APW–LO terms
 inherit its conjugate from $P^*$ and must not receive a second site phase.
-LO--LO terms have no interstitial contribution. Host snapshots and `libmuffintin-io`
+LO–LO terms have no interstitial contribution. Host snapshots and `libmuffintin-io`
 artifacts stay backend-neutral.
 
 Collinear spin without SOC is two independent generalized eigenproblems that

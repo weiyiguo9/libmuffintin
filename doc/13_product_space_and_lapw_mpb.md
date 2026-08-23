@@ -1,7 +1,7 @@
 # 13. Product-space IR and the SPEX mixed product basis
 
 This note records the M-H public contract. Toy k-point ISDF/THC is [14](14_toy_kpoint_isdf_thc.md).
-The finite-$q$ Weinert/SPEX Coulomb operator is [15](15_weinert_coulomb_metric.md).
+The finite $q$ Weinert/SPEX Coulomb operator is [15](15_weinert_coulomb_metric.md).
 It does not add SCF, an umbrella crate, or a
 distributed tensor runtime. The one-particle facade remains
 [12](12_anonymous_basis_and_lapw_facade.md).
@@ -108,11 +108,11 @@ These are distinct objects:
   by the SPEX membership test $|q+G|\le g_{\mathrm{cut}}$. That set is stored
   only on `CompiledAuxiliaryBasis`.
 
-The $g_{\mathrm{cut}}$-limited auxiliary PW set is not “untruncated raw
+The auxiliary PW set limited by $g_{\mathrm{cut}}$ is not “untruncated raw
 products.” Pair-vertex context matching compares complete
 [`ProductPartition`] objects, including [`InterstitialGeometry`] and cell
 volume, exact raw pair-support identity and order, and exact auxiliary-wave
-kinematics, labels, $|q+G|$ values, cutoff, and SPEX $|G|$ then $G$-index
+kinematics, labels, $|q+G|$ values, cutoff, and SPEX $|G|$ then $G$ index
 order. Same counts with a different volume or permuted G labels are rejected.
 
 This milestone uses convention fixtures only. There is no live SPEX
@@ -143,7 +143,7 @@ SPEX numerical dump; focused tests lock the encoded conventions. Eigenvector
 signs are not a SPEX convention; retained spans are compared as projectors
 (the $L=0$ constant is excluded from that comparison).
 
-Finite-$q$ kinematics (canonical $q$, Umklapp, site phase, $|q+G|$
+Finite $q$ kinematics (canonical $q$, Umklapp, site phase, $|q+G|$
 auxiliary completeness, $\Theta_I$ pair vertices) belong to M-H. The $1/r$
 Coulomb kernel and Weinert $V^q$ belong to [15](15_weinert_coulomb_metric.md).
 

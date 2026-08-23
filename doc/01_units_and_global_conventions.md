@@ -159,11 +159,11 @@ For a two-component radial solution, `large` and `small` mean the radial numerat
 \int_0^R\left(P^2+Q^2\right)dr,
 ```
 
-unless a source adapter explicitly documents a scaled auxiliary component. SPEX's scalar-relativistic solver internally rescales its second first-order variable by $1/c$ before normalization and return (`src/dirac.f:194-204`). The adapter must therefore record the returned physical component, not the pre-rescaling Runge--Kutta variable.
+unless a source adapter explicitly documents a scaled auxiliary component. SPEX's scalar-relativistic solver internally rescales its second first-order variable by $1/c$ before normalization and return (`src/dirac.f:194-204`). The adapter must therefore record the returned physical component, not the pre-rescaling Runge–Kutta variable.
 
 ## 5. Angular, index, and conjugation rules
 
-- Complex spherical harmonics use the Condon--Shortley phase and unit-sphere normalization. Their exact definition and real-harmonic transform are derived in [02](02_angular_reciprocal_and_step_function.md).
+- Complex spherical harmonics use the Condon–Shortley phase and unit-sphere normalization. Their exact definition and real-harmonic transform are derived in [02](02_angular_reciprocal_and_step_function.md).
 - Public $(l,m)$ storage is in increasing $l$, then increasing $m=-l,\ldots,l$. The zero-based compound index is $l(l+1)+m$.
 - Mathematical inner products conjugate the left argument: $\langle f|g\rangle=\int f^*g$. Matrix storage and transformations must preserve this rule even when a real-harmonic intermediate happens to be real.
 - A spin index is not a Dirac component index. Collinear spin channels are independent scalar problems; a four-spinor is defined separately in [06](06_dirac_4c_core_and_valence.md).

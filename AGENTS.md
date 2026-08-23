@@ -69,6 +69,13 @@
   source literals, and actual code.
 - Keep a blank line before and after each display-math fence so both local
   MathJax-aware Markdown previews and GitHub parse it as a separate block.
+- Do not attach prose hyphens directly to inline-math delimiters. Write
+  `finite $q$` rather than `finite-$q$`, and rephrase suffix forms such as
+  `$q$-dependent` as `dependent on $q$`.
+- Do not use TeX-style `--` punctuation in prose; GitHub renders both hyphens
+  literally. Use a Unicode en dash (`–`) for paired names, relationships, and
+  numeric ranges. Preserve literal `--` only in code, command-line options,
+  and Markdown table separators.
 
 ## Numbered documentation
 

@@ -1,4 +1,4 @@
-# 15. Weinert/SPEX finite-$q$ Coulomb metric
+# 15. Weinert/SPEX finite $q$ Coulomb metric
 
 This note records the M-J public contract. Product kinematics remain
 [13](13_product_space_and_lapw_mpb.md). Toy k-point ISDF/THC remains
@@ -197,7 +197,7 @@ omitting $T+R_b-R_a=0$. Real-space $g_L$ polynomials follow SPEX
 `coulombmatrix.f:2430-2442` exactly: $L=4$ skips $a/9$ and ends $a/10$;
 $L=5,6,7$ use `HLP9` through $a/10$, $a/12$, $a/13$; $L\ge 8$ is
 $a^{-(L+1)}$ in real space only (reciprocal $g_L$ stops at $L=7$).
-High-$L$ real-space cutoff uses SPEX `CONVPARAM2` (`CONVTYPE=2`):
+The high $L$ real-space cutoff uses SPEX `CONVPARAM2` (`CONVTYPE=2`):
 $(1/\mathrm{CONVPARAM2})^{1/7}\times\mathrm{latcon}$, so advertised
 `LEXP`$\le 12$ ($2L_{\mathrm{exp}}\le 24$) is supported. `LEXP`$>12$ is
 rejected. The $L=0$ on-site constant $-5/16\sqrt{4\pi}$ is applied before
@@ -210,7 +210,7 @@ $Y_{LM}^*/R^{L+1}$ (including $L=8$ and $L=12$).
 ### MT-PW (`coulombmatrix.f:438-545`)
 
 Plane waves are $\Theta_I(r) e^{i(q+G)\cdot r}/\sqrt{\Omega}$. The
-finite-$q$ element is (2a) Bessel overlap $/|q+G|^2$ minus (2b) the
+finite $q$ element is (2a) Bessel overlap $/|q+G|^2$ minus (2b) the
 Weinert intra-sphere kernel plus (2c) inter-sphere structure-constant
 coupling of Bessel moments, all divided by $\sqrt{\Omega}$, with
 $Y_{LM}^*(q+G)$ and $i^L$, matching SPEX `harmonicsr` then `conjg`.
@@ -297,7 +297,7 @@ compared.
 | Gamma empty-sphere finite $G$ | $4\pi/\lvert G\rvert^2$; $G=0$ body omitted | $10^{-8}$ relative |
 | Gamma PW-PW Taylor | independent `~830-915` on $G=0$/finite pairs | $10^{-8}$ relative |
 | Hermiticity | $\max\lvert V-V^\dagger\rvert$ | $10^{-10}$ mixed product / Gamma PW-PW, $10^{-8}$ interpolation |
-| Finite-$q$ min eigenvalue | faer self-adjoint EVD | $>-10^{-6}$ mixed product, $>-10^{-5}$ sampled $\zeta$, $>-10^{-4}$ THC $\zeta$ |
+| Finite $q$ min eigenvalue | faer self-adjoint EVD | $>-10^{-6}$ mixed product, $>-10^{-5}$ sampled $\zeta$, $>-10^{-4}$ THC $\zeta$ |
 | Ewald successive residual | cutoff scan, not Abramowitz–Stegun `erfc` | $10^{-6}$; `erfc` $\sim 1.5\times 10^{-7}$ |
 | Two-site monopoles vs Ewald | see below | $10^{-6}$ |
 

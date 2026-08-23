@@ -106,8 +106,8 @@ For any sesquilinear radial operator block $X^{\rm raw}$,
 \boxed{X=T^{\dagger}X^{\rm raw}T}.
 ```
 
-This single congruence generates APW--APW (indices 1--2), APW--LO (one index
-1--2), and LO--LO (both indices $\geq3$) blocks.  It is less error-prone than
+This single congruence generates APW–APW (indices 1–2), APW–LO (one index
+1–2), and LO–LO (both indices $\geq3$) blocks.  It is less error-prone than
 special-casing each expanded formula, and preserves Hermiticity by
 construction.  SPEX applies the same row/column update and then routes the
 three subblocks to `hmt1`, `hmt2`, and `hmt3` in
