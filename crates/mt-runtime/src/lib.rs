@@ -2,11 +2,17 @@
 
 #![forbid(unsafe_code)]
 
+mod channel_token;
 mod error;
 mod input;
 mod runner;
 mod snapshot_dft;
 
+pub use channel_token::{
+    ChannelEnergyGenerator, ChannelIdentity, ChannelProvenance, ChannelRecipeRecord, ChannelScope,
+    ChannelTokenContext, ChannelTokenError, ChannelTreatment, ParsedChannelToken,
+    parse_channel_token,
+};
 pub use error::{InputError, InputValidationError};
 pub use input::{
     BandPathPoint, Basis, Convergence, ElectronicStateOverride, ElectronicStateTreatment,
