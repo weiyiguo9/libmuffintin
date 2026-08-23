@@ -1,5 +1,9 @@
 # Repository guidance
 
+## Local only reference
+@AGENTS.local.md
+
+
 ## Rust MSRV
 
 - Keep the workspace `rust-version` at 1.85 (the edition 2024 floor).
