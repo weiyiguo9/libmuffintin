@@ -8,7 +8,13 @@
   Anyone enabling `backend-tenferro` raises `rust-version` locally to 1.96;
   the default RSTSR+TBLIS path stays 1.85.
 
-## Documentation mathematics
+## Repository documentation mathematics
+
+- The rules in this section apply only when writing Markdown documentation in
+  this repository, including `README.md`, `CONVENTIONS.md`, and files under
+  `doc/`. They do not apply to an agent's user-facing conversation output.
+- In conversation, write mathematics using Codex-native delimiters: `\(...\)`
+  for inline mathematics and `\[...\]` for display mathematics.
 
 - Write inline mathematics as `$...$`.
 - Write display mathematics with a GitHub-compatible `math` fence:
