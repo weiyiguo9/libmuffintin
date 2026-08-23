@@ -19,6 +19,7 @@ members = [
     "crates/mt-dft",
     "crates/mt-runtime",
 ]
+exclude = ["vendor/tblis-src"]
 
 [workspace.package]
 version = "0.1.0"
@@ -32,6 +33,11 @@ libm = "0.2.16"
 num-complex = "0.4.6"
 thiserror = "2.0.12"
 proptest = "1.7.0"
+
+[patch.crates-io]
+# Preserve tblis-src's bundled default, but let machine-local TBLIS_DIR select
+# an installed library without attempting the source build.
+tblis-src = { path = "vendor/tblis-src" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

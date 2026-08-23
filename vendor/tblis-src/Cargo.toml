@@ -1,0 +1,17 @@
+[package]
+name = "tblis-src"
+version = "0.2.6"
+edition = "2021"
+rust-version = "1.78"
+license = "Apache-2.0"
+repository = "https://github.com/RESTGroup/tblis-rs"
+description = "Crate for TBLIS source or system library discovery"
+build = "build.rs"
+
+[features]
+default = []
+build_from_source = []
+static = []
+
+[build-dependencies]
+cmake = "0.1"

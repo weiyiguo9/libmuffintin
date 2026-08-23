@@ -2212,8 +2212,6 @@ dependencies = [
 [[package]]
 name = "tblis-src"
 version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70218c1a12d81f1e1e968fd942a0b72f9a97c09162dcdfa1f1d9c4237d8e6bd4"
 dependencies = [
  "cmake",
 ]
