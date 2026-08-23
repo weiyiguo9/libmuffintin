@@ -8,6 +8,7 @@ mod core_potential;
 mod density;
 mod energy;
 mod hartree;
+mod linearization;
 mod mixing;
 mod occupations;
 mod regional;
@@ -42,6 +43,13 @@ pub use energy::{EnergyError, OccupationEnergy, ScfEnergy, assemble_scf_energy};
 pub use hartree::{
     ElectrostaticSpec, RegionalElectrostaticError, RegionalElectrostaticResult,
     evaluate_regional_electrostatics,
+};
+pub use linearization::{
+    AtomicEnergyRequest, GeneratedLinearizationEnergy, LinearizationEnergyDiagnostic,
+    LinearizationEnergyError, LinearizationEnergyGenerator, PdosEnergySample,
+    generate_atomic_energy, generate_band_center_energy, generate_band_cog_energy,
+    generate_explicit_energy, generate_fermi_offset_energy, generate_frozen_snapshot_energy,
+    generate_log_derivative_energy, kappa_degeneracy_average,
 };
 pub use mixing::{DensityMixer, MixAlgebraQuantity, MixRecord, MixStatus, MixStep, MixingError};
 pub use occupations::{

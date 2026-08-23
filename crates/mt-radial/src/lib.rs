@@ -35,7 +35,7 @@ pub use spin_orbit::{
     spex_spin_orbit_radial_shell,
 };
 pub use valence::{
-    BoundaryData, EnergyDerivative, LinearizedRadialSolution, LocalOrbital,
-    LocalOrbitalCoefficients, RadialEquation, RadialError, RadialSolution, RadialSolver,
-    SPEX_SPEED_OF_LIGHT, SecondEnergyDerivative,
+    BandCenter, BandEdge, BoundaryData, EnergyDerivative, LinearizedRadialSolution, LocalOrbital,
+    LocalOrbitalCoefficients, LogDerivativeEnergy, RadialEquation, RadialError, RadialSolution,
+    RadialSolver, SPEX_SPEED_OF_LIGHT, SecondEnergyDerivative,
 };

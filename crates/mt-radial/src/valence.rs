@@ -6,6 +6,11 @@ use crate::core_dirac::EnergyBracket;
 /// Speed of light used by SPEX (`src/global.f`) in Hartree atomic units.
 pub const SPEX_SPEED_OF_LIGHT: f64 = 137.035_989_5;
 const C_INV_SQUARED: f64 = 1.0 / (SPEX_SPEED_OF_LIGHT * SPEX_SPEED_OF_LIGHT);
+const BAND_CENTER_INITIAL_STEP: f64 = 1.0e-3;
+const ENERGY_GENERATOR_TOLERANCE: f64 = 1.0e-12;
+const ENERGY_GENERATOR_MAXIMUM_SEED_DISTANCE: f64 = 2.5;
+const BAND_CENTER_MAXIMUM_STEPS: usize = 250;
+const LOG_DERIVATIVE_INTERVALS: usize = 512;
 
 /// Equation used for the two-component valence radial problem.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -38,6 +43,45 @@ pub struct BoundaryData {
     pub log_derivative: Option<InverseBohr>,
     /// Scaled, dimensionless logarithmic derivative `R u'(R)/u(R)`.
     pub scaled_log_derivative: Option<f64>,
+}
+
+/// One Elk-style radial band edge.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BandEdge {
+    /// Upper edge, defined by the reduced radial function `P(R) = 0`.
+    Top,
+    /// Lower edge, defined by its slope `P'(R) = 0`.
+    Bottom,
+}
+
+impl std::fmt::Display for BandEdge {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Top => "top",
+            Self::Bottom => "bottom",
+        })
+    }
+}
+
+/// Reproducible result of an Elk-style band-center search.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BandCenter {
+    pub seed: Hartree,
+    pub bottom: Hartree,
+    pub top: Hartree,
+    pub energy: Hartree,
+}
+
+/// Root selected by principal quantum number at a prescribed logarithmic derivative.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LogDerivativeEnergy {
+    pub principal_quantum_number: u32,
+    pub angular_momentum: u32,
+    pub seed: Hartree,
+    /// Target value of `u'(R) / u(R)` in inverse bohr.
+    pub target: InverseBohr,
+    pub energy: Hartree,
+    pub nodes: u32,
 }
 
 impl BoundaryData {
@@ -291,6 +335,49 @@ pub enum RadialError {
     },
     #[error("hard-wall root did not converge after {iterations} iterations")]
     RootDidNotConverge { iterations: usize },
+    #[error(
+        "band-center {edge} search failed for l={angular_momentum} from seed {seed} Ha in \
+         [{lower}, {upper}] Ha after {evaluations} evaluations; last residual {last_residual} at \
+         {last_energy} Ha"
+    )]
+    BandEdgeNotFound {
+        angular_momentum: u32,
+        edge: BandEdge,
+        seed: f64,
+        lower: f64,
+        upper: f64,
+        last_energy: f64,
+        last_residual: f64,
+        evaluations: usize,
+    },
+    #[error("principal quantum number n={n} is invalid for scalar l={angular_momentum}")]
+    InvalidPrincipalQuantumNumber { n: u32, angular_momentum: u32 },
+    #[error("logarithmic-derivative target is not finite: {0} bohr^-1")]
+    InvalidLogDerivativeTarget(f64),
+    #[error(
+        "no log-derivative root for n={n}, l={angular_momentum}, target={target} was found in \
+         [{lower}, {upper}] Ha using {intervals} intervals"
+    )]
+    LogDerivativeRootNotFound {
+        n: u32,
+        angular_momentum: u32,
+        target: f64,
+        lower: f64,
+        upper: f64,
+        intervals: usize,
+    },
+    #[error(
+        "log-derivative search for n={n}, l={angular_momentum}, target={target} found \
+         {candidates} node-compatible roots"
+    )]
+    LogDerivativeRootAmbiguous {
+        n: u32,
+        angular_momentum: u32,
+        target: f64,
+        candidates: usize,
+    },
+    #[error("log-derivative root did not converge after {iterations} iterations")]
+    LogDerivativeRootDidNotConverge { iterations: usize },
     #[error("mesh quadrature failed: {0}")]
     Quadrature(String),
 }
@@ -347,6 +434,262 @@ impl<'a> RadialSolver<'a> {
             solution,
             energy_derivative,
             second_energy_derivative,
+        })
+    }
+
+    /// Generate the Elk `findband` linearization energy from this solver's
+    /// current spherical potential.
+    ///
+    /// The upper edge is a zero of the reduced radial function `P = r u`; the
+    /// lower edge is a zero of `P' = u + r u'`. The returned energy is their
+    /// midpoint. The search always restarts from `seed`, uses Elk's two-pass
+    /// adaptive stepping, and fails explicitly instead of retaining the seed.
+    pub fn band_center(
+        &self,
+        angular_momentum: u32,
+        seed: Hartree,
+    ) -> Result<BandCenter, RadialError> {
+        if !seed.get().is_finite() {
+            return Err(RadialError::NonFiniteEnergy(seed.get()));
+        }
+        let mut top = seed.get();
+        let mut bottom = seed.get();
+        let mut top_found = false;
+        let mut bottom_found = false;
+        let mut top_trace = self.band_edge_trace(angular_momentum, BandEdge::Top, top)?;
+        let mut bottom_trace = self.band_edge_trace(angular_momentum, BandEdge::Bottom, bottom)?;
+
+        for _ in 0..2 {
+            let mut previous = None;
+            let mut step = BAND_CENTER_INITIAL_STEP;
+            for _ in 0..BAND_CENTER_MAXIMUM_STEPS {
+                top += step;
+                if seed.get() < 0.0 && top > seed.get() + ENERGY_GENERATOR_MAXIMUM_SEED_DISTANCE {
+                    break;
+                }
+                let residual =
+                    self.band_edge_residual(angular_momentum, Hartree(top), BandEdge::Top)?;
+                top_trace = SearchTrace::next(top_trace, top, residual);
+                if let Some(previous) = previous {
+                    if crosses_zero(previous, residual) {
+                        if step.abs() < ENERGY_GENERATOR_TOLERANCE {
+                            if bottom_found {
+                                return Ok(band_center_result(seed, bottom, top));
+                            }
+                            top_found = true;
+                            bottom = top + 5.0 * BAND_CENTER_INITIAL_STEP;
+                            break;
+                        }
+                        step *= -0.5;
+                    } else {
+                        step *= 1.5;
+                    }
+                }
+                previous = Some(residual);
+            }
+            if bottom_found {
+                return Err(top_trace.error(angular_momentum, BandEdge::Top, seed));
+            }
+
+            let mut previous = None;
+            let mut step = -BAND_CENTER_INITIAL_STEP;
+            for _ in 0..BAND_CENTER_MAXIMUM_STEPS {
+                bottom += step;
+                if bottom < seed.get() - ENERGY_GENERATOR_MAXIMUM_SEED_DISTANCE {
+                    return Err(bottom_trace.error(angular_momentum, BandEdge::Bottom, seed));
+                }
+                let residual =
+                    self.band_edge_residual(angular_momentum, Hartree(bottom), BandEdge::Bottom)?;
+                bottom_trace = SearchTrace::next(bottom_trace, bottom, residual);
+                if let Some(previous) = previous {
+                    if crosses_zero(previous, residual) {
+                        if step.abs() < ENERGY_GENERATOR_TOLERANCE {
+                            if top_found {
+                                return Ok(band_center_result(seed, bottom, top));
+                            }
+                            bottom_found = true;
+                            top = bottom - 5.0 * BAND_CENTER_INITIAL_STEP;
+                            break;
+                        }
+                        step *= -0.5;
+                    } else {
+                        step *= 1.5;
+                    }
+                }
+                previous = Some(residual);
+            }
+        }
+
+        let (edge, trace) = if top_found {
+            (BandEdge::Bottom, bottom_trace)
+        } else {
+            (BandEdge::Top, top_trace)
+        };
+        Err(trace.error(angular_momentum, edge, seed))
+    }
+
+    /// Find the unique radial branch with the requested principal quantum
+    /// number whose logarithmic derivative equals `target`.
+    ///
+    /// The finite search window is centered on the recipe `seed`. Candidate
+    /// roots are selected by the node count `n - l - 1`, so a pole or another
+    /// radial branch cannot be accepted heuristically.
+    pub fn energy_at_log_derivative(
+        &self,
+        principal_quantum_number: u32,
+        angular_momentum: u32,
+        seed: Hartree,
+        target: InverseBohr,
+    ) -> Result<LogDerivativeEnergy, RadialError> {
+        if principal_quantum_number <= angular_momentum {
+            return Err(RadialError::InvalidPrincipalQuantumNumber {
+                n: principal_quantum_number,
+                angular_momentum,
+            });
+        }
+        if !seed.get().is_finite() {
+            return Err(RadialError::NonFiniteEnergy(seed.get()));
+        }
+        if !target.get().is_finite() {
+            return Err(RadialError::InvalidLogDerivativeTarget(target.get()));
+        }
+        let expected_nodes = principal_quantum_number - angular_momentum - 1;
+        let lower = seed.get() - ENERGY_GENERATOR_MAXIMUM_SEED_DISTANCE;
+        let upper = seed.get() + ENERGY_GENERATOR_MAXIMUM_SEED_DISTANCE;
+        let step = (upper - lower) / LOG_DERIVATIVE_INTERVALS as f64;
+        let mut previous_energy = lower;
+        let mut previous =
+            self.log_derivative_trial(angular_momentum, Hartree(previous_energy), target.get())?;
+        let mut previous_exact_root = false;
+        let mut candidates = Vec::new();
+
+        for interval in 1..=LOG_DERIVATIVE_INTERVALS {
+            let energy = if interval == LOG_DERIVATIVE_INTERVALS {
+                upper
+            } else {
+                lower + interval as f64 * step
+            };
+            let current =
+                self.log_derivative_trial(angular_momentum, Hartree(energy), target.get())?;
+            if !previous_exact_root && crosses_zero(previous.residual, current.residual) {
+                let root = self.bisect_log_derivative_root(
+                    angular_momentum,
+                    target.get(),
+                    previous_energy,
+                    energy,
+                    previous.residual,
+                )?;
+                if root.nodes == expected_nodes
+                    && candidates
+                        .last()
+                        .is_none_or(|candidate: &LogDerivativeTrial| {
+                            (candidate.energy - root.energy).abs() > ENERGY_GENERATOR_TOLERANCE
+                        })
+                {
+                    candidates.push(root);
+                }
+            }
+            previous_exact_root = current.residual == 0.0;
+            previous_energy = energy;
+            previous = current;
+        }
+
+        match candidates.as_slice() {
+            [root] => Ok(LogDerivativeEnergy {
+                principal_quantum_number,
+                angular_momentum,
+                seed,
+                target,
+                energy: Hartree(root.energy),
+                nodes: root.nodes,
+            }),
+            [] => Err(RadialError::LogDerivativeRootNotFound {
+                n: principal_quantum_number,
+                angular_momentum,
+                target: target.get(),
+                lower,
+                upper,
+                intervals: LOG_DERIVATIVE_INTERVALS,
+            }),
+            many => Err(RadialError::LogDerivativeRootAmbiguous {
+                n: principal_quantum_number,
+                angular_momentum,
+                target: target.get(),
+                candidates: many.len(),
+            }),
+        }
+    }
+
+    fn log_derivative_trial(
+        &self,
+        angular_momentum: u32,
+        energy: Hartree,
+        target: f64,
+    ) -> Result<LogDerivativeTrial, RadialError> {
+        let solution = self.solve(angular_momentum, energy)?;
+        Ok(LogDerivativeTrial {
+            energy: energy.get(),
+            residual: solution.boundary.derivative - target * solution.boundary.value,
+            nodes: count_radial_nodes(&solution.p),
+        })
+    }
+
+    fn bisect_log_derivative_root(
+        &self,
+        angular_momentum: u32,
+        target: f64,
+        mut lower: f64,
+        mut upper: f64,
+        mut lower_residual: f64,
+    ) -> Result<LogDerivativeTrial, RadialError> {
+        if lower_residual == 0.0 {
+            return self.log_derivative_trial(angular_momentum, Hartree(lower), target);
+        }
+        let upper_trial = self.log_derivative_trial(angular_momentum, Hartree(upper), target)?;
+        if upper_trial.residual == 0.0 {
+            return Ok(upper_trial);
+        }
+        for _ in 0..80 {
+            let mid = lower + 0.5 * (upper - lower);
+            let trial = self.log_derivative_trial(angular_momentum, Hartree(mid), target)?;
+            if trial.residual == 0.0 || 0.5 * (upper - lower) <= ENERGY_GENERATOR_TOLERANCE {
+                return Ok(trial);
+            }
+            if trial.residual.is_sign_positive() == lower_residual.is_sign_positive() {
+                lower = mid;
+                lower_residual = trial.residual;
+            } else {
+                upper = mid;
+            }
+        }
+        Err(RadialError::LogDerivativeRootDidNotConverge { iterations: 80 })
+    }
+
+    fn band_edge_trace(
+        &self,
+        angular_momentum: u32,
+        edge: BandEdge,
+        energy: f64,
+    ) -> Result<SearchTrace, RadialError> {
+        let residual = self.band_edge_residual(angular_momentum, Hartree(energy), edge)?;
+        Ok(SearchTrace {
+            last_energy: energy,
+            last_residual: residual,
+            evaluations: 1,
+        })
+    }
+
+    fn band_edge_residual(
+        &self,
+        angular_momentum: u32,
+        energy: Hartree,
+        edge: BandEdge,
+    ) -> Result<f64, RadialError> {
+        let solution = self.solve(angular_momentum, energy)?;
+        let radius = self.mesh.last().get();
+        Ok(match edge {
+            BandEdge::Top => radius * solution.boundary.value,
+            BandEdge::Bottom => solution.boundary.value + radius * solution.boundary.derivative,
         })
     }
 
@@ -806,6 +1149,79 @@ impl<'a> RadialSolver<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SearchTrace {
+    last_energy: f64,
+    last_residual: f64,
+    evaluations: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LogDerivativeTrial {
+    energy: f64,
+    residual: f64,
+    nodes: u32,
+}
+
+impl SearchTrace {
+    fn next(previous: Self, last_energy: f64, last_residual: f64) -> Self {
+        Self {
+            last_energy,
+            last_residual,
+            evaluations: previous.evaluations + 1,
+        }
+    }
+
+    fn error(self, angular_momentum: u32, edge: BandEdge, seed: Hartree) -> RadialError {
+        RadialError::BandEdgeNotFound {
+            angular_momentum,
+            edge,
+            seed: seed.get(),
+            lower: seed.get() - ENERGY_GENERATOR_MAXIMUM_SEED_DISTANCE,
+            upper: if seed.get() < 0.0 {
+                seed.get() + ENERGY_GENERATOR_MAXIMUM_SEED_DISTANCE
+            } else {
+                f64::INFINITY
+            },
+            last_energy: self.last_energy,
+            last_residual: self.last_residual,
+            evaluations: self.evaluations,
+        }
+    }
+}
+
+fn crosses_zero(left: f64, right: f64) -> bool {
+    left == 0.0 || right == 0.0 || left.is_sign_positive() != right.is_sign_positive()
+}
+
+fn band_center_result(seed: Hartree, bottom: f64, top: f64) -> BandCenter {
+    BandCenter {
+        seed,
+        bottom: Hartree(bottom),
+        top: Hartree(top),
+        energy: Hartree(0.5 * (bottom + top)),
+    }
+}
+
+fn count_radial_nodes(values: &[f64]) -> u32 {
+    let largest = values
+        .iter()
+        .fold(0.0_f64, |scale, value| scale.max(value.abs()));
+    let threshold = largest * 1.0e-10;
+    let mut previous = 0.0_f64;
+    let mut nodes = 0;
+    for &value in values {
+        if value.abs() <= threshold {
+            continue;
+        }
+        if previous != 0.0 && value.signum() != previous.signum() {
+            nodes += 1;
+        }
+        previous = value;
+    }
+    nodes
+}
+
 #[derive(Clone, Debug)]
 struct InternalSolution {
     p: Vec<f64>,
@@ -967,6 +1383,65 @@ mod tests {
             )
             .unwrap();
         assert!((energy.get() - exact).abs() < 1.0e-10);
+    }
+
+    #[test]
+    fn elk_band_center_uses_reduced_radial_top_and_bottom_edges() {
+        let mesh = mesh(1.0e-7, 5.0, 0.001);
+        let well_bottom = -0.35;
+        let potential = vec![well_bottom; mesh.len()];
+        let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();
+        let radius = mesh.last().get();
+        let result = solver.band_center(0, Hartree(-0.2)).unwrap();
+        let expected_bottom = well_bottom + std::f64::consts::PI.powi(2) / (8.0 * radius * radius);
+        let expected_top = well_bottom + std::f64::consts::PI.powi(2) / (2.0 * radius * radius);
+        assert!((result.bottom.get() - expected_bottom).abs() < 1.0e-10);
+        assert!((result.top.get() - expected_top).abs() < 1.0e-10);
+        assert!((result.energy.get() - 0.5 * (expected_bottom + expected_top)).abs() < 1.0e-10);
+
+        let bottom = solver.solve(0, result.bottom).unwrap();
+        assert!((bottom.boundary.scaled_log_derivative.unwrap() + 1.0).abs() < 2.0e-9);
+        assert!(bottom.boundary.derivative.abs() > 1.0e-3);
+    }
+
+    #[test]
+    fn band_center_failure_identifies_the_channel_and_last_search_point() {
+        let mesh = mesh(1.0e-7, 5.0, 0.002);
+        let potential = vec![0.0; mesh.len()];
+        let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();
+        let error = solver.band_center(2, Hartree(-3.0)).unwrap_err();
+        match error {
+            RadialError::BandEdgeNotFound {
+                angular_momentum,
+                seed,
+                last_energy,
+                last_residual,
+                evaluations,
+                ..
+            } => {
+                assert_eq!(angular_momentum, 2);
+                assert_eq!(seed, -3.0);
+                assert!(last_energy.is_finite());
+                assert!(last_residual.is_finite());
+                assert!(evaluations > 1);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+
+    #[test]
+    fn positive_band_center_seed_can_reach_a_top_beyond_negative_seed_window() {
+        let mesh = mesh(1.0e-7, 1.0, 0.001);
+        let potential = vec![0.0; mesh.len()];
+        let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();
+        let radius = mesh.last().get();
+        let result = solver.band_center(0, Hartree(0.15)).unwrap();
+        let expected_bottom = std::f64::consts::PI.powi(2) / (8.0 * radius * radius);
+        let expected_top = std::f64::consts::PI.powi(2) / (2.0 * radius * radius);
+        assert!(expected_top > 0.15 + ENERGY_GENERATOR_MAXIMUM_SEED_DISTANCE);
+        assert!((result.bottom.get() - expected_bottom).abs() < 1.0e-9);
+        assert!((result.top.get() - expected_top).abs() < 1.0e-9);
+        assert!((result.energy.get() - 0.5 * (expected_bottom + expected_top)).abs() < 1.0e-9);
     }
 
     #[test]
