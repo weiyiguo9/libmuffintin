@@ -1,19 +1,19 @@
 //! Shared toy fixtures for Coulomb integration tests.
 #![allow(dead_code)]
 
-use muffintin_basis::Provenance;
-use muffintin_core::{
-    Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3,
-};
-use muffintin_coulomb::{SampledAuxiliaryFunctions, SampledPointSupport};
-use muffintin_mpb::spex_mixed_product_basis;
-use muffintin_product::{
+use muffintin_auxiliary_ir::{
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationAuxiliaryPoint,
     InterpolationPointAuxiliary, InterpolationRegion, OrbitalPair, PairOrbital, PairVertex,
     ProductOrbitalKind, ProductPartition, ProductRadial, ProductRadialId, ProductSource,
     RadialSamples, RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet,
     TransferQ,
 };
+use muffintin_basis::Provenance;
+use muffintin_core::{
+    Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3,
+};
+use muffintin_coulomb::{SampledAuxiliaryFunctions, SampledPointSupport};
+use muffintin_mpb::spex_mixed_product_basis;
 use num_complex::Complex64;
 use std::f64::consts::PI;
 
@@ -171,7 +171,7 @@ pub fn interpolation_auxiliary(q: TransferQ) -> CompiledAuxiliaryBasis {
             region: InterpolationRegion::Uniform,
         },
     ];
-    muffintin_product::sort_interpolation_points(&mut points);
+    muffintin_auxiliary_ir::sort_interpolation_points(&mut points);
     let auxiliary = CompiledAuxiliaryBasis {
         partition: partition(),
         q,

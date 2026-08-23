@@ -1,6 +1,6 @@
 //! Interpolation-point auxiliaries stay on the product-space IR.
 
-use muffintin_product::{AuxiliaryRegion, InterpolationRegion, OrbitalPair};
+use muffintin_auxiliary_ir::{AuxiliaryRegion, InterpolationRegion, OrbitalPair};
 use muffintin_thc::toy::{
     mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
     mt_reference_grid,

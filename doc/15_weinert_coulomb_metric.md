@@ -29,14 +29,14 @@ Ewald kernel is an independent toy oracle, not production assembly.
 |---|---|
 | `crates/mt-coulomb` | `libmuffintin-coulomb` |
 
-Production dependencies: `libmuffintin-product`, `libmuffintin-core`,
+Production dependencies: `libmuffintin-auxiliary-ir`, `libmuffintin-core`,
 `libmuffintin-basis`, `libmuffintin-grid`.
 `libmuffintin-mpb` and `libmuffintin-thc` are **dev-dependencies** for
 integration fixtures only. There is no production `libmuffintin-envelope`
 or `libmuffintin-thc` dependency.
 
 ```text
-coulomb → product, core, basis, grid
+coulomb → auxiliary-ir, core, basis, grid
 coulomb (dev) → mpb, thc
 ```
 

@@ -1,12 +1,12 @@
 //! Product-space IR invariants independent of mixed-product `TOL`.
 
+use muffintin_auxiliary_ir::{
+    ProductError, ProductPartition, ProductRadial, ProductSource, RadialSamples,
+    RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet, TransferQ,
+};
 use muffintin_basis::Provenance;
 use muffintin_core::{
     Bohr, ExponentialMesh, GVector, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3,
-};
-use muffintin_product::{
-    ProductError, ProductPartition, ProductRadial, ProductSource, RadialSamples,
-    RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet, TransferQ,
 };
 
 fn geometry() -> InterstitialGeometry {
@@ -66,7 +66,7 @@ fn product_source_requires_matching_radial_site_count() {
     .unwrap_err();
     assert!(matches!(
         error,
-        muffintin_product::ProductError::SiteCount {
+        muffintin_auxiliary_ir::ProductError::SiteCount {
             expected: 1,
             actual: 0
         }
@@ -157,12 +157,12 @@ fn product_source_rejects_pair_support_at_a_different_q() {
 
 #[test]
 fn interpolation_points_are_not_empty_mixed_product_payloads() {
-    use muffintin_core::{Bohr, VolumeBohr3};
-    use muffintin_product::{
+    use muffintin_auxiliary_ir::{
         AuxiliaryRegion, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
         InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
         MixedProductAuxiliary, OrbitalPair, PairVertex,
     };
+    use muffintin_core::{Bohr, VolumeBohr3};
     use num_complex::Complex64;
 
     let partition = ProductPartition::from_interstitial(geometry());
@@ -188,7 +188,7 @@ fn interpolation_points_are_not_empty_mixed_product_payloads() {
         },
     ];
     let mut ordered = points.clone();
-    muffintin_product::sort_interpolation_points(&mut ordered);
+    muffintin_auxiliary_ir::sort_interpolation_points(&mut ordered);
     let auxiliary = CompiledAuxiliaryBasis {
         partition: partition.clone(),
         q,
@@ -243,7 +243,7 @@ fn interpolation_points_are_not_empty_mixed_product_payloads() {
         q,
         representation: AuxiliaryRepresentation::MixedProduct(MixedProductAuxiliary {
             sites: Vec::new(),
-            interstitial: muffintin_product::AuxiliaryInterstitialSupport {
+            interstitial: muffintin_auxiliary_ir::AuxiliaryInterstitialSupport {
                 q,
                 g_cut: InverseBohr(0.0),
                 waves: Vec::new(),
@@ -260,11 +260,11 @@ fn interpolation_points_are_not_empty_mixed_product_payloads() {
 
 #[test]
 fn interpolation_points_reject_negative_and_all_zero_weights() {
-    use muffintin_core::{Bohr, VolumeBohr3};
-    use muffintin_product::{
+    use muffintin_auxiliary_ir::{
         AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationAuxiliaryPoint,
         InterpolationPointAuxiliary, InterpolationRegion,
     };
+    use muffintin_core::{Bohr, VolumeBohr3};
 
     let partition = ProductPartition::from_interstitial(geometry());
     let q = q_gamma();

@@ -1,6 +1,6 @@
 //! q0_l2 / allq_l2 / allq_coulomb_pool comparison at identical Nμ.
 
-use muffintin_product::InterpolationRegion;
+use muffintin_auxiliary_ir::InterpolationRegion;
 use muffintin_thc::toy::{
     MT_NORB, mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
     mt_reference_grid, mt_uniform_grid,

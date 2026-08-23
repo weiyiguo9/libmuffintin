@@ -5,10 +5,10 @@ use crate::gram::CoulombGramSet;
 use crate::kmesh::KMesh;
 use crate::linalg::{column_pivots, hermitian_sqrt, pivoted_cholesky_pivots};
 use crate::pair::{BlochOrbitals, PairBlock, PairColumnLayout, UmklappGauge, evaluate_pair_block};
-use muffintin_core::{Bohr, VolumeBohr3};
-use muffintin_product::{
+use muffintin_auxiliary_ir::{
     InterpolationAuxiliaryPoint, InterpolationRegion, sort_interpolation_points,
 };
+use muffintin_core::{Bohr, VolumeBohr3};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 

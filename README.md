@@ -55,7 +55,7 @@ The current M-A through M-Kb implementation candidate provides:
   large-$c$ frozen-fixture reduction are internally tested; this is not yet a
   completed M-Ka acceptance or a cross-code validation against a frozen
   FlapwMBPT/source-equivalent band fixture;
-- `libmuffintin-product` and `libmuffintin-mpb` M-H: a historical-method-name-free
+- `libmuffintin-auxiliary-ir` and `libmuffintin-mpb` M-H: a historical-method-name-free
   product-space IR (`ProductPartition`, `ProductSource` without a compiled
   one-particle basis, untruncated muffin-tin products, capability-supplied
   raw interstitial orbital-pair reciprocal support, `CompiledAuxiliaryBasis`

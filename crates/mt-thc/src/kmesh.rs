@@ -1,8 +1,8 @@
 //! Canonical-q k-mesh and the Umklapp map `kminus`.
 
 use crate::ThcError;
+use muffintin_auxiliary_ir::TransferQ;
 use muffintin_core::InverseBohr;
-use muffintin_product::TransferQ;
 use std::f64::consts::PI;
 
 /// Gamma-centred Monkhorst–Pack-style mesh used by the toy k-point tests.

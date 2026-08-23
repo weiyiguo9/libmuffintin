@@ -2,13 +2,13 @@
 
 mod common;
 
+use muffintin_auxiliary_ir::{AuxiliaryLayout, InterpolationRegion, TransferQ};
 use muffintin_core::{Bohr, ExponentialMesh, InverseBohr, VolumeBohr3};
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombRequest, InterpolationProjection,
     SampledAuxiliaryFunctions, SampledPointSupport, assemble_coulomb, assemble_point_charge_oracle,
     assemble_sampled_coulomb,
 };
-use muffintin_product::{AuxiliaryLayout, InterpolationRegion, TransferQ};
 use muffintin_thc::toy::{
     mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
     mt_reference_grid,

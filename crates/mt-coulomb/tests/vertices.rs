@@ -2,9 +2,11 @@
 
 mod common;
 
+use muffintin_auxiliary_ir::{
+    AuxiliaryLayout, AuxiliaryRegion, OrbitalPair, PairVertex, TransferQ,
+};
 use muffintin_core::InverseBohr;
 use muffintin_coulomb::{CoulombError, CoulombRequest, assemble_coulomb};
-use muffintin_product::{AuxiliaryLayout, AuxiliaryRegion, OrbitalPair, PairVertex, TransferQ};
 
 #[test]
 fn apply_matches_quadratic_form_on_a_unit_vector() {

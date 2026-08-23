@@ -1,5 +1,5 @@
 [package]
-name = "libmuffintin-product"
+name = "libmuffintin-auxiliary-ir"
 description = "Method-neutral product-space IR and auxiliary-basis contracts"
 version.workspace = true
 edition.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [lib]
-name = "muffintin_product"
+name = "muffintin_auxiliary_ir"
 
 [dependencies]
 libmuffintin-basis = { path = "../mt-basis" }

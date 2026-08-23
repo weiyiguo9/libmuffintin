@@ -3,6 +3,10 @@
 
 mod common;
 
+use muffintin_auxiliary_ir::{
+    AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryRepresentation,
+    CompiledAuxiliaryBasis, MixedProductAuxiliary, ProductPartition, SiteAuxiliaryBlock, TransferQ,
+};
 use muffintin_basis::Provenance;
 use muffintin_core::{
     Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, VolumeBohr3,
@@ -12,10 +16,6 @@ use muffintin_coulomb::{
     CoulombRequest, StructureConstants, assemble_coulomb, bessel_overlap, bessel_weinert_integral,
     multipole_moment, second_moment, sphbessel_pw_integral, spherical_bessel_moment,
     structure_constants, weinert_gmat,
-};
-use muffintin_product::{
-    AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryRepresentation,
-    CompiledAuxiliaryBasis, MixedProductAuxiliary, ProductPartition, SiteAuxiliaryBlock, TransferQ,
 };
 use num_complex::Complex64;
 use std::f64::consts::PI;

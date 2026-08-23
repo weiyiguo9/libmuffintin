@@ -34,6 +34,10 @@
 - Keep Unix artifacts single-prefixed, for example `libmuffintin_core.rlib`.
   If a system-facing aggregate library is added, name its target `muffintin`
   so Linux produces `libmuffintin.so` or `libmuffintin.a`.
+- Name the method-neutral auxiliary/product-space IR crate
+  `crates/mt-auxiliary-ir`, its Cargo package and dependency key
+  `libmuffintin-auxiliary-ir`, and its Rust library target and import
+  `muffintin_auxiliary_ir`. Do not reintroduce the former `mt-product` names.
 
 ## Repository documentation mathematics
 

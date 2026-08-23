@@ -8,7 +8,7 @@ use crate::ThcError;
 use crate::error::checked_storage_len;
 use crate::linalg::{frobenius, hermitian_eigensystem};
 use crate::pair::PairColumnLayout;
-use muffintin_product::TransferQ;
+use muffintin_auxiliary_ir::TransferQ;
 use num_complex::Complex64;
 
 /// Relative Hermiticity bound taken from `thc_lapw_end_to_end_test.py:439`.

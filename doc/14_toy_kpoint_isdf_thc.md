@@ -24,7 +24,7 @@ assembler and not a real-material accuracy claim. Production $V^q$ is
 |---|---|
 | `crates/mt-thc` | `libmuffintin-thc` |
 
-`libmuffintin-product` now stores a typed
+`libmuffintin-auxiliary-ir` now stores a typed
 `AuxiliaryRepresentation::{MixedProduct, InterpolationPoints}` variant on
 `CompiledAuxiliaryBasis`. Mixed-product MPB tests are unchanged in
 behaviour. There is no compatibility shim and no empty MPB payload for THC.

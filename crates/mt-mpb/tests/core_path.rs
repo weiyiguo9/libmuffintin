@@ -1,5 +1,11 @@
 //! SPEX-convention mixed-product core path without a live SPEX dump.
 
+use muffintin_auxiliary_ir::{
+    AuxiliaryRegion, CompiledAuxiliaryBasis, InterstitialPairSpec, MixedProductAuxiliary,
+    MtPairSpec, OrbitalPair, PairVertexSpec, ProductError, ProductOrbitalKind, ProductPartition,
+    ProductRadial, ProductRadialId, ProductSource, RadialSamples, RawInterstitialPairComponent,
+    RawInterstitialPairSupport, SiteRadialSet, TransferQ,
+};
 use muffintin_basis::Provenance;
 use muffintin_core::{
     Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3, gaunt,
@@ -10,12 +16,6 @@ use muffintin_mpb::{
     spex_mixed_product_basis,
 };
 use muffintin_operators::solve_real_symmetric;
-use muffintin_product::{
-    AuxiliaryRegion, CompiledAuxiliaryBasis, InterstitialPairSpec, MixedProductAuxiliary,
-    MtPairSpec, OrbitalPair, PairVertexSpec, ProductError, ProductOrbitalKind, ProductPartition,
-    ProductRadial, ProductRadialId, ProductSource, RadialSamples, RawInterstitialPairComponent,
-    RawInterstitialPairSupport, SiteRadialSet, TransferQ,
-};
 use num_complex::Complex64;
 
 const RADIUS: f64 = 0.8;

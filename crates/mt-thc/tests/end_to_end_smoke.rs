@@ -12,8 +12,8 @@
 //!    may assert `RECORDED_REFERENCE_GATE` / `RECORDED_ERI_ACTION_GATE`.
 //!    Python table values are evidence, not bit-identity targets.
 
+use muffintin_auxiliary_ir::TransferQ;
 use muffintin_core::InverseBohr;
-use muffintin_product::TransferQ;
 use muffintin_thc::toy::{
     ACTION_VECTOR_COUNT, ACTION_VECTOR_SEED, LAPW_LATTICE, LAPW_NORB, RECORDED_ERI_ACTION_GATE,
     RECORDED_REFERENCE_GATE, ToyEriActionMetrics, ToyFiniteCutoffKernel, ToyGrid,
@@ -301,7 +301,7 @@ fn three_selectors_distinguish_finite_q_action_at_identical_nmu() {
         name: "finite-q-action".to_owned(),
         points,
         weights: vec![1.0; n],
-        regions: vec![muffintin_product::InterpolationRegion::Uniform; n],
+        regions: vec![muffintin_auxiliary_ir::InterpolationRegion::Uniform; n],
     };
     let mut values = Vec::new();
     for (p, point) in grid.points.iter().enumerate() {

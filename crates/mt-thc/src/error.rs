@@ -1,7 +1,7 @@
 //! THC construction and validation errors.
 
+use muffintin_auxiliary_ir::ProductError;
 use muffintin_core::LmError;
-use muffintin_product::ProductError;
 use thiserror::Error;
 
 /// k-point ISDF/THC error.

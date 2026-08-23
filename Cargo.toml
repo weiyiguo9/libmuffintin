@@ -12,7 +12,7 @@ members = [
     "crates/mt-basis",
     "crates/mt-operators",
     "crates/mt-recipes",
-    "crates/mt-product",
+    "crates/mt-auxiliary-ir",
     "crates/mt-mpb",
     "crates/mt-thc",
     "crates/mt-coulomb",

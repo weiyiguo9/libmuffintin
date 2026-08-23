@@ -17,11 +17,11 @@ use crate::operator::{AuxiliaryKind, CoulombOperator, GammaHead};
 use crate::primitive::intra_sphere_poisson;
 use crate::spec::CoulombRequest;
 use crate::structure::structure_constants;
-use muffintin_basis::Provenance;
-use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, complex_spherical_harmonics, lm_index};
-use muffintin_product::{
+use muffintin_auxiliary_ir::{
     AuxiliaryInterstitialWave, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
 };
+use muffintin_basis::Provenance;
+use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, complex_spherical_harmonics, lm_index};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 
@@ -225,9 +225,9 @@ fn require_cell_and_reciprocal(
 }
 
 fn require_mixed_product_waves(
-    payload: &muffintin_product::MixedProductAuxiliary,
+    payload: &muffintin_auxiliary_ir::MixedProductAuxiliary,
     request: &CoulombRequest,
-    q: muffintin_product::TransferQ,
+    q: muffintin_auxiliary_ir::TransferQ,
 ) -> Result<(), CoulombError> {
     for wave in &payload.interstitial.waves {
         let cartesian = request.reciprocal().cartesian(wave.g.index);

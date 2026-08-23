@@ -9,11 +9,11 @@ use crate::kmesh::KMesh;
 use crate::pair::{BlochOrbitals, PairColumnLayout, UmklappGauge, evaluate_pair_block};
 use crate::select::{GridPath, Selection, SelectionRequest, SelectorStrategy, select_points};
 use crate::toy::ToyGrid;
-use muffintin_basis::Provenance;
-use muffintin_product::{
+use muffintin_auxiliary_ir::{
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationPointAuxiliary, OrbitalPair,
     PairVertex, ProductPartition, TransferQ,
 };
+use muffintin_basis::Provenance;
 
 /// q=0 versus worst finite-q diagnostics for one strategy.
 #[derive(Clone, Debug, PartialEq)]
@@ -172,7 +172,7 @@ pub fn compare_strategies(
 pub fn interpolation_auxiliary(
     partition: ProductPartition,
     q: TransferQ,
-    points: Vec<muffintin_product::InterpolationAuxiliaryPoint>,
+    points: Vec<muffintin_auxiliary_ir::InterpolationAuxiliaryPoint>,
 ) -> Result<CompiledAuxiliaryBasis, ThcError> {
     let auxiliary = CompiledAuxiliaryBasis {
         partition,
@@ -207,14 +207,14 @@ pub fn bloch_pair_vertices(
     }
     if q != auxiliary.q {
         return Err(ThcError::Product(
-            muffintin_product::ProductError::AuxiliarySupportTransferQ,
+            muffintin_auxiliary_ir::ProductError::AuxiliarySupportTransferQ,
         ));
     }
     let mt = auxiliary.mt_dimension();
     let interstitial = auxiliary.interstitial_dimension();
     if mt + interstitial != n_mu {
         return Err(ThcError::Product(
-            muffintin_product::ProductError::PairVertexDimension {
+            muffintin_auxiliary_ir::ProductError::PairVertexDimension {
                 actual: n_mu,
                 mt,
                 interstitial,

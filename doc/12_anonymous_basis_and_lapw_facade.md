@@ -27,7 +27,7 @@ the platform-supplied `lib` prefix and use `muffintin_*`.
 | `crates/mt-operators` | `libmuffintin-operators` | `muffintin_operators` |
 | `crates/mt-recipes` | `libmuffintin-recipes` | `muffintin_recipes` |
 | `crates/mt-lapw` | `libmuffintin-lapw` | `muffintin_lapw` |
-| `crates/mt-product` | `libmuffintin-product` | `muffintin_product` |
+| `crates/mt-auxiliary-ir` | `libmuffintin-auxiliary-ir` | `muffintin_auxiliary_ir` |
 | `crates/mt-mpb` | `libmuffintin-mpb` | `muffintin_mpb` |
 | `crates/mt-thc` | `libmuffintin-thc` | `muffintin_thc` |
 | `crates/mt-coulomb` | `libmuffintin-coulomb` | `muffintin_coulomb` |
@@ -52,8 +52,8 @@ basis             → core, envelope, radial
 operators         → core, tensor, basis, faer
 recipes           → core, basis, envelope
 lapw              → recipes, operators, basis, envelope, core, radial, tensor
-product           → core, radial, basis
-mpb               → product, operators, core, radial, basis, envelope
+auxiliary-ir      → core, radial, basis
+mpb               → auxiliary-ir, operators, core, radial, basis, envelope
 ```
 
 `libmuffintin-basis` stores host augmentation coefficients only. Backend

@@ -1,15 +1,15 @@
 //! SPEX mixed-basis enumeration, spectra, and retained transforms.
 
 use crate::{MpbError, auxiliary_interstitial_support};
-use muffintin_basis::Provenance;
-use muffintin_core::{ExponentialMesh, InverseBohr, ReciprocalLattice};
-use muffintin_operators::solve_real_symmetric;
-use muffintin_product::{
+use muffintin_auxiliary_ir::{
     AuxiliaryRepresentation, ChannelSpectrum, CompiledAuxiliaryBasis, CoupledChannel, CutoffKind,
     CutoffRecord, MixedProductAuxiliary, MtAuxiliaryMode, PairChannel, ProductOrbitalKind,
     ProductRadial, ProductRadialId, ProductSource, RawProductSpace, RawRadialProduct,
     SiteAuxiliaryBlock, SiteRadialSet,
 };
+use muffintin_basis::Provenance;
+use muffintin_core::{ExponentialMesh, InverseBohr, ReciprocalLattice};
+use muffintin_operators::solve_real_symmetric;
 use muffintin_radial::RadialComponents;
 use std::collections::BTreeSet;
 

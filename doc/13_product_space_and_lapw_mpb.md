@@ -13,25 +13,25 @@ and [03](03_exponential_mesh_and_radial_quadrature.md).
 
 | Directory | Package |
 |---|---|
-| `crates/mt-product` | `libmuffintin-product` |
+| `crates/mt-auxiliary-ir` | `libmuffintin-auxiliary-ir` |
 | `crates/mt-mpb` | `libmuffintin-mpb` |
 | `crates/mt-thc` | `libmuffintin-thc` (M-I; interpolation-point payload) |
 
-There is no `libmuffintin-mbp` alias. `libmuffintin-product` and
+There is no `libmuffintin-mbp` alias. `libmuffintin-auxiliary-ir` and
 `libmuffintin-mpb` do not depend on `libmuffintin-lapw`, THC, or Coulomb.
-`libmuffintin-product` does not own `CompiledBasis`.
+`libmuffintin-auxiliary-ir` does not own `CompiledBasis`.
 
 ## 2. Dependency DAG
 
 ```text
-product  → core, radial, basis
-mpb      → product, operators, core, radial, basis, envelope
-thc      → product, core, basis, faer
-coulomb  → product, core, basis, grid
-         (dev: mpb, thc)
+auxiliary-ir  → core, radial, basis
+mpb           → auxiliary-ir, operators, core, radial, basis, envelope
+thc           → auxiliary-ir, core, basis, faer
+coulomb       → auxiliary-ir, core, basis, grid
+              (dev: mpb, thc)
 ```
 
-`libmuffintin-product` owns no solver. Channel overlap diagonalization uses
+`libmuffintin-auxiliary-ir` owns no solver. Channel overlap diagonalization uses
 `libmuffintin-operators::solve_real_symmetric`.
 
 ## 3. Product IR

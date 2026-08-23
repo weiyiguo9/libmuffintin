@@ -15,7 +15,7 @@ libmuffintin-basis = { path = "../mt-basis" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-operators = { path = "../mt-operators" }
-libmuffintin-product = { path = "../mt-product" }
+libmuffintin-auxiliary-ir = { path = "../mt-auxiliary-ir" }
 libmuffintin-radial = { path = "../mt-radial" }
 num-complex.workspace = true
 thiserror.workspace = true

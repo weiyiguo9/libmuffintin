@@ -2,12 +2,12 @@
 
 use crate::MpbError;
 use crate::construct::require_matching_context;
-use muffintin_core::{InverseBohr, gaunt};
-use muffintin_envelope::site_translation_phase;
-use muffintin_product::{
+use muffintin_auxiliary_ir::{
     CompiledAuxiliaryBasis, InterstitialPairSpec, MtPairSpec, PairVertex, PairVertexSpec,
     ProductOrbitalKind, ProductRadial, ProductRadialId, ProductSource, RawProductSpace,
 };
+use muffintin_core::{InverseBohr, gaunt};
+use muffintin_envelope::site_translation_phase;
 use num_complex::Complex64;
 
 /// Expand an explicit MT and/or interstitial pair onto the auxiliary basis.
@@ -183,7 +183,7 @@ fn pair_matches(
 }
 
 fn find_radial(
-    radials: &muffintin_product::SiteRadialSet,
+    radials: &muffintin_auxiliary_ir::SiteRadialSet,
     id: ProductRadialId,
 ) -> Result<&ProductRadial, MpbError> {
     let pool = match id.kind {

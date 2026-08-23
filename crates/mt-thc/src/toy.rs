@@ -8,8 +8,8 @@ use crate::ThcError;
 use crate::gram::InjectedCoulombGram;
 use crate::kmesh::KMesh;
 use crate::pair::{BlochOrbitals, PairBlock, PairColumnLayout};
+use muffintin_auxiliary_ir::{InterpolationRegion, ProductPartition};
 use muffintin_core::{Bohr, InterstitialGeometry, Sphere, VolumeBohr3, complex_spherical_harmonic};
-use muffintin_product::{InterpolationRegion, ProductPartition};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 
@@ -781,7 +781,7 @@ pub fn pair_fourier(
 /// Injected pair-pair Gram from the finite-cutoff toy Coulomb oracle.
 pub fn toy_coulomb_gram(
     q_index: usize,
-    q: muffintin_product::TransferQ,
+    q: muffintin_auxiliary_ir::TransferQ,
     layout: PairColumnLayout,
     pair_fourier: &[Complex64],
     factors: &[f64],
@@ -991,7 +991,7 @@ pub fn compare_candidate_eri_action(
     kernel: &ToyFiniteCutoffKernel,
     reference_pair_fourier: &[Complex64],
     q_index: usize,
-    q: muffintin_product::TransferQ,
+    q: muffintin_auxiliary_ir::TransferQ,
     layout: PairColumnLayout,
 ) -> Result<ToyEriActionMetrics, ThcError> {
     let g_cart = kernel.g_cartesian();

@@ -1,7 +1,7 @@
 //! Error-contract regressions for the M-I public boundary.
 
+use muffintin_auxiliary_ir::{InterpolationRegion, TransferQ};
 use muffintin_core::InverseBohr;
-use muffintin_product::{InterpolationRegion, TransferQ};
 use muffintin_thc::{
     BlochOrbitals, CoulombGramSet, GridPath, InjectedCoulombGram, KMesh, L2Engine, PairBlock,
     PairColumnLayout, RankPolicy, SelectionRequest, SelectorStrategy, ThcError, UniformShift,

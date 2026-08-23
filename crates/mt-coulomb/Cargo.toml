@@ -14,7 +14,7 @@ name = "muffintin_coulomb"
 libmuffintin-basis = { path = "../mt-basis" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-grid = { path = "../mt-grid" }
-libmuffintin-product = { path = "../mt-product" }
+libmuffintin-auxiliary-ir = { path = "../mt-auxiliary-ir" }
 num-complex.workspace = true
 thiserror.workspace = true
 
