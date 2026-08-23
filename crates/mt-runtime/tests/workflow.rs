@@ -86,9 +86,24 @@ impl ScfPhysics for WorkflowKernel {
         iteration: usize,
         site: &ScfCoreSite,
         _potential: &RegionalPotential,
+        _basis: &ScfBasis,
+        _relativity: ScfRelativity,
     ) -> Result<CoreContribution, Self::Error> {
         assert_eq!(site.id, "Si-1");
-        assert_eq!(site.states.len(), 1);
+        assert_eq!(site.states.len(), 3);
+        assert!(
+            !site
+                .states
+                .iter()
+                .any(|state| { state.principal_quantum_number == 2 && state.kappa == 1 })
+        );
+        assert_eq!(
+            site.states
+                .iter()
+                .map(|state| state.occupation)
+                .sum::<f64>(),
+            8.0
+        );
         self.events.push(format!("core:{iteration}"));
         Ok(CoreContribution {
             site_id: site.id.clone(),
@@ -102,6 +117,7 @@ impl ScfPhysics for WorkflowKernel {
         iteration: usize,
         _potential: &RegionalPotential,
         basis: &ScfBasis,
+        _relativity: ScfRelativity,
     ) -> Result<Self::OneParticle, Self::Error> {
         self.saw_local_orbital = basis.local_orbitals.len() == 1
             && basis.local_orbitals[0].site == "Si-1"
@@ -120,7 +136,7 @@ impl ScfPhysics for WorkflowKernel {
     ) -> Result<Self::BandSolution, Self::Error> {
         assert_eq!(k_mesh.divisions, [4, 4, 4]);
         self.saw_sv_window = relativity
-            == (ScfRelativity::SpexSecondVariation {
+            == (ScfRelativity::SocSecondVariation {
                 window: FirstVariationWindow::new(0, 12).unwrap(),
             });
         self.events.push(format!("bands:{iteration}"));

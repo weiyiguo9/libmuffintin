@@ -64,6 +64,10 @@ pub enum InputValidationError {
         minimum: f64,
         maximum: f64,
     },
+    #[error(
+        "{path}.kappa must be +1, +2, or +3 for relativistic-local-orbital treatment, got {kappa}"
+    )]
+    InvalidRelativisticLocalOrbitalKappa { path: String, kappa: i32 },
 }
 
 /// Input decoding, preparation, loading, or execution failure.
@@ -106,8 +110,32 @@ pub enum InputError {
     },
     #[error("invalid in-memory snapshot: {0}")]
     InvalidSnapshot(#[source] IoError),
-    #[error("task {task_id:?} names unknown core site {site:?}")]
-    UnknownCoreSite { task_id: String, site: String },
+    #[error("task {task_id:?} names unknown electronic-state override site {site:?}")]
+    UnknownElectronicStateSite { task_id: String, site: String },
+    #[error("task {task_id:?} has no FLEUR atomic default for Z={atomic_number} on site {site:?}")]
+    UnsupportedAtomicNumber {
+        task_id: String,
+        site: String,
+        atomic_number: u16,
+    },
+    #[error(
+        "task {task_id:?} override names an unoccupied or invalid state n={principal_quantum_number}, kappa={kappa} on site {site:?}"
+    )]
+    UnknownElectronicState {
+        task_id: String,
+        site: String,
+        principal_quantum_number: u32,
+        kappa: i32,
+    },
+    #[error(
+        "task {task_id:?} contains duplicate overrides for n={principal_quantum_number}, kappa={kappa} on site {site:?}"
+    )]
+    DuplicateElectronicStateOverride {
+        task_id: String,
+        site: String,
+        principal_quantum_number: u32,
+        kappa: i32,
+    },
     #[error("task {task_id:?} names unknown local-orbital site {site:?}")]
     UnknownLocalOrbitalSite { task_id: String, site: String },
     #[error("task {task_id:?} could not consume its prepared SCF state source")]

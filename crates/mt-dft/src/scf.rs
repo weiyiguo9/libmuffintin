@@ -30,6 +30,8 @@ pub struct ScfBasis {
     pub plane_wave_cutoff: f64,
     pub l_max: u32,
     pub local_orbitals: Vec<ScfLocalOrbital>,
+    /// Bound signed-`kappa` Dirac local orbitals used only by full first variation.
+    pub relativistic_local_orbitals: Vec<ScfRelativisticLocalOrbital>,
 }
 
 /// Construction route for one explicitly requested signed-kappa local orbital.
@@ -46,6 +48,18 @@ pub struct ScfLocalOrbital {
     pub kappa: i32,
     pub energy: Hartree,
     pub kind: ScfLocalOrbitalKind,
+}
+
+/// One site-resolved bound Dirac local orbital.
+///
+/// Keeping this request separate prevents scalar and second-variation routes
+/// from silently reducing a signed-`kappa` relativistic orbital to ordinary
+/// `l`-resolved LO data.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScfRelativisticLocalOrbital {
+    pub site: String,
+    pub principal_quantum_number: u32,
+    pub kappa: i32,
 }
 
 /// Finite-temperature occupation functional used during SCF.
@@ -84,7 +98,7 @@ impl ScfMixing {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScfRelativity {
     Scalar,
-    SpexSecondVariation { window: FirstVariationWindow },
+    SocSecondVariation { window: FirstVariationWindow },
     SpinorFirstVariation,
 }
 
@@ -167,6 +181,42 @@ impl ScfConfig {
                     energy: orbital.energy.get(),
                 });
             }
+        }
+        for orbital in &self.basis.relativistic_local_orbitals {
+            if orbital.site.trim().is_empty() {
+                return Err(ScfConfigError::EmptyRelativisticLocalOrbitalSite);
+            }
+            if orbital.principal_quantum_number == 0 {
+                return Err(
+                    ScfConfigError::ZeroRelativisticLocalOrbitalPrincipalQuantumNumber {
+                        site: orbital.site.clone(),
+                    },
+                );
+            }
+            let kappa = Kappa::new(orbital.kappa).map_err(|_| {
+                ScfConfigError::InvalidRelativisticLocalOrbitalKappa {
+                    site: orbital.site.clone(),
+                    kappa: orbital.kappa,
+                }
+            })?;
+            if !(1..=3).contains(&orbital.kappa) {
+                return Err(ScfConfigError::InvalidRelativisticLocalOrbitalKappa {
+                    site: orbital.site.clone(),
+                    kappa: orbital.kappa,
+                });
+            }
+            if orbital.principal_quantum_number < kappa.large_l() + 1 {
+                return Err(ScfConfigError::InvalidRelativisticLocalOrbitalState {
+                    site: orbital.site.clone(),
+                    principal_quantum_number: orbital.principal_quantum_number,
+                    kappa: orbital.kappa,
+                });
+            }
+        }
+        if matches!(self.relativity, ScfRelativity::SocSecondVariation { .. })
+            && !self.basis.relativistic_local_orbitals.is_empty()
+        {
+            return Err(ScfConfigError::RelativisticLocalOrbitalUnsupportedInSecondVariation);
         }
         let scale = match self.occupations {
             ScfOccupations::FermiDirac { temperature } => temperature.get(),
@@ -376,6 +426,8 @@ pub trait ScfPhysics {
         iteration: usize,
         site: &ScfCoreSite,
         potential: &RegionalPotential,
+        basis: &ScfBasis,
+        relativity: ScfRelativity,
     ) -> Result<CoreContribution, Self::Error>;
 
     fn assemble_one_particle(
@@ -383,7 +435,16 @@ pub trait ScfPhysics {
         iteration: usize,
         potential: &RegionalPotential,
         basis: &ScfBasis,
+        relativity: ScfRelativity,
     ) -> Result<Self::OneParticle, Self::Error>;
+
+    /// Basis controls retained in a converged state.
+    ///
+    /// Kernels that resolve potential-dependent basis parameters may replace
+    /// the requested controls with the exact materialized iteration basis.
+    fn retained_basis(&self, requested: &ScfBasis, _one_particle: &Self::OneParticle) -> ScfBasis {
+        requested.clone()
+    }
 
     fn solve_regular_bands(
         &mut self,
@@ -454,13 +515,18 @@ pub fn run_scf<P: ScfPhysics>(
         let mut core_density = input_density.zero_like();
         let mut core_eigenvalue_sum = Hartree(0.0);
         for site in &config.core_sites {
-            let contribution =
-                physics
-                    .solve_core(iteration, site, &potential)
-                    .map_err(|source| ScfError::Kernel {
-                        operation: "four-component core solve",
-                        source,
-                    })?;
+            let contribution = physics
+                .solve_core(
+                    iteration,
+                    site,
+                    &potential,
+                    &config.basis,
+                    config.relativity,
+                )
+                .map_err(|source| ScfError::Kernel {
+                    operation: "four-component core solve",
+                    source,
+                })?;
             if contribution.site_id != site.id {
                 return Err(ScfError::WrongCoreSite {
                     expected: site.id.clone(),
@@ -472,7 +538,7 @@ pub fn run_scf<P: ScfPhysics>(
         }
 
         let one_particle = physics
-            .assemble_one_particle(iteration, &potential, &config.basis)
+            .assemble_one_particle(iteration, &potential, &config.basis, config.relativity)
             .map_err(|source| ScfError::Kernel {
                 operation: "radial/basis/H/S assembly",
                 source,
@@ -541,7 +607,7 @@ pub fn run_scf<P: ScfPhysics>(
             return Ok(ScfState {
                 density: input_density,
                 potential,
-                basis: config.basis.clone(),
+                basis: physics.retained_basis(&config.basis, &one_particle),
                 chemical_potential: occupation.chemical_potential,
                 energy,
                 relativity: config.relativity,
@@ -712,6 +778,24 @@ pub enum ScfConfigError {
     ZeroLocalOrbitalKappa { site: String },
     #[error("local orbital on site {site:?} has non-finite energy {energy} Ha")]
     NonFiniteLocalOrbitalEnergy { site: String, energy: f64 },
+    #[error("relativistic local-orbital site must not be empty")]
+    EmptyRelativisticLocalOrbitalSite,
+    #[error("relativistic local orbital on site {site:?} has principal quantum number zero")]
+    ZeroRelativisticLocalOrbitalPrincipalQuantumNumber { site: String },
+    #[error("relativistic local orbital on site {site:?} has invalid kappa {kappa}")]
+    InvalidRelativisticLocalOrbitalKappa { site: String, kappa: i32 },
+    #[error(
+        "relativistic local orbital on site {site:?} has invalid state n={principal_quantum_number}, kappa={kappa}"
+    )]
+    InvalidRelativisticLocalOrbitalState {
+        site: String,
+        principal_quantum_number: u32,
+        kappa: i32,
+    },
+    #[error(
+        "SOC second variation cannot represent signed-kappa relativistic local orbitals; override their treatment to valence or use spinor first variation"
+    )]
+    RelativisticLocalOrbitalUnsupportedInSecondVariation,
     #[error("occupation energy scale must be finite and positive, got {0} Ha")]
     InvalidOccupationScale(f64),
     #[error("SCF energy tolerance must be finite and positive, got {0} Ha")]
@@ -862,6 +946,8 @@ mod tests {
             iteration: usize,
             site: &ScfCoreSite,
             _potential: &RegionalPotential,
+            _basis: &ScfBasis,
+            _relativity: ScfRelativity,
         ) -> Result<CoreContribution, Self::Error> {
             self.events.push(format!("core:{iteration}:{}", site.id));
             Ok(CoreContribution {
@@ -876,6 +962,7 @@ mod tests {
             iteration: usize,
             _potential: &RegionalPotential,
             _basis: &ScfBasis,
+            _relativity: ScfRelativity,
         ) -> Result<Self::OneParticle, Self::Error> {
             self.events.push(format!("assemble:{iteration}"));
             Ok(())
@@ -890,7 +977,7 @@ mod tests {
         ) -> Result<Self::BandSolution, Self::Error> {
             let route = match relativity {
                 ScfRelativity::Scalar => "scalar",
-                ScfRelativity::SpexSecondVariation { .. } => "sv",
+                ScfRelativity::SocSecondVariation { .. } => "sv",
                 ScfRelativity::SpinorFirstVariation => "spinor",
             };
             self.events.push(format!("bands:{iteration}:{route}"));
@@ -1010,6 +1097,7 @@ mod tests {
                 plane_wave_cutoff: 4.0,
                 l_max: 8,
                 local_orbitals: Vec::new(),
+                relativistic_local_orbitals: Vec::new(),
             },
             occupations,
             exchange_correlation: ScfExchangeCorrelation {
@@ -1017,7 +1105,7 @@ mod tests {
                 noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
             },
             mixing,
-            relativity: ScfRelativity::SpexSecondVariation {
+            relativity: ScfRelativity::SocSecondVariation {
                 window: FirstVariationWindow::new(0, 2).unwrap(),
             },
             convergence: ScfConvergence {
@@ -1040,6 +1128,31 @@ mod tests {
                 },
             ],
         }
+    }
+
+    #[test]
+    fn second_variation_rejects_signed_kappa_relativistic_local_orbitals() {
+        let mut config = config(
+            ScfMixing::Linear { alpha: 1.0 },
+            ScfOccupations::FermiDirac {
+                temperature: Hartree(0.1),
+            },
+        );
+        config
+            .basis
+            .relativistic_local_orbitals
+            .push(ScfRelativisticLocalOrbital {
+                site: "a".to_owned(),
+                principal_quantum_number: 2,
+                kappa: 1,
+            });
+        let mut physics = MockPhysics::new(0.125);
+        assert!(matches!(
+            run_scf(&mut physics, &config, None),
+            Err(ScfError::InvalidConfig(
+                ScfConfigError::RelativisticLocalOrbitalUnsupportedInSecondVariation
+            ))
+        ));
     }
 
     #[test]
@@ -1105,7 +1218,7 @@ mod tests {
     fn one_physics_seam_carries_both_xc_routes_through_all_relativistic_routes() {
         for relativity in [
             ScfRelativity::Scalar,
-            ScfRelativity::SpexSecondVariation {
+            ScfRelativity::SocSecondVariation {
                 window: FirstVariationWindow::new(0, 2).unwrap(),
             },
             ScfRelativity::SpinorFirstVariation,

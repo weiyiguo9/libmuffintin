@@ -1,4 +1,4 @@
-//! Site assembly and first-variation congruence for SPEX second-variation SOC.
+//! Site assembly and first-variation congruence for SOC second variation.
 
 use faer::{Mat, Side};
 use muffintin_basis::LocalOrbitalLayout;

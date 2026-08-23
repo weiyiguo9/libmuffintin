@@ -1,4 +1,4 @@
-//! Nonmagnetic SPEX-style second-variation spin--orbit coupling.
+//! Nonmagnetic SOC second variation.
 //!
 //! The first variation must be scalar Koelling--Harmon. This module does not
 //! route magnetic, noncollinear, or spinor-first-variation states through the
@@ -100,7 +100,7 @@ impl FirstVariationSubspace {
 /// First-variation route presented to the optional second-variation path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FirstVariationRoute {
-    /// The only route accepted by [`solve_spex_second_variation`].
+    /// The only route accepted by [`solve_soc_second_variation`].
     NonmagneticScalarKoellingHarmon,
     CollinearMagnetic,
     Noncollinear,
@@ -137,7 +137,7 @@ pub struct SecondVariationResult {
 
 /// Project every site's scalar eigenvectors, solve the ordinary Hermitian SOC
 /// problem, and reconstruct doubled global Pauli-spinor eigenvectors.
-pub fn solve_spex_second_variation(
+pub fn solve_soc_second_variation(
     route: FirstVariationRoute,
     compiled: &CompiledBasis,
     first_variation: &FirstVariationSubspace,
@@ -344,7 +344,7 @@ mod tests {
             FirstVariationRoute::SpinorFirstVariation,
         ] {
             assert_eq!(
-                solve_spex_second_variation(route, &compiled, &first, &[]).unwrap_err(),
+                solve_soc_second_variation(route, &compiled, &first, &[]).unwrap_err(),
                 SecondVariationError::UnsupportedRoute(route)
             );
         }

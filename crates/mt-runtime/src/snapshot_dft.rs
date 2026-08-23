@@ -19,13 +19,13 @@ use muffintin_dft::{
     RegionalXcResult, RegularSpectrum, ScalarBuilderError, ScalarIterationBasis,
     ScalarLocalOrbitalRequest, ScalarSiteInput, ScfBasis, ScfConfig, ScfCoreSite, ScfEnergyContext,
     ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfLocalOrbitalKind, ScfOccupations,
-    ScfPhysics, ScfRelativity, ScfState, SecondVariationError, SpinorBuilderError,
-    SpinorFirstVariationError, SpinorIterationBasis, SpinorLocalOrbitalRequest, SpinorSiteInput,
-    TetrahedronError, XcFieldSpec, build_collinear_scalar_iteration_bases,
+    ScfPhysics, ScfRelativisticLocalOrbital, ScfRelativity, ScfState, SecondVariationError,
+    SpinorBuilderError, SpinorFirstVariationError, SpinorIterationBasis, SpinorLocalOrbitalRequest,
+    SpinorSiteInput, TetrahedronError, XcFieldSpec, build_collinear_scalar_iteration_bases,
     build_extended_core_potentials, build_extended_snapshot_core_potentials,
     build_regional_core_contribution, build_spinor_iteration_basis,
     evaluate_regional_electrostatics, evaluate_regional_xc, solve_fermi_dirac, solve_gaussian,
-    solve_spex_second_variation, solve_spinor_k_point, synthesize_collinear_valence_density,
+    solve_soc_second_variation, solve_spinor_k_point, synthesize_collinear_valence_density,
     synthesize_full_spinor_valence_density,
 };
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
@@ -67,6 +67,7 @@ pub struct SnapshotDftPhysics {
     restart_density: Option<RegionalDensity>,
     nuclear_charges: Vec<f64>,
     core_potentials: BTreeMap<usize, CorePotentialContext>,
+    relativistic_local_orbital_energies: BTreeMap<(String, u32, i32), Hartree>,
     density_template: Option<RegionalDensity>,
     energy_terms: BTreeMap<usize, ScfEnergyTerms>,
 }
@@ -218,6 +219,7 @@ impl SnapshotDftPhysics {
                 .map(|site| f64::from(site.atomic_number))
                 .collect(),
             core_potentials: BTreeMap::new(),
+            relativistic_local_orbital_energies: BTreeMap::new(),
             density_template: None,
             energy_terms: BTreeMap::new(),
         })
@@ -314,7 +316,7 @@ impl SnapshotDftPhysics {
                         energies,
                     )
                 }
-                ScfRelativity::SpexSecondVariation { window } => {
+                ScfRelativity::SocSecondVariation { window } => {
                     self.require_second_variation_route(potential)?;
                     if window.start() != 0 {
                         return Err(SnapshotDftError::SecondVariationDropsLowerBands {
@@ -327,7 +329,7 @@ impl SnapshotDftPhysics {
                         &scalar.up.solution.eigenvectors,
                     )?;
                     let blocks = second_variation_blocks(&bases.up, &site_inputs.up)?;
-                    let second = solve_spex_second_variation(
+                    let second = solve_soc_second_variation(
                         FirstVariationRoute::NonmagneticScalarKoellingHarmon,
                         &bases.up.compiled,
                         &first,
@@ -363,6 +365,55 @@ impl SnapshotDftPhysics {
             points: solved_points,
             states,
         })
+    }
+
+    fn basis_with_relativistic_local_orbitals(
+        &self,
+        basis: &ScfBasis,
+    ) -> Result<ScfBasis, SnapshotDftError> {
+        self.basis_with_relativistic_local_orbital_energies(
+            basis,
+            &self.relativistic_local_orbital_energies,
+        )
+    }
+
+    fn basis_with_relativistic_local_orbital_energies(
+        &self,
+        basis: &ScfBasis,
+        energies: &BTreeMap<(String, u32, i32), Hartree>,
+    ) -> Result<ScfBasis, SnapshotDftError> {
+        let mut resolved = basis.clone();
+        let replaced_channels = basis
+            .relativistic_local_orbitals
+            .iter()
+            .map(|request| (request.site.as_str(), request.kappa))
+            .collect::<BTreeSet<_>>();
+        resolved
+            .local_orbitals
+            .retain(|orbital| !replaced_channels.contains(&(orbital.site.as_str(), orbital.kappa)));
+        for request in &basis.relativistic_local_orbitals {
+            let key = (
+                request.site.clone(),
+                request.principal_quantum_number,
+                request.kappa,
+            );
+            let &energy = energies.get(&key).ok_or_else(|| {
+                SnapshotDftError::MissingRelativisticLocalOrbitalEnergy {
+                    site: request.site.clone(),
+                    principal_quantum_number: request.principal_quantum_number,
+                    kappa: request.kappa,
+                }
+            })?;
+            resolved
+                .local_orbitals
+                .push(muffintin_dft::ScfLocalOrbital {
+                    site: request.site.clone(),
+                    kappa: request.kappa,
+                    energy,
+                    kind: ScfLocalOrbitalKind::Lo,
+                });
+        }
+        Ok(resolved)
     }
 
     fn solve_spinor_points(
@@ -561,17 +612,22 @@ impl SnapshotDftPhysics {
                         local_orbitals.push(SpinorLocalOrbitalRequest::Lo { kappa, energy });
                     }
                 }
+                let explicit_kappas = basis
+                    .local_orbitals
+                    .iter()
+                    .filter(|orbital| orbital.site == site.id)
+                    .map(|orbital| Kappa::new(orbital.kappa))
+                    .collect::<Result<BTreeSet<_>, _>>()?;
+                // Snapshot LO energies are l-resolved and seed both j
+                // partners. Clear each explicitly controlled signed-kappa
+                // channel once, then retain every requested LO in that group.
+                local_orbitals.retain(|request| !explicit_kappas.contains(&request.kappa()));
                 for orbital in basis
                     .local_orbitals
                     .iter()
                     .filter(|orbital| orbital.site == site.id)
                 {
                     let kappa = Kappa::new(orbital.kappa)?;
-                    // V1 snapshot LO energies are only l-resolved and seed
-                    // both j partners. An explicit signed-kappa workflow LO
-                    // replaces that inherited partner without affecting its
-                    // sibling (notably kappa=+1 versus kappa=-2 for p).
-                    local_orbitals.retain(|request| request.kappa() != kappa);
                     local_orbitals.push(match orbital.kind {
                         ScfLocalOrbitalKind::Lo => SpinorLocalOrbitalRequest::Lo {
                             kappa,
@@ -816,35 +872,14 @@ impl SnapshotDftPhysics {
             });
         }
         let converted = &self.sites[site_index];
-        let charge = self.nuclear_charges[site_index];
 
         let mut solved = Vec::with_capacity(site.states.len());
         for requested in &site.states {
-            let state = CoreState::new(
+            let solution = self.solve_bound_dirac_state(
+                site_index,
                 requested.principal_quantum_number,
-                Kappa::new(requested.kappa)?,
-            )?;
-            // Scan the complete negative atomic scale. Node-count selection,
-            // not an energy estimate, identifies the requested state. Bounds
-            // are relative to the actual periodic continuum threshold so an
-            // arbitrary snapshot energy zero cannot invalidate tail matching.
-            let continuum = *extended
-                .values
-                .last()
-                .expect("extended core potential follows a nonempty mesh");
-            let atomic_scale = (charge * charge / f64::from(state.n).powi(2)).max(1.0);
-            let lower = continuum - 2.0 * charge * charge;
-            let upper = continuum - 1.0e-8 * atomic_scale;
-            let window = EnergyBracket::from_values(lower, upper)?;
-            let bracket = isolate_core_dirac_bracket(
-                &extended.mesh,
-                &extended.values,
-                CoreBracketSearch::new(state, converted.radius, window).with_intervals(512),
-            )?;
-            let solution = solve_core_dirac(
-                &extended.mesh,
-                &extended.values,
-                CoreDiracSpec::new(state, bracket, converted.radius),
+                requested.kappa,
+                extended,
             )?;
             solved.push((solution, requested.occupation));
         }
@@ -868,10 +903,74 @@ impl SnapshotDftPhysics {
         .contribution)
     }
 
+    fn solve_bound_dirac_state(
+        &self,
+        site_index: usize,
+        principal_quantum_number: u32,
+        kappa: i32,
+        extended: &ExtendedCorePotential,
+    ) -> Result<muffintin_radial::CoreDiracSolution, SnapshotDftError> {
+        let state = CoreState::new(principal_quantum_number, Kappa::new(kappa)?)?;
+        let charge = self.nuclear_charges[site_index];
+        let converted = &self.sites[site_index];
+        // Scan the complete negative atomic scale. Node-count selection, not
+        // an energy estimate, identifies both core and relLO bound states.
+        let continuum = *extended
+            .values
+            .last()
+            .expect("extended core potential follows a nonempty mesh");
+        let atomic_scale = (charge * charge / f64::from(state.n).powi(2)).max(1.0);
+        let lower = continuum - 2.0 * charge * charge;
+        let upper = continuum - 1.0e-8 * atomic_scale;
+        let window = EnergyBracket::from_values(lower, upper)?;
+        let bracket = isolate_core_dirac_bracket(
+            &extended.mesh,
+            &extended.values,
+            CoreBracketSearch::new(state, converted.radius, window).with_intervals(512),
+        )?;
+        Ok(solve_core_dirac(
+            &extended.mesh,
+            &extended.values,
+            CoreDiracSpec::new(state, bracket, converted.radius),
+        )?)
+    }
+
+    fn resolve_relativistic_local_orbitals_for_site(
+        &mut self,
+        site_index: usize,
+        extended: &ExtendedCorePotential,
+        requests: &[ScfRelativisticLocalOrbital],
+    ) -> Result<(), SnapshotDftError> {
+        let site_id = self.sites[site_index].id.clone();
+        let requests = requests
+            .iter()
+            .filter(|request| request.site == site_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        for request in requests {
+            let solution = self.solve_bound_dirac_state(
+                site_index,
+                request.principal_quantum_number,
+                request.kappa,
+                extended,
+            )?;
+            self.relativistic_local_orbital_energies.insert(
+                (
+                    request.site,
+                    request.principal_quantum_number,
+                    request.kappa,
+                ),
+                solution.energy,
+            );
+        }
+        Ok(())
+    }
+
     fn extended_core_meshes(
         &self,
         requested_site: usize,
         states: &[muffintin_dft::ScfCoreState],
+        relativistic_local_orbitals: &[ScfRelativisticLocalOrbital],
     ) -> Result<Vec<ExponentialMesh>, SnapshotDftError> {
         self.sites
             .iter()
@@ -881,6 +980,12 @@ impl SnapshotDftPhysics {
                     states
                         .iter()
                         .map(|state| state.principal_quantum_number)
+                        .chain(
+                            relativistic_local_orbitals
+                                .iter()
+                                .filter(|request| request.site == site.id)
+                                .map(|request| request.principal_quantum_number),
+                        )
                         .max()
                         .unwrap_or(1)
                 } else {
@@ -899,6 +1004,7 @@ impl SnapshotDftPhysics {
     fn initial_core_meshes(
         &self,
         core_sites: &[ScfCoreSite],
+        relativistic_local_orbitals: &[ScfRelativisticLocalOrbital],
     ) -> Result<Vec<ExponentialMesh>, SnapshotDftError> {
         self.sites
             .iter()
@@ -911,6 +1017,19 @@ impl SnapshotDftPhysics {
                         core.states
                             .iter()
                             .map(|state| state.principal_quantum_number)
+                            .chain(
+                                relativistic_local_orbitals
+                                    .iter()
+                                    .filter(|request| request.site == site.id)
+                                    .map(|request| request.principal_quantum_number),
+                            )
+                            .max()
+                    })
+                    .or_else(|| {
+                        relativistic_local_orbitals
+                            .iter()
+                            .filter(|request| request.site == site.id)
+                            .map(|request| request.principal_quantum_number)
                             .max()
                     })
                     .unwrap_or(1);
@@ -962,13 +1081,51 @@ impl ScfPhysics for SnapshotDftPhysics {
     type BandSolution = SnapshotBandSolution;
 
     fn initial_density(&mut self, config: &ScfConfig) -> Result<RegionalDensity, Self::Error> {
+        let relativistic_local_orbitals =
+            if config.relativity == ScfRelativity::SpinorFirstVariation {
+                config.basis.relativistic_local_orbitals.as_slice()
+            } else {
+                &[]
+            };
+        self.relativistic_local_orbital_energies.clear();
         if let Some(density) = &self.restart_density {
             self.density_template = Some(density.clone());
             return Ok(density.clone());
         }
+        let needs_extended_states = config.core_sites.iter().any(|site| !site.states.is_empty())
+            || !relativistic_local_orbitals.is_empty();
+        let initial_extended = if needs_extended_states {
+            let meshes =
+                self.initial_core_meshes(&config.core_sites, relativistic_local_orbitals)?;
+            Some(build_extended_snapshot_core_potentials(
+                &self.frozen_potential,
+                &self.geometry,
+                &self.nuclear_charges,
+                &meshes,
+                CorePotentialContinuationSpec::default(),
+            )?)
+        } else {
+            None
+        };
+        if config.relativity == ScfRelativity::SpinorFirstVariation {
+            if let Some(extended) = &initial_extended {
+                for (site_index, potential) in extended.iter().enumerate() {
+                    self.resolve_relativistic_local_orbitals_for_site(
+                        site_index,
+                        &potential.potential,
+                        relativistic_local_orbitals,
+                    )?;
+                }
+            }
+        }
+        let basis = if config.relativity == ScfRelativity::SpinorFirstVariation {
+            self.basis_with_relativistic_local_orbitals(&config.basis)?
+        } else {
+            config.basis.clone()
+        };
         let one_particle = SnapshotOneParticle {
             potential: self.frozen_potential.clone(),
-            basis: config.basis.clone(),
+            basis,
         };
         let points = regular_k_points(config.k_mesh)?;
         let bands = self.solve_points(
@@ -980,14 +1137,9 @@ impl ScfPhysics for SnapshotDftPhysics {
         let occupations = solve_initial_occupations(&bands.states, config)?;
         let mut density = self.synthesize(&bands, &occupations)?;
         if config.core_sites.iter().any(|site| !site.states.is_empty()) {
-            let meshes = self.initial_core_meshes(&config.core_sites)?;
-            let extended = build_extended_snapshot_core_potentials(
-                &self.frozen_potential,
-                &self.geometry,
-                &self.nuclear_charges,
-                &meshes,
-                CorePotentialContinuationSpec::default(),
-            )?;
+            let extended = initial_extended
+                .as_ref()
+                .expect("core states require an initial extended potential");
             for site in &config.core_sites {
                 if site.states.is_empty() {
                     continue;
@@ -1067,6 +1219,8 @@ impl ScfPhysics for SnapshotDftPhysics {
         iteration: usize,
         site: &ScfCoreSite,
         _potential: &RegionalPotential,
+        basis: &ScfBasis,
+        relativity: ScfRelativity,
     ) -> Result<CoreContribution, Self::Error> {
         let template = self
             .density_template
@@ -1083,14 +1237,23 @@ impl ScfPhysics for SnapshotDftPhysics {
             .iter()
             .position(|candidate| candidate.id == site.id)
             .ok_or_else(|| SnapshotDftError::UnknownCoreSite(site.id.clone()))?;
-        if site.states.is_empty() {
+        let relativistic_local_orbitals = if relativity == ScfRelativity::SpinorFirstVariation {
+            basis.relativistic_local_orbitals.as_slice()
+        } else {
+            &[]
+        };
+        let has_relativistic_local_orbitals = relativistic_local_orbitals
+            .iter()
+            .any(|request| request.site == site.id);
+        if site.states.is_empty() && !has_relativistic_local_orbitals {
             return Ok(CoreContribution {
                 site_id: site.id.clone(),
                 density: template.zero_like(),
                 eigenvalue_sum: Hartree(0.0),
             });
         }
-        let meshes = self.extended_core_meshes(site_index, &site.states)?;
+        let meshes =
+            self.extended_core_meshes(site_index, &site.states, relativistic_local_orbitals)?;
         let continued = build_extended_core_potentials(
             &context.electrostatic,
             &context.exchange_correlation,
@@ -1098,6 +1261,18 @@ impl ScfPhysics for SnapshotDftPhysics {
             &meshes,
             context.spec,
         )?;
+        self.resolve_relativistic_local_orbitals_for_site(
+            site_index,
+            &continued[site_index].potential,
+            relativistic_local_orbitals,
+        )?;
+        if site.states.is_empty() {
+            return Ok(CoreContribution {
+                site_id: site.id.clone(),
+                density: template.zero_like(),
+                eigenvalue_sum: Hartree(0.0),
+            });
+        }
         self.core_contribution(site, &continued[site_index].potential, &template)
     }
 
@@ -1106,11 +1281,21 @@ impl ScfPhysics for SnapshotDftPhysics {
         _iteration: usize,
         potential: &RegionalPotential,
         basis: &ScfBasis,
+        relativity: ScfRelativity,
     ) -> Result<Self::OneParticle, Self::Error> {
+        let basis = if relativity == ScfRelativity::SpinorFirstVariation {
+            self.basis_with_relativistic_local_orbitals(basis)?
+        } else {
+            basis.clone()
+        };
         Ok(SnapshotOneParticle {
             potential: potential.clone(),
-            basis: basis.clone(),
+            basis,
         })
+    }
+
+    fn retained_basis(&self, _requested: &ScfBasis, one_particle: &Self::OneParticle) -> ScfBasis {
+        one_particle.basis.clone()
     }
 
     fn solve_regular_bands(
@@ -1859,6 +2044,14 @@ pub enum SnapshotDftError {
     MissingMonopole(String),
     #[error("site {site:?}, spin {spin} has no linearization energy for l={l}")]
     MissingLinearizationEnergy { site: String, spin: usize, l: u32 },
+    #[error(
+        "bound relativistic local-orbital energy is unavailable for site {site:?}, n={principal_quantum_number}, kappa={kappa}"
+    )]
+    MissingRelativisticLocalOrbitalEnergy {
+        site: String,
+        principal_quantum_number: u32,
+        kappa: i32,
+    },
     #[error("k point {0:?} contains a non-finite coordinate")]
     NonFiniteKPoint([f64; 3]),
     #[error("plane-wave cutoff {cutoff} produces no basis at k={k:?}")]
@@ -2020,6 +2213,7 @@ mod tests {
                 plane_wave_cutoff: 0.5,
                 l_max: 1,
                 local_orbitals: Vec::new(),
+                relativistic_local_orbitals: Vec::new(),
             },
             occupations: ScfOccupations::FermiDirac {
                 temperature: Hartree(0.02),
@@ -2180,7 +2374,7 @@ mod tests {
     #[test]
     fn second_variation_is_routed_and_full_spinor_never_falls_back_to_scalar() {
         let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
-        let sv = config(ScfRelativity::SpexSecondVariation {
+        let sv = config(ScfRelativity::SocSecondVariation {
             window: FirstVariationWindow::new(0, 1).unwrap(),
         });
         assert!(physics.initial_density(&sv).is_ok());
@@ -2286,6 +2480,12 @@ mod tests {
             energy: Hartree(-0.1),
             kind: ScfLocalOrbitalKind::Lo,
         });
+        basis.local_orbitals.push(muffintin_dft::ScfLocalOrbital {
+            site: "H-1".to_owned(),
+            kappa: 1,
+            energy: Hartree(-0.05),
+            kind: ScfLocalOrbitalKind::Lo,
+        });
         let inputs = physics
             .spinor_site_inputs(&physics.frozen_potential, &basis)
             .unwrap();
@@ -2300,8 +2500,67 @@ mod tests {
                     kappa: Kappa::new(1).unwrap(),
                     energy: Hartree(-0.1),
                 },
+                SpinorLocalOrbitalRequest::Lo {
+                    kappa: Kappa::new(1).unwrap(),
+                    energy: Hartree(-0.05),
+                },
             ]
         );
+    }
+
+    #[test]
+    fn multiple_relativistic_local_orbitals_share_one_signed_kappa_without_overwrite() {
+        let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+        let mut basis = config(ScfRelativity::SpinorFirstVariation).basis;
+        basis.local_orbitals.push(muffintin_dft::ScfLocalOrbital {
+            site: "H-1".to_owned(),
+            kappa: -2,
+            energy: Hartree(-0.2),
+            kind: ScfLocalOrbitalKind::Lo,
+        });
+        basis
+            .relativistic_local_orbitals
+            .push(ScfRelativisticLocalOrbital {
+                site: "H-1".to_owned(),
+                principal_quantum_number: 2,
+                kappa: 1,
+            });
+        basis
+            .relativistic_local_orbitals
+            .push(ScfRelativisticLocalOrbital {
+                site: "H-1".to_owned(),
+                principal_quantum_number: 3,
+                kappa: 1,
+            });
+        physics
+            .relativistic_local_orbital_energies
+            .insert(("H-1".to_owned(), 2, 1), Hartree(-0.125));
+        physics
+            .relativistic_local_orbital_energies
+            .insert(("H-1".to_owned(), 3, 1), Hartree(-0.055));
+
+        let resolved = physics
+            .basis_with_relativistic_local_orbitals(&basis)
+            .unwrap();
+        assert!(
+            resolved
+                .local_orbitals
+                .iter()
+                .any(|orbital| { orbital.kappa == -2 && orbital.energy == Hartree(-0.2) })
+        );
+        assert!(
+            resolved
+                .local_orbitals
+                .iter()
+                .any(|orbital| { orbital.kappa == 1 && orbital.energy == Hartree(-0.125) })
+        );
+        assert!(
+            resolved
+                .local_orbitals
+                .iter()
+                .any(|orbital| { orbital.kappa == 1 && orbital.energy == Hartree(-0.055) })
+        );
+        assert_eq!(resolved.local_orbitals.len(), 3);
     }
 
     #[test]
@@ -2350,7 +2609,7 @@ mod tests {
     #[test]
     fn second_variation_rejects_a_window_that_would_drop_lower_scalar_bands() {
         let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
-        let config = config(ScfRelativity::SpexSecondVariation {
+        let config = config(ScfRelativity::SocSecondVariation {
             window: FirstVariationWindow::new(1, 2).unwrap(),
         });
         assert!(matches!(

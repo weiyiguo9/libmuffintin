@@ -46,7 +46,8 @@ fn nested_arrays_and_subblocks_are_preserved() {
     assert!(encoded.contains("[task.scf.basis]"));
     assert!(encoded.contains("[[task.scf.basis.local-orbitals]]"));
     assert!(encoded.contains("[task.scf.xc]"));
-    assert!(encoded.contains("[[task.scf.core-states]]"));
+    assert!(encoded.contains("[[task.scf.state-overrides]]"));
+    assert!(encoded.contains("kind = \"soc-second-variation\""));
     assert!(encoded.contains("[[task.bands.path]]"));
 
     let document: toml::Value = toml::from_str(&encoded).unwrap();
@@ -63,10 +64,13 @@ fn nested_arrays_and_subblocks_are_preserved() {
     );
 
     let decoded = parse_input_toml(&encoded).unwrap();
-    let TaskV1::DftScf { core_states, .. } = &decoded.task["scf"] else {
+    let TaskV1::DftScf {
+        state_overrides, ..
+    } = &decoded.task["scf"]
+    else {
         panic!("scf task changed kind");
     };
-    assert_eq!(core_states.len(), 1);
+    assert_eq!(state_overrides.len(), 1);
 
     let TaskV1::DftScf {
         basis, relativity, ..
@@ -77,7 +81,7 @@ fn nested_arrays_and_subblocks_are_preserved() {
     assert_eq!(basis.local_orbitals.len(), 1);
     assert!(matches!(
         relativity,
-        RelativityV1::SpexSecondVariation {
+        RelativityV1::SocSecondVariation {
             band_window: [0, 12]
         }
     ));
@@ -223,10 +227,13 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
     ));
 
     let mut input = sample_input();
-    let TaskV1::DftScf { core_states, .. } = input.task.get_mut("scf").unwrap() else {
+    let TaskV1::DftScf {
+        state_overrides, ..
+    } = input.task.get_mut("scf").unwrap()
+    else {
         panic!("scf task changed kind");
     };
-    core_states[0].kappa = 0;
+    state_overrides[0].kappa = 0;
     assert!(matches!(
         input.validate(),
         Err(InputError::Validation(InputValidationError::Zero { .. }))
@@ -258,7 +265,7 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
     let TaskV1::DftScf { relativity, .. } = input.task.get_mut("scf").unwrap() else {
         panic!("scf task changed kind");
     };
-    *relativity = RelativityV1::SpexSecondVariation {
+    *relativity = RelativityV1::SocSecondVariation {
         band_window: [4, 4],
     };
     assert!(matches!(

@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod atomic_configuration;
 mod core_density;
 mod core_potential;
 mod density;
@@ -19,6 +20,10 @@ mod tetrahedron;
 mod xc;
 mod xc_field;
 
+pub use atomic_configuration::{
+    AtomicChannelTreatment, AtomicElectronicConfiguration, AtomicNumber, AtomicOccupation,
+    RelativisticOrbital, fleur_default_atomic_configuration,
+};
 pub use core_density::{
     BuiltRegionalCoreContribution, CoreDensityDiagnostics, CoreDensityError,
     CoreShellDensityDiagnostic, CoreSpinPartition, PseudochargeBoundaryDiagnostic,
@@ -58,12 +63,13 @@ pub use scf::{
     DosRequest, DosResult, ScfBasis, ScfConfig, ScfConfigError, ScfConvergence, ScfCoreSite,
     ScfCoreState, ScfEnergyContext, ScfEnergyTerms, ScfError, ScfExchangeCorrelation,
     ScfIterationDiagnostic, ScfKMesh, ScfLocalOrbital, ScfLocalOrbitalKind, ScfMixing,
-    ScfOccupations, ScfPhysics, ScfRelativity, ScfState, run_band_path, run_dos, run_scf,
+    ScfOccupations, ScfPhysics, ScfRelativisticLocalOrbital, ScfRelativity, ScfState,
+    run_band_path, run_dos, run_scf,
 };
 pub use soc::{
     FirstVariationRoute, FirstVariationSubspace, FirstVariationWindow,
     SecondVariationBandDiagnostic, SecondVariationError, SecondVariationResult, SourceBandWeight,
-    solve_spex_second_variation,
+    solve_soc_second_variation,
 };
 pub use spinor::{
     FullSpinorSiteInput, LocalPauliPotential, RelativisticSpinorRoute,

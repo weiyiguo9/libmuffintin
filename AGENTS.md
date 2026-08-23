@@ -8,6 +8,33 @@
   Anyone enabling `backend-tenferro` raises `rust-version` locally to 1.96;
   the default RSTSR+TBLIS path stays 1.85.
 
+## Test scope
+
+- Default to focused tests for the affected crate, module, or execution path.
+- Do not run `cargo test --workspace` after ordinary feature work, localized
+  fixes, documentation changes, or routine API edits.
+- Run the full workspace test suite only for a major cross-crate refactor or
+  another change whose blast radius genuinely spans most of the workspace.
+
+## Crate naming
+
+- Name workspace directories `crates/mt-<suffix>`.
+- Name Cargo packages and dependency keys `libmuffintin-<suffix>`.
+- Give every library target an explicit underscore name:
+
+  ```toml
+  [lib]
+  name = "muffintin_<suffix>"
+  ```
+
+- Use `muffintin_<suffix>` in Rust imports and paths. Do not use
+  `libmuffintin_<suffix>` as a Rust target or import name; POSIX toolchains add
+  the filesystem `lib` prefix, and a target beginning with `lib` produces the
+  unwanted `liblibmuffintin_*` artifact name.
+- Keep Unix artifacts single-prefixed, for example `libmuffintin_core.rlib`.
+  If a system-facing aggregate library is added, name its target `muffintin`
+  so Linux produces `libmuffintin.so` or `libmuffintin.a`.
+
 ## Repository documentation mathematics
 
 - The rules in this section apply only when writing Markdown documentation in

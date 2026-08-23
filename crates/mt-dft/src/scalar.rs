@@ -198,7 +198,7 @@ pub fn solve_collinear_scalar_k_point(
     ))
 }
 
-/// Apply the optional nonmagnetic SPEX second variation to a solved scalar/KH
+/// Apply the optional nonmagnetic SOC second variation to a solved scalar/KH
 /// k point. Magnetic routing is deliberately absent from this adapter.
 pub fn solve_scalar_second_variation(
     basis: &ScalarIterationBasis,
@@ -211,7 +211,7 @@ pub fn solve_scalar_second_variation(
         &solved.solution.eigenvalues,
         &solved.solution.eigenvectors,
     )?;
-    crate::solve_spex_second_variation(
+    crate::solve_soc_second_variation(
         crate::FirstVariationRoute::NonmagneticScalarKoellingHarmon,
         &basis.compiled,
         &first,

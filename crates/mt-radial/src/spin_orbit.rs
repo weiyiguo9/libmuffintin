@@ -1,4 +1,4 @@
-//! SPEX-style scalar-relativistic radial factors for second-variation SOC.
+//! Scalar-relativistic radial factors for SOC second variation.
 //!
 //! This is the Koelling--Harmon approximation used by SPEX, not a
 //! four-component sphere treatment.  The sampled factor is

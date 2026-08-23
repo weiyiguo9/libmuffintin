@@ -96,7 +96,7 @@ pub enum TaskV1 {
         relativity: RelativityV1,
         convergence: ConvergenceV1,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        core_states: Vec<CoreStateV1>,
+        state_overrides: Vec<ElectronicStateOverrideV1>,
     },
     #[serde(rename = "dft-bands", rename_all = "kebab-case")]
     DftBands {
@@ -142,7 +142,7 @@ impl TaskV1 {
                 mixing,
                 relativity,
                 convergence,
-                core_states,
+                state_overrides,
                 ..
             } => {
                 positive(format!("{base}.electron-count"), *electron_count)?;
@@ -153,8 +153,8 @@ impl TaskV1 {
                 mixing.validate(&format!("{base}.mixing"))?;
                 relativity.validate(&format!("{base}.relativity"))?;
                 convergence.validate(&format!("{base}.convergence"))?;
-                for (index, state) in core_states.iter().enumerate() {
-                    state.validate(&format!("{base}.core-states[{index}]"))?;
+                for (index, state) in state_overrides.iter().enumerate() {
+                    state.validate(&format!("{base}.state-overrides[{index}]"))?;
                 }
             }
             Self::DftBands { bands, path, .. } => {
@@ -388,15 +388,15 @@ impl MixingV1 {
 pub enum RelativityV1 {
     #[serde(rename = "scalar")]
     Scalar {},
-    #[serde(rename = "spex-second-variation", rename_all = "kebab-case")]
-    SpexSecondVariation { band_window: [usize; 2] },
+    #[serde(rename = "soc-second-variation", rename_all = "kebab-case")]
+    SocSecondVariation { band_window: [usize; 2] },
     #[serde(rename = "spinor-first-variation")]
     SpinorFirstVariation {},
 }
 
 impl RelativityV1 {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
-        if let Self::SpexSecondVariation { band_window } = self {
+        if let Self::SocSecondVariation { band_window } = self {
             if band_window[0] >= band_window[1] {
                 return Err(InputValidationError::InvalidRange {
                     path: format!("{path}.band-window"),
@@ -431,17 +431,26 @@ impl ConvergenceV1 {
     }
 }
 
-/// Requested occupied bound-core channel.
+/// Treatment assigned to one occupied atomic Dirac channel.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ElectronicStateTreatmentV1 {
+    Core,
+    Valence,
+    RelativisticLocalOrbital,
+}
+
+/// Per-site override applied after the FLEUR element default is expanded to signed kappa.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct CoreStateV1 {
+pub struct ElectronicStateOverrideV1 {
     pub site: String,
     pub principal_quantum_number: u32,
     pub kappa: i32,
-    pub occupation: f64,
+    pub treatment: ElectronicStateTreatmentV1,
 }
 
-impl CoreStateV1 {
+impl ElectronicStateOverrideV1 {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
         nonempty(format!("{path}.site"), &self.site)?;
         if self.principal_quantum_number == 0 {
@@ -454,7 +463,15 @@ impl CoreStateV1 {
                 path: format!("{path}.kappa"),
             });
         }
-        positive(format!("{path}.occupation"), self.occupation)
+        if self.treatment == ElectronicStateTreatmentV1::RelativisticLocalOrbital
+            && !(1..=3).contains(&self.kappa)
+        {
+            return Err(InputValidationError::InvalidRelativisticLocalOrbitalKappa {
+                path: path.to_owned(),
+                kappa: self.kappa,
+            });
+        }
+        Ok(())
     }
 }
 

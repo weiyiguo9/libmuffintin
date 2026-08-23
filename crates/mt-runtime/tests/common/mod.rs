@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use muffintin::{
-    BandPathPointV1, BasisV1, ConvergenceV1, CoreStateV1, EnergyWindowV1, ExchangeCorrelationV1,
-    InputV1, KMeshV1, LocalOrbitalKindV1, LocalOrbitalV1, MixingV1, OccupationsV1, RelativityV1,
-    TaskV1, WorkflowV1, input_to_toml,
+    BandPathPointV1, BasisV1, ConvergenceV1, ElectronicStateOverrideV1, ElectronicStateTreatmentV1,
+    EnergyWindowV1, ExchangeCorrelationV1, InputV1, KMeshV1, LocalOrbitalKindV1, LocalOrbitalV1,
+    MixingV1, OccupationsV1, RelativityV1, TaskV1, WorkflowV1, input_to_toml,
 };
 use muffintin_io::{
     AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1,
@@ -30,7 +30,7 @@ pub fn sample_input() -> InputV1 {
                 "scf".to_owned(),
                 TaskV1::DftScf {
                     source: None,
-                    electron_count: 8.0,
+                    electron_count: 14.0,
                     k_mesh: KMeshV1 {
                         mesh: [4, 4, 4],
                         shift: [0.5, 0.5, 0.5],
@@ -53,7 +53,7 @@ pub fn sample_input() -> InputV1 {
                         beta: 0.4,
                         history: 6,
                     },
-                    relativity: RelativityV1::SpexSecondVariation {
+                    relativity: RelativityV1::SocSecondVariation {
                         band_window: [0, 12],
                     },
                     convergence: ConvergenceV1 {
@@ -61,11 +61,11 @@ pub fn sample_input() -> InputV1 {
                         density_tolerance: 1.0e-7,
                         max_iterations: 80,
                     },
-                    core_states: vec![CoreStateV1 {
+                    state_overrides: vec![ElectronicStateOverrideV1 {
                         site: "Si-1".to_owned(),
-                        principal_quantum_number: 1,
-                        kappa: -1,
-                        occupation: 2.0,
+                        principal_quantum_number: 2,
+                        kappa: 1,
+                        treatment: ElectronicStateTreatmentV1::Valence,
                     }],
                 },
             ),
@@ -211,7 +211,7 @@ pub fn supported_input() -> InputV1 {
                     density_tolerance: 1.0e100,
                     max_iterations: 2,
                 },
-                core_states: Vec::new(),
+                state_overrides: Vec::new(),
             },
         )]),
     )

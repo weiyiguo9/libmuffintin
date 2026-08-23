@@ -1,6 +1,6 @@
 # 17. Minimal full-potential DFT workflow
 
-This note defines the closed M-Kb implementation contract. M-Kb consumes the M-G LAPW basis/operator boundary, the M-J Weinert conventions, and the M-Ka scalar and four-component radial substrate; it does not create a second basis, Coulomb, or Dirac convention. The implemented scope is regular-full-Brillouin-zone LDA/PBE self-consistency, Fermi--Dirac or Gaussian occupations, three density mixers, scalar Koelling--Harmon bands, optional SPEX-style second-variation SOC, collinear and noncollinear four-component first variation, frozen-potential bands, versioned restart snapshots, and tetrahedron DOS. Energies and temperatures are Hartree and lengths are Bohr.
+This note defines the closed M-Kb implementation contract. M-Kb consumes the M-G LAPW basis/operator boundary, the M-J Weinert conventions, and the M-Ka scalar and four-component radial substrate; it does not create a second basis, Coulomb, or Dirac convention. The implemented scope is regular-full-Brillouin-zone LDA/PBE self-consistency, Fermi--Dirac or Gaussian occupations, three density mixers, scalar Koelling--Harmon bands, optional SOC second variation, collinear and noncollinear four-component first variation, frozen-potential bands, versioned restart snapshots, and tetrahedron DOS. Energies and temperatures are Hartree and lengths are Bohr.
 
 ## 1. References and fixed execution order
 
@@ -67,19 +67,13 @@ beta = 0.4
 history = 6
 
 [task.scf.relativity]
-kind = "spex-second-variation"
+kind = "soc-second-variation"
 band-window = [0, 24]
 
 [task.scf.convergence]
 energy-tolerance = 1.0e-8
 density-tolerance = 1.0e-7
 max-iterations = 80
-
-[[task.scf.core-states]]
-site = "Si-1"
-principal-quantum-number = 1
-kappa = -1
-occupation = 2.0
 
 [task.bands]
 kind = "dft-bands"
@@ -109,7 +103,19 @@ minimum = -1.0
 maximum = 1.0
 ```
 
-Task child data may therefore use either arrays of typed records, such as local orbitals, core states, and band-path points, or named subblocks, such as k meshes, mixing, XC, and convergence. Unknown fields, task kinds, orphan blocks, duplicate IDs, forward sources, and incompatible outputs are errors. This is the only V1 syntax; no second shorthand parser is retained.
+Task child data may therefore use either arrays of typed records, such as local orbitals, electronic-state overrides, and band-path points, or named subblocks, such as k meshes, mixing, XC, and convergence. Unknown fields, task kinds, orphan blocks, duplicate IDs, forward sources, and incompatible outputs are errors. This is the only V1 syntax; no second shorthand parser is retained.
+
+Core and valence channels are not enumerated by hand. The runtime selects the neutral-atom record by the snapshot atomic number from FLEUR's `default.econfig` table, splits its `core|valence` boundary, and expands each occupied shell into signed-$\kappa$ channels with the same degeneracy ratios as FLEUR. A later site-resolved override changes only the treatment of an existing occupied channel:
+
+```toml
+[[task.scf.state-overrides]]
+site = "Pb-1"
+principal-quantum-number = 5
+kappa = 1
+treatment = "valence"
+```
+
+The accepted treatments are `core`, `valence`, and `relativistic-local-orbital`. Duplicate overrides and overrides of absent atomic channels are errors. The embedded FLEUR table covers $Z=1$ through $103$.
 
 ## 3. Regional density and the physical metric
 
@@ -134,7 +140,7 @@ When $m_x=m_y=0$, this reduces exactly to the previous sum of explicit up/down m
 
 ## 4. Four-component core density
 
-Each requested bound-core channel is identified by principal quantum number, signed Dirac $\kappa$, and an occupation not exceeding $2|\kappa|$. The solver isolates a unique bracket below the outer continuum with the required large-component node count, performs the two-sided four-component Dirac solve on an extended physical radial potential, and reports explicit `NotFound` or `Ambiguous` failures rather than selecting a root heuristically.
+Each automatically selected bound-core channel is identified by principal quantum number, signed Dirac $\kappa$, and its FLEUR occupation not exceeding $2|\kappa|$. User overrides are applied before the core count is formed. The solver isolates a unique bracket below the outer continuum with the required large-component node count, performs the two-sided four-component Dirac solve on an extended physical radial potential, and reports explicit `NotFound` or `Ambiguous` failures rather than selecting a root heuristically.
 
 The true muffin-tin density is always
 
@@ -220,15 +226,15 @@ C_\sigma=-\frac{\sigma}{\sqrt{2\pi}}\sum_i w_i g_i\exp\left[-\frac{(\epsilon_i-\
 
 $C_\sigma$ is a generalized broadening correction, not a thermodynamic entropy. SPEX applies Gaussian occupations but does not include this correction in `src/iterate.f:874-911`; it is an explicit variational addition.
 
-The input `electron-count` is the total electron count. The driver subtracts the requested core occupations exactly once before solving valence occupations and rejects a configuration with no represented valence electron.
+The input `electron-count` is the total electron count. The driver subtracts the automatically selected, override-adjusted core occupations exactly once before solving valence occupations and rejects a configuration with no represented valence electron.
 
 ## 8. Scalar, second-variation SOC, and four-component routes
 
 The scalar route constructs Schrödinger or Koelling--Harmon radial solutions, analytic first and second energy derivatives, distinct-energy local orbitals, and HDLOs. Scalar-relativistic overlap uses the physical $PP+QQ$ norm. Nonspherical sphere fields enter through Gaunt matrix elements, and all site blocks use the same compiled projection order as density synthesis.
 
-The optional nonmagnetic SPEX-style SOC route first solves a scalar Koelling--Harmon problem, selects an explicit source-band window, projects the site $\xi(r)\,\mathbf L\cdot\mathbf S$ operator into that subspace, solves the ordinary Hermitian doubled-spin problem, and reconstructs global Pauli spinors. This route rejects magnetic, noncollinear, and full-spinor first-variation inputs rather than silently changing the approximation. A runtime window must begin at the lowest represented valence band because the concrete V1 kernel does not silently drop occupied scalar states below the window.
+The optional nonmagnetic SOC second-variation route first solves a scalar Koelling--Harmon problem, selects an explicit source-band window, projects the site $\xi(r)\,\mathbf L\cdot\mathbf S$ operator into that subspace, solves the ordinary Hermitian doubled-spin problem, and reconstructs global Pauli spinors. This route rejects magnetic, noncollinear, full-spinor first-variation inputs, and active signed-$\kappa$ relativistic local orbitals rather than silently changing the approximation. A runtime window must begin at the lowest represented valence band because the concrete V1 kernel does not silently drop occupied scalar states below the window. A state override to `valence` explicitly requests the conventional second-variation approximation for that channel.
 
-The full first-variation route keeps physical four-component $P/Q$ orbitals in every muffin-tin sphere and a two-component SRA interstitial basis. Each scalar $l$ linearization energy is inherited by the two signed-$\kappa$ partners with that large-component $l$; explicit signed-$\kappa$ LO and HDLO requests override the local-orbital content, including the $p_{1/2}$ channel $\kappa=+1$. Sphere and interstitial magnetic fields both enter as $V_0I+\mathbf B\cdot\boldsymbol\sigma$, including the exact off-diagonal factors $B_x\mp iB_y$, with no scalar fallback. The synthesized $m_x,m_y,m_z$ fields pass unchanged through mixing, XC, the next 4c Hamiltonian, and restart serialization.
+The full first-variation route keeps physical four-component $P/Q$ orbitals in every muffin-tin sphere and a two-component SRA interstitial basis. Each scalar $l$ linearization energy is inherited by the two signed-$\kappa$ partners with that large-component $l$; explicit signed-$\kappa$ LO and HDLO requests override the inherited local-orbital content. The default atomic policy additionally assigns the sixth-period $5p_{1/2}$ channel for $Z=55\ldots86$ and the supported seventh-period $6p_{1/2}$ channel for $Z=87\ldots103$ to `relativistic-local-orbital`. At every current effective potential, the runtime solves its continuum-relative bound Dirac energy and uses that energy in the existing confined full-$P/Q$ signed-$\kappa$ LO construction. All explicit or automatic LOs sharing one signed $\kappa$ are retained after the inherited $l$-resolved partner is removed once; a state override to `valence` is the way to disable an automatic relativistic LO. Scalar calculations omit this spinor-only basis request. Sphere and interstitial magnetic fields both enter as $V_0I+\mathbf B\cdot\boldsymbol\sigma$, including the exact off-diagonal factors $B_x\mp iB_y$, with no scalar fallback. The synthesized $m_x,m_y,m_z$ fields pass unchanged through mixing, XC, the next 4c Hamiltonian, and restart serialization.
 
 Snapshot V2 stores shared geometry and radial-basis metadata plus either a frozen Pauli potential or a restart pair containing $n,m_x,m_y,m_z$ and $V_0,B_x,B_y,B_z$. Snapshot V1 remains readable and normalizes exactly to V2: scalar data maps to $V_0$ with zero $\mathbf B$, while up/down data maps to $V_0=(V_\uparrow+V_\downarrow)/2$, $B_z=(V_\uparrow-V_\downarrow)/2$, and zero transverse fields. The runtime uses header-based version dispatch and one normalized V2 path.
 
