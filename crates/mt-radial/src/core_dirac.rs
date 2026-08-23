@@ -1441,7 +1441,11 @@ fn rk4_energy_derivatives_interval(
 }
 
 fn ensure_finite_state(p: f64, q_hat: f64, index: usize) -> Result<(), DiracError> {
-    if p.is_finite() && q_hat.is_finite() && p.abs() <= 1.0e200 && q_hat.abs() <= 1.0e200 {
+    if p.is_finite()
+        && q_hat.is_finite()
+        && p.abs() <= crate::MAX_RADIAL_AMPLITUDE
+        && q_hat.abs() <= crate::MAX_RADIAL_AMPLITUDE
+    {
         Ok(())
     } else {
         Err(DiracError::IntegrationOverflow { index })

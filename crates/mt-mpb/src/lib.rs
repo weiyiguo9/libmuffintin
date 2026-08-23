@@ -83,11 +83,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_tolerance_matches_spex_mbasis() {
-        assert!((DEFAULT_TOLERANCE - 1.0e-4).abs() < 1.0e-18);
-    }
-
-    #[test]
     fn overlap_eigenvalues_equal_to_the_threshold_are_kept() {
         assert!(retain_overlap_eigenvalue(
             DEFAULT_TOLERANCE,

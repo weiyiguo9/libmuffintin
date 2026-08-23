@@ -7,6 +7,12 @@
 
 #![forbid(unsafe_code)]
 
+/// Implementation diagnostic for RK4 state growth, not a public convention.
+///
+/// It fires before squaring can overflow (`sqrt(f64::MAX) ~= 1.34e154`) and
+/// leaves headroom for the mesh-weighted norm.
+const MAX_RADIAL_AMPLITUDE: f64 = 1.0e150;
+
 mod core_dirac;
 mod core_potential;
 mod integrals;

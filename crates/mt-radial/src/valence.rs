@@ -566,7 +566,11 @@ impl<'a> RadialSolver<'a> {
             );
             p[i + 1] = p[i] + dr * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0;
             q[i + 1] = q[i] + dr * (l1 + 2.0 * l2 + 2.0 * l3 + l4) / 6.0;
-            if !p[i + 1].is_finite() || !q[i + 1].is_finite() || p[i + 1].abs() > 1.0e150 {
+            if !p[i + 1].is_finite()
+                || !q[i + 1].is_finite()
+                || p[i + 1].abs() > crate::MAX_RADIAL_AMPLITUDE
+                || q[i + 1].abs() > crate::MAX_RADIAL_AMPLITUDE
+            {
                 return Err(RadialError::IntegrationOverflow { index: i + 1 });
             }
         }
@@ -598,8 +602,8 @@ impl<'a> RadialSolver<'a> {
         let boundary = self.boundary_from_internal(
             angular_momentum,
             energy.get(),
-            p.last().copied().unwrap_or(0.0),
-            q_tilde.last().copied().unwrap_or(0.0),
+            p[p.len() - 1],
+            q_tilde[q_tilde.len() - 1],
         );
         Ok(RadialSolution {
             equation: self.equation,
