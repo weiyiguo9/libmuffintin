@@ -386,29 +386,29 @@ fn bracket(
     maximum_energy: f64,
     kernel: fn(f64) -> f64,
 ) -> Result<(f64, f64), OccupationError> {
-    let span = maximum_energy - minimum_energy;
-    let mut step = span.max(scale).max(1.0);
-    if !step.is_finite() {
-        return Err(OccupationError::BracketingFailed);
+    if electron_count(states, minimum_energy, scale, kernel) <= requested_electrons
+        && electron_count(states, maximum_energy, scale, kernel) >= requested_electrons
+    {
+        return Ok((minimum_energy, maximum_energy));
     }
-    let mut lower = minimum_energy - step;
-    let mut upper = maximum_energy + step;
-    for _ in 0..1024 {
-        if lower.is_finite()
-            && electron_count(states, lower, scale, kernel) <= requested_electrons
-            && upper.is_finite()
+
+    let mut step = (maximum_energy - minimum_energy).max(scale).max(1.0);
+    loop {
+        if !step.is_finite() {
+            return Err(OccupationError::BracketingFailed);
+        }
+        let lower = minimum_energy - step;
+        let upper = maximum_energy + step;
+        if !lower.is_finite() || !upper.is_finite() {
+            return Err(OccupationError::BracketingFailed);
+        }
+        if electron_count(states, lower, scale, kernel) <= requested_electrons
             && electron_count(states, upper, scale, kernel) >= requested_electrons
         {
             return Ok((lower, upper));
         }
         step *= 2.0;
-        lower = minimum_energy - step;
-        upper = maximum_energy + step;
-        if !step.is_finite() {
-            break;
-        }
     }
-    Err(OccupationError::BracketingFailed)
 }
 
 fn summarize_solution(
@@ -711,6 +711,21 @@ mod tests {
         assert!(matches!(
             solve_fermi_dirac(&valid, 1.1, Hartree(0.1), 1.0e-12, 10),
             Err(OccupationError::ElectronCountOutsideFiniteDomain { .. })
+        ));
+    }
+
+    #[test]
+    fn valid_endpoint_bracket_does_not_require_an_overflowing_span() {
+        let states = [state(-f64::MAX, 1.0, 1), state(f64::MAX, 1.0, 1)];
+        let fermi = solve_fermi_dirac(&states, 1.0, Hartree(0.2), 1.0e-12, 256).unwrap();
+        let gaussian = solve_gaussian(&states, 1.0, Hartree(0.2), 1.0e-12, 256).unwrap();
+        assert!(fermi.chemical_potential.get().abs() < 1.0e-8);
+        assert!((fermi.electron_count - 1.0).abs() <= 1.0e-12);
+        assert!(gaussian.chemical_potential.get().abs() < 1.0e-8);
+        assert!((gaussian.electron_count - 1.0).abs() <= 1.0e-12);
+        assert!(matches!(
+            solve_fermi_dirac(&states, 0.1, Hartree(0.2), 1.0e-12, 64),
+            Err(OccupationError::BracketingFailed)
         ));
     }
 }

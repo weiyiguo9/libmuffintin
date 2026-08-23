@@ -138,7 +138,6 @@ impl Task {
                 k_mesh,
                 basis,
                 occupations,
-                xc,
                 mixing,
                 relativity,
                 convergence,
@@ -149,7 +148,6 @@ impl Task {
                 k_mesh.validate(&format!("{base}.k-mesh"))?;
                 basis.validate(&format!("{base}.basis"))?;
                 occupations.validate(&format!("{base}.occupations"))?;
-                xc.validate();
                 mixing.validate(&format!("{base}.mixing"))?;
                 relativity.validate(&format!("{base}.relativity"))?;
                 convergence.validate(&format!("{base}.convergence"))?;
@@ -331,10 +329,6 @@ pub enum ExchangeCorrelation {
         #[serde(default, rename = "noncollinear-route")]
         noncollinear_route: NoncollinearXcRoute,
     },
-}
-
-impl ExchangeCorrelation {
-    const fn validate(self) {}
 }
 
 /// Noncollinear reduction used by the pointwise XC kernel.

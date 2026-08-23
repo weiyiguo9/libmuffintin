@@ -349,7 +349,11 @@ impl RegionalDensity {
         for (left, right) in self.magnetization.iter().zip(&other.magnetization) {
             total += left.physical_inner_product(right)?;
         }
-        Ok(0.5 * total)
+        let total = 0.5 * total;
+        if !total.is_finite() {
+            return Err(RegionalError::NonFiniteMetric);
+        }
+        Ok(total)
     }
 
     /// Root-mean-square magnitude of this regional residual per cell volume.
@@ -510,6 +514,9 @@ fn interstitial_inner_product(
 }
 
 fn real_metric_value(value: Complex64, absolute_scale: f64) -> Result<f64, RegionalError> {
+    if !value.re.is_finite() || !value.im.is_finite() || !absolute_scale.is_finite() {
+        return Err(RegionalError::NonFiniteMetric);
+    }
     let tolerance = REALITY_TOLERANCE * absolute_scale.max(value.re.abs()).max(1.0);
     if value.im.abs() > tolerance {
         Err(RegionalError::NonRealMetric {
@@ -568,6 +575,8 @@ pub enum RegionalError {
     ReciprocalVolumeMismatch { geometry: f64, reciprocal: f64 },
     #[error("physical inner product has imaginary part {imaginary}, tolerance {tolerance}")]
     NonRealMetric { imaginary: f64, tolerance: f64 },
+    #[error("physical inner product is not finite")]
+    NonFiniteMetric,
     #[error("physical squared norm is negative: {0}")]
     NegativeNorm(f64),
     #[error(transparent)]
@@ -669,6 +678,25 @@ mod tests {
         assert!((norm - TAU.powi(3) * 13.0).abs() < 1.0e-11);
         assert!((density.residual_rms().unwrap() - 13.0_f64.sqrt()).abs() < 1.0e-13);
         assert_eq!(density.difference_rms(&density).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn non_finite_physical_metric_is_rejected_before_reality_check() {
+        let layout = layout(&[[0; 3]]);
+        let geometry = geometry(Vec::new());
+        let huge = g0_scalar(&geometry, &layout, 1.0e200);
+        let zero = huge.zero_like();
+        assert_eq!(
+            huge.physical_inner_product(&huge),
+            Err(RegionalError::NonFiniteMetric)
+        );
+        assert_eq!(huge.residual_rms(), Err(RegionalError::NonFiniteMetric));
+        let density = RegionalDensity::new(huge, [zero.clone(), zero.clone(), zero]).unwrap();
+        assert_eq!(
+            density.physical_inner_product(&density),
+            Err(RegionalError::NonFiniteMetric)
+        );
+        assert_eq!(density.residual_rms(), Err(RegionalError::NonFiniteMetric));
     }
 
     #[test]

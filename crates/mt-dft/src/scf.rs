@@ -9,9 +9,10 @@ use crate::soc::FirstVariationWindow;
 use crate::xc::XcFunctional;
 use crate::xc_field::NoncollinearXcRoute;
 use crate::{
-    BandState, DensityMixer, EnergyError, MixingError, OccupationEnergy, OccupationError,
-    RegionalDensity, RegionalError, RegionalPotential, ScfEnergy, TetrahedronDosBins,
-    TetrahedronError, assemble_scf_energy, solve_fermi_dirac, solve_gaussian, tetrahedron_dos_bins,
+    BandState, DensityMixer, EnergyError, MixStatus, MixingError, OccupationEnergy,
+    OccupationError, RegionalDensity, RegionalError, RegionalPotential, ScfEnergy,
+    TetrahedronDosBins, TetrahedronError, assemble_scf_energy, solve_fermi_dirac, solve_gaussian,
+    tetrahedron_dos_bins,
 };
 
 const ELECTRON_TOLERANCE: f64 = 1.0e-12;
@@ -333,6 +334,9 @@ pub struct ScfIterationDiagnostic {
     pub density_rms: f64,
     pub energy_change: Option<Hartree>,
     pub energy: ScfEnergy,
+    /// Mixer status that produced the next input, or [`MixStatus::NotMixed`]
+    /// when this iteration performed no mix.
+    pub mixing: MixStatus,
 }
 
 /// Converged state consumed by later SCF, bands, and DOS tasks.
@@ -491,7 +495,7 @@ pub fn run_scf<P: ScfPhysics>(
 ) -> Result<ScfState, ScfError<P::Error>> {
     config.validate()?;
     let valence_electron_count = config.electron_count - config.core_electron_count();
-    let mut mixer = config.mixing.build()?;
+    let mut mixer = config.mixing.build().map_err(ScfConfigError::from)?;
     let mut input_density = match source {
         Some(state) => state.density.clone(),
         None => physics
@@ -592,18 +596,20 @@ pub fn run_scf<P: ScfPhysics>(
         let density_rms = input_density.difference_rms(&output_density)?;
         let energy_change = previous_energy
             .map(|previous: Hartree| Hartree((energy.total.get() - previous.get()).abs()));
-        diagnostics.push(ScfIterationDiagnostic {
+        let mut diagnostic = ScfIterationDiagnostic {
             iteration,
             chemical_potential: occupation.chemical_potential,
             density_rms,
             energy_change,
             energy,
-        });
+            mixing: MixStatus::NotMixed,
+        };
 
         let converged = density_rms <= config.convergence.density_tolerance
             && energy_change
                 .is_some_and(|change| change.get() <= config.convergence.energy_tolerance.get());
         if converged {
+            diagnostics.push(diagnostic);
             return Ok(ScfState {
                 density: input_density,
                 potential,
@@ -615,6 +621,7 @@ pub fn run_scf<P: ScfPhysics>(
             });
         }
         if iteration == config.convergence.max_iterations {
+            diagnostics.push(diagnostic);
             return Err(ScfError::NotConverged {
                 iterations: iteration,
                 density_rms,
@@ -622,8 +629,13 @@ pub fn run_scf<P: ScfPhysics>(
                 diagnostics,
             });
         }
+        let mixed = mixer
+            .mix(&input_density, &output_density)
+            .map_err(|source| ScfError::MixingFailed { iteration, source })?;
+        diagnostic.mixing = mixed.status;
+        diagnostics.push(diagnostic);
         previous_energy = Some(energy.total);
-        input_density = mixer.mix(&input_density, &output_density)?;
+        input_density = mixed.density;
     }
 
     unreachable!("positive SCF iteration limit exits through convergence or failure")
@@ -839,8 +851,12 @@ pub enum ScfError<E: Error + Send + Sync + 'static> {
     WrongCoreSite { expected: String, actual: String },
     #[error(transparent)]
     Regional(#[from] RegionalError),
-    #[error(transparent)]
-    Mixing(#[from] MixingError),
+    #[error("density mixing failed at SCF iteration {iteration}: {source}")]
+    MixingFailed {
+        iteration: usize,
+        #[source]
+        source: MixingError,
+    },
     #[error(transparent)]
     Occupation(#[from] OccupationError),
     #[error(transparent)]
@@ -1343,6 +1359,79 @@ mod tests {
                 .filter(|event| event.starts_with("core:"))
                 .count(),
             2
+        );
+        assert_eq!(diagnostics[0].mixing, MixStatus::NotMixed);
+    }
+
+    #[test]
+    fn mixer_configuration_errors_are_not_iteration_failures() {
+        let mut physics = MockPhysics::new(0.125);
+        let mut config = config(
+            ScfMixing::Linear { alpha: 0.0 },
+            ScfOccupations::FermiDirac {
+                temperature: Hartree(0.1),
+            },
+        );
+        assert!(matches!(
+            run_scf(&mut physics, &config, None),
+            Err(ScfError::InvalidConfig(ScfConfigError::Mixing(
+                MixingError::InvalidAlpha(_)
+            )))
+        ));
+        config.mixing = ScfMixing::Broyden2 {
+            alpha: 0.5,
+            history: 1,
+        };
+        assert!(matches!(
+            run_scf(&mut physics, &config, None),
+            Err(ScfError::InvalidConfig(ScfConfigError::Mixing(
+                MixingError::HistoryTooShort(1)
+            )))
+        ));
+    }
+
+    #[test]
+    fn iteration_diagnostics_record_mixer_status() {
+        let mut linear_physics = MockPhysics::new(0.125);
+        let linear = run_scf(
+            &mut linear_physics,
+            &config(
+                ScfMixing::Linear { alpha: 1.0 },
+                ScfOccupations::FermiDirac {
+                    temperature: Hartree(0.1),
+                },
+            ),
+            None,
+        )
+        .unwrap();
+        assert_eq!(linear.diagnostics.len(), 2);
+        assert_eq!(linear.diagnostics[0].mixing, MixStatus::Linear);
+        assert_eq!(linear.diagnostics[1].mixing, MixStatus::NotMixed);
+
+        let mut broyden_physics = MockPhysics::new(0.125);
+        let broyden = run_scf(
+            &mut broyden_physics,
+            &config(
+                ScfMixing::Broyden2 {
+                    alpha: 0.5,
+                    history: 4,
+                },
+                ScfOccupations::FermiDirac {
+                    temperature: Hartree(0.1),
+                },
+            ),
+            None,
+        )
+        .unwrap();
+        assert_eq!(broyden.diagnostics[0].mixing, MixStatus::NonlinearWarmup);
+        assert_eq!(
+            broyden.diagnostics.last().unwrap().mixing,
+            MixStatus::NotMixed
+        );
+        assert!(
+            broyden.diagnostics[..broyden.diagnostics.len() - 1]
+                .iter()
+                .all(|diagnostic| diagnostic.mixing != MixStatus::NotMixed)
         );
     }
 }
