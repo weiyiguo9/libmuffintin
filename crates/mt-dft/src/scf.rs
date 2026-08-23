@@ -1482,7 +1482,9 @@ mod tests {
                 temperature: Hartree(0.1),
             },
         );
-        config.basis.channels.push(channel_recipe());
+        let mut recipe = channel_recipe();
+        recipe.identity = ScfChannelIdentity::ScalarL { n: 2, l: 1 };
+        config.basis.channels.push(recipe.clone());
 
         let state = run_scf(&mut physics, &config, None).unwrap();
         assert_eq!(physics.band_passes, [(1, 0), (1, 1), (2, 0), (2, 1)]);
@@ -1495,14 +1497,14 @@ mod tests {
                 .all(|(_, _, sum)| (*sum - 0.75).abs() < ELECTRON_TOLERANCE)
         );
 
-        let expected = vec![resolved_channel(channel_recipe())];
+        let expected = vec![resolved_channel(recipe.clone())];
         assert!(
             state
                 .diagnostics
                 .iter()
                 .all(|diagnostic| diagnostic.resolved_channels == expected)
         );
-        assert_eq!(state.basis.channels, vec![channel_recipe()]);
+        assert_eq!(state.basis.channels, vec![recipe]);
         assert_eq!(state.basis.resolved_channels, expected);
     }
 

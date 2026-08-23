@@ -887,9 +887,10 @@ impl SnapshotDftPhysics {
                         generator: recipe.generator,
                     });
                 }
-                let seed = recipe
-                    .seed
-                    .unwrap_or(self.snapshot_anchor(recipe, lo_ordinal)?);
+                let seed = match recipe.seed {
+                    Some(seed) => seed,
+                    None => self.snapshot_anchor(recipe, lo_ordinal)?,
+                };
                 let spherical = spherical_scalar_potential(potential, site_index, &site.id)?;
                 if recipe.generator == LinearizationEnergyGenerator::BandCenter {
                     generate_band_center_energy(
@@ -1152,20 +1153,29 @@ impl SnapshotDftPhysics {
             .filter(|recipe| recipe.generator == LinearizationEnergyGenerator::BandCog)
             .collect::<Vec<_>>();
         for (index, recipe) in band_cog.iter().enumerate() {
-            let duplicate = band_cog[..index].iter().any(|prior| {
-                prior.site == recipe.site
-                    && match relativity {
-                        ScfRelativity::SpinorFirstVariation => prior.identity == recipe.identity,
-                        ScfRelativity::Scalar | ScfRelativity::SocSecondVariation { .. } => {
-                            channel_l(prior.identity) == channel_l(recipe.identity)
-                        }
+            for prior in &band_cog[..index] {
+                if prior.site != recipe.site {
+                    continue;
+                }
+                let projections_overlap = match relativity {
+                    ScfRelativity::SpinorFirstVariation => {
+                        let current = channel_kappas(recipe.identity)?
+                            .into_iter()
+                            .collect::<BTreeSet<_>>();
+                        channel_kappas(prior.identity)?
+                            .into_iter()
+                            .any(|kappa| current.contains(&kappa))
                     }
-            });
-            if duplicate {
-                return Err(SnapshotDftError::AmbiguousBandCogProjection {
-                    site: recipe.site.clone(),
-                    identity: recipe.identity,
-                });
+                    ScfRelativity::Scalar | ScfRelativity::SocSecondVariation { .. } => {
+                        channel_l(prior.identity) == channel_l(recipe.identity)
+                    }
+                };
+                if projections_overlap {
+                    return Err(SnapshotDftError::AmbiguousBandCogProjection {
+                        site: recipe.site.clone(),
+                        identity: recipe.identity,
+                    });
+                }
             }
         }
         Ok(())
@@ -3276,6 +3286,51 @@ mod tests {
     }
 
     #[test]
+    fn seeded_radial_search_does_not_require_a_snapshot_lo_anchor() {
+        let physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+        for generator in [
+            LinearizationEnergyGenerator::BandCenter,
+            LinearizationEnergyGenerator::LogDerivative,
+        ] {
+            let mut basis = config(ScfRelativity::Scalar).basis;
+            basis.channels.push(ScfChannelRecipe {
+                site: "H-1".to_owned(),
+                identity: ScfChannelIdentity::ScalarL { n: 2, l: 0 },
+                treatment: ScfChannelTreatment::Lo,
+                derivative_order: 0,
+                generator,
+                seed: Some(Hartree(-0.2)),
+                provenance: muffintin_dft::ScfChannelProvenance::Site,
+            });
+            let meshes = physics.channel_meshes(&basis).unwrap();
+            let extended = build_extended_snapshot_core_potentials(
+                &physics.frozen_potential,
+                &physics.geometry,
+                &physics.nuclear_charges,
+                &meshes,
+                CorePotentialContinuationSpec::default(),
+            )
+            .unwrap();
+            match physics.materialize_nonspectral_basis(
+                &physics.frozen_potential,
+                &basis,
+                &extended,
+            ) {
+                Ok(materialized) => assert!(
+                    materialized
+                        .resolved_channels
+                        .iter()
+                        .any(|resolved| resolved.recipe.generator == generator)
+                ),
+                Err(SnapshotDftError::ChannelGenerator {
+                    generator: actual, ..
+                }) => assert_eq!(actual, generator),
+                Err(error) => panic!("seeded {generator:?} failed before its generator: {error}"),
+            }
+        }
+    }
+
+    #[test]
     fn scalar_single_site_snapshot_runs_two_iteration_scf_smoke() {
         let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
         let state = run_scf(&mut physics, &config(ScfRelativity::Scalar), None).unwrap();
@@ -3317,6 +3372,26 @@ mod tests {
                     )
             })
         }));
+    }
+
+    #[test]
+    fn spinor_band_cog_rejects_distinct_channels_with_the_same_kappa_projection() {
+        let physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+        let mut first = config(ScfRelativity::SpinorFirstVariation).basis.channels[0].clone();
+        first.identity = ScfChannelIdentity::Kappa { n: 2, kappa: -1 };
+        first.treatment = ScfChannelTreatment::Lo;
+        first.generator = LinearizationEnergyGenerator::BandCog;
+        first.seed = Some(Hartree(-0.2));
+        let mut second = first.clone();
+        second.identity = ScfChannelIdentity::Kappa { n: 3, kappa: -1 };
+
+        assert!(matches!(
+            physics.validate_band_cog_projection_keys(
+                &[&first, &second],
+                ScfRelativity::SpinorFirstVariation,
+            ),
+            Err(SnapshotDftError::AmbiguousBandCogProjection { .. })
+        ));
     }
 
     #[test]
