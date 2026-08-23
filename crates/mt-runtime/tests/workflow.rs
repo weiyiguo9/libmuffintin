@@ -3,9 +3,12 @@ mod common;
 use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::f64::consts::TAU;
+use std::path::PathBuf;
 
 use muffintin::{
-    ChannelEnergyGenerator, InputError, Task, TaskResult, execute_prepared_with, prepare_input,
+    ChannelEnergyGenerator, ChannelIdentity, ChannelProvenance, ChannelRecipeArtifact,
+    ChannelRecipeRecord, ChannelScope, ChannelTreatment, InputError, Task, TaskResult,
+    execute_prepared_with, prepare_input, prepare_input_with_recipes,
 };
 use muffintin_core::{
     FourierLayout, GVector, Hartree, InterstitialGeometry, InverseBohr, ReciprocalLattice,
@@ -21,7 +24,7 @@ use muffintin_dft::{
 use muffintin_io::SnapshotFile;
 use num_complex::Complex64;
 
-use common::{sample_input, sample_snapshot};
+use common::{sample_input, sample_snapshot, supported_input, supported_snapshot};
 
 struct WorkflowKernel {
     template: RegionalDensity,
@@ -300,11 +303,67 @@ fn workflow_executes_scf_bands_dos_in_order_with_exact_state_reuse() {
 
 #[test]
 fn schema_rich_orbital_config_fails_closed_before_execution() {
-    let prepared = prepare_input(&sample_input(), SnapshotFile::V1(sample_snapshot())).unwrap();
+    let recipes = BTreeMap::from([(
+        PathBuf::from("recipes/si.toml"),
+        ChannelRecipeArtifact::default(),
+    )]);
+    let prepared = prepare_input_with_recipes(
+        &sample_input(),
+        SnapshotFile::V1(sample_snapshot()),
+        &recipes,
+    )
+    .unwrap();
+    assert!(prepared.tasks[0].channel_recipe.is_some());
     let mut kernel = WorkflowKernel::new();
     assert!(matches!(
         execute_prepared_with(&prepared, &mut kernel),
         Err(InputError::UnsupportedV2OrbitalConfiguration { task_id }) if task_id == "scf"
+    ));
+    assert!(kernel.events.is_empty());
+}
+
+#[test]
+fn derivative_order_three_prepares_but_fails_at_execution_boundary() {
+    let mut input = supported_input();
+    let Task::DftScf { basis, .. } = input.task.get_mut("scf").unwrap() else {
+        panic!("scf task changed kind");
+    };
+    let recipe_path = PathBuf::from("recipes/h.toml");
+    basis.recipe = Some(recipe_path.clone());
+    let identity = ChannelIdentity::ScalarL { n: 2, l: 1 };
+    let recipes = BTreeMap::from([(
+        recipe_path,
+        ChannelRecipeArtifact {
+            channels: vec![ChannelRecipeRecord {
+                scope: ChannelScope::Site {
+                    name: "H-1".to_owned(),
+                },
+                identity,
+                treatment: ChannelTreatment::Hdlo,
+                derivative_order: 3,
+                generator: ChannelEnergyGenerator::Explicit,
+                seed: Some(Hartree(-0.1)),
+                provenance: ChannelProvenance::BuiltIn,
+            }],
+        },
+    )]);
+    let prepared =
+        prepare_input_with_recipes(&input, SnapshotFile::V1(supported_snapshot()), &recipes)
+            .unwrap();
+    assert_eq!(
+        prepared.tasks[0].channel_recipe.as_ref().unwrap().sites[0].channels[0].derivative_order,
+        3
+    );
+
+    let mut kernel = WorkflowKernel::new();
+    assert!(matches!(
+        execute_prepared_with(&prepared, &mut kernel),
+        Err(InputError::DerivativeOrderNotImplemented {
+            task_id,
+            site,
+            identity: found_identity,
+            derivative_order: 3,
+        }) if task_id == "scf" && site == "H-1" && found_identity == identity
     ));
     assert!(kernel.events.is_empty());
 }

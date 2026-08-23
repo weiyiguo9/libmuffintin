@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use muffintin_io::IoError;
 use thiserror::Error;
 
-use crate::TaskKind;
+use crate::{ChannelIdentity, ChannelRecipeError, TaskKind};
 
 /// A syntactically valid input whose values violate the workflow contract.
 #[derive(Clone, Debug, Error, PartialEq)]
@@ -114,6 +114,22 @@ pub enum InputError {
     },
     #[error("invalid in-memory snapshot: {0}")]
     InvalidSnapshot(#[source] IoError),
+    #[error("task {task_id:?} requires preloaded channel recipe artifact {path:?}")]
+    MissingRecipeArtifact { task_id: String, path: PathBuf },
+    #[error("task {task_id:?} could not read channel recipe file {path:?}: {source}")]
+    ReadRecipe {
+        task_id: String,
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("task {task_id:?} has an invalid channel recipe at {path:?}: {source}")]
+    ChannelRecipe {
+        task_id: String,
+        path: Option<PathBuf>,
+        #[source]
+        source: Box<ChannelRecipeError>,
+    },
     #[error("task {task_id:?} has no FLEUR atomic default for Z={atomic_number} on site {site:?}")]
     UnsupportedAtomicNumber {
         task_id: String,
@@ -121,9 +137,18 @@ pub enum InputError {
         atomic_number: u16,
     },
     #[error(
-        "task {task_id:?} orbital configuration has not been compiled; this execution path requires energy-generator = \"frozen-snapshot\" with no recipe and empty channels"
+        "task {task_id:?} compiled recipe has not yet been materialized; this execution path requires energy-generator = \"frozen-snapshot\" with no recipe and empty channels"
     )]
     UnsupportedV2OrbitalConfiguration { task_id: String },
+    #[error(
+        "task {task_id:?} site {site:?} channel {identity:?} requests derivative order {derivative_order}, which is not implemented"
+    )]
+    DerivativeOrderNotImplemented {
+        task_id: String,
+        site: String,
+        identity: ChannelIdentity,
+        derivative_order: u32,
+    },
     #[error("task {task_id:?} could not consume its prepared SCF state source")]
     UnavailableScfSource { task_id: String },
     #[error("task {task_id:?} ({kind}) failed: {source}")]

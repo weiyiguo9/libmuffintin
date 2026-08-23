@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -13,8 +14,10 @@ use muffintin_io::{SnapshotFile, SnapshotV2, snapshot_file_from_toml};
 
 use crate::input::parse_source;
 use crate::{
-    ChannelEnergyGenerator, ExchangeCorrelation, Input, InputError, KMesh, Mixing,
-    NoncollinearXcRoute, Occupations, Relativity, Task, parse_input_toml,
+    ChannelEnergyGenerator, ChannelRecipeArtifact, CompiledChannelRecipe, ExchangeCorrelation,
+    ExternalChannelRecipe, Input, InputError, KMesh, Mixing, NoncollinearXcRoute, Occupations,
+    RecipeSite, Relativity, Task, compile_channel_recipe, parse_channel_recipe_toml,
+    parse_input_toml,
 };
 
 /// A source reference resolved against the workflow's stable task order.
@@ -31,6 +34,7 @@ pub struct PreparedTask {
     pub id: String,
     pub task: Task,
     pub source: Option<PreparedSource>,
+    pub channel_recipe: Option<CompiledChannelRecipe>,
 }
 
 /// A fully validated workflow and loaded immutable input snapshot.
@@ -68,6 +72,18 @@ pub fn prepare_input(
     input: &Input,
     snapshot: SnapshotFile,
 ) -> Result<PreparedWorkflow, InputError> {
+    prepare_input_with_recipes(input, snapshot, &BTreeMap::new())
+}
+
+/// Validate and resolve decoded input, snapshot, and preloaded recipe artifacts.
+///
+/// Recipe paths remain workflow-relative keys. This function performs no
+/// filesystem access; callers must supply every artifact named by an SCF task.
+pub fn prepare_input_with_recipes(
+    input: &Input,
+    snapshot: SnapshotFile,
+    recipe_artifacts: &BTreeMap<PathBuf, ChannelRecipeArtifact>,
+) -> Result<PreparedWorkflow, InputError> {
     input.validate()?;
     let snapshot = match snapshot {
         SnapshotFile::V1(snapshot) => snapshot.normalize_v2(),
@@ -78,6 +94,43 @@ pub fn prepare_input(
     let mut tasks = Vec::with_capacity(input.workflow.tasks.len());
     for id in &input.workflow.tasks {
         let task = input.task[id].clone();
+        let channel_recipe = match &task {
+            Task::DftScf { basis, .. } => {
+                let sites = recipe_sites(id, &snapshot)?;
+                let external = match &basis.recipe {
+                    Some(path) => {
+                        let artifact = recipe_artifacts.get(path).ok_or_else(|| {
+                            InputError::MissingRecipeArtifact {
+                                task_id: id.clone(),
+                                path: path.clone(),
+                            }
+                        })?;
+                        let source = path.display().to_string();
+                        Some((artifact, source))
+                    }
+                    None => None,
+                };
+                let external = external
+                    .as_ref()
+                    .map(|(artifact, source)| ExternalChannelRecipe {
+                        artifact,
+                        source: source.as_str(),
+                    });
+                let compiled = compile_channel_recipe(
+                    &sites,
+                    external,
+                    basis.energy_generator,
+                    &basis.channels,
+                )
+                .map_err(|source| InputError::ChannelRecipe {
+                    task_id: id.clone(),
+                    path: basis.recipe.clone(),
+                    source: Box::new(source),
+                })?;
+                Some(compiled)
+            }
+            Task::DftBands { .. } | Task::DftDos { .. } => None,
+        };
         let source = task.source().map(|source| {
             let (task_id, output) = parse_source(source)
                 .expect("Input::validate accepted only syntactically valid sources");
@@ -97,9 +150,32 @@ pub fn prepare_input(
             id: id.clone(),
             task,
             source,
+            channel_recipe,
         });
     }
     Ok(PreparedWorkflow { snapshot, tasks })
+}
+
+fn recipe_sites(task_id: &str, snapshot: &SnapshotV2) -> Result<Vec<RecipeSite>, InputError> {
+    snapshot
+        .geometry
+        .sites
+        .iter()
+        .map(|site| {
+            let atomic_number = u8::try_from(site.atomic_number)
+                .ok()
+                .and_then(AtomicNumber::new)
+                .ok_or_else(|| InputError::UnsupportedAtomicNumber {
+                    task_id: task_id.to_owned(),
+                    site: site.id.clone(),
+                    atomic_number: site.atomic_number,
+                })?;
+            Ok(RecipeSite {
+                id: site.id.clone(),
+                atomic_number,
+            })
+        })
+        .collect()
 }
 
 /// Read one input and its relative snapshot, then prepare the workflow.
@@ -121,7 +197,34 @@ pub fn load_input_path(path: impl AsRef<Path>) -> Result<PreparedWorkflow, Input
             path: snapshot_path,
             source,
         })?;
-    prepare_input(&input, snapshot)
+    let mut recipe_artifacts = BTreeMap::new();
+    for task_id in &input.workflow.tasks {
+        let Task::DftScf { basis, .. } = &input.task[task_id] else {
+            continue;
+        };
+        let Some(recipe) = &basis.recipe else {
+            continue;
+        };
+        if recipe_artifacts.contains_key(recipe) {
+            continue;
+        }
+        let recipe_path = resolve_input_relative_path(input_path, recipe);
+        let recipe_text =
+            fs::read_to_string(&recipe_path).map_err(|source| InputError::ReadRecipe {
+                task_id: task_id.clone(),
+                path: recipe_path,
+                source,
+            })?;
+        let artifact = parse_channel_recipe_toml(&recipe_text).map_err(|source| {
+            InputError::ChannelRecipe {
+                task_id: task_id.clone(),
+                path: Some(recipe.clone()),
+                source: Box::new(source),
+            }
+        })?;
+        recipe_artifacts.insert(recipe.clone(), artifact);
+    }
+    prepare_input_with_recipes(&input, snapshot, &recipe_artifacts)
 }
 
 /// Execute a prepared workflow with one material kernel shared by every task.
@@ -137,7 +240,7 @@ pub fn execute_prepared_with<P: ScfPhysics>(
         let source = source_state(task, &results)?;
         let result = match &task.task {
             Task::DftScf { .. } => {
-                let config = scf_config(&task.id, &task.task, &workflow.snapshot)?;
+                let config = scf_config(task, &workflow.snapshot)?;
                 let state = run_scf(physics, &config, source).map_err(|source| {
                     InputError::TaskExecution {
                         task_id: task.id.clone(),
@@ -216,7 +319,7 @@ fn source_state<'a>(
         })
 }
 
-fn scf_config(task_id: &str, task: &Task, snapshot: &SnapshotV2) -> Result<ScfConfig, InputError> {
+fn scf_config(task: &PreparedTask, snapshot: &SnapshotV2) -> Result<ScfConfig, InputError> {
     let Task::DftScf {
         electron_count,
         k_mesh,
@@ -227,17 +330,33 @@ fn scf_config(task_id: &str, task: &Task, snapshot: &SnapshotV2) -> Result<ScfCo
         relativity,
         convergence,
         ..
-    } = task
+    } = &task.task
     else {
         unreachable!("scf_config is called only for DFT SCF tasks")
     };
+
+    if let Some((site, channel)) = task.channel_recipe.as_ref().and_then(|recipe| {
+        recipe.sites.iter().find_map(|site| {
+            site.channels
+                .iter()
+                .find(|channel| channel.derivative_order >= 3)
+                .map(|channel| (site, channel))
+        })
+    }) {
+        return Err(InputError::DerivativeOrderNotImplemented {
+            task_id: task.id.clone(),
+            site: site.site.clone(),
+            identity: channel.identity,
+            derivative_order: channel.derivative_order,
+        });
+    }
 
     if basis.energy_generator != Some(ChannelEnergyGenerator::FrozenSnapshot)
         || basis.recipe.is_some()
         || !basis.channels.is_empty()
     {
         return Err(InputError::UnsupportedV2OrbitalConfiguration {
-            task_id: task_id.to_owned(),
+            task_id: task.id.clone(),
         });
     }
     let mut atomic_configurations = Vec::with_capacity(snapshot.geometry.sites.len());
@@ -246,7 +365,7 @@ fn scf_config(task_id: &str, task: &Task, snapshot: &SnapshotV2) -> Result<ScfCo
             .ok()
             .and_then(AtomicNumber::new)
             .ok_or_else(|| InputError::UnsupportedAtomicNumber {
-                task_id: task_id.to_owned(),
+                task_id: task.id.clone(),
                 site: site.id.clone(),
                 atomic_number: site.atomic_number,
             })?;
@@ -377,8 +496,12 @@ fn uniform_edges(minimum: f64, maximum: f64, points: usize) -> Vec<Hartree> {
 }
 
 fn resolve_snapshot_path(input_path: &Path, snapshot: &Path) -> PathBuf {
+    resolve_input_relative_path(input_path, snapshot)
+}
+
+fn resolve_input_relative_path(input_path: &Path, relative: &Path) -> PathBuf {
     input_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
-        .join(snapshot)
+        .join(relative)
 }

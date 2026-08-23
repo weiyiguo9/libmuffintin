@@ -7,8 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use muffintin::{
     BandPathPoint, Basis, BasisEnvelope, BasisEnvelopeKind, ChannelEnergyGenerator,
-    ChannelTreatment, Convergence, EnergyWindow, ExchangeCorrelation, Input, KMesh, Mixing,
-    Occupations, Relativity, Task, Workflow, input_to_toml,
+    ChannelRecipeArtifact, ChannelTreatment, Convergence, EnergyWindow, ExchangeCorrelation, Input,
+    KMesh, Mixing, Occupations, Relativity, Task, Workflow, channel_recipe_to_toml, input_to_toml,
 };
 use muffintin_io::{
     AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1,
@@ -334,7 +334,13 @@ impl FixtureDirectory {
 
     pub fn write_workflow(&self) -> PathBuf {
         let input_path = self.root.join("input.toml");
+        fs::create_dir_all(self.root.join("recipes")).unwrap();
         fs::write(&input_path, input_to_toml(&sample_input()).unwrap()).unwrap();
+        fs::write(
+            self.root.join("recipes/si.toml"),
+            channel_recipe_to_toml(&ChannelRecipeArtifact::default()).unwrap(),
+        )
+        .unwrap();
         fs::write(
             self.root.join("data/snapshot.toml"),
             snapshot_to_toml(&sample_snapshot()).unwrap(),

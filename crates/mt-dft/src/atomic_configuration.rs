@@ -24,6 +24,19 @@ impl AtomicNumber {
     pub const fn get(self) -> u8 {
         self.0
     }
+
+    /// Returns the canonical, case-sensitive chemical symbol.
+    pub const fn symbol(self) -> &'static str {
+        ELEMENT_SYMBOLS[(self.0 - Self::MIN) as usize]
+    }
+
+    /// Parses a canonical, case-sensitive chemical symbol.
+    pub fn from_symbol(symbol: &str) -> Option<Self> {
+        ELEMENT_SYMBOLS
+            .iter()
+            .position(|&candidate| candidate == symbol)
+            .map(|index| Self(index as u8 + Self::MIN))
+    }
 }
 
 /// A relativistic orbital identified by principal quantum number and signed
@@ -189,6 +202,16 @@ fn append_shells(
 // The `|` is FLEUR's exact core/valence boundary. Local-orbital declarations
 // from the source file are basis hints rather than electronic occupations and
 // are therefore not duplicated here.
+const ELEMENT_SYMBOLS: [&str; 103] = [
+    "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S", "Cl",
+    "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As",
+    "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In",
+    "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb",
+    "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl",
+    "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk",
+    "Cf", "Es", "Fm", "Md", "No", "Lr",
+];
+
 const FLEUR_DEFAULT_CONFIGURATIONS: [&str; 103] = [
     "|1s1",
     "|1s2",
@@ -330,6 +353,27 @@ mod tests {
                 (configuration.total_occupation() - f64::from(z)).abs() < 1.0e-12,
                 "occupation mismatch for Z={z}"
             );
+        }
+    }
+
+    #[test]
+    fn atomic_symbols_round_trip_for_every_supported_element() {
+        for z in AtomicNumber::MIN..=AtomicNumber::MAX {
+            let atomic_number = AtomicNumber::new(z).unwrap();
+            assert_eq!(
+                AtomicNumber::from_symbol(atomic_number.symbol()),
+                Some(atomic_number)
+            );
+        }
+
+        assert_eq!(AtomicNumber::new(AtomicNumber::MIN).unwrap().symbol(), "H");
+        assert_eq!(AtomicNumber::new(AtomicNumber::MAX).unwrap().symbol(), "Lr");
+    }
+
+    #[test]
+    fn atomic_symbol_parser_rejects_noncanonical_inputs() {
+        for symbol in ["", "h", "HE", "Xx"] {
+            assert_eq!(AtomicNumber::from_symbol(symbol), None);
         }
     }
 

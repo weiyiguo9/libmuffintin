@@ -1,12 +1,14 @@
 mod common;
 
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use muffintin::{
-    ChannelEnergyGenerator, ChannelIdentity, ChannelProvenance, ChannelRecipeRecord, ChannelScope,
-    ChannelTreatment, ExchangeCorrelation, InputError, InputValidationError, Mixing,
-    NoncollinearXcRoute, Relativity, Task, input_to_toml, load_input_path, parse_input_toml,
-    prepare_input,
+    ChannelEnergyGenerator, ChannelIdentity, ChannelProvenance, ChannelRecipeArtifact,
+    ChannelRecipeError, ChannelRecipeRecord, ChannelScope, ChannelTreatment, ExchangeCorrelation,
+    InputError, InputValidationError, Mixing, NoncollinearXcRoute, Relativity, Task, input_to_toml,
+    load_input_path, parse_input_toml, prepare_input, prepare_input_with_recipes,
 };
 use muffintin_core::Hartree;
 use muffintin_io::SnapshotFile;
@@ -461,12 +463,63 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
 #[test]
 fn prepare_is_filesystem_free_and_resolves_sources() {
     let input = sample_input();
-    let prepared = prepare_input(&input, SnapshotFile::V1(sample_snapshot())).unwrap();
+    let recipes = BTreeMap::from([(
+        PathBuf::from("recipes/si.toml"),
+        ChannelRecipeArtifact {
+            channels: vec![ChannelRecipeRecord {
+                scope: ChannelScope::Species {
+                    name: "Si".to_owned(),
+                },
+                identity: ChannelIdentity::ScalarL { n: 3, l: 1 },
+                treatment: ChannelTreatment::Hdlo,
+                derivative_order: 2,
+                generator: ChannelEnergyGenerator::Explicit,
+                seed: Some(Hartree(-0.2)),
+                provenance: ChannelProvenance::BuiltIn,
+            }],
+        },
+    )]);
+    let prepared =
+        prepare_input_with_recipes(&input, SnapshotFile::V1(sample_snapshot()), &recipes).unwrap();
     assert_eq!(prepared.tasks.len(), 3);
+    let recipe = prepared.tasks[0].channel_recipe.as_ref().unwrap();
+    assert_eq!(recipe.sites.len(), 1);
+    let channels = &recipe.site("Si-1").unwrap().channels;
+    assert!(channels.iter().any(|channel| {
+        channel.identity == ChannelIdentity::ScalarL { n: 1, l: 0 }
+            && channel.treatment == ChannelTreatment::Core
+            && channel.provenance == ChannelProvenance::Species
+    }));
+    assert!(channels.iter().any(|channel| {
+        channel.identity == ChannelIdentity::ScalarL { n: 3, l: 2 }
+            && channel.treatment == ChannelTreatment::Lo
+            && channel.seed == Some(Hartree(-0.15))
+            && channel.provenance == ChannelProvenance::Site
+    }));
+    assert!(channels.iter().any(|channel| {
+        channel.identity == ChannelIdentity::ScalarL { n: 3, l: 1 }
+            && channel.treatment == ChannelTreatment::Hdlo
+            && channel.derivative_order == 2
+            && channel.provenance
+                == ChannelProvenance::ExternalRecipe {
+                    source: Some("recipes/si.toml".to_owned()),
+                }
+    }));
+    assert!(prepared.tasks[1].channel_recipe.is_none());
+    assert!(prepared.tasks[2].channel_recipe.is_none());
     let source = prepared.tasks[1].source.as_ref().unwrap();
     assert_eq!(source.task_index, 0);
     assert_eq!(source.task_id, "scf");
     assert_eq!(source.output, "state");
+}
+
+#[test]
+fn filesystem_free_prepare_requires_each_named_recipe_artifact() {
+    assert!(matches!(
+        prepare_input(&sample_input(), SnapshotFile::V1(sample_snapshot())),
+        Err(InputError::MissingRecipeArtifact { task_id, path })
+            if task_id == "scf" && path == Path::new("recipes/si.toml")
+    ));
 }
 
 #[test]
@@ -477,6 +530,7 @@ fn path_loader_resolves_snapshot_relative_to_input_parent() {
     let prepared = load_input_path(&input_path).unwrap();
     assert_eq!(prepared.snapshot, sample_snapshot().normalize_v2().unwrap());
     assert_eq!(prepared.tasks[0].id, "scf");
+    assert!(prepared.tasks[0].channel_recipe.is_some());
 
     let mut absolute = sample_input();
     absolute.snapshot = PathBuf::from("/tmp/snapshot.toml");
@@ -486,4 +540,39 @@ fn path_loader_resolves_snapshot_relative_to_input_parent() {
             InputValidationError::AbsoluteSnapshotPath { .. }
         ))
     ));
+}
+
+#[test]
+fn path_loader_reports_typed_missing_and_invalid_recipe_errors() {
+    let missing_fixture = FixtureDirectory::new();
+    let missing_input = missing_fixture.write_workflow();
+    fs::remove_file(missing_fixture.root().join("recipes/si.toml")).unwrap();
+    assert!(matches!(
+        load_input_path(&missing_input),
+        Err(InputError::ReadRecipe {
+            task_id,
+            path,
+            ..
+        }) if task_id == "scf" && path == missing_fixture.root().join("recipes/si.toml")
+    ));
+
+    let invalid_fixture = FixtureDirectory::new();
+    let invalid_input = invalid_fixture.write_workflow();
+    fs::write(
+        invalid_fixture.root().join("recipes/si.toml"),
+        "not valid TOML = [",
+    )
+    .unwrap();
+    let error = load_input_path(&invalid_input).unwrap_err();
+    let InputError::ChannelRecipe {
+        task_id,
+        path: Some(path),
+        source,
+    } = error
+    else {
+        panic!("expected a contextual channel recipe error");
+    };
+    assert_eq!(task_id, "scf");
+    assert_eq!(path, PathBuf::from("recipes/si.toml"));
+    assert!(matches!(*source, ChannelRecipeError::Decode(_)));
 }
