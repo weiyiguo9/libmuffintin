@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -6,17 +5,16 @@ use muffintin_core::Hartree;
 use muffintin_dft::{
     AtomicChannelTreatment, AtomicNumber, BandPathPoint, BandPathRequest, BandPathResult,
     DosRequest, DosResult, FirstVariationWindow, NoncollinearXcRoute as ScfNoncollinearXcRoute,
-    RelativisticOrbital, ScfBasis, ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState,
-    ScfExchangeCorrelation, ScfKMesh, ScfLocalOrbital, ScfLocalOrbitalKind, ScfMixing,
-    ScfOccupations, ScfPhysics, ScfRelativisticLocalOrbital, ScfRelativity, ScfState, XcFunctional,
-    fleur_default_atomic_configuration, run_band_path, run_dos, run_scf,
+    ScfBasis, ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState, ScfExchangeCorrelation,
+    ScfKMesh, ScfMixing, ScfOccupations, ScfPhysics, ScfRelativisticLocalOrbital, ScfRelativity,
+    ScfState, XcFunctional, fleur_default_atomic_configuration, run_band_path, run_dos, run_scf,
 };
 use muffintin_io::{SnapshotFile, SnapshotV2, snapshot_file_from_toml};
 
 use crate::input::parse_source;
 use crate::{
-    ElectronicStateTreatment, ExchangeCorrelation, Input, InputError, KMesh, LocalOrbitalKind,
-    Mixing, NoncollinearXcRoute, Occupations, Relativity, Task, parse_input_toml,
+    ChannelEnergyGenerator, ExchangeCorrelation, Input, InputError, KMesh, Mixing,
+    NoncollinearXcRoute, Occupations, Relativity, Task, parse_input_toml,
 };
 
 /// A source reference resolved against the workflow's stable task order.
@@ -228,38 +226,19 @@ fn scf_config(task_id: &str, task: &Task, snapshot: &SnapshotV2) -> Result<ScfCo
         mixing,
         relativity,
         convergence,
-        state_overrides,
         ..
     } = task
     else {
         unreachable!("scf_config is called only for DFT SCF tasks")
     };
 
-    for state in state_overrides {
-        if !snapshot
-            .geometry
-            .sites
-            .iter()
-            .any(|site| site.id == state.site)
-        {
-            return Err(InputError::UnknownElectronicStateSite {
-                task_id: task_id.to_owned(),
-                site: state.site.clone(),
-            });
-        }
-    }
-    for orbital in &basis.local_orbitals {
-        if !snapshot
-            .geometry
-            .sites
-            .iter()
-            .any(|site| site.id == orbital.site)
-        {
-            return Err(InputError::UnknownLocalOrbitalSite {
-                task_id: task_id.to_owned(),
-                site: orbital.site.clone(),
-            });
-        }
+    if basis.energy_generator != Some(ChannelEnergyGenerator::FrozenSnapshot)
+        || basis.recipe.is_some()
+        || !basis.channels.is_empty()
+    {
+        return Err(InputError::UnsupportedV2OrbitalConfiguration {
+            task_id: task_id.to_owned(),
+        });
     }
     let mut atomic_configurations = Vec::with_capacity(snapshot.geometry.sites.len());
     for site in &snapshot.geometry.sites {
@@ -271,36 +250,7 @@ fn scf_config(task_id: &str, task: &Task, snapshot: &SnapshotV2) -> Result<ScfCo
                 site: site.id.clone(),
                 atomic_number: site.atomic_number,
             })?;
-        let mut configuration = fleur_default_atomic_configuration(atomic_number);
-        let mut seen = BTreeSet::new();
-        for state in state_overrides.iter().filter(|state| state.site == site.id) {
-            if !seen.insert((state.principal_quantum_number, state.kappa)) {
-                return Err(InputError::DuplicateElectronicStateOverride {
-                    task_id: task_id.to_owned(),
-                    site: site.id.clone(),
-                    principal_quantum_number: state.principal_quantum_number,
-                    kappa: state.kappa,
-                });
-            }
-            let orbital = u8::try_from(state.principal_quantum_number)
-                .ok()
-                .zip(i8::try_from(state.kappa).ok())
-                .and_then(|(n, kappa)| RelativisticOrbital::new(n, kappa))
-                .ok_or_else(|| InputError::UnknownElectronicState {
-                    task_id: task_id.to_owned(),
-                    site: site.id.clone(),
-                    principal_quantum_number: state.principal_quantum_number,
-                    kappa: state.kappa,
-                })?;
-            if !configuration.set_treatment(orbital, map_state_treatment(state.treatment)) {
-                return Err(InputError::UnknownElectronicState {
-                    task_id: task_id.to_owned(),
-                    site: site.id.clone(),
-                    principal_quantum_number: state.principal_quantum_number,
-                    kappa: state.kappa,
-                });
-            }
-        }
+        let configuration = fleur_default_atomic_configuration(atomic_number);
         atomic_configurations.push((site, configuration));
     }
     let core_sites = atomic_configurations
@@ -346,21 +296,9 @@ fn scf_config(task_id: &str, task: &Task, snapshot: &SnapshotV2) -> Result<ScfCo
         electron_count: *electron_count,
         k_mesh: map_k_mesh(*k_mesh),
         basis: ScfBasis {
-            plane_wave_cutoff: basis.plane_wave_cutoff,
+            plane_wave_cutoff: basis.envelope.cutoff,
             l_max: basis.l_max,
-            local_orbitals: basis
-                .local_orbitals
-                .iter()
-                .map(|orbital| ScfLocalOrbital {
-                    site: orbital.site.clone(),
-                    kappa: orbital.kappa,
-                    energy: Hartree(orbital.energy),
-                    kind: match orbital.kind {
-                        LocalOrbitalKind::Lo => ScfLocalOrbitalKind::Lo,
-                        LocalOrbitalKind::Hdlo => ScfLocalOrbitalKind::Hdlo,
-                    },
-                })
-                .collect(),
+            local_orbitals: Vec::new(),
             relativistic_local_orbitals,
         },
         occupations: match occupations {
@@ -407,16 +345,6 @@ fn scf_config(task_id: &str, task: &Task, snapshot: &SnapshotV2) -> Result<ScfCo
         },
         core_sites,
     })
-}
-
-const fn map_state_treatment(treatment: ElectronicStateTreatment) -> AtomicChannelTreatment {
-    match treatment {
-        ElectronicStateTreatment::Core => AtomicChannelTreatment::Core,
-        ElectronicStateTreatment::Valence => AtomicChannelTreatment::Valence,
-        ElectronicStateTreatment::RelativisticLocalOrbital => {
-            AtomicChannelTreatment::RelativisticLocalOrbital
-        }
-    }
 }
 
 const fn map_noncollinear_xc_route(route: NoncollinearXcRoute) -> ScfNoncollinearXcRoute {

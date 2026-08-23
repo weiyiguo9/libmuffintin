@@ -5,12 +5,12 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{finite, fraction, nonempty, positive};
-use crate::{InputError, InputValidationError};
+use crate::{ChannelEnergyGenerator, ChannelTreatment, InputError, InputValidationError};
 
 /// Stable discriminator written at the start of every runtime input.
 pub const INPUT_FORMAT: &str = "libmuffintin-input";
 /// Only runtime input schema version currently supported.
-pub const INPUT_VERSION: u32 = 1;
+pub const INPUT_VERSION: u32 = 2;
 
 /// A complete workflow input in the currently supported schema.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -42,6 +42,9 @@ impl Input {
                 expected: INPUT_FORMAT,
                 found: self.format.clone(),
             });
+        }
+        if self.version == 1 {
+            return Err(InputError::V1MigrationRequired);
         }
         if self.version != INPUT_VERSION {
             return Err(InputError::UnsupportedVersion {
@@ -95,8 +98,6 @@ pub enum Task {
         mixing: Mixing,
         relativity: Relativity,
         convergence: Convergence,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        state_overrides: Vec<ElectronicStateOverride>,
     },
     #[serde(rename = "dft-bands", rename_all = "kebab-case")]
     DftBands {
@@ -141,7 +142,6 @@ impl Task {
                 mixing,
                 relativity,
                 convergence,
-                state_overrides,
                 ..
             } => {
                 positive(format!("{base}.electron-count"), *electron_count)?;
@@ -151,9 +151,6 @@ impl Task {
                 mixing.validate(&format!("{base}.mixing"))?;
                 relativity.validate(&format!("{base}.relativity"))?;
                 convergence.validate(&format!("{base}.convergence"))?;
-                for (index, state) in state_overrides.iter().enumerate() {
-                    state.validate(&format!("{base}.state-overrides[{index}]"))?;
-                }
             }
             Self::DftBands { bands, path, .. } => {
                 if *bands == 0 {
@@ -243,54 +240,51 @@ impl KMesh {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Basis {
-    pub plane_wave_cutoff: f64,
     pub l_max: u32,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub local_orbitals: Vec<LocalOrbital>,
+    /// Explicit task-level override. `None` preserves recipe/default precedence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub energy_generator: Option<ChannelEnergyGenerator>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipe: Option<PathBuf>,
+    pub envelope: BasisEnvelope,
+    /// Per-scope treatment rows. An empty vector remains distinct from an absent key.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub channels: BTreeMap<String, BTreeMap<ChannelTreatment, Vec<String>>>,
 }
 
 impl Basis {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
-        positive(format!("{path}.plane-wave-cutoff"), self.plane_wave_cutoff)?;
         if self.l_max == 0 {
             return Err(InputValidationError::Zero {
                 path: format!("{path}.l-max"),
             });
         }
-        for (index, orbital) in self.local_orbitals.iter().enumerate() {
-            orbital.validate(&format!("{path}.local-orbitals[{index}]"))?;
+        if let Some(recipe) = &self.recipe {
+            validate_recipe_path(recipe)?;
         }
+        self.envelope.validate(&format!("{path}.envelope"))?;
         Ok(())
     }
 }
 
-/// Construction route for a signed-kappa spinor local orbital.
+/// Basis envelope family. V2 currently admits only the plane-wave route.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LocalOrbitalKind {
-    Lo,
-    Hdlo,
+#[serde(rename_all = "kebab-case")]
+pub enum BasisEnvelopeKind {
+    PlaneWave,
 }
 
-/// One site-resolved local-orbital request in Hartree units.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+/// Envelope controls orthogonal to the radial channel table.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct LocalOrbital {
-    pub site: String,
-    pub kappa: i32,
-    pub energy: f64,
-    pub kind: LocalOrbitalKind,
+pub struct BasisEnvelope {
+    pub kind: BasisEnvelopeKind,
+    pub cutoff: f64,
 }
 
-impl LocalOrbital {
+impl BasisEnvelope {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
-        nonempty(format!("{path}.site"), &self.site)?;
-        if self.kappa == 0 {
-            return Err(InputValidationError::Zero {
-                path: format!("{path}.kappa"),
-            });
-        }
-        finite(format!("{path}.energy"), self.energy)
+        positive(format!("{path}.cutoff"), self.cutoff)
     }
 }
 
@@ -425,50 +419,6 @@ impl Convergence {
     }
 }
 
-/// Treatment assigned to one occupied atomic Dirac channel.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ElectronicStateTreatment {
-    Core,
-    Valence,
-    RelativisticLocalOrbital,
-}
-
-/// Per-site override applied after the FLEUR element default is expanded to signed kappa.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct ElectronicStateOverride {
-    pub site: String,
-    pub principal_quantum_number: u32,
-    pub kappa: i32,
-    pub treatment: ElectronicStateTreatment,
-}
-
-impl ElectronicStateOverride {
-    fn validate(&self, path: &str) -> Result<(), InputValidationError> {
-        nonempty(format!("{path}.site"), &self.site)?;
-        if self.principal_quantum_number == 0 {
-            return Err(InputValidationError::Zero {
-                path: format!("{path}.principal-quantum-number"),
-            });
-        }
-        if self.kappa == 0 {
-            return Err(InputValidationError::Zero {
-                path: format!("{path}.kappa"),
-            });
-        }
-        if self.treatment == ElectronicStateTreatment::RelativisticLocalOrbital
-            && !(1..=3).contains(&self.kappa)
-        {
-            return Err(InputValidationError::InvalidRelativisticLocalOrbitalKappa {
-                path: path.to_owned(),
-                kappa: self.kappa,
-            });
-        }
-        Ok(())
-    }
-}
-
 /// One labeled reciprocal-space point in an ordered band path.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
@@ -512,6 +462,29 @@ impl EnergyWindow {
 
 /// Parse and validate deterministic input TOML without touching the filesystem.
 pub fn parse_input_toml(text: &str) -> Result<Input, InputError> {
+    #[derive(Deserialize)]
+    struct Header {
+        format: String,
+        version: u32,
+    }
+
+    let header: Header = toml::from_str(text)?;
+    if header.format != INPUT_FORMAT {
+        return Err(InputError::InvalidFormat {
+            expected: INPUT_FORMAT,
+            found: header.format,
+        });
+    }
+    if header.version == 1 {
+        return Err(InputError::V1MigrationRequired);
+    }
+    if header.version != INPUT_VERSION {
+        return Err(InputError::UnsupportedVersion {
+            format: INPUT_FORMAT,
+            supported: INPUT_VERSION,
+            found: header.version,
+        });
+    }
     let input: Input = toml::from_str(text)?;
     input.validate()?;
     Ok(input)
@@ -533,6 +506,18 @@ fn validate_snapshot_path(path: &std::path::Path) -> Result<(), InputValidationE
     }
     if path.is_absolute() {
         return Err(InputValidationError::AbsoluteSnapshotPath {
+            path: path.to_owned(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_recipe_path(path: &std::path::Path) -> Result<(), InputValidationError> {
+    if path.as_os_str().is_empty() {
+        return Err(InputValidationError::EmptyRecipePath);
+    }
+    if path.is_absolute() {
+        return Err(InputValidationError::AbsoluteRecipePath {
             path: path.to_owned(),
         });
     }

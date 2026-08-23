@@ -12,6 +12,10 @@ pub enum InputValidationError {
     EmptySnapshotPath,
     #[error("snapshot path must be relative to the input file, got {path:?}")]
     AbsoluteSnapshotPath { path: PathBuf },
+    #[error("basis recipe path must not be empty")]
+    EmptyRecipePath,
+    #[error("basis recipe path must be relative to the input file, got {path:?}")]
+    AbsoluteRecipePath { path: PathBuf },
     #[error("workflow.tasks must not be empty")]
     EmptyWorkflow,
     #[error("invalid task id {id:?}; expected [A-Za-z][A-Za-z0-9_-]*")]
@@ -64,10 +68,6 @@ pub enum InputValidationError {
         minimum: f64,
         maximum: f64,
     },
-    #[error(
-        "{path}.kappa must be +1, +2, or +3 for relativistic-local-orbital treatment, got {kappa}"
-    )]
-    InvalidRelativisticLocalOrbitalKappa { path: String, kappa: i32 },
 }
 
 /// Input decoding, preparation, loading, or execution failure.
@@ -88,6 +88,10 @@ pub enum InputError {
         supported: u32,
         found: u32,
     },
+    #[error(
+        "input version 1 requires migration to version = 2: replace plane-wave-cutoff with [task.<id>.basis.envelope] kind/cutoff, and replace local-orbitals/state-overrides with [task.<id>.basis.channels]"
+    )]
+    V1MigrationRequired,
     #[error(transparent)]
     Validation(#[from] InputValidationError),
     #[error("could not read input file {path:?}: {source}")]
@@ -110,8 +114,6 @@ pub enum InputError {
     },
     #[error("invalid in-memory snapshot: {0}")]
     InvalidSnapshot(#[source] IoError),
-    #[error("task {task_id:?} names unknown electronic-state override site {site:?}")]
-    UnknownElectronicStateSite { task_id: String, site: String },
     #[error("task {task_id:?} has no FLEUR atomic default for Z={atomic_number} on site {site:?}")]
     UnsupportedAtomicNumber {
         task_id: String,
@@ -119,25 +121,9 @@ pub enum InputError {
         atomic_number: u16,
     },
     #[error(
-        "task {task_id:?} override names an unoccupied or invalid state n={principal_quantum_number}, kappa={kappa} on site {site:?}"
+        "task {task_id:?} orbital configuration has not been compiled; this execution path requires energy-generator = \"frozen-snapshot\" with no recipe and empty channels"
     )]
-    UnknownElectronicState {
-        task_id: String,
-        site: String,
-        principal_quantum_number: u32,
-        kappa: i32,
-    },
-    #[error(
-        "task {task_id:?} contains duplicate overrides for n={principal_quantum_number}, kappa={kappa} on site {site:?}"
-    )]
-    DuplicateElectronicStateOverride {
-        task_id: String,
-        site: String,
-        principal_quantum_number: u32,
-        kappa: i32,
-    },
-    #[error("task {task_id:?} names unknown local-orbital site {site:?}")]
-    UnknownLocalOrbitalSite { task_id: String, site: String },
+    UnsupportedV2OrbitalConfiguration { task_id: String },
     #[error("task {task_id:?} could not consume its prepared SCF state source")]
     UnavailableScfSource { task_id: String },
     #[error("task {task_id:?} ({kind}) failed: {source}")]

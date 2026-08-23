@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use muffintin::{
-    BandPathPoint, Basis, Convergence, ElectronicStateOverride, ElectronicStateTreatment,
-    EnergyWindow, ExchangeCorrelation, Input, KMesh, LocalOrbital, LocalOrbitalKind, Mixing,
+    BandPathPoint, Basis, BasisEnvelope, BasisEnvelopeKind, ChannelEnergyGenerator,
+    ChannelTreatment, Convergence, EnergyWindow, ExchangeCorrelation, Input, KMesh, Mixing,
     Occupations, Relativity, Task, Workflow, input_to_toml,
 };
 use muffintin_io::{
@@ -36,14 +36,29 @@ pub fn sample_input() -> Input {
                         shift: [0.5, 0.5, 0.5],
                     },
                     basis: Basis {
-                        plane_wave_cutoff: 4.0,
                         l_max: 8,
-                        local_orbitals: vec![LocalOrbital {
-                            site: "Si-1".to_owned(),
-                            kappa: 1,
-                            energy: -0.15,
-                            kind: LocalOrbitalKind::Lo,
-                        }],
+                        energy_generator: None,
+                        recipe: Some(PathBuf::from("recipes/si.toml")),
+                        envelope: BasisEnvelope {
+                            kind: BasisEnvelopeKind::PlaneWave,
+                            cutoff: 4.0,
+                        },
+                        channels: BTreeMap::from([
+                            (
+                                "Si".to_owned(),
+                                BTreeMap::from([
+                                    (ChannelTreatment::Core, vec!["1s".to_owned()]),
+                                    (ChannelTreatment::Valence, Vec::new()),
+                                ]),
+                            ),
+                            (
+                                "Si-1".to_owned(),
+                                BTreeMap::from([
+                                    (ChannelTreatment::Lo, vec!["+3d@-0.15".to_owned()]),
+                                    (ChannelTreatment::Hdlo, Vec::new()),
+                                ]),
+                            ),
+                        ]),
                     },
                     occupations: Occupations::FermiDirac { temperature: 0.01 },
                     xc: ExchangeCorrelation::LdaPw92 {
@@ -61,12 +76,6 @@ pub fn sample_input() -> Input {
                         density_tolerance: 1.0e-7,
                         max_iterations: 80,
                     },
-                    state_overrides: vec![ElectronicStateOverride {
-                        site: "Si-1".to_owned(),
-                        principal_quantum_number: 2,
-                        kappa: 1,
-                        treatment: ElectronicStateTreatment::Valence,
-                    }],
                 },
             ),
             (
@@ -196,9 +205,14 @@ pub fn supported_input() -> Input {
                     shift: [0.0; 3],
                 },
                 basis: Basis {
-                    plane_wave_cutoff: 0.5,
                     l_max: 1,
-                    local_orbitals: Vec::new(),
+                    energy_generator: Some(ChannelEnergyGenerator::FrozenSnapshot),
+                    recipe: None,
+                    envelope: BasisEnvelope {
+                        kind: BasisEnvelopeKind::PlaneWave,
+                        cutoff: 0.5,
+                    },
+                    channels: BTreeMap::new(),
                 },
                 occupations: Occupations::FermiDirac { temperature: 0.02 },
                 xc: ExchangeCorrelation::LdaPw92 {
@@ -211,7 +225,6 @@ pub fn supported_input() -> Input {
                     density_tolerance: 1.0e100,
                     max_iterations: 2,
                 },
-                state_overrides: Vec::new(),
             },
         )]),
     )

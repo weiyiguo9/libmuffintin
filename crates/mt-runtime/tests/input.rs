@@ -3,9 +3,12 @@ mod common;
 use std::path::PathBuf;
 
 use muffintin::{
-    ExchangeCorrelation, InputError, InputValidationError, Mixing, NoncollinearXcRoute, Relativity,
-    Task, input_to_toml, load_input_path, parse_input_toml, prepare_input,
+    ChannelEnergyGenerator, ChannelIdentity, ChannelProvenance, ChannelRecipeRecord, ChannelScope,
+    ChannelTreatment, ExchangeCorrelation, InputError, InputValidationError, Mixing,
+    NoncollinearXcRoute, Relativity, Task, input_to_toml, load_input_path, parse_input_toml,
+    prepare_input,
 };
+use muffintin_core::Hartree;
 use muffintin_io::SnapshotFile;
 
 use common::{FixtureDirectory, sample_input, sample_snapshot};
@@ -15,7 +18,7 @@ fn input_round_trips_deterministically_with_header_first() {
     let input = sample_input();
     let encoded = input_to_toml(&input).unwrap();
     assert!(encoded.starts_with(
-        "format = \"libmuffintin-input\"\nversion = 1\nsnapshot = \"data/snapshot.toml\"\n"
+        "format = \"libmuffintin-input\"\nversion = 2\nsnapshot = \"data/snapshot.toml\"\n"
     ));
     let decoded = parse_input_toml(&encoded).unwrap();
     assert_eq!(decoded, input);
@@ -40,13 +43,12 @@ fn xc_noncollinear_route_defaults_to_local_spin_frame() {
 }
 
 #[test]
-fn nested_arrays_and_subblocks_are_preserved() {
+fn envelope_channels_quoted_sites_and_explicit_empty_rows_are_preserved() {
     let encoded = input_to_toml(&sample_input()).unwrap();
     assert!(encoded.contains("[task.scf.k-mesh]"));
     assert!(encoded.contains("[task.scf.basis]"));
-    assert!(encoded.contains("[[task.scf.basis.local-orbitals]]"));
+    assert!(encoded.contains("[task.scf.basis.envelope]"));
     assert!(encoded.contains("[task.scf.xc]"));
-    assert!(encoded.contains("[[task.scf.state-overrides]]"));
     assert!(encoded.contains("kind = \"soc-second-variation\""));
     assert!(encoded.contains("[[task.bands.path]]"));
 
@@ -55,36 +57,79 @@ fn nested_arrays_and_subblocks_are_preserved() {
     assert_eq!(scf["relativity"]["band-window"][0].as_integer(), Some(0));
     assert_eq!(scf["relativity"]["band-window"][1].as_integer(), Some(12));
     assert_eq!(
-        scf["basis"]["local-orbitals"][0]["kappa"].as_integer(),
-        Some(1)
+        scf["basis"]["envelope"]["kind"].as_str(),
+        Some("plane-wave")
+    );
+    assert_eq!(scf["basis"]["envelope"]["cutoff"].as_float(), Some(4.0));
+    assert!(
+        scf["basis"]["channels"]["Si"]["valence"]
+            .as_array()
+            .unwrap()
+            .is_empty()
     );
     assert_eq!(
-        scf["basis"]["local-orbitals"][0]["kind"].as_str(),
-        Some("lo")
+        scf["basis"]["channels"]["Si-1"]["lo"][0].as_str(),
+        Some("+3d@-0.15")
+    );
+    assert!(
+        scf["basis"]["channels"]["Si-1"]["hdlo"]
+            .as_array()
+            .unwrap()
+            .is_empty()
     );
 
-    let decoded = parse_input_toml(&encoded).unwrap();
-    let Task::DftScf {
-        state_overrides, ..
-    } = &decoded.task["scf"]
-    else {
+    let quoted_site = encoded.replace(
+        "[task.scf.basis.channels.Si-1]",
+        "[task.scf.basis.channels.\"Si-1\"]",
+    );
+    let quoted = parse_input_toml(&quoted_site).unwrap();
+    let Task::DftScf { basis, .. } = &quoted.task["scf"] else {
         panic!("scf task changed kind");
     };
-    assert_eq!(state_overrides.len(), 1);
+    assert!(basis.channels.contains_key("Si-1"));
 
+    let decoded = parse_input_toml(&encoded).unwrap();
     let Task::DftScf {
         basis, relativity, ..
     } = &decoded.task["scf"]
     else {
         unreachable!()
     };
-    assert_eq!(basis.local_orbitals.len(), 1);
+    assert_eq!(basis.energy_generator, None);
+    assert_eq!(basis.recipe, Some(PathBuf::from("recipes/si.toml")));
+    assert!(basis.channels["Si"].contains_key(&ChannelTreatment::Valence));
     assert!(matches!(
         relativity,
         Relativity::SocSecondVariation {
             band_window: [0, 12]
         }
     ));
+}
+
+#[test]
+fn omitted_task_generator_remains_none() {
+    let encoded = input_to_toml(&sample_input()).unwrap();
+    let decoded = parse_input_toml(&encoded).unwrap();
+    let Task::DftScf { basis, .. } = &decoded.task["scf"] else {
+        panic!("scf task changed kind");
+    };
+    assert_eq!(basis.energy_generator, None);
+    assert!(!encoded.contains("energy-generator"));
+}
+
+#[test]
+fn omitted_channels_normalize_to_an_empty_table() {
+    let encoded = input_to_toml(&sample_input()).unwrap();
+    let mut document: toml::Value = toml::from_str(&encoded).unwrap();
+    document["task"]["scf"]["basis"]
+        .as_table_mut()
+        .unwrap()
+        .remove("channels");
+    let decoded = parse_input_toml(&toml::to_string(&document).unwrap()).unwrap();
+    let Task::DftScf { basis, .. } = &decoded.task["scf"] else {
+        panic!("scf task changed kind");
+    };
+    assert!(basis.channels.is_empty());
 }
 
 #[test]
@@ -95,10 +140,10 @@ fn header_unknown_fields_and_unknown_kinds_are_rejected() {
         parse_input_toml(&wrong_format),
         Err(InputError::InvalidFormat { .. })
     ));
-    let wrong_version = encoded.replacen("version = 1", "version = 2", 1);
+    let wrong_version = encoded.replacen("version = 2", "version = 3", 1);
     assert!(matches!(
         parse_input_toml(&wrong_version),
-        Err(InputError::UnsupportedVersion { found: 2, .. })
+        Err(InputError::UnsupportedVersion { found: 3, .. })
     ));
 
     let unknown_field = encoded.replacen(
@@ -115,6 +160,156 @@ fn header_unknown_fields_and_unknown_kinds_are_rejected() {
         parse_input_toml(&unknown_kind),
         Err(InputError::Decode(_))
     ));
+}
+
+#[test]
+fn complete_v1_body_gets_the_dedicated_migration_error() {
+    let v1 = r#"
+format = "libmuffintin-input"
+version = 1
+snapshot = "data/snapshot.toml"
+
+[workflow]
+tasks = ["scf"]
+
+[task.scf]
+kind = "dft-scf"
+electron-count = 1.0
+state-overrides = []
+
+[task.scf.k-mesh]
+mesh = [1, 1, 1]
+shift = [0.0, 0.0, 0.0]
+
+[task.scf.basis]
+plane-wave-cutoff = 0.5
+l-max = 1
+local-orbitals = []
+
+[task.scf.occupations]
+kind = "fermi-dirac"
+temperature = 0.02
+
+[task.scf.xc]
+kind = "lda-pw92"
+
+[task.scf.mixing]
+kind = "linear"
+beta = 1.0
+
+[task.scf.relativity]
+kind = "scalar"
+
+[task.scf.convergence]
+energy-tolerance = 1e-8
+density-tolerance = 1e-7
+max-iterations = 20
+"#;
+    let error = parse_input_toml(v1).unwrap_err();
+    assert!(matches!(error, InputError::V1MigrationRequired));
+    let message = error.to_string();
+    assert!(message.contains("version = 2"));
+    assert!(message.contains("envelope"));
+    assert!(message.contains("channels"));
+    assert!(message.contains("local-orbitals/state-overrides"));
+
+    let mut in_memory = sample_input();
+    in_memory.version = 1;
+    assert!(matches!(
+        in_memory.validate(),
+        Err(InputError::V1MigrationRequired)
+    ));
+}
+
+#[test]
+fn v2_rejects_each_removed_flat_orbital_field() {
+    let encoded = input_to_toml(&sample_input()).unwrap();
+    let flat_cutoff = encoded.replacen(
+        "[task.scf.basis]\n",
+        "[task.scf.basis]\nplane-wave-cutoff = 4.0\n",
+        1,
+    );
+    let local_orbitals = encoded.replacen(
+        "[task.scf.basis]\n",
+        "[task.scf.basis]\nlocal-orbitals = []\n",
+        1,
+    );
+    let state_overrides = encoded.replacen(
+        "kind = \"dft-scf\"\n",
+        "kind = \"dft-scf\"\nstate-overrides = []\n",
+        1,
+    );
+    for removed in [flat_cutoff, local_orbitals, state_overrides] {
+        assert!(matches!(
+            parse_input_toml(&removed),
+            Err(InputError::Decode(_))
+        ));
+    }
+}
+
+#[test]
+fn envelope_kind_and_cutoff_are_strict() {
+    let encoded = input_to_toml(&sample_input()).unwrap();
+    let unknown_kind = encoded.replacen("kind = \"plane-wave\"", "kind = \"mto\"", 1);
+    assert!(matches!(
+        parse_input_toml(&unknown_kind),
+        Err(InputError::Decode(_))
+    ));
+
+    let nonpositive = encoded.replacen("cutoff = 4.0", "cutoff = 0.0", 1);
+    assert!(matches!(
+        parse_input_toml(&nonpositive),
+        Err(InputError::Validation(
+            InputValidationError::NotPositive { .. }
+        ))
+    ));
+}
+
+#[test]
+fn recipe_path_must_be_nonempty_and_relative() {
+    let mut absolute = sample_input();
+    let Task::DftScf { basis, .. } = absolute.task.get_mut("scf").unwrap() else {
+        panic!("scf task changed kind");
+    };
+    basis.recipe = Some(PathBuf::from("/tmp/si.toml"));
+    assert!(matches!(
+        absolute.validate(),
+        Err(InputError::Validation(
+            InputValidationError::AbsoluteRecipePath { .. }
+        ))
+    ));
+
+    let mut empty = sample_input();
+    let Task::DftScf { basis, .. } = empty.task.get_mut("scf").unwrap() else {
+        panic!("scf task changed kind");
+    };
+    basis.recipe = Some(PathBuf::new());
+    assert!(matches!(
+        empty.validate(),
+        Err(InputError::Validation(
+            InputValidationError::EmptyRecipePath
+        ))
+    ));
+}
+
+#[test]
+fn recipe_ir_rejects_negative_derivative_order() {
+    let record = ChannelRecipeRecord {
+        scope: ChannelScope::Species {
+            name: "Si".to_owned(),
+        },
+        identity: ChannelIdentity::ScalarL { n: 3, l: 2 },
+        treatment: ChannelTreatment::Hdlo,
+        derivative_order: 3,
+        generator: ChannelEnergyGenerator::Explicit,
+        seed: Some(Hartree(-0.15)),
+        provenance: ChannelProvenance::ExternalRecipe {
+            source: Some("recipes/si.toml".to_owned()),
+        },
+    };
+    let encoded = toml::to_string(&record).unwrap();
+    let negative = encoded.replacen("derivative-order = 3", "derivative-order = -1", 1);
+    assert!(toml::from_str::<ChannelRecipeRecord>(&negative).is_err());
 }
 
 #[test]
@@ -227,23 +422,10 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
     ));
 
     let mut input = sample_input();
-    let Task::DftScf {
-        state_overrides, ..
-    } = input.task.get_mut("scf").unwrap()
-    else {
-        panic!("scf task changed kind");
-    };
-    state_overrides[0].kappa = 0;
-    assert!(matches!(
-        input.validate(),
-        Err(InputError::Validation(InputValidationError::Zero { .. }))
-    ));
-
-    let mut input = sample_input();
     let Task::DftScf { basis, .. } = input.task.get_mut("scf").unwrap() else {
         panic!("scf task changed kind");
     };
-    basis.local_orbitals[0].energy = f64::NAN;
+    basis.envelope.cutoff = f64::NAN;
     assert!(matches!(
         input.validate(),
         Err(InputError::Validation(
@@ -255,7 +437,7 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
     let Task::DftScf { basis, .. } = input.task.get_mut("scf").unwrap() else {
         panic!("scf task changed kind");
     };
-    basis.local_orbitals[0].kappa = 0;
+    basis.l_max = 0;
     assert!(matches!(
         input.validate(),
         Err(InputError::Validation(InputValidationError::Zero { .. }))

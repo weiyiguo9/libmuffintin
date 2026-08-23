@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::f64::consts::TAU;
 
-use muffintin::{TaskResult, execute_prepared_with, prepare_input};
+use muffintin::{
+    ChannelEnergyGenerator, InputError, Task, TaskResult, execute_prepared_with, prepare_input,
+};
 use muffintin_core::{
     FourierLayout, GVector, Hartree, InterstitialGeometry, InverseBohr, ReciprocalLattice,
     VolumeBohr3,
@@ -26,7 +28,6 @@ struct WorkflowKernel {
     events: Vec<String>,
     band_source: Option<ScfState>,
     dos_source: Option<ScfState>,
-    saw_local_orbital: bool,
     saw_sv_window: bool,
     saw_valence_electron_count: bool,
 }
@@ -38,7 +39,6 @@ impl WorkflowKernel {
             events: Vec::new(),
             band_source: None,
             dos_source: None,
-            saw_local_orbital: false,
             saw_sv_window: false,
             saw_valence_electron_count: false,
         }
@@ -90,19 +90,13 @@ impl ScfPhysics for WorkflowKernel {
         _relativity: ScfRelativity,
     ) -> Result<CoreContribution, Self::Error> {
         assert_eq!(site.id, "Si-1");
-        assert_eq!(site.states.len(), 3);
-        assert!(
-            !site
-                .states
-                .iter()
-                .any(|state| { state.principal_quantum_number == 2 && state.kappa == 1 })
-        );
+        assert_eq!(site.states.len(), 4);
         assert_eq!(
             site.states
                 .iter()
                 .map(|state| state.occupation)
                 .sum::<f64>(),
-            8.0
+            10.0
         );
         self.events.push(format!("core:{iteration}"));
         Ok(CoreContribution {
@@ -119,10 +113,7 @@ impl ScfPhysics for WorkflowKernel {
         basis: &ScfBasis,
         _relativity: ScfRelativity,
     ) -> Result<Self::OneParticle, Self::Error> {
-        self.saw_local_orbital = basis.local_orbitals.len() == 1
-            && basis.local_orbitals[0].site == "Si-1"
-            && basis.local_orbitals[0].kappa == 1
-            && basis.local_orbitals[0].energy == Hartree(-0.15);
+        assert!(basis.local_orbitals.is_empty());
         self.events.push(format!("assemble:{iteration}"));
         Ok(())
     }
@@ -158,7 +149,7 @@ impl ScfPhysics for WorkflowKernel {
     ) -> Result<RegionalDensity, Self::Error> {
         assert_eq!(occupations.len(), 2);
         let represented_electrons = 8.0 * occupations.iter().sum::<f64>();
-        self.saw_valence_electron_count = (represented_electrons - 6.0).abs() < 1.0e-11;
+        self.saw_valence_electron_count = (represented_electrons - 4.0).abs() < 1.0e-11;
         self.events.push(format!("density:{iteration}"));
         Ok(self.template.zero_like())
     }
@@ -247,7 +238,14 @@ fn scalar_density(value: f64) -> RegionalDensity {
 
 #[test]
 fn workflow_executes_scf_bands_dos_in_order_with_exact_state_reuse() {
-    let prepared = prepare_input(&sample_input(), SnapshotFile::V1(sample_snapshot())).unwrap();
+    let mut input = sample_input();
+    let Task::DftScf { basis, .. } = input.task.get_mut("scf").unwrap() else {
+        panic!("scf task changed kind");
+    };
+    basis.energy_generator = Some(ChannelEnergyGenerator::FrozenSnapshot);
+    basis.recipe = None;
+    basis.channels.clear();
+    let prepared = prepare_input(&input, SnapshotFile::V1(sample_snapshot())).unwrap();
     let mut kernel = WorkflowKernel::new();
     let result = execute_prepared_with(&prepared, &mut kernel).unwrap();
     assert_eq!(result.tasks.len(), 3);
@@ -266,7 +264,6 @@ fn workflow_executes_scf_bands_dos_in_order_with_exact_state_reuse() {
     assert_eq!(dos.tetrahedron.edges.len(), 401);
     assert_eq!(kernel.band_source.as_ref(), Some(state.as_ref()));
     assert_eq!(kernel.dos_source.as_ref(), Some(state.as_ref()));
-    assert!(kernel.saw_local_orbital);
     assert!(kernel.saw_sv_window);
     assert!(kernel.saw_valence_electron_count);
 
@@ -299,4 +296,15 @@ fn workflow_executes_scf_bands_dos_in_order_with_exact_state_reuse() {
             .count(),
         state.iterations()
     );
+}
+
+#[test]
+fn schema_rich_orbital_config_fails_closed_before_execution() {
+    let prepared = prepare_input(&sample_input(), SnapshotFile::V1(sample_snapshot())).unwrap();
+    let mut kernel = WorkflowKernel::new();
+    assert!(matches!(
+        execute_prepared_with(&prepared, &mut kernel),
+        Err(InputError::UnsupportedV2OrbitalConfiguration { task_id }) if task_id == "scf"
+    ));
+    assert!(kernel.events.is_empty());
 }
