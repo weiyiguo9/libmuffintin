@@ -6,7 +6,7 @@
 
 `libmuffintin` is a memory-safe experimental Rust library for algebra shared by muffin-tin electronic-structure methods. The long-term target includes FP-KKR, (L)APW(+lo), and the LMTO/EMTO/NMTO family; the first executable route is LAPW. The API remains subject to breaking changes, and the new DFT workflow is an implementation candidate rather than a production-validated materials code. The name follows libraries such as libxc, libpaw, and libcint.
 
-The current M-A through M-Kb implementation candidate provides:
+The current M-A through M-Kc implementation candidate provides:
 
 - `libmuffintin-core`: Hartree/Bohr units, complex and real spherical harmonics,
   SPEX-convention complex Gaunt coefficients, real Gaunt coefficients,
@@ -84,8 +84,8 @@ The current M-A through M-Kb implementation candidate provides:
   `libmuffintin-mpb` or `libmuffintin-thc` types. Direct Ewald-summed
   $1/r$ is a toy oracle only. There is no live SPEX $V^q$ dump and no
   Coulomb/THC/GW production consumer;
-- `libmuffintin-dft` M-Kb: unified charge-plus-Cartesian-magnetization density synthesis with the physical step-function metric; per-iteration four-component $P^2+Q^2$ core density; general Weinert electronic Hartree plus periodic nuclei; LDA/PW92 and PBE with `LocalSpinFrame` and `MagnetizationField` noncollinear reductions; overflow-safe Fermi–Dirac and Gaussian occupations with their distinct variational corrections; linear, type-2 Broyden, and Pulay–Anderson mixing; total-energy and SCF state machines; scalar Koelling–Harmon, optional nonmagnetic SOC second variation, and a noncollinear four-component first-variation route; frozen-potential bands; and regular-mesh tetrahedron DOS. State degeneracy and total-versus-core electron counting are explicit.
-- `libmuffintin-runtime`: the single `muffintin` binary plus a reusable library boundary. One versioned TOML input carries an ordered `workflow.tasks` array and `[task.<id>]` blocks with nested arrays and subblocks; later tasks consume typed outputs such as `scf.state`. Core/valence partitions come from the typed FLEUR `default.econfig` catalogue for $Z=1\ldots103$, followed by treatment overrides for signed $\kappa$; full first variation automatically selects sixth-period $5p_{1/2}$ and supported seventh-period $6p_{1/2}$ relativistic local orbitals. The registry currently executes DFT SCF, bands, and DOS and is intentionally not DFT-named so future THC tasks and a Python interface can share the same modular runtime.
+- `libmuffintin-dft` M-Kb/M-Kc: unified charge-plus-Cartesian-magnetization density synthesis with the physical step-function metric; per-iteration four-component $P^2+Q^2$ core density; general Weinert electronic Hartree plus periodic nuclei; LDA/PW92 and PBE with `LocalSpinFrame` and `MagnetizationField` noncollinear reductions; overflow-safe Fermi–Dirac and Gaussian occupations with their distinct variational corrections; linear, type-2 Broyden, and Pulay–Anderson mixing; total-energy and SCF state machines; scalar Koelling–Harmon, optional nonmagnetic SOC second variation, and a noncollinear four-component first-variation route; frozen-potential bands; and regular-mesh tetrahedron DOS. The M-Kc generator seam implements `explicit`, `atomic`, `band-center`, `log-derivative`, `band-cog`, `fermi-offset`, and `frozen-snapshot`, including atomic generation starting from signed $\kappa$, physical projected-DOS weights, same-iteration spectral refinement, and retained provenance.
+- `libmuffintin-runtime`: the single `muffintin` binary plus a reusable library boundary. Input V2 carries an ordered `workflow.tasks` array, `[basis.envelope]`, and spectroscopic channel tables; V1 orbital fields are rejected with a migration diagnostic and have no compatibility aliases. Core/valence partitions come from the typed FLEUR `default.econfig` catalogue for $Z=1\ldots103$, then pass through external recipe, task-generator, species, site-edit, and token-suffix layers. Full first variation automatically selects sixth-period $5p_{1/2}$ and supported seventh-period $6p_{1/2}$ atomic local orbitals. Later tasks consume typed outputs such as `scf.state`, including the exact materialized basis rather than mutable kernel state. The registry currently executes DFT SCF, bands, and DOS and is intentionally not DFT-named so future THC tasks and a Python interface can share the same modular runtime.
 
 All in-memory energies are Hartree and all lengths are Bohr.  Producer-specific
 units and potential normalizations must be converted at an I/O boundary.
@@ -103,9 +103,11 @@ cargo test -p libmuffintin-lapw
 ```
 
 The workspace MSRV is Rust 1.85. `libmuffintin-tensor` links TBLIS through `tblis-src`.
-First builds need a TBLIS git tree: set `TBLIS_SRC` to a clone with
-submodules, for example `/tmp/tblis.git`, or to
-`https://github.com/MatthewsResearchGroup/tblis.git`.
+By default, `tblis-src` builds TBLIS from source; first builds need a TBLIS git
+tree, supplied with `TBLIS_SRC` as a clone with submodules or as
+`https://github.com/MatthewsResearchGroup/tblis.git`. To use an existing
+system installation instead, set `TBLIS_DIR` to its installation prefix. This
+selection is environment-local and does not change the default source build.
 
 The optional `backend-tenferro` feature uses `tenferro-einsum` 0.3.0, which
 requires rustc 1.96. Leave the workspace at 1.85 unless you enable that
@@ -116,10 +118,11 @@ the tenferro backend will not compile.
 cargo test -p libmuffintin-tensor --features backend-tenferro
 ```
 
-The implementation is cross-referenced against FLEUR conventions and
-the FlapwMBPT radial formalism.  Reference paths and exact source symbols are
-recorded in the numbered derivation notes.
+The implementation is cross-referenced against local SPEX, Elk, FLEUR, and
+FlapwMBPT 2106 sources. Reference paths and exact source symbols are recorded
+in the numbered derivation notes; the FlapwMBPT reference is the
+`FlapwMBPT2106_type_B.tar.gz` source archive, not only the former ComDMFT tree.
 
 ## Scope boundary
 
-The M-Kb implementation contract is closed across the library, ordered TOML workflow, single executable, and versioned snapshot/restart boundary, but it is not yet cross-code accepted or production validated. Snapshot V2 carries $n,m_x,m_y,m_z$ and $V_0,B_x,B_y,B_z$ for frozen noncollinear input and restart; Snapshot V1 remains readable through exact scalar or up/down normalization. Focused and one-site end-to-end gates do not replace the planned Si/SrVO3 scalar, Pt/Au second-variation SOC, collinear and noncollinear magnetic, and cross-code tetrahedron-DOS fixtures. The older Cu frozen-potential one-meV gate and producer-specific FLEUR conversion also remain outside the current acceptance evidence, so a `v0.1` release tag is not claimed.
+The M-Kb DFT contract and M-Kc orbital-configuration V2 extension are closed across the library, ordered TOML workflow, single executable, and versioned snapshot/restart boundary, but they are not yet cross-code accepted or production validated. Snapshot V2 carries $n,m_x,m_y,m_z$ and $V_0,B_x,B_y,B_z$ for frozen noncollinear input and restart; Snapshot V1 remains readable through exact scalar or up/down normalization. Focused and one-site end-to-end gates do not replace the planned Si/SrVO3 scalar, Pt/Au second-variation SOC, collinear and noncollinear magnetic, and cross-code tetrahedron-DOS fixtures. The older Cu frozen-potential one-meV gate and producer-specific FLEUR conversion also remain outside the current acceptance evidence, so a `v0.1` release tag is not claimed.

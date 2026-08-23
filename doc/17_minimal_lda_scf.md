@@ -1,10 +1,10 @@
 # 17. Minimal full-potential DFT workflow
 
-This note defines the closed M-Kb implementation contract. M-Kb consumes the M-G LAPW basis/operator boundary, the M-J Weinert conventions, and the M-Ka scalar and four-component radial substrate; it does not create a second basis, Coulomb, or Dirac convention. The implemented scope is regular-full-Brillouin-zone LDA/PBE self-consistency, Fermi–Dirac or Gaussian occupations, three density mixers, scalar Koelling–Harmon bands, optional SOC second variation, collinear and noncollinear four-component first variation, frozen-potential bands, versioned restart snapshots, and tetrahedron DOS. Energies and temperatures are Hartree and lengths are Bohr.
+This note defines the closed M-Kb DFT contract together with the M-Kc orbital-configuration V2 extension. These milestones consume the M-G LAPW basis/operator boundary, the M-J Weinert conventions, and the M-Ka scalar and four-component radial substrate; they do not create a second basis, Coulomb, or Dirac convention. The implemented scope is regular-full-Brillouin-zone LDA/PBE self-consistency, current-potential radial-energy generation, Fermi–Dirac or Gaussian occupations, three density mixers, scalar Koelling–Harmon bands, optional SOC second variation, collinear and noncollinear four-component first variation, frozen-potential bands, versioned restart snapshots, and tetrahedron DOS. Energies and temperatures are Hartree and lengths are Bohr.
 
 ## 1. References and fixed execution order
 
-The SPEX anchors in this note were inspected in the local directory `spex06.00pre36` at commit `b7778ba9f15ea30274fa1f6962a1d531c5679e5d`; its `ChangeLog` identifies the live tree as 06.00pre38, and line numbers are not claimed for another release. The FLEUR Pauli-field anchors were inspected at commit `5518b7393f32c3bc4aa1bd3f1f6cb16a220adf51`. The relevant all-electron FlapwMBPT source is `ComDMFTv.2.0/src/FlapwMBPT`, not the local TRIQS directories named `dft_tools`.
+The SPEX anchors in this note were inspected in the local directory `spex06.00pre36` at commit `b7778ba9f15ea30274fa1f6962a1d531c5679e5d`; its `ChangeLog` identifies the live tree as 06.00pre38, and line numbers are not claimed for another release. The FLEUR Pauli-field and energy-parameter anchors were inspected in the local FLEUR checkout, while Elk energy search was inspected in `elk-10.4.9`. The all-electron FlapwMBPT radial/basis reference is the local `FlapwMBPT2106_type_B.tar.gz` archive, whose source root is `FlapwMBPT.2106/src`; the obsolete claim that only `ComDMFTv.2.0/src/FlapwMBPT` is relevant is not retained.
 
 SPEX `src/iterate.f:841-1788` and FlapwMBPT `dft_loop.F:1-35` fix the iteration dependency order implemented by `ScfPhysics` and `run_scf`:
 
@@ -12,9 +12,10 @@ SPEX `src/iterate.f:841-1788` and FlapwMBPT `dft_loop.F:1-35` fix the iteration 
 input density
   -> electronic Hartree + periodic nuclei + XC potential
   -> four-component core solve at every site
+  -> materialize the immutable channel recipe on the current potential
   -> radial basis, LAPW matching, H and S
-  -> regular full-BZ eigensolutions
-  -> chemical potential and occupations
+  -> regular full-BZ eigensolutions, chemical potential, and occupations
+  -> same-potential spectral refinement for band-cog or fermi-offset, if requested
   -> valence density + P^2 + Q^2 core density
   -> total energy, physical residual, convergence, and mixing
 ```
@@ -29,7 +30,7 @@ One TOML document has one explicit execution-order array and one block for each 
 
 ```toml
 format = "libmuffintin-input"
-version = 1
+version = 2
 snapshot = "material.snapshot.toml"
 
 [workflow]
@@ -44,14 +45,20 @@ mesh = [8, 8, 8]
 shift = [0.5, 0.5, 0.5]
 
 [task.scf.basis]
-plane-wave-cutoff = 4.0
 l-max = 8
+energy-generator = "atomic"
+recipe = "recipes/si.toml"
 
-[[task.scf.basis.local-orbitals]]
-site = "Si-1"
-kappa = 1
-energy = -0.15
-kind = "lo"
+[task.scf.basis.envelope]
+kind = "plane-wave"
+cutoff = 4.0
+
+[task.scf.basis.channels.Si]
+lo = ["3s", "3p"]
+
+[task.scf.basis.channels."Si-1"]
+lo = ["+3d@-0.15"]
+hdlo = ["+4f"]
 
 [task.scf.occupations]
 kind = "fermi-dirac"
@@ -103,19 +110,27 @@ minimum = -1.0
 maximum = 1.0
 ```
 
-Task child data may therefore use either arrays of typed records, such as local orbitals, electronic-state overrides, and band-path points, or named subblocks, such as k meshes, mixing, XC, and convergence. Unknown fields, task kinds, orphan blocks, duplicate IDs, forward sources, and incompatible outputs are errors. This is the only V1 syntax; no second shorthand parser is retained.
+Task child data use named subblocks plus typed arrays such as band-path points. Unknown fields, task kinds, orphan blocks, duplicate IDs, forward sources, and incompatible outputs are errors. Input V1 is rejected with a migration diagnostic: `[basis.envelope]` replaces the flat `plane-wave-cutoff`, and the channel table replaces `local-orbitals` and `state-overrides`. V2 has no compatibility aliases for those removed fields.
 
-Core and valence channels are not enumerated by hand. The runtime selects the neutral-atom record by the snapshot atomic number from FLEUR's `default.econfig` table, splits its `core|valence` boundary, and expands each occupied shell into channels labeled by signed $\kappa$ with the same degeneracy ratios as FLEUR. A later site-resolved override changes only the treatment of an existing occupied channel:
+The channel table separates identity from treatment. A token is a spectroscopic state such as `5p`, `5p-`, `5p+`, `5p1/2`, or `5p3/2`; the two $j$ spellings normalize to the same signed $\kappa$. Treatments are `core`, `valence`, `lo`, and `hdlo`. Species rows are complete treatment replacements, while site rows contain only `+` additions and `-` removals. A suffix selects a low-frequency per-channel exception: `@atomic`, `@band-center`, `@log-derivative`, `@band-cog`, `@fermi-offset`, `@frozen`, or an explicit energy such as `@-0.15` or `@-4.08eV`. Bare numbers are Hartree and `eV` suffixes are converted once during normalization.
 
-```toml
-[[task.scf.state-overrides]]
-site = "Pb-1"
-principal-quantum-number = 5
-kappa = 1
-treatment = "valence"
-```
+The runtime starts from the typed FLEUR `default.econfig` catalogue for $Z=1$ through $103$. The deterministic merge order is built-in defaults, external recipe artifact, task-level `energy-generator`, species replacement, site edit, then token suffix. An external recipe is the same normalized serde IR used for provenance; workflow TOML does not accept a second inline typed-record syntax. Built-in valence partners are lowered to one scalar $l$ recipe and expanded back to signed $\kappa$ only at the route boundary. Missing base channels through `l-max` are added with the FLEUR rule that selects the first unrepresented $n$, generalized to arbitrary $l$.
 
-The accepted treatments are `core`, `valence`, and `relativistic-local-orbital`. Duplicate overrides and overrides of absent atomic channels are errors. The embedded FLEUR table covers $Z=1$ through $103$.
+Every materialized record retains its site, $(n,l|\kappa)$ identity, treatment, derivative order, generator, immutable seed, realized energy, and recipe provenance. `derivative-order` is an arbitrary nonnegative integer in the IR. V2 executes the ordinary order-zero/order-one linearized pair and order two through `hdlo`; order three and above remains schema-valid but returns a typed execution-time `NotImplemented` error. Fill generators, generation starting from $l$, and seed fallback remain deferred; a failed bracket never silently keeps the seed.
+
+The seven executable energy generators have one current-potential seam:
+
+| Generator | Implemented value |
+|---|---|
+| `explicit` | The exact normalized Hartree seed |
+| `atomic` | A node-selected bound Dirac energy for each signed $\kappa$ |
+| `band-center` | The midpoint between the current-potential $u(R_{\mathrm{MT}})=0$ top and $u'(R_{\mathrm{MT}})=0$ bottom |
+| `log-derivative` | The selected branch at $R_{\mathrm{MT}}u'/u=-(l+1)$ |
+| `band-cog` | The occupied projected-DOS first moment divided by its physical weight |
+| `fermi-offset` | The current chemical potential plus the recipe offset, with the Elk default $-0.1$ Ha when absent |
+| `frozen-snapshot` | The exact snapshot anchor, retained as the FLEUR/SPEX regression route |
+
+`atomic` expands a scalar $l$ recipe into its signed $\kappa$ partners and uses exact $2j+1$ degeneracies when folding back to scalar. Full first variation keeps the partner energies distinct. `band-cog` projects $d=P_{\mathrm{site}}C$ and evaluates the full selected muffin-tin quadratic form $d^\dagger S_{\mathrm{MT}}d$, including nonorthogonal radial cross terms; occupation, k weight, and state degeneracy are multiplied exactly once by the generator. `band-cog` and `fermi-offset` run in a bounded inner basis-refinement loop after occupations but before density synthesis, against the same outer-iteration potential. Every outer iteration starts again from the immutable recipe and snapshot provisional anchor, not the previous iteration's generated energy.
 
 ## 3. Regional density and the physical metric
 
@@ -230,11 +245,11 @@ The input `electron-count` is the total electron count. The driver subtracts the
 
 ## 8. Scalar, second-variation SOC, and four-component routes
 
-The scalar route constructs Schrödinger or Koelling–Harmon radial solutions, analytic first and second energy derivatives, distinct-energy local orbitals, and HDLOs. Scalar-relativistic overlap uses the physical $PP+QQ$ norm. Nonspherical sphere fields enter through Gaunt matrix elements, and all site blocks use the same compiled projection order as density synthesis.
+The scalar route constructs Schrödinger or Koelling–Harmon radial solutions, analytic first and second energy derivatives, distinct-energy local orbitals, and HDLOs from the materialized channel recipe. Scalar $l$ atomic records are generated $\kappa$ first and folded with exact partner degeneracies. A magnetic `frozen-snapshot` retains the original up/down energy anchors bitwise for the two scalar channels. LO and HDLO records with signed $\kappa$ are spinor-only and are omitted rather than silently reinterpreted as scalar $l$ orbitals. Scalar-relativistic overlap uses the physical $PP+QQ$ norm. Nonspherical sphere fields enter through Gaunt matrix elements, and all site blocks use the same compiled projection order as density synthesis.
 
-The optional nonmagnetic SOC second-variation route first solves a scalar Koelling–Harmon problem, selects an explicit source-band window, projects the site $\xi(r)\,\mathbf L\cdot\mathbf S$ operator into that subspace, solves the ordinary Hermitian doubled-spin problem, and reconstructs global Pauli spinors. This route rejects magnetic, noncollinear, full-spinor first-variation inputs, and active relativistic local orbitals labeled by signed $\kappa$ rather than silently changing the approximation. A runtime window must begin at the lowest represented valence band because the concrete V1 kernel does not silently drop occupied scalar states below the window. A state override to `valence` explicitly requests the conventional second-variation approximation for that channel.
+The optional nonmagnetic SOC second-variation route first solves a scalar Koelling–Harmon problem, selects an explicit source-band window, projects the site $\xi(r)\,\mathbf L\cdot\mathbf S$ operator into that subspace, solves the ordinary Hermitian doubled-spin problem, and reconstructs global Pauli spinors. This route rejects magnetic, noncollinear, full-spinor first-variation inputs, and active local orbitals labeled by signed $\kappa$ rather than silently changing the approximation. A runtime window must begin at the lowest represented valence band because the concrete V2 kernel does not silently drop occupied scalar states below the window. A site edit that removes or reclassifies the automatic LO with signed $\kappa$ explicitly requests the conventional second-variation approximation for that channel.
 
-The full first-variation route keeps physical four-component $P/Q$ orbitals in every muffin-tin sphere and a two-component SRA interstitial basis. Each scalar $l$ linearization energy is inherited by the two partners with signed $\kappa$ and that large-component $l$; explicit LO and HDLO requests labeled by signed $\kappa$ override the inherited local-orbital content. The default atomic policy additionally assigns the sixth-period $5p_{1/2}$ channel for $Z=55\ldots86$ and the supported seventh-period $6p_{1/2}$ channel for $Z=87\ldots103$ to `relativistic-local-orbital`. At every current effective potential, the runtime solves its continuum-relative bound Dirac energy and uses that energy in the existing confined full $P/Q$ LO construction labeled by signed $\kappa$. All explicit or automatic LOs sharing one signed $\kappa$ are retained after the inherited partner resolved by $l$ is removed once; a state override to `valence` is the way to disable an automatic relativistic LO. Scalar calculations omit this spinor-only basis request. Sphere and interstitial magnetic fields both enter as $V_0I+\mathbf B\cdot\boldsymbol\sigma$, including the exact off-diagonal factors $B_x\mp iB_y$, with no scalar fallback. The synthesized $m_x,m_y,m_z$ fields pass unchanged through mixing, XC, the next 4c Hamiltonian, and restart serialization.
+The full first-variation route keeps physical four-component $P/Q$ orbitals in every muffin-tin sphere and a two-component SRA interstitial basis. A scalar $l$ recipe expands to the complete partner set with signed $\kappa$ through `l-max`; atomic and spinor `band-cog` generation retain distinct partner energies, while a generator resolved by $l$ supplies the same value to both partners. Explicit LO and HDLO requests remain labeled by exact signed $\kappa$. The default recipe additionally assigns the sixth-period $5p_{1/2}$ channel for $Z=55\ldots86$ and the supported seventh-period $6p_{1/2}$ channel for $Z=87\ldots103$ to ordinary `lo` treatment with the `atomic` generator. The old ambient relativistic-LO energy map and duplicate bound-state resolver are gone: the same current-potential generator seam now supplies these confined full-$P/Q$ LOs. Multiple LOs sharing one signed $\kappa$ remain distinct. A site `-` edit removes an automatic LO or a site `+` edit reclassifies the channel without a separate state-override interface. Sphere and interstitial magnetic fields both enter as $V_0I+\mathbf B\cdot\boldsymbol\sigma$, including the exact off-diagonal factors $B_x\mp iB_y$, with no scalar fallback. The synthesized $m_x,m_y,m_z$ fields pass unchanged through mixing, XC, the next 4c Hamiltonian, and restart serialization.
 
 Snapshot V2 stores shared geometry and radial-basis metadata plus either a frozen Pauli potential or a restart pair containing $n,m_x,m_y,m_z$ and $V_0,B_x,B_y,B_z$. Snapshot V1 remains readable and normalizes exactly to V2: scalar data maps to $V_0$ with zero $\mathbf B$, while up/down data maps to $V_0=(V_\uparrow+V_\downarrow)/2$, $B_z=(V_\uparrow-V_\downarrow)/2$, and zero transverse fields. The runtime uses header-based version dispatch and one normalized V2 path.
 
@@ -242,7 +257,7 @@ Snapshot V2 stores shared geometry and radial-basis metadata plus either a froze
 
 Linear mixing, type-2 Broyden, and Pulay–Anderson all use residual $r=\rho_{\mathrm{in}}-\rho_{\mathrm{out}}$ and the same four-component regional physical inner product. Each nonlinear mixer owns bounded history and rejects a layout change instead of mixing unrelated coefficient vectors.
 
-An iteration converges only after both a density RMS threshold and a total-energy-change threshold are available and satisfied. The retained state is the accepted fixed-point input density together with the potential it generated, the exact basis controls, the chemical potential, relativity route, total energy, and ordered diagnostics.
+An iteration converges only after both a density RMS threshold and a total-energy-change threshold are available and satisfied. The retained state is the accepted fixed-point input density together with the potential it generated, the immutable normalized channel recipe, exact materialized channel energies, chemical potential, relativity route, total energy, and ordered diagnostics. Each iteration diagnostic carries the same realized channel records used for its final band and density pass, including generator, seed, realized energy, method diagnostic, and recipe provenance. Frozen-potential bands and DOS therefore consume the basis stored in their selected `ScfState`, not the kernel's most recently materialized basis.
 
 The finite-temperature total-energy expression is assembled once as
 
@@ -258,6 +273,6 @@ A bands task consumes an earlier `ScfState` and solves its frozen potential on t
 
 ## 11. Acceptance status and evidence boundary
 
-The implementation has focused gates for weighted occupations, Gaussian and logistic tails, scalar/4c radial identities, local orbitals and HDLOs labeled by signed $\kappa$, plane-wave and sphere density synthesis, core $P^2+Q^2$ and spill, Weinert electronic and nuclear potentials, electrostatic boundary matching, LDA/PBE functional derivatives, both noncollinear XC reductions, spin-rotation covariance, transverse Pauli blocks, four-component mixing, Snapshot V1-to-V2 normalization and restart, SCF ordering and source reuse, scalar and SOC eigensolutions, and tetrahedron normalization. The unified CLI also executes a minimal one-site snapshot through the concrete kernel.
+The implementation has focused gates for weighted occupations, Gaussian and logistic tails, scalar/4c radial identities, local orbitals and HDLOs labeled by signed $\kappa$, all seven radial-energy generators, band-center brackets and diagnostics, degeneracy averaging over signed $\kappa$, physical nonorthogonal `band-cog` projection, same-iteration spectral refinement, bitwise frozen anchors, recipe merge priority and editing, automatic rLO injection/removal, V1 migration failure, V2 round-trip, plane-wave and sphere density synthesis, core $P^2+Q^2$ and spill, Weinert electronic and nuclear potentials, electrostatic boundary matching, LDA/PBE functional derivatives, both noncollinear XC reductions, spin-rotation covariance, transverse Pauli blocks, four-component mixing, Snapshot V1-to-V2 normalization and restart, SCF ordering and source reuse, scalar and SOC eigensolutions, and tetrahedron normalization. The unified CLI also executes a minimal one-site snapshot through the concrete kernel.
 
-These gates close the M-Kb implementation contract at the library, TOML workflow, snapshot/restart, and executable levels; they do not substitute for the planned external acceptance fixtures. Si and SrVO3 scalar results, Pt or Au second-variation SOC, collinear and noncollinear magnetic fixtures, and a regular-mesh tetrahedron DOS still require frozen cross-code reference artifacts before M-Kb can be called cross-code accepted or production validated. Meta-GGA, hybrids, forces, SCF symmetry reduction, and tetrahedron occupations are outside M-Kb.
+These gates close the M-Kb implementation contract and the M-Kc orbital-configuration V2 extension at the library, TOML workflow, snapshot/restart, and executable levels; they do not substitute for the planned external acceptance fixtures. Si and SrVO3 scalar results, Pt or Au second-variation SOC, collinear and noncollinear magnetic fixtures, and a regular-mesh tetrahedron DOS still require frozen cross-code reference artifacts before the DFT route can be called cross-code accepted or production validated. Meta-GGA, hybrids, forces, SCF symmetry reduction, and tetrahedron occupations remain outside this contract.
