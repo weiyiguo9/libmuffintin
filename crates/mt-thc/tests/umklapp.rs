@@ -1,8 +1,7 @@
 //! Canonical-q / Umklapp pair-matrix regressions from the scratch scripts.
 
-use muffintin_thc::{
-    BlochOrbitals, KMesh, PairColumnLayout, UmklappGauge, evaluate_pair_block, umklapp_phase,
-};
+use muffintin_auxiliary_ir::PairColumnLayout;
+use muffintin_thc::{BlochOrbitals, KMesh, UmklappGauge, evaluate_pair_block, umklapp_phase};
 use num_complex::Complex64;
 
 fn constant_orbitals(n_points: usize, n_k: usize, n_orb: usize) -> BlochOrbitals {

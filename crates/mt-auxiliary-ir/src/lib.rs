@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 
 mod auxiliary;
+mod pair_layout;
 mod partition;
 mod raw;
 mod source;
@@ -21,10 +22,11 @@ pub use auxiliary::{
     InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
     MixedProductAuxiliary, MtAuxiliaryMode, SiteAuxiliaryBlock, sort_interpolation_points,
 };
+pub use pair_layout::PairColumnLayout;
 pub use partition::{PartitionSite, ProductPartition};
 pub use raw::{
     ChannelSpectrum, CoupledChannel, PairChannel, RawInterstitialPairComponent,
-    RawInterstitialPairSupport, RawProductSpace, RawRadialProduct,
+    RawInterstitialPairSupport, RawProductSpace, RawRadialProduct, sort_raw_pair_components,
 };
 pub use source::{
     ProductOrbitalKind, ProductRadial, ProductRadialId, ProductSource, RadialSamples,
@@ -64,6 +66,10 @@ pub enum ProductError {
     DuplicatePairComponent { index: [i32; 3] },
     #[error("raw interstitial pair G label contains a non-finite Cartesian component")]
     NonFinitePairComponent,
+    #[error("storage length overflow for dimensions {dimensions:?}")]
+    DimensionOverflow { dimensions: Vec<usize> },
+    #[error("core orbital index {index} is outside n_orb={n_orb}")]
+    InvalidCoreOrbital { index: usize, n_orb: usize },
     #[error("duplicate overlap spectrum for site {site} and L={l}")]
     DuplicateChannelSpectrum { site: usize, l: u32 },
     #[error("duplicate coupled channel (site {site}, L={l}, M={m}, n={radial_index})")]

@@ -12,7 +12,7 @@
 //!    may assert `RECORDED_REFERENCE_GATE` / `RECORDED_ERI_ACTION_GATE`.
 //!    Python table values are evidence, not bit-identity targets.
 
-use muffintin_auxiliary_ir::TransferQ;
+use muffintin_auxiliary_ir::{PairColumnLayout, TransferQ};
 use muffintin_core::InverseBohr;
 use muffintin_thc::toy::{
     ACTION_VECTOR_COUNT, ACTION_VECTOR_SEED, LAPW_LATTICE, LAPW_NORB, RECORDED_ERI_ACTION_GATE,
@@ -22,9 +22,9 @@ use muffintin_thc::toy::{
     relative_gram_frobenius, toy_coulomb_factors, toy_coulomb_gram, values_fourier,
 };
 use muffintin_thc::{
-    BlochOrbitals, CoulombGramSet, GridPath, KMesh, L2Engine, PairColumnLayout, RankPolicy,
-    SelectionRequest, SelectorStrategy, ThcError, UmklappGauge, evaluate_pair_block, fit_per_q,
-    select_points, umklapp_phase,
+    BlochOrbitals, CoulombGramSet, GridPath, KMesh, L2Engine, RankPolicy, SelectionRequest,
+    SelectorStrategy, ThcError, UmklappGauge, evaluate_pair_block, fit_per_q, select_points,
+    umklapp_phase,
 };
 use num_complex::Complex64;
 

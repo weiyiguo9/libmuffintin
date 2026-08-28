@@ -1,11 +1,10 @@
 //! Error-contract regressions for the M-I public boundary.
 
-use muffintin_auxiliary_ir::{InterpolationRegion, TransferQ};
+use muffintin_auxiliary_ir::{InterpolationRegion, PairColumnLayout, ProductError, TransferQ};
 use muffintin_core::InverseBohr;
 use muffintin_thc::{
     BlochOrbitals, CoulombGramSet, GridPath, InjectedCoulombGram, KMesh, L2Engine, PairBlock,
-    PairColumnLayout, RankPolicy, SelectionRequest, SelectorStrategy, ThcError, UniformShift,
-    select_points,
+    RankPolicy, SelectionRequest, SelectorStrategy, ThcError, UniformShift, select_points,
 };
 use num_complex::Complex64;
 
@@ -238,7 +237,7 @@ fn bloch_and_pair_block_overflow_do_not_fabricate_lengths() {
         .unwrap_err();
     assert!(matches!(
         columns,
-        ThcError::DimensionOverflow { ref dimensions } if dimensions == &[usize::MAX, 4, 4]
+        ProductError::DimensionOverflow { ref dimensions } if dimensions == &[usize::MAX, 4, 4]
     ));
 }
 
@@ -521,7 +520,7 @@ fn invalid_core_orbital_is_rejected() {
     .unwrap_err();
     assert!(matches!(
         error,
-        ThcError::InvalidCoreOrbital { index: 2, n_orb: 2 }
+        ThcError::Product(ProductError::InvalidCoreOrbital { index: 2, n_orb: 2 })
     ));
 }
 

@@ -6,12 +6,12 @@ use crate::fit::{
 };
 use crate::gram::CoulombGramSet;
 use crate::kmesh::KMesh;
-use crate::pair::{BlochOrbitals, PairColumnLayout, UmklappGauge, evaluate_pair_block};
+use crate::pair::{BlochOrbitals, UmklappGauge, evaluate_pair_block};
 use crate::select::{GridPath, Selection, SelectionRequest, SelectorStrategy, select_points};
 use crate::toy::ToyGrid;
 use muffintin_auxiliary_ir::{
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationPointAuxiliary, OrbitalPair,
-    PairVertex, ProductPartition, TransferQ,
+    PairColumnLayout, PairVertex, ProductPartition, TransferQ,
 };
 use muffintin_basis::Provenance;
 

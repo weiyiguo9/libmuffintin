@@ -7,8 +7,8 @@
 use crate::ThcError;
 use crate::gram::InjectedCoulombGram;
 use crate::kmesh::KMesh;
-use crate::pair::{BlochOrbitals, PairBlock, PairColumnLayout};
-use muffintin_auxiliary_ir::{InterpolationRegion, ProductPartition};
+use crate::pair::{BlochOrbitals, PairBlock};
+use muffintin_auxiliary_ir::{InterpolationRegion, PairColumnLayout, ProductPartition};
 use muffintin_core::{Bohr, InterstitialGeometry, Sphere, VolumeBohr3, complex_spherical_harmonic};
 use num_complex::Complex64;
 use std::f64::consts::PI;

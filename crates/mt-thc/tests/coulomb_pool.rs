@@ -1,10 +1,10 @@
 //! Injected Coulomb Gram contract and allq_coulomb_pool rerank.
 
-use muffintin_auxiliary_ir::{InterpolationRegion, ProductPartition, TransferQ};
+use muffintin_auxiliary_ir::{InterpolationRegion, PairColumnLayout, ProductPartition, TransferQ};
 use muffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
 use muffintin_thc::{
     BlochOrbitals, CoulombGramSet, GridPath, HEADLINE_SEED, InjectedCoulombGram, KMesh, L2Engine,
-    PairColumnLayout, RankPolicy, SelectionRequest, SelectorStrategy, ThcError, run_thc,
+    RankPolicy, SelectionRequest, SelectorStrategy, ThcError, run_thc,
 };
 use num_complex::Complex64;
 

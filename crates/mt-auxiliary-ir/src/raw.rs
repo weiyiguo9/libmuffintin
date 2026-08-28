@@ -2,8 +2,8 @@
 
 use crate::{ProductError, ProductPartition, ProductRadialId, ProductSource, TransferQ};
 use muffintin_basis::Provenance;
-use muffintin_core::GVector;
-use std::collections::BTreeSet;
+use muffintin_core::{GVector, InverseBohr, ReciprocalLattice};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// q-aware muffin-tin product of two radial factors, before spectral cutoff.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -90,6 +90,29 @@ impl RawInterstitialPairSupport {
         Self::from_components(q, self.components.clone())
     }
 
+    /// Dedup integer G labels and sort by $|G|$ then G-index.
+    ///
+    /// This is the canonical raw-support order. It is not an MPB $|q+G|$
+    /// auxiliary set.
+    pub fn from_relative_indices(
+        q: TransferQ,
+        reciprocal: ReciprocalLattice,
+        indices: impl IntoIterator<Item = [i32; 3]>,
+    ) -> Result<Self, ProductError> {
+        let mut unique = BTreeMap::new();
+        for index in indices {
+            unique
+                .entry(index)
+                .or_insert_with(|| g_vector(reciprocal, index));
+        }
+        let mut components: Vec<RawInterstitialPairComponent> = unique
+            .into_values()
+            .map(|g_relative| RawInterstitialPairComponent { g_relative })
+            .collect();
+        sort_raw_pair_components(&mut components);
+        Self::from_components(q, components)
+    }
+
     /// Position of an exact G-label match, including Cartesian values.
     pub fn find(&self, g: &GVector) -> Option<usize> {
         self.components
@@ -117,6 +140,32 @@ impl RawInterstitialPairSupport {
             }
         }
         Ok(())
+    }
+}
+
+/// Canonical raw pair-G order: $|G|$ then integer G-index.
+pub fn sort_raw_pair_components(components: &mut [RawInterstitialPairComponent]) {
+    components.sort_by(|left, right| {
+        left.g_relative
+            .norm
+            .get()
+            .total_cmp(&right.g_relative.norm.get())
+            .then_with(|| left.g_relative.index.cmp(&right.g_relative.index))
+    });
+}
+
+fn g_vector(reciprocal: ReciprocalLattice, index: [i32; 3]) -> GVector {
+    let cartesian = reciprocal.cartesian(index);
+    GVector {
+        index,
+        cartesian,
+        norm: InverseBohr(
+            cartesian
+                .iter()
+                .map(|component| component.get() * component.get())
+                .sum::<f64>()
+                .sqrt(),
+        ),
     }
 }
 

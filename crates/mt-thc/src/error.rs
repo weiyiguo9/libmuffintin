@@ -31,8 +31,6 @@ pub enum ThcError {
     InvalidWeight { index: usize, value: f64 },
     #[error("quadrature weights have no strictly positive entry")]
     NoPositiveWeight,
-    #[error("core orbital index {index} is outside n_orb={n_orb}")]
-    InvalidCoreOrbital { index: usize, n_orb: usize },
     #[error("interpolation grid has no points")]
     EmptyGrid,
     #[error("pair block has {actual} entries, expected {expected}")]

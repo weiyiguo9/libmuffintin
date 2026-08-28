@@ -230,7 +230,7 @@ impl SnapshotDftPhysics {
         self.materialize_nonspectral_basis(potential, basis, &extended)
     }
 
-    pub(super) fn materialize_nonspectral_basis(
+    pub(crate) fn materialize_nonspectral_basis(
         &self,
         potential: &RegionalPotential,
         requested: &ScfBasis,
@@ -475,7 +475,7 @@ impl SnapshotDftPhysics {
         }
     }
 
-    pub(super) fn channel_meshes(
+    pub(crate) fn channel_meshes(
         &self,
         basis: &ScfBasis,
     ) -> Result<Vec<ExponentialMesh>, SnapshotDftError> {

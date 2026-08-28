@@ -129,15 +129,21 @@ pub struct SnapshotBandSolution {
     states: Vec<BandState>,
 }
 
+impl SnapshotBandSolution {
+    pub(crate) fn points(&self) -> &[SnapshotKPoint] {
+        &self.points
+    }
+}
+
 #[derive(Clone, Debug)]
-struct SnapshotKPoint {
+pub(crate) struct SnapshotKPoint {
     weight: f64,
-    solution: SnapshotKPointSolution,
+    pub(crate) solution: SnapshotKPointSolution,
     energies: Vec<Hartree>,
 }
 
 #[derive(Clone, Debug)]
-enum SnapshotKPointSolution {
+pub(crate) enum SnapshotKPointSolution {
     Collinear {
         bases: Box<Collinear<ScalarIterationBasis>>,
         solutions: Collinear<GeneralizedEigensolution>,
@@ -253,13 +259,17 @@ impl SnapshotDftPhysics {
         &self.frozen_potential
     }
 
+    pub(crate) fn nuclear_charges(&self) -> &[f64] {
+        &self.nuclear_charges
+    }
+
     /// Serialize a converged state as a V2 restart while preserving this
     /// kernel's immutable geometry and radial-basis identity.
     pub fn restart_snapshot(&self, state: &ScfState) -> Result<SnapshotV2, SnapshotDftError> {
         snapshot_v2_from_state(&self.snapshot_template, state)
     }
 
-    fn solve_points(
+    pub(crate) fn solve_points(
         &self,
         potential: &RegionalPotential,
         basis: &ScfBasis,
@@ -1803,7 +1813,7 @@ fn solve_initial_occupations(
     })
 }
 
-fn regular_k_points(mesh: ScfKMesh) -> Result<Vec<[f64; 3]>, SnapshotDftError> {
+pub(crate) fn regular_k_points(mesh: ScfKMesh) -> Result<Vec<[f64; 3]>, SnapshotDftError> {
     let count = mesh
         .divisions
         .into_iter()
@@ -1882,7 +1892,7 @@ fn fractional_to_reciprocal(
     })
 }
 
-fn g_vector(reciprocal: ReciprocalLattice, index: [i32; 3]) -> GVector {
+pub(crate) fn g_vector(reciprocal: ReciprocalLattice, index: [i32; 3]) -> GVector {
     let cartesian = reciprocal.cartesian(index);
     GVector {
         index,
@@ -2093,6 +2103,21 @@ pub enum SnapshotDftError {
     EmptyKPointSet,
     #[error("regular k-point count overflows usize")]
     KPointCountOverflow,
+    #[error("scalar product input requires scalar Koelling-Harmon relativity")]
+    ScalarProductRequiresScalarRelativity,
+    #[error(
+        "folded k-q {folded:?} from k={k:?} q_in={q_in:?} q_canonical={q_canonical:?} is not on the regular mesh"
+    )]
+    OffMeshTransfer {
+        k: [f64; 3],
+        q_in: [f64; 3],
+        q_canonical: [f64; 3],
+        folded: [f64; 3],
+    },
+    #[error("collinear product input needs equal up/down band counts, got {up} and {down}")]
+    CollinearBandCount { up: usize, down: usize },
+    #[error(transparent)]
+    Product(#[from] muffintin_auxiliary_ir::ProductError),
     #[error("second variation requires a nonmagnetic scalar snapshot and potential")]
     SecondVariationRequiresNonmagneticScalar,
     #[error(

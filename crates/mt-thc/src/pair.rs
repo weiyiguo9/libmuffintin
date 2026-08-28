@@ -3,6 +3,7 @@
 use crate::ThcError;
 use crate::error::checked_storage_len;
 use crate::kmesh::{KMesh, umklapp_phase};
+use muffintin_auxiliary_ir::PairColumnLayout;
 use num_complex::Complex64;
 
 /// How the Umklapp phase is applied to a pair column.
@@ -16,74 +17,6 @@ pub enum UmklappGauge {
     SignFlip,
     /// $\exp(+2i G_{\mathrm{wrap}}\cdot r)$ (regression: double count).
     DoubleCount,
-}
-
-/// Stable $(k,i,j)$ flattening of pair columns.
-///
-/// Column index is $k\cdot N_{\mathrm{orb}}^2 + i\cdot N_{\mathrm{orb}} + j$,
-/// matching `thc_mt_kpoint_test.py:156-161`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct PairColumnLayout {
-    pub n_k: usize,
-    pub n_orb: usize,
-    /// Orbital index treated as the sharp core channel, if the fixture has one.
-    pub core_orbital: Option<usize>,
-}
-
-impl PairColumnLayout {
-    /// Layout for `n_k` k-points and `n_orb` orbitals.
-    pub fn new(n_k: usize, n_orb: usize, core_orbital: Option<usize>) -> Self {
-        Self {
-            n_k,
-            n_orb,
-            core_orbital,
-        }
-    }
-
-    /// Number of pair columns per q, $N_k N_{\mathrm{orb}}^2$.
-    pub fn n_columns(&self) -> Result<usize, ThcError> {
-        checked_storage_len(&[self.n_k, self.n_orb, self.n_orb])
-    }
-
-    /// Column index of $(k,i,j)$.
-    pub fn encode(&self, k: usize, i: usize, j: usize) -> usize {
-        k * self.n_orb * self.n_orb + i * self.n_orb + j
-    }
-
-    /// Inverse of [`Self::encode`].
-    pub fn decode(&self, column: usize) -> (usize, usize, usize) {
-        let block = self.n_orb * self.n_orb;
-        let k = column / block;
-        let rem = column % block;
-        (k, rem / self.n_orb, rem % self.n_orb)
-    }
-
-    /// Whether the column involves the core orbital.
-    pub fn is_core(&self, column: usize) -> bool {
-        let Some(core) = self.core_orbital else {
-            return false;
-        };
-        let (_, i, j) = self.decode(column);
-        i == core || j == core
-    }
-
-    /// Whether the column is valence-only.
-    pub fn is_valence(&self, column: usize) -> bool {
-        self.core_orbital.is_some() && !self.is_core(column)
-    }
-
-    /// Reject a core index that cannot appear in any pair column.
-    pub fn require_core_orbital(&self) -> Result<(), ThcError> {
-        if let Some(core) = self.core_orbital {
-            if core >= self.n_orb {
-                return Err(ThcError::InvalidCoreOrbital {
-                    index: core,
-                    n_orb: self.n_orb,
-                });
-            }
-        }
-        Ok(())
-    }
 }
 
 /// Cell-periodic Bloch orbitals $u_{ik}(r)$ on a grid: `(point, k, orb)`.

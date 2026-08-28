@@ -16,6 +16,7 @@ name = "muffintin"
 path = "src/main.rs"
 
 [dependencies]
+libmuffintin-auxiliary-ir = { path = "../mt-auxiliary-ir" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-coulomb = { path = "../mt-coulomb" }
 libmuffintin-dft = { path = "../mt-dft" }

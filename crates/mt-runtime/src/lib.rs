@@ -7,6 +7,7 @@ mod channel_token;
 mod error;
 mod input;
 mod runner;
+mod scalar_product;
 mod snapshot_dft;
 
 pub use channel_recipe::{
@@ -28,5 +29,9 @@ pub use input::{
 pub use runner::{
     PreparedSource, PreparedTask, PreparedWorkflow, TaskResult, WorkflowResult,
     execute_prepared_with, load_input_path, prepare_input, prepare_input_with_recipes,
+};
+pub use scalar_product::{
+    SCALAR_RADIAL_LO0, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarBandWindow, ScalarFrozenOrbitals,
+    ScalarKMinusQ, ScalarProductInput, ScalarSpinChannel,
 };
 pub use snapshot_dft::{SnapshotDftError, SnapshotDftPhysics, snapshot_v2_from_state};

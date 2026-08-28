@@ -3,9 +3,9 @@
 use crate::ThcError;
 use crate::gram::InjectedCoulombGram;
 use crate::linalg::{hermitian_sqrt, lstsq};
-use crate::pair::{PairBlock, PairColumnLayout};
+use crate::pair::PairBlock;
 use crate::select::{matmul, reconstruct_pairs, weighted_residual};
-use muffintin_auxiliary_ir::TransferQ;
+use muffintin_auxiliary_ir::{PairColumnLayout, TransferQ};
 use num_complex::Complex64;
 
 /// Weighted residual pair.

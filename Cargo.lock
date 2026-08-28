@@ -1040,6 +1040,7 @@ dependencies = [
 name = "libmuffintin-runtime"
 version = "0.1.0"
 dependencies = [
+ "libmuffintin-auxiliary-ir",
  "libmuffintin-core",
  "libmuffintin-coulomb",
  "libmuffintin-dft",

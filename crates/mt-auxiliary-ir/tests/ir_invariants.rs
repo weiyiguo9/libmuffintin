@@ -1,12 +1,13 @@
 //! Product-space IR invariants independent of mixed-product `TOL`.
 
 use muffintin_auxiliary_ir::{
-    ProductError, ProductPartition, ProductRadial, ProductSource, RadialSamples,
+    PairColumnLayout, ProductError, ProductPartition, ProductRadial, ProductSource, RadialSamples,
     RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet, TransferQ,
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{
-    Bohr, ExponentialMesh, GVector, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3,
+    Bohr, ExponentialMesh, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere,
+    VolumeBohr3,
 };
 
 fn geometry() -> InterstitialGeometry {
@@ -123,6 +124,36 @@ fn raw_pair_support_rejects_duplicate_g_labels() {
         error,
         ProductError::DuplicatePairComponent { index } if index == [1, 0, 0]
     ));
+}
+
+#[test]
+fn raw_pair_support_dedups_and_sorts_by_norm_then_index() {
+    let lattice = ReciprocalLattice::from_direct([
+        [Bohr(8.0), Bohr(0.0), Bohr(0.0)],
+        [Bohr(0.0), Bohr(8.0), Bohr(0.0)],
+        [Bohr(0.0), Bohr(0.0), Bohr(8.0)],
+    ])
+    .unwrap();
+    let support = RawInterstitialPairSupport::from_relative_indices(
+        q_gamma(),
+        lattice,
+        [[1, 0, 0], [0, 0, 0], [1, 0, 0], [-1, 0, 0]],
+    )
+    .unwrap();
+    let labels: Vec<_> = support
+        .components
+        .iter()
+        .map(|component| component.g_relative.index)
+        .collect();
+    assert_eq!(labels, vec![[0, 0, 0], [-1, 0, 0], [1, 0, 0]]);
+}
+
+#[test]
+fn pair_column_layout_is_k_major() {
+    let layout = PairColumnLayout::new(2, 3, None);
+    assert_eq!(layout.encode(1, 2, 0), 9 + 6);
+    assert_eq!(layout.decode(15), (1, 2, 0));
+    assert_eq!(layout.n_columns().unwrap(), 18);
 }
 
 #[test]
