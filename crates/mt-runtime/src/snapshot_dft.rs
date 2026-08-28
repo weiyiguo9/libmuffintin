@@ -2106,6 +2106,22 @@ pub enum SnapshotDftError {
     #[error("scalar product input requires scalar Koelling-Harmon relativity")]
     ScalarProductRequiresScalarRelativity,
     #[error(
+        "spinor product input requires ScfRelativity::SpinorFirstVariation, not scalar Koelling-Harmon"
+    )]
+    SpinorProductRejectsScalarRelativity,
+    #[error(
+        "spinor product input requires ScfRelativity::SpinorFirstVariation, not SOC second variation; signed-kappa is not routed through second variation"
+    )]
+    SpinorProductRejectsSocSecondVariation,
+    #[error(
+        "spinor product k-mesh, compiled bases, eigenvectors, energies, available-band counts, and k-q map must share one ordered k slice"
+    )]
+    SpinorProductKSliceMismatch,
+    #[error("spinor product source transfer q does not match the frozen q-slice")]
+    SpinorProductTransferQMismatch,
+    #[error(transparent)]
+    DiracProduct(#[from] muffintin_auxiliary_ir::DiracProductError),
+    #[error(
         "folded k-q {folded:?} from k={k:?} q_in={q_in:?} q_canonical={q_canonical:?} is not on the regular mesh"
     )]
     OffMeshTransfer {

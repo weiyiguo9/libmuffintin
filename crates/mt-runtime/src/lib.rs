@@ -6,6 +6,7 @@ mod channel_recipe;
 mod channel_token;
 mod error;
 mod input;
+mod q_mesh;
 mod runner;
 mod scalar_coulomb;
 mod scalar_mpb;
@@ -13,6 +14,7 @@ mod scalar_product;
 mod scalar_thc;
 mod site_coords;
 mod snapshot_dft;
+mod spinor_product;
 
 pub use channel_recipe::{
     ChannelRecipeArtifact, ChannelRecipeError, CompiledChannelRecipe, CompiledSiteRecipe,
@@ -53,3 +55,7 @@ pub use scalar_thc::{
     ScalarThcQRecord, ScalarThcRegion, ScalarThcResult, ScalarThcSpec, build_scalar_thc,
 };
 pub use snapshot_dft::{SnapshotDftError, SnapshotDftPhysics, snapshot_v2_from_state};
+pub use spinor_product::{
+    SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, SpinorBandWindow, SpinorFrozenOrbitals,
+    SpinorKMinusQ, SpinorProductInput,
+};

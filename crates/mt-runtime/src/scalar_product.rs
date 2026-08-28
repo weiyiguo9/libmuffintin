@@ -4,7 +4,7 @@ use muffintin_auxiliary_ir::{
     PairColumnLayout, ProductPartition, ProductRadial, ProductSource, RadialSamples,
     RawInterstitialPairSupport, SiteRadialSet, TransferQ,
 };
-use muffintin_core::{InverseBohr, ReciprocalLattice};
+use muffintin_core::ReciprocalLattice;
 use muffintin_dft::{
     ScalarIterationBasis, ScalarRadialSite, ScfConfig, ScfRelativity,
     build_extended_snapshot_core_potentials,
@@ -15,8 +15,9 @@ use muffintin_radial::CorePotentialContinuationSpec;
 use muffintin_tensor::DenseEigenvectors;
 use std::collections::BTreeSet;
 
+use crate::q_mesh::{canonical_transfer_q, map_k_minus_q};
 use crate::snapshot_dft::{
-    SnapshotBandSolution, SnapshotDftError, SnapshotDftPhysics, SnapshotKPointSolution, g_vector,
+    SnapshotBandSolution, SnapshotDftError, SnapshotDftPhysics, SnapshotKPointSolution,
     regular_k_points,
 };
 
@@ -26,8 +27,6 @@ pub const SCALAR_RADIAL_U: usize = 0;
 pub const SCALAR_RADIAL_UDOT: usize = 1;
 /// First local-orbital ProductRadial $n$; later LOs use `SCALAR_RADIAL_LO0 + ordinal`.
 pub const SCALAR_RADIAL_LO0: usize = 2;
-
-const MESH_COORD_TOLERANCE: f64 = 1.0e-12;
 
 /// Per-k map of $k-q_{\mathrm{canonical}}$ onto the regular mesh.
 ///
@@ -113,9 +112,7 @@ impl SnapshotDftPhysics {
         if config.relativity != ScfRelativity::Scalar {
             return Err(SnapshotDftError::ScalarProductRequiresScalarRelativity);
         }
-        if q_fractional.iter().any(|value| !value.is_finite()) {
-            return Err(SnapshotDftError::NonFiniteKPoint(q_fractional));
-        }
+        let transfer = canonical_transfer_q(q_fractional, *self.reciprocal())?;
         let meshes = self.channel_meshes(&config.basis)?;
         let extended = build_extended_snapshot_core_potentials(
             self.frozen_potential(),
@@ -127,20 +124,15 @@ impl SnapshotDftPhysics {
         let basis =
             self.materialize_nonspectral_basis(self.frozen_potential(), &config.basis, &extended)?;
         let k_fractional = regular_k_points(config.k_mesh)?;
-        let (q_canonical, q_wrap) = fold_to_unit_cell(q_fractional);
-        let q_input = fractional_to_reciprocal(q_fractional, self.reciprocal().basis());
-        let transfer_umklapp = g_vector(*self.reciprocal(), q_wrap);
-        let q = TransferQ::fold_by_reciprocal_vector(q_input, transfer_umklapp)?;
         let mut k_minus_q = Vec::with_capacity(k_fractional.len());
         for (k_index, &k_frac) in k_fractional.iter().enumerate() {
-            k_minus_q.push(map_k_minus_q(
-                k_index,
-                k_frac,
-                q_fractional,
-                q_canonical,
-                &k_fractional,
-                *self.reciprocal(),
-            )?);
+            let mapped =
+                map_k_minus_q(k_index, k_frac, transfer, &k_fractional, *self.reciprocal())?;
+            k_minus_q.push(ScalarKMinusQ {
+                k_index: mapped.k_index,
+                kq_index: mapped.kq_index,
+                umklapp: mapped.umklapp,
+            });
         }
         let bands = self.solve_points(
             self.frozen_potential(),
@@ -148,7 +140,7 @@ impl SnapshotDftPhysics {
             &k_fractional,
             ScfRelativity::Scalar,
         )?;
-        emit_scalar_product_input(self, &bands, &k_fractional, q, k_minus_q)
+        emit_scalar_product_input(self, &bands, &k_fractional, transfer.q, k_minus_q)
     }
 }
 
@@ -344,7 +336,7 @@ fn spin_radials(spin: u8, site: &ScalarRadialSite) -> Result<Vec<ProductRadial>,
     Ok(valence)
 }
 
-fn leading_bands(
+pub(crate) fn leading_bands(
     eigenvectors: &DenseEigenvectors,
     n_orb: usize,
 ) -> Result<DenseEigenvectors, SnapshotDftError> {
@@ -369,70 +361,4 @@ fn radial_samples(large: &[f64], small: Option<&[f64]>) -> RadialSamples {
         large: large.to_vec(),
         small: small.map(<[f64]>::to_vec),
     }
-}
-
-fn fold_to_unit_cell(fractional: [f64; 3]) -> ([f64; 3], [i32; 3]) {
-    let mut folded = [0.0; 3];
-    let mut wrap = [0; 3];
-    for axis in 0..3 {
-        let value = fractional[axis];
-        let unit = value.rem_euclid(1.0);
-        wrap[axis] = (value - unit).round() as i32;
-        folded[axis] = unit;
-    }
-    (folded, wrap)
-}
-
-fn map_k_minus_q(
-    k_index: usize,
-    k_frac: [f64; 3],
-    q_in: [f64; 3],
-    q_canonical: [f64; 3],
-    points: &[[f64; 3]],
-    reciprocal: ReciprocalLattice,
-) -> Result<ScalarKMinusQ, SnapshotDftError> {
-    let mut folded = [0.0; 3];
-    for axis in 0..3 {
-        folded[axis] = (k_frac[axis] - q_canonical[axis]).rem_euclid(1.0);
-    }
-    let kq_index = points
-        .iter()
-        .position(|point| coords_on_mesh(point, folded))
-        .ok_or(SnapshotDftError::OffMeshTransfer {
-            k: k_frac,
-            q_in,
-            q_canonical,
-            folded,
-        })?;
-    let actual = points[kq_index];
-    let wrap = std::array::from_fn(|axis| {
-        (k_frac[axis] - q_canonical[axis] - actual[axis]).round() as i32
-    });
-    Ok(ScalarKMinusQ {
-        k_index,
-        kq_index,
-        umklapp: g_vector(reciprocal, wrap),
-    })
-}
-
-fn coords_on_mesh(point: &[f64; 3], folded: [f64; 3]) -> bool {
-    point
-        .iter()
-        .zip(folded)
-        .all(|(&actual, expected)| (actual - expected).abs() <= MESH_COORD_TOLERANCE)
-}
-
-fn fractional_to_reciprocal(
-    fractional: [f64; 3],
-    reciprocal: &[[InverseBohr; 3]; 3],
-) -> [InverseBohr; 3] {
-    std::array::from_fn(|axis| {
-        InverseBohr(
-            fractional
-                .iter()
-                .zip(reciprocal)
-                .map(|(&coefficient, vector)| coefficient * vector[axis].get())
-                .sum(),
-        )
-    })
 }
