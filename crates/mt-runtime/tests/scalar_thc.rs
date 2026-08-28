@@ -766,18 +766,19 @@ fn multi_q_allq_l2_fits_heterogeneous_weights_with_independent_residual() {
         .collect();
     let baseline = residuals_one[0];
     assert!(baseline.is_finite() && baseline > 0.0);
+    let exactness_floor = 1.0e-12;
     for (engine, (&rank1, &rank2)) in engines
         .iter()
         .zip(residuals_one.iter().zip(residuals_two.iter()))
     {
         assert!(rank2.is_finite() && rank2 >= 0.0, "engine={engine:?}");
         assert!(
-            rank2 < rank1,
-            "rank-2 must beat same-engine rank-1 for {engine:?}: {rank2} vs {rank1}"
+            rank2 < rank1.max(exactness_floor),
+            "rank-2 must improve on rank-1 or stay below the exactness floor for {engine:?}: {rank2} vs {rank1}"
         );
         assert!(
-            rank2 < baseline,
-            "rank-2 must beat the shared QRCP rank-1 baseline for {engine:?}: {rank2} vs {baseline}"
+            rank2 < baseline.max(exactness_floor),
+            "rank-2 must improve on the shared QRCP rank-1 baseline or stay below the exactness floor for {engine:?}: {rank2} vs {baseline}"
         );
     }
     if rank_two[0].selection.pivots == rank_two[1].selection.pivots {
