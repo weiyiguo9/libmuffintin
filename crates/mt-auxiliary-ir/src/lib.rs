@@ -5,11 +5,14 @@
 //! reciprocal support, a retained auxiliary basis, and pair vertices. The
 //! auxiliary payload is a typed mixed-product or interpolation-point variant.
 //! There is no MPB `TOL`, ISDF threshold, Coulomb assembler, or trait family.
-//! Raw pair support is not the MPB auxiliary $|q+G|$ set.
+//! Raw pair support is not the MPB auxiliary $|q+G|$ set. Dirac muffin-tin
+//! products live in a parallel IR ([`DiracProductSource`]) and do not extend
+//! scalar [`ProductRadialId`] with $\kappa$.
 
 #![forbid(unsafe_code)]
 
 mod auxiliary;
+mod dirac;
 mod pair_layout;
 mod partition;
 mod raw;
@@ -21,6 +24,11 @@ pub use auxiliary::{
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, CutoffKind, CutoffRecord,
     InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
     MixedProductAuxiliary, MtAuxiliaryMode, SiteAuxiliaryBlock, sort_interpolation_points,
+};
+pub use dirac::{
+    DiracChargeSector, DiracMtPairSpec, DiracPairChannel, DiracPairVertex, DiracProductError,
+    DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples, DiracRawProductSpace,
+    DiracRawRadialProduct, DiracSiteRadialSet,
 };
 pub use pair_layout::PairColumnLayout;
 pub use partition::{PartitionSite, ProductPartition};

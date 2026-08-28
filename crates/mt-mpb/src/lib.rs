@@ -5,19 +5,30 @@
 //! `TOL` is constructor policy recorded on the retained auxiliary basis, not
 //! on [`muffintin_auxiliary_ir::RawProductSpace`]. Raw interstitial orbital-pair
 //! reciprocal support is supplied by [`muffintin_auxiliary_ir::ProductSource`]
-//! and is not the MPB auxiliary plane-wave set.
+//! and is not the MPB auxiliary plane-wave set. Dirac PP/QQ muffin-tin products
+//! and checked vertices are a parallel path over
+//! [`muffintin_auxiliary_ir::DiracProductSource`]; they do not reuse scalar
+//! [`muffintin_auxiliary_ir::ProductRadialId`].
 
 #![forbid(unsafe_code)]
 
 mod construct;
+mod dirac_construct;
+mod dirac_vertices;
 mod interstitial;
 mod vertices;
 
 pub use construct::{apply_overlap_cutoff, spex_mixed_product_basis};
+pub use dirac_construct::{require_matching_dirac_source_and_raw, untruncated_dirac_product_space};
+pub use dirac_vertices::{
+    DiracPairVertexAccumulator, dirac_mt_pair_vertex, require_matching_dirac_context,
+};
 pub use interstitial::auxiliary_interstitial_support;
 pub use vertices::{PairVertexAccumulator, pair_vertex};
 
-use muffintin_auxiliary_ir::{ProductError, ProductRadialId};
+use muffintin_auxiliary_ir::{
+    DiracChargeSector, DiracProductError, DiracRadialId, ProductError, ProductRadialId,
+};
 use muffintin_core::{LatticeError, MeshError, StepFunctionError};
 use muffintin_operators::OperatorError;
 use thiserror::Error;
@@ -30,6 +41,8 @@ pub const DEFAULT_TOLERANCE: f64 = 1.0e-4;
 pub enum MpbError {
     #[error(transparent)]
     Product(#[from] ProductError),
+    #[error(transparent)]
+    Dirac(#[from] DiracProductError),
     #[error(transparent)]
     Operator(#[from] OperatorError),
     #[error(transparent)]
@@ -75,6 +88,27 @@ pub enum MpbError {
     UnknownInterstitialPair { g: [i32; 3] },
     #[error("pair-vertex spec must request a muffin-tin and/or interstitial expansion")]
     EmptyPairSpec,
+    #[error("orbital ({kind:?}, kappa={kappa}, n={n}) is not on Dirac site {site}")]
+    UnknownDiracOrbital {
+        site: usize,
+        kind: muffintin_auxiliary_ir::ProductOrbitalKind,
+        kappa: i32,
+        n: usize,
+    },
+    #[error("requested Dirac muffin-tin pair is absent from the {sector:?} raw product space")]
+    UnknownDiracMtPair {
+        left: DiracRadialId,
+        right: DiracRadialId,
+        sector: DiracChargeSector,
+    },
+    #[error("2mu={twice_mu} is outside [-{twice_j}, {twice_j}] for Dirac kappa={kappa}")]
+    DiracMagneticQuantumNumber {
+        kappa: i32,
+        twice_mu: i64,
+        twice_j: u32,
+    },
+    #[error("Dirac pair vertex left and right must occupy the same muffin-tin site")]
+    DiracCrossSitePair,
 }
 
 #[cfg(test)]
