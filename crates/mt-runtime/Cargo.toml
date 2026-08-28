@@ -23,6 +23,7 @@ libmuffintin-dft = { path = "../mt-dft" }
 libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-io = { path = "../mt-io" }
 libmuffintin-lapw = { path = "../mt-lapw" }
+libmuffintin-mpb = { path = "../mt-mpb" }
 libmuffintin-operators = { path = "../mt-operators" }
 libmuffintin-radial = { path = "../mt-radial" }
 libmuffintin-sphere = { path = "../mt-sphere" }

@@ -3,12 +3,89 @@
 use crate::MpbError;
 use crate::construct::require_matching_context;
 use muffintin_auxiliary_ir::{
-    CompiledAuxiliaryBasis, InterstitialPairSpec, MtPairSpec, PairVertex, PairVertexSpec,
-    ProductOrbitalKind, ProductRadial, ProductRadialId, ProductSource, RawProductSpace,
+    CompiledAuxiliaryBasis, InterstitialPairSpec, MtPairSpec, OrbitalPair, PairVertex,
+    PairVertexSpec, ProductOrbitalKind, ProductRadial, ProductRadialId, ProductSource,
+    RawProductSpace,
 };
 use muffintin_core::{InverseBohr, gaunt};
 use muffintin_envelope::site_translation_phase;
 use num_complex::Complex64;
+
+/// Accumulator that sums primitive muffin-tin and interstitial pair terms
+/// onto one checked auxiliary vertex.
+///
+/// Each [`Self::add_muffin_tin`] / [`Self::add_interstitial`] call reuses the
+/// same Gaunt, radial-overlap, site-phase, and $\Theta_I$ algebra as
+/// [`pair_vertex`]. Terms add into the shared coefficient vector; they do not
+/// replace earlier contributions. This is the MPB-side contraction surface
+/// for a band-orbital sum. It is not a Coulomb kernel.
+#[derive(Debug)]
+pub struct PairVertexAccumulator<'a> {
+    source: &'a ProductSource,
+    raw: &'a RawProductSpace,
+    auxiliary: &'a CompiledAuxiliaryBasis,
+    pair: OrbitalPair,
+    coefficients: Vec<Complex64>,
+}
+
+impl<'a> PairVertexAccumulator<'a> {
+    /// Start an empty vertex on a matching source / raw / auxiliary context.
+    pub fn new(
+        source: &'a ProductSource,
+        raw: &'a RawProductSpace,
+        auxiliary: &'a CompiledAuxiliaryBasis,
+        pair: OrbitalPair,
+    ) -> Result<Self, MpbError> {
+        require_matching_context(source, raw, auxiliary)?;
+        Ok(Self {
+            source,
+            raw,
+            auxiliary,
+            pair,
+            coefficients: vec![Complex64::default(); auxiliary.dimension()],
+        })
+    }
+
+    /// Add one muffin-tin radial-factor pair scaled by `amplitude`.
+    ///
+    /// The kernel is Gaunt-weighted radial overlap times
+    /// $\exp(+i q\cdot R_a)$. The contribution is added into every matching
+    /// auxiliary muffin-tin index.
+    pub fn add_muffin_tin(
+        &mut self,
+        spec: MtPairSpec,
+        amplitude: Complex64,
+    ) -> Result<(), MpbError> {
+        add_muffin_tin(
+            self.source,
+            self.raw,
+            self.auxiliary,
+            spec,
+            amplitude,
+            &mut self.coefficients,
+        )
+    }
+
+    /// Add one interstitial pair expansion.
+    ///
+    /// Coefficients are
+    /// $A\Theta_I(G_{\mathrm{aux}}-G_{\mathrm{wrap}}-G_{\mathrm{rel}})$.
+    /// `g_relative` must exist on the raw pair support. Global
+    /// [`muffintin_auxiliary_ir::TransferQ::umklapp`] enters the $\Theta_I$
+    /// argument only.
+    pub fn add_interstitial(&mut self, spec: InterstitialPairSpec) -> Result<(), MpbError> {
+        add_interstitial(self.raw, self.auxiliary, spec, &mut self.coefficients)
+    }
+
+    /// Seal the accumulated coefficients as a checked [`PairVertex`].
+    pub fn finish(self) -> Result<PairVertex, MpbError> {
+        Ok(PairVertex::from_auxiliary(
+            self.auxiliary,
+            self.pair,
+            self.coefficients,
+        )?)
+    }
+}
 
 /// Expand an explicit MT and/or interstitial pair onto the auxiliary basis.
 ///
@@ -23,23 +100,23 @@ pub fn pair_vertex(
     auxiliary: &CompiledAuxiliaryBasis,
     spec: PairVertexSpec,
 ) -> Result<PairVertex, MpbError> {
-    require_matching_context(source, raw, auxiliary)?;
     let pair = spec.pair_identity().ok_or(MpbError::EmptyPairSpec)?;
-    let mut coefficients = vec![Complex64::default(); auxiliary.dimension()];
+    let mut acc = PairVertexAccumulator::new(source, raw, auxiliary, pair)?;
     if let Some(mt) = spec.muffin_tin {
-        fill_muffin_tin(source, raw, auxiliary, mt, &mut coefficients)?;
+        acc.add_muffin_tin(mt, Complex64::new(1.0, 0.0))?;
     }
     if let Some(interstitial) = spec.interstitial {
-        fill_interstitial(raw, auxiliary, interstitial, &mut coefficients)?;
+        acc.add_interstitial(interstitial)?;
     }
-    Ok(PairVertex::from_auxiliary(auxiliary, pair, coefficients)?)
+    acc.finish()
 }
 
-fn fill_muffin_tin(
+fn add_muffin_tin(
     source: &ProductSource,
     raw: &RawProductSpace,
     auxiliary: &CompiledAuxiliaryBasis,
     spec: MtPairSpec,
+    amplitude: Complex64,
     coefficients: &mut [Complex64],
 ) -> Result<(), MpbError> {
     if spec.left.site != spec.right.site {
@@ -135,13 +212,14 @@ fn fill_muffin_tin(
             m,
         );
         if let Some(index) = auxiliary.mt_index(site, mode.l, m, mode.n) {
-            coefficients[index] = phase * Complex64::new(angular * radial_overlap, 0.0);
+            coefficients[index] +=
+                amplitude * phase * Complex64::new(angular * radial_overlap, 0.0);
         }
     }
     Ok(())
 }
 
-fn fill_interstitial(
+fn add_interstitial(
     raw: &RawProductSpace,
     auxiliary: &CompiledAuxiliaryBasis,
     spec: InterstitialPairSpec,
@@ -168,7 +246,7 @@ fn fill_interstitial(
             )
         });
         let theta = auxiliary.partition.interstitial().coefficient(argument)?;
-        coefficients[offset + local] = spec.amplitude * theta;
+        coefficients[offset + local] += spec.amplitude * theta;
     }
     Ok(())
 }

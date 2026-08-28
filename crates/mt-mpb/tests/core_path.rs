@@ -12,8 +12,8 @@ use muffintin_core::{
 };
 use muffintin_envelope::site_translation_phase;
 use muffintin_mpb::{
-    DEFAULT_TOLERANCE, apply_overlap_cutoff, auxiliary_interstitial_support, pair_vertex,
-    spex_mixed_product_basis,
+    DEFAULT_TOLERANCE, PairVertexAccumulator, apply_overlap_cutoff, auxiliary_interstitial_support,
+    pair_vertex, spex_mixed_product_basis,
 };
 use muffintin_operators::solve_real_symmetric;
 use num_complex::Complex64;
@@ -872,4 +872,66 @@ fn raw_pair_support_survives_independent_auxiliary_g_cut() {
         ),
         Err(muffintin_mpb::MpbError::UnknownInterstitialPair { g }) if g == [1, 0, 0]
     ));
+}
+
+#[test]
+fn accumulator_adds_interstitial_terms_instead_of_replacing_them() {
+    let source = source_vv_cv(false, false);
+    let lattice = cubic_lattice();
+    let (raw, auxiliary) =
+        spex_mixed_product_basis(&source, 0, InverseBohr(0.8), &lattice).unwrap();
+    let g0 = g_vector(&lattice, [0; 3]);
+    let first = InterstitialPairSpec {
+        g_relative: g0,
+        amplitude: Complex64::new(0.3, 0.1),
+    };
+    let second = InterstitialPairSpec {
+        g_relative: g0,
+        amplitude: Complex64::new(0.7, -0.1),
+    };
+    let mut acc = PairVertexAccumulator::new(
+        &source,
+        &raw,
+        &auxiliary,
+        OrbitalPair::Interstitial { g_relative: g0 },
+    )
+    .unwrap();
+    acc.add_interstitial(first).unwrap();
+    acc.add_interstitial(second).unwrap();
+    let summed = acc.finish().unwrap();
+    let combined = pair_vertex(
+        &source,
+        &raw,
+        &auxiliary,
+        PairVertexSpec {
+            muffin_tin: None,
+            interstitial: Some(InterstitialPairSpec {
+                g_relative: g0,
+                amplitude: Complex64::new(1.0, 0.0),
+            }),
+        },
+    )
+    .unwrap();
+    assert_eq!(summed.layout(), combined.layout());
+    for (got, want) in summed.interstitial().iter().zip(combined.interstitial()) {
+        assert!((got - want).norm() < 1.0e-12);
+    }
+    let overwritten = pair_vertex(
+        &source,
+        &raw,
+        &auxiliary,
+        PairVertexSpec {
+            muffin_tin: None,
+            interstitial: Some(second),
+        },
+    )
+    .unwrap();
+    assert!(
+        summed
+            .interstitial()
+            .iter()
+            .zip(overwritten.interstitial())
+            .any(|(got, replaced)| (*got - *replaced).norm() > 1.0e-8),
+        "two added terms must not collapse to the last assignment"
+    );
 }

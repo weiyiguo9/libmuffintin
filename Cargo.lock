@@ -1047,6 +1047,7 @@ dependencies = [
  "libmuffintin-envelope",
  "libmuffintin-io",
  "libmuffintin-lapw",
+ "libmuffintin-mpb",
  "libmuffintin-operators",
  "libmuffintin-radial",
  "libmuffintin-sphere",

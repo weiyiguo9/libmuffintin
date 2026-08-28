@@ -15,7 +15,7 @@ mod vertices;
 
 pub use construct::{apply_overlap_cutoff, spex_mixed_product_basis};
 pub use interstitial::auxiliary_interstitial_support;
-pub use vertices::pair_vertex;
+pub use vertices::{PairVertexAccumulator, pair_vertex};
 
 use muffintin_auxiliary_ir::{ProductError, ProductRadialId};
 use muffintin_core::{LatticeError, MeshError, StepFunctionError};

@@ -1,12 +1,13 @@
-# 18. Scalar M-L1 product input from a frozen snapshot solve
+# 18. Scalar M-L1 product input and M-L2 mixed-product bridge
 
-This note records the implemented M-L1 boundary: a snapshot-backed frozen
-scalar LAPW solve that emits a method-neutral [`ProductSource`] together with
-the minimal real scalar Bloch coefficients and the exact per-$k$ compiled
-basis needed by later pair/THC stages.
-It does not construct an MPB auxiliary basis, run THC selection, assemble
-Weinert $V^q$, export HDF5, include core–valence products, or accept a
-SPEX/material comparison.
+This note records the implemented M-L1 boundary and the M-L2 scalar
+mixed-product bridge: a snapshot-backed frozen scalar LAPW solve that emits a
+method-neutral [`ProductSource`] together with the minimal real scalar Bloch
+coefficients and the exact per-$k$ compiled basis, then a runtime-owned
+construction of the SPEX mixed-product space, `TOL`-retained auxiliary basis,
+and selected same-spin band-pair vertices.
+It does not run THC selection, assemble Weinert $V^q$, export HDF5, include
+core–valence products, or accept a SPEX/material comparison.
 
 Product kinematics remain [13](13_product_space_and_lapw_mpb.md). The toy
 canonical $q$ / Umklapp pair gauge remains [14](14_toy_kpoint_isdf_thc.md).
@@ -18,10 +19,14 @@ The DFT snapshot kernel remains [17](17_minimal_lda_scf.md).
 |---|---|
 | `crates/mt-runtime` | `libmuffintin-runtime` (`muffintin`) |
 | `crates/mt-auxiliary-ir` | `libmuffintin-auxiliary-ir` (`muffintin_auxiliary_ir`) |
+| `crates/mt-mpb` | `libmuffintin-mpb` (`muffintin_mpb`) |
 
 `SnapshotDftPhysics::scalar_product_input` owns the M-L1 capability. It
 depends on `libmuffintin-auxiliary-ir` for [`ProductSource`] and
 [`PairColumnLayout`]. It does not depend on `libmuffintin-thc`.
+`build_scalar_mpb` owns the M-L2 capability and depends on
+`libmuffintin-mpb`. `libmuffintin-mpb` does not depend on runtime, THC, or
+Coulomb.
 
 ## 2. Implemented boundary
 
@@ -106,18 +111,67 @@ whose $G\cdot R$ is not a multiple of $\pi$.
 This is the production $k-q$ gauge. There is no second $k+q$ convention in
 M-L1.
 
-## 4. Explicit exclusions
+## 4. Scalar M-L2 mixed-product bridge
 
-M-L1 does not:
+`build_scalar_mpb(&ScalarProductInput, &ScalarMpbSpec)` consumes the published
+M-L1 bundle and an explicit spec: the reciprocal lattice required by
+`spex_mixed_product_basis`, `product_l_max`, `product_g_max`,
+`overlap_tolerance`, and a nonempty list of same-spin selections
+`(spin, k, left_band, right_band)`. The result owns the untruncated
+[`RawProductSpace`], the `TOL`-retained [`CompiledAuxiliaryBasis`] with
+$n_{\mathrm{spin}}=2$, and [`ScalarMpbPairVertex`] records that keep spin,
+pair-column identity $k\cdot N_{\mathrm{orb}}^2+i\cdot N_{\mathrm{orb}}+j$,
+band indices, and a checked [`PairVertex`].
 
-- run MPB construction or apply `TOL`
+The left orbital is the mapped $k-q$ side; the right orbital is at $k$.
+Band indices are the published M-L1 common leading window. Pair columns stay
+[`PairColumnLayout`]; the old $12\times 12$ packing is not used. The vertex
+identity is [`OrbitalPair::Bloch`]; spin is stored on the runtime record, not
+on the shared [`OrbitalPair`] model. Empty selection, a spin/$k$/band outside
+the frozen input, or an incompatible pair-column layout is a typed
+stage-boundary error.
+
+Muffin-tin contraction uses [`CompiledSiteProjection`] for every APW $u$,
+APW $\dot u$, and LO site coordinate present in the exact per-$k$
+[`CompiledBasis`]. The coefficient order is
+$\mathrm{conj}(C_{\mathrm{left}})C_{\mathrm{right}}$ times the inverse
+canonical site phase $\exp(-i q\cdot R_a)$ so the primitive MPB
+$+\mathrm{i}q\cdot R_a$ kernel is not double-counted against matching phases
+already stored on the projection. Terms absent from the raw radial products
+(triangle/parity) are skipped; $u$, $\dot u$, and LO channels that exist in
+the descriptor are not dropped.
+
+Interstitial contraction uses PW-only rows with relative label
+
+```math
+G_{\mathrm{rel}} = G_{\mathrm{right}} - G_{\mathrm{left}} + G_{\mathrm{wrap}}
+```
+
+and amplitude $\mathrm{conj}(C_{\mathrm{left}})C_{\mathrm{right}}/\Omega$.
+$G_{\mathrm{rel}}$ must exist on the M-L1 raw pair support. The global
+`TransferQ` Umklapp is not folded into $G_{\mathrm{rel}}$; it remains the
+MPB $\Theta_I$ argument
+
+```math
+G_{\mathrm{aux}} - G_{\mathrm{transfer}} - G_{\mathrm{rel}}.
+```
+
+The MPB accumulator [`PairVertexAccumulator`] sums those primitive terms into
+one checked vertex. Runtime does not build a complete primitive vertex per
+basis-pair term.
+
+## 5. Explicit exclusions
+
+M-L1 and M-L2 do not:
+
 - run THC selection, $\zeta$ fits, or interpolation-point auxiliaries
 - assemble Weinert or SPEX $V^q$
 - evaluate grid-sampled `BlochOrbitals` / `PairBlock` tensors
 - include selected core radials in the product window
 - extend `ProductRadialId` with $\kappa$ or four-component $PP$/$QQ`
+- implement spinor or signed-$\kappa$ product vertices
 - claim SPEX or material acceptance
 - complete M-L
 
-Later M-L stages consume this scalar product-input contract rather than
-reaching into snapshot solver internals.
+Later M-L stages consume this scalar product-input and mixed-product contract
+rather than reaching into snapshot solver internals.
