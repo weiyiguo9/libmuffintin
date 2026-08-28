@@ -2,57 +2,21 @@
 
 use crate::scalar_product::{ScalarProductInput, ScalarSpinChannel};
 use crate::site_coords::site_coordinate;
-use muffintin_auxiliary_ir::{
-    CompiledAuxiliaryBasis, InterpolationRegion, PairColumnLayout, PairVertex, ProductOrbitalKind,
-    ProductPartition, ProductRadial, ProductRadialId, ProductSource, SiteRadialSet, TransferQ,
+use crate::thc_grid::{
+    ThcCandidates, ThcEngine, ThcGridError, ThcParentGrid, ThcQRecord, ThcRegion,
+    is_gamma_fractional, records_match_parent_grid, require_parent_grid_radials,
 };
+use muffintin_auxiliary_ir::{ProductOrbitalKind, ProductRadial, ProductRadialId, SiteRadialSet};
 use muffintin_core::{Bohr, GVector, InverseBohr, complex_spherical_harmonics, lm_index};
 use muffintin_lapw::{CompiledBasis, Provenance};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
 use muffintin_tensor::DenseEigenvectors;
-use muffintin_thc::{
-    L2Engine, PairBlock, PerQFit, RankPolicy, Selection, ThcError, fit_allq_l2_pair_blocks,
-};
+use muffintin_thc::{PairBlock, RankPolicy, Selection, ThcError, fit_allq_l2_pair_blocks};
 use num_complex::Complex64;
 use thiserror::Error;
 
-const Q_SLICE_TOLERANCE: f64 = 1.0e-12;
-const RADIAL_SHELL_TOLERANCE: f64 = 1.0e-10;
-
 type OrbitalSample = (Complex64, Complex64);
 type OrbitalGrid = Vec<Vec<Vec<OrbitalSample>>>;
-
-/// Candidate-point policy for AllQL2 L2 selection.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ScalarThcCandidates {
-    /// Every strictly positive-weight parent-grid point, in parent order.
-    All,
-    /// Explicit parent-grid indices, in caller order.
-    ///
-    /// Zero-weight indices are rejected rather than dropped.
-    Indices(Vec<usize>),
-}
-
-/// Production AllQL2 full L2 engines. Structured sketches are not in this type.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ScalarThcEngine {
-    /// Full weighted column-pivoted QR.
-    FullColumnPivotedQr,
-    /// Pivoted Cholesky of the weighted point Gram.
-    ///
-    /// The dense Gram is not formed. The stacked weighted pair matrix is still
-    /// materialized.
-    FullPivotedCholesky,
-}
-
-impl From<ScalarThcEngine> for L2Engine {
-    fn from(engine: ScalarThcEngine) -> Self {
-        match engine {
-            ScalarThcEngine::FullColumnPivotedQr => Self::FullColumnPivotedQr,
-            ScalarThcEngine::FullPivotedCholesky => Self::FullPivotedCholesky,
-        }
-    }
-}
 
 /// Production AllQL2 request for one collinear spin.
 #[derive(Clone, Debug, PartialEq)]
@@ -62,124 +26,15 @@ pub struct ScalarThcSpec {
     /// Existing THC requested/effective rank policy.
     pub rank: RankPolicy,
     /// Deterministic candidate subset used by the selected L2 engine.
-    pub candidates: ScalarThcCandidates,
+    pub candidates: ThcCandidates,
     /// Full production L2 engine. Callers must choose explicitly.
-    pub engine: ScalarThcEngine,
-}
-
-/// Typed muffin-tin or interstitial parent-grid region.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ScalarThcRegion {
-    /// Stored exponential-mesh sample on muffin-tin `site`.
-    MuffinTin { site: usize, radial_index: usize },
-    /// Partitioned interstitial.
-    Interstitial,
-}
-
-/// One immutable parent-grid point.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarThcPoint {
-    pub coordinate: [Bohr; 3],
-    /// True quadrature weight. Zeros are allowed; they are not clamped.
-    pub weight: f64,
-    pub region: ScalarThcRegion,
-}
-
-/// Content fingerprint binding a parent grid to the per-$q$ $\zeta$ fits.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ParentGridIdentity(u64);
-
-/// Externally supplied parent support for scalar adaptive THC.
-///
-/// Construction fingerprints the ordered points, weights, regions, partition,
-/// and provenance so a later permutation cannot keep the original $\zeta$ fits.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ScalarThcGrid {
-    partition: ProductPartition,
-    provenance: Provenance,
-    points: Vec<ScalarThcPoint>,
-    identity: ParentGridIdentity,
-}
-
-impl ScalarThcGrid {
-    /// Construct after checking finite coordinates, site indices, and weights.
-    pub fn new(
-        partition: ProductPartition,
-        provenance: Provenance,
-        points: Vec<ScalarThcPoint>,
-    ) -> Result<Self, ScalarThcError> {
-        if points.is_empty() {
-            return Err(ThcError::EmptyGrid.into());
-        }
-        let n_sites = partition.site_count();
-        for (index, point) in points.iter().enumerate() {
-            if point
-                .coordinate
-                .iter()
-                .any(|component| !component.get().is_finite())
-            {
-                return Err(ScalarThcError::GridPoint { index });
-            }
-            if let ScalarThcRegion::MuffinTin { site, .. } = point.region
-                && site >= n_sites
-            {
-                return Err(ScalarThcError::GridPoint { index });
-            }
-        }
-        muffintin_thc::validate_quadrature_weights(
-            &points.iter().map(|point| point.weight).collect::<Vec<_>>(),
-        )?;
-        let identity = parent_grid_identity(&partition, &provenance, &points);
-        Ok(Self {
-            partition,
-            provenance,
-            points,
-            identity,
-        })
-    }
-
-    /// Partition bound to this grid.
-    pub const fn partition(&self) -> &ProductPartition {
-        &self.partition
-    }
-
-    /// Construction provenance.
-    pub const fn provenance(&self) -> &Provenance {
-        &self.provenance
-    }
-
-    /// Ordered parent-grid points.
-    pub fn points(&self) -> &[ScalarThcPoint] {
-        &self.points
-    }
-
-    pub(crate) const fn identity(&self) -> ParentGridIdentity {
-        self.identity
-    }
-}
-
-/// Per-$q$ interpolation-point auxiliary, $\zeta$, and pair vertices.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ScalarThcQRecord {
-    pub q_index: usize,
-    pub q: TransferQ,
-    pub layout: PairColumnLayout,
-    pub auxiliary: CompiledAuxiliaryBasis,
-    pub fit: PerQFit,
-    pub vertices: Vec<PairVertex>,
-    grid_identity: ParentGridIdentity,
-}
-
-impl ScalarThcQRecord {
-    pub(crate) const fn grid_identity(&self) -> ParentGridIdentity {
-        self.grid_identity
-    }
+    pub engine: ThcEngine,
 }
 
 /// Scalar AllQL2 result carrying the M-L4 interpolation-point seam.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarThcResult {
-    pub grid: ScalarThcGrid,
+    pub grid: ThcParentGrid,
     pub selection: Selection,
     pub requested_rank: RankPolicy,
     pub effective_rank: usize,
@@ -189,15 +44,13 @@ pub struct ScalarThcResult {
     /// ([`muffintin_auxiliary_ir::OrbitalPair::Bloch`]) do not carry a spin
     /// label.
     pub spin: u8,
-    pub records: Vec<ScalarThcQRecord>,
+    pub records: Vec<ThcQRecord>,
 }
 
 impl ScalarThcResult {
     /// Whether every per-$q$ $\zeta$ record was fitted on the stored parent grid.
     pub fn records_match_parent_grid(&self) -> bool {
-        self.records
-            .iter()
-            .all(|record| record.grid_identity == self.grid.identity)
+        records_match_parent_grid(&self.grid, &self.records)
     }
 }
 
@@ -230,6 +83,24 @@ pub enum ScalarThcError {
     },
 }
 
+impl From<ThcGridError> for ScalarThcError {
+    fn from(error: ThcGridError) -> Self {
+        match error {
+            ThcGridError::Thc(error) => Self::Thc(error),
+            ThcGridError::GridPoint { index } => Self::GridPoint { index },
+            ThcGridError::RadialShellMismatch {
+                index,
+                site,
+                radial_index,
+            } => Self::RadialShellMismatch {
+                index,
+                site,
+                radial_index,
+            },
+        }
+    }
+}
+
 /// Build AllQL2 interpolation points, $\zeta$, and pair vertices on a parent grid.
 ///
 /// `inputs` is the complete k-mesh $q$ slice in production $q$-index order:
@@ -238,10 +109,12 @@ pub enum ScalarThcError {
 /// the cell-periodic representation by $\exp(-i k\cdot r)$ at the Cartesian
 /// point, using the stored plane-wave Cartesian $k$. Pair density is
 /// $\exp(+i G_{\mathrm{wrap}}\cdot r)\,(P_{k-q}^*P_k+Q_{k-q}^*Q_k)$ with the
-/// stored per-column wrap. Global [`TransferQ::umklapp`] is not applied again.
+/// stored per-column wrap. Global [`muffintin_auxiliary_ir::TransferQ::umklapp`]
+/// is not applied again. Auxiliaries are created with scalar THC provenance
+/// before Bloch pair vertices.
 pub fn build_scalar_thc(
     inputs: &[ScalarProductInput],
-    grid: &ScalarThcGrid,
+    grid: &ThcParentGrid,
     spec: &ScalarThcSpec,
 ) -> Result<ScalarThcResult, ScalarThcError> {
     let first = inputs.first().ok_or(ScalarThcError::EmptySlice)?;
@@ -249,33 +122,19 @@ pub fn build_scalar_thc(
     if grid.partition() != &first.source.partition {
         return Err(ScalarThcError::GridPartitionMismatch);
     }
-    require_grid_radials(grid, &first.source)?;
+    require_parent_grid_radials(grid, |site| {
+        first.source.radials.get(site).map(|set| &set.mesh)
+    })?;
     let channel = spin_channel(first, spec.spin)?;
     let samples = evaluate_orbitals(first, grid, channel)?;
     let blocks = pair_blocks(inputs, grid, &samples)?;
-    let cartesian = grid
-        .points
-        .iter()
-        .map(|point| point.coordinate.map(Bohr::get))
-        .collect::<Vec<_>>();
-    let weights = grid
-        .points
-        .iter()
-        .map(|point| point.weight)
-        .collect::<Vec<_>>();
-    let regions = grid
-        .points
-        .iter()
-        .map(|point| interpolation_region(point.region))
-        .collect::<Vec<_>>();
+    let cartesian = grid.cartesian();
+    let weights = grid.weights();
+    let regions = grid.interpolation_regions();
     let transfers = inputs
         .iter()
         .map(|input| input.source.q)
         .collect::<Vec<_>>();
-    let candidates = match &spec.candidates {
-        ScalarThcCandidates::All => None,
-        ScalarThcCandidates::Indices(indices) => Some(indices.as_slice()),
-    };
     let fitted = fit_allq_l2_pair_blocks(
         &blocks,
         &cartesian,
@@ -284,8 +143,12 @@ pub fn build_scalar_thc(
         first.source.partition.clone(),
         &transfers,
         spec.rank,
-        L2Engine::from(spec.engine),
-        candidates,
+        spec.engine.into(),
+        spec.candidates.as_fit_indices(),
+        Provenance {
+            recipe: Some("scalar-thc-allq-l2".to_owned()),
+            reference: Some("snapshot-dft-frozen-scalar-ml3".to_owned()),
+        },
     )?;
     let layout = first.pair_columns;
     let records = fitted
@@ -294,20 +157,8 @@ pub fn build_scalar_thc(
         .zip(fitted.auxiliaries)
         .zip(fitted.vertices)
         .zip(transfers)
-        .map(|(((fit, mut auxiliary), vertices), q)| {
-            auxiliary.provenance = Provenance {
-                recipe: Some("scalar-thc-allq-l2".to_owned()),
-                reference: Some("snapshot-dft-frozen-scalar-ml3".to_owned()),
-            };
-            ScalarThcQRecord {
-                q_index: fit.q_index,
-                q,
-                layout,
-                auxiliary,
-                fit,
-                vertices,
-                grid_identity: grid.identity,
-            }
+        .map(|(((fit, auxiliary), vertices), q)| {
+            ThcQRecord::new(fit.q_index, q, layout, auxiliary, fit, vertices, grid)
         })
         .collect::<Vec<_>>();
     Ok(ScalarThcResult {
@@ -318,13 +169,6 @@ pub fn build_scalar_thc(
         spin: spec.spin,
         records,
     })
-}
-
-fn interpolation_region(region: ScalarThcRegion) -> InterpolationRegion {
-    match region {
-        ScalarThcRegion::MuffinTin { site, .. } => InterpolationRegion::MuffinTin { site },
-        ScalarThcRegion::Interstitial => InterpolationRegion::Interstitial,
-    }
 }
 
 fn spin_channel(
@@ -363,7 +207,7 @@ fn require_compatible_slice(inputs: &[ScalarProductInput]) -> Result<(), ScalarT
             .iter()
             .find(|mapped| mapped.k_index == iq)
             .ok_or(ScalarThcError::IncompatibleInputs)?;
-        if !is_gamma(first.orbitals.k_fractional[mapped.kq_index]) {
+        if !is_gamma_fractional(first.orbitals.k_fractional[mapped.kq_index]) {
             return Err(ScalarThcError::IncompleteQSlice {
                 actual: iq,
                 expected: n_k,
@@ -373,120 +217,17 @@ fn require_compatible_slice(inputs: &[ScalarProductInput]) -> Result<(), ScalarT
     Ok(())
 }
 
-fn is_gamma(fractional: [f64; 3]) -> bool {
-    fractional
-        .iter()
-        .all(|component| component.abs() <= Q_SLICE_TOLERANCE)
-}
-
-fn require_grid_radials(
-    grid: &ScalarThcGrid,
-    source: &ProductSource,
-) -> Result<(), ScalarThcError> {
-    for (index, point) in grid.points.iter().enumerate() {
-        if let ScalarThcRegion::MuffinTin { site, radial_index } = point.region {
-            let Some(radials) = source.radials.get(site) else {
-                return Err(ScalarThcError::GridPoint { index });
-            };
-            if radial_index >= radials.mesh.radii().len() {
-                return Err(ScalarThcError::GridPoint { index });
-            }
-            let origin = source.partition.sites()[site].position;
-            let observed = cartesian_distance(point.coordinate, origin);
-            let expected = radials.mesh.radii()[radial_index].get();
-            let scale = observed.abs().max(expected.abs()).max(1.0);
-            if (observed - expected).abs() > RADIAL_SHELL_TOLERANCE * scale {
-                return Err(ScalarThcError::RadialShellMismatch {
-                    index,
-                    site,
-                    radial_index,
-                });
-            }
-        }
-    }
-    Ok(())
-}
-
-fn parent_grid_identity(
-    partition: &ProductPartition,
-    provenance: &Provenance,
-    points: &[ScalarThcPoint],
-) -> ParentGridIdentity {
-    let mut hash = mix(0xA11C_941D_0001_0001, points.len() as u64);
-    hash = mix(hash, partition.site_count() as u64);
-    hash = mix(hash, partition.interstitial().cell_volume().get().to_bits());
-    for site in partition.sites() {
-        hash = mix(hash, site.index as u64);
-        for coordinate in site.position {
-            hash = mix(hash, coordinate.get().to_bits());
-        }
-        hash = mix(hash, site.radius.get().to_bits());
-    }
-    hash = mix_opt_str(hash, partition.provenance().recipe.as_deref());
-    hash = mix_opt_str(hash, partition.provenance().reference.as_deref());
-    hash = mix_opt_str(hash, provenance.recipe.as_deref());
-    hash = mix_opt_str(hash, provenance.reference.as_deref());
-    for (index, point) in points.iter().enumerate() {
-        hash = mix(hash, index as u64);
-        for coordinate in point.coordinate {
-            hash = mix(hash, coordinate.get().to_bits());
-        }
-        hash = mix(hash, point.weight.to_bits());
-        match point.region {
-            ScalarThcRegion::MuffinTin { site, radial_index } => {
-                hash = mix(hash, 1);
-                hash = mix(hash, site as u64);
-                hash = mix(hash, radial_index as u64);
-            }
-            ScalarThcRegion::Interstitial => {
-                hash = mix(hash, 2);
-            }
-        }
-    }
-    ParentGridIdentity(hash)
-}
-
-fn mix(hash: u64, lane: u64) -> u64 {
-    hash.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(lane)
-}
-
-fn mix_opt_str(hash: u64, value: Option<&str>) -> u64 {
-    match value {
-        None => mix(hash, 0),
-        Some(text) => {
-            let mut hash = mix(hash, 1);
-            hash = mix(hash, text.len() as u64);
-            for &byte in text.as_bytes() {
-                hash = mix(hash, u64::from(byte));
-            }
-            hash
-        }
-    }
-}
-
-fn cartesian_distance(point: [Bohr; 3], origin: [Bohr; 3]) -> f64 {
-    point
-        .iter()
-        .zip(origin)
-        .map(|(component, center)| {
-            let delta = component.get() - center.get();
-            delta * delta
-        })
-        .sum::<f64>()
-        .sqrt()
-}
-
 #[allow(clippy::needless_range_loop)]
 fn evaluate_orbitals(
     input: &ScalarProductInput,
-    grid: &ScalarThcGrid,
+    grid: &ThcParentGrid,
     channel: &ScalarSpinChannel,
 ) -> Result<OrbitalGrid, ScalarThcError> {
     let n_k = channel.eigenvectors.len();
     let n_orb = input.orbitals.band_window.count;
     let mut samples = vec![
         vec![vec![(Complex64::default(), Complex64::default()); n_orb]; n_k];
-        grid.points.len()
+        grid.points().len()
     ];
     let volume = input
         .source
@@ -504,9 +245,9 @@ fn evaluate_orbitals(
         }
         site_proj.push(per_site);
     }
-    for (p, point) in grid.points.iter().enumerate() {
+    for (p, point) in grid.points().iter().enumerate() {
         match point.region {
-            ScalarThcRegion::MuffinTin { site, radial_index } => {
+            ThcRegion::MuffinTin { site, radial_index } => {
                 let radials = &input.source.radials[site];
                 let origin = input.source.partition.sites()[site].position;
                 let direction = [
@@ -535,7 +276,7 @@ fn evaluate_orbitals(
                     }
                 }
             }
-            ScalarThcRegion::Interstitial => {
+            ThcRegion::Interstitial => {
                 for k in 0..n_k {
                     for band in 0..n_orb {
                         samples[p][k][band] = (
@@ -609,13 +350,9 @@ fn interstitial_orbital(
 ) -> Complex64 {
     let mut value = Complex64::default();
     for (row, wave) in compiled.plane_waves.iter().enumerate() {
-        value += eigenvectors.at(row, band) * plane_wave_phase(wave.g, coordinate) / sqrt_volume;
+        value += eigenvectors.at(row, band) * plus_i_g_dot_r(wave.g, coordinate) / sqrt_volume;
     }
     value
-}
-
-fn plane_wave_phase(g: GVector, coordinate: [Bohr; 3]) -> Complex64 {
-    plus_i_g_dot_r(g, coordinate)
 }
 
 fn plus_i_g_dot_r(g: GVector, coordinate: [Bohr; 3]) -> Complex64 {
@@ -648,18 +385,18 @@ fn minus_i_k_dot_r(k: [InverseBohr; 3], coordinate: [Bohr; 3]) -> Complex64 {
 #[allow(clippy::needless_range_loop)]
 fn pair_blocks(
     inputs: &[ScalarProductInput],
-    grid: &ScalarThcGrid,
+    grid: &ThcParentGrid,
     samples: &[Vec<Vec<OrbitalSample>>],
 ) -> Result<Vec<PairBlock>, ScalarThcError> {
     let layout = inputs[0].pair_columns;
     let n_orb = layout.n_orb;
     let n_col = layout.n_columns().map_err(ThcError::from)?;
-    let n_points = grid.points.len();
+    let n_points = grid.points().len();
     let mut blocks = Vec::with_capacity(inputs.len());
     for (iq, input) in inputs.iter().enumerate() {
         let mut values = vec![Complex64::default(); n_points * n_col];
         for mapped in &input.k_minus_q {
-            for (p, point) in grid.points.iter().enumerate() {
+            for (p, point) in grid.points().iter().enumerate() {
                 let phase = plus_i_g_dot_r(mapped.umklapp, point.coordinate);
                 for left_band in 0..n_orb {
                     let (p_left, q_left) = samples[p][mapped.kq_index][left_band];

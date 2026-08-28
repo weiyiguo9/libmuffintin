@@ -108,7 +108,15 @@ pub fn run_thc(
             gram,
             weight_target,
         )?;
-        let auxiliary = interpolation_auxiliary(partition.clone(), q, selection.points.clone())?;
+        let auxiliary = interpolation_auxiliary(
+            partition.clone(),
+            q,
+            selection.points.clone(),
+            Provenance {
+                recipe: Some("thc-isdf".to_owned()),
+                reference: Some("scratch/thc_mt_kpoint_test.py".to_owned()),
+            },
+        )?;
         let q_vertices = bloch_pair_vertices(q, &selected_rows, n_mu, layout, &auxiliary)?;
         fits.push(fit);
         auxiliaries.push(auxiliary);
@@ -186,6 +194,10 @@ pub fn compare_strategies(
 /// the stacked weighted pair matrix. Selected interpolation points are
 /// returned in canonical muffin-tin-then-interstitial layout order. This is
 /// not Coulomb ranking and does not use [`ToyGrid`].
+///
+/// `provenance` is stored on each interpolation-point auxiliary **before**
+/// [`bloch_pair_vertices`] copies it onto the generated [`PairVertex`] records.
+/// Callers must not mutate auxiliary provenance after vertices are built.
 #[allow(clippy::too_many_arguments)]
 pub fn fit_allq_l2_pair_blocks(
     blocks: &[PairBlock],
@@ -197,6 +209,7 @@ pub fn fit_allq_l2_pair_blocks(
     rank: RankPolicy,
     engine: L2Engine,
     candidates: Option<&[usize]>,
+    provenance: Provenance,
 ) -> Result<ThcResult, ThcError> {
     if blocks.is_empty() {
         return Err(ThcError::EmptyRank);
@@ -333,7 +346,12 @@ pub fn fit_allq_l2_pair_blocks(
     for (block, &q) in blocks.iter().zip(transfers) {
         let selected_rows = block.selected_rows(&ids)?;
         let fit = fit_per_q(&selected_rows, n_mu, block, weights, q, None, false)?;
-        let auxiliary = interpolation_auxiliary(partition.clone(), q, selection.points.clone())?;
+        let auxiliary = interpolation_auxiliary(
+            partition.clone(),
+            q,
+            selection.points.clone(),
+            provenance.clone(),
+        )?;
         let q_vertices = bloch_pair_vertices(q, &selected_rows, n_mu, layout, &auxiliary)?;
         fits.push(fit);
         auxiliaries.push(auxiliary);
@@ -389,10 +407,14 @@ fn candidate_weights(weights: &[f64], candidates: &[usize]) -> Vec<f64> {
 }
 
 /// Interpolation-point auxiliary at one $q$.
+///
+/// `provenance` is stored on the compiled auxiliary and later copied onto
+/// Bloch pair vertices by [`bloch_pair_vertices`].
 pub fn interpolation_auxiliary(
     partition: ProductPartition,
     q: TransferQ,
     points: Vec<muffintin_auxiliary_ir::InterpolationAuxiliaryPoint>,
+    provenance: Provenance,
 ) -> Result<CompiledAuxiliaryBasis, ThcError> {
     let auxiliary = CompiledAuxiliaryBasis {
         partition,
@@ -400,10 +422,7 @@ pub fn interpolation_auxiliary(
         representation: AuxiliaryRepresentation::InterpolationPoints(InterpolationPointAuxiliary {
             points,
         }),
-        provenance: Provenance {
-            recipe: Some("thc-isdf".to_owned()),
-            reference: Some("scratch/thc_mt_kpoint_test.py".to_owned()),
-        },
+        provenance,
     };
     auxiliary.validate()?;
     Ok(auxiliary)

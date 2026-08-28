@@ -1,13 +1,13 @@
-//! Public M-L4 scalar sampled-ζ Coulomb tests on frozen M-L1/M-L2/M-L3 output.
+//! Public M-L5d spinor sampled-ζ Coulomb tests on frozen M-L5b/M-L5c/M-L5d output.
 
 use std::collections::BTreeMap;
 use std::f64::consts::PI;
 
 use muffintin::{
-    RankPolicy, SCALAR_COULOMB_EXACTNESS_FLOOR, ScalarCoulombError, ScalarCoulombPairMatch,
-    ScalarCoulombSpec, ScalarMpbSelection, ScalarMpbSpec, ScalarProductInput, ScalarThcSpec,
-    SnapshotDftPhysics, ThcCandidates, ThcEngine, ThcParentGrid, ThcPoint, ThcRegion,
-    build_scalar_coulomb, build_scalar_mpb, build_scalar_thc,
+    RankPolicy, SPINOR_COULOMB_EXACTNESS_FLOOR, SnapshotDftPhysics, SpinorCoulombError,
+    SpinorCoulombPairMatch, SpinorCoulombSpec, SpinorMpbSelection, SpinorMpbSpec,
+    SpinorProductInput, SpinorThcSpec, ThcCandidates, ThcEngine, ThcParentGrid, ThcPoint,
+    ThcRegion, build_spinor_coulomb, build_spinor_mpb, build_spinor_thc,
 };
 use muffintin_auxiliary_ir::{AuxiliaryLayout, OrbitalPair, PairVertex, TransferQ};
 use muffintin_core::{Bohr, Hartree, InverseBohr};
@@ -32,9 +32,10 @@ use muffintin_io::{
 };
 use muffintin_lapw::Provenance;
 use muffintin_mpb::DEFAULT_TOLERANCE;
+use muffintin_tensor::DenseEigenvectors;
 use num_complex::Complex64;
 
-fn hydrogen_snapshot() -> SnapshotV2 {
+fn hydrogen_spinor_snapshot() -> SnapshotV2 {
     let point_count = 61;
     let first: f64 = 1.0e-4;
     let radius: f64 = 1.0;
@@ -44,7 +45,7 @@ fn hydrogen_snapshot() -> SnapshotV2 {
         .collect::<Vec<_>>();
     SnapshotV1::new(
         MetaV1 {
-            title: "scalar Coulomb hydrogen smoke".to_owned(),
+            title: "spinor Coulomb hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,
             energy_zero: "zero interstitial Fourier mean".to_owned(),
@@ -76,7 +77,7 @@ fn hydrogen_snapshot() -> SnapshotV2 {
                         last: first * ((point_count - 1) as f64 * increment).exp(),
                         consistency_tolerance: 1.0e-12,
                     },
-                    radial_equation: RadialEquationTagV1::ScalarKoellingHarmon,
+                    radial_equation: RadialEquationTagV1::FullyRelativisticDirac,
                     potential_unit: EnergyUnitV1::Hartree,
                     potential_channels: vec![PotentialChannelV1 {
                         l: 0,
@@ -120,7 +121,7 @@ fn hydrogen_snapshot() -> SnapshotV2 {
     .unwrap()
 }
 
-fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
+fn spinor_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
     ScfConfig {
         electron_count: 1.0,
         k_mesh: ScfKMesh {
@@ -149,6 +150,15 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },
+                ScfChannelRecipe {
+                    site: "H-1".to_owned(),
+                    identity: ScfChannelIdentity::Kappa { n: 2, kappa: 1 },
+                    treatment: ScfChannelTreatment::Hdlo,
+                    derivative_order: 2,
+                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    seed: None,
+                    provenance: ScfChannelProvenance::Site,
+                },
             ],
             resolved_channels: Vec::new(),
         },
@@ -160,7 +170,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
         },
         mixing: ScfMixing::Linear { alpha: 1.0 },
-        relativity: ScfRelativity::Scalar,
+        relativity: ScfRelativity::SpinorFirstVariation,
         convergence: ScfConvergence {
             energy_tolerance: Hartree(1.0e100),
             density_tolerance: 1.0e100,
@@ -186,7 +196,7 @@ fn on_shell(origin: [Bohr; 3], radius: f64, direction: [f64; 3]) -> [Bohr; 3] {
     ]
 }
 
-fn parent_grid(input: &ScalarProductInput) -> ThcParentGrid {
+fn parent_grid(input: &SpinorProductInput) -> ThcParentGrid {
     let origin = input.source.partition.sites()[0].position;
     let mesh = &input.source.radials[0].mesh;
     let mid = mesh.radii().len() / 2;
@@ -240,26 +250,37 @@ fn parent_grid(input: &ScalarProductInput) -> ThcParentGrid {
     .unwrap()
 }
 
-fn thc_spec() -> ScalarThcSpec {
-    ScalarThcSpec {
-        spin: 0,
+fn thc_spec() -> SpinorThcSpec {
+    SpinorThcSpec {
         rank: RankPolicy::Exact { n_mu: 1 },
         candidates: ThcCandidates::All,
         engine: ThcEngine::FullColumnPivotedQr,
     }
 }
 
-fn coulomb_spec() -> ScalarCoulombSpec {
-    ScalarCoulombSpec {
+fn coulomb_spec() -> SpinorCoulombSpec {
+    SpinorCoulombSpec {
         request: CoulombRequest::cubic(8.0, 2).unwrap(),
         projection: InterpolationProjection::new(InverseBohr(1.5), 1).unwrap(),
     }
 }
 
+fn mpb_spec() -> SpinorMpbSpec {
+    SpinorMpbSpec {
+        product_l_max: 2,
+        product_g_max: InverseBohr(1.5),
+        overlap_tolerance: DEFAULT_TOLERANCE,
+        selections: vec![SpinorMpbSelection {
+            k: 0,
+            left_band: 0,
+            right_band: 0,
+        }],
+    }
+}
+
 /// Rank-1 THC versus MPB quadratic $c^\dagger V c$ on this 6-point hydrogen /
-/// LEXP=2 fixture. Observed algebraic gap ≈ 0.167 (not a SPEX/material
-/// tolerance). The bound is three times that gap and sits well above the
-/// $10^{-12}$ exactness floor.
+/// LEXP=2 spinor fixture. The bound is three-ish times a typical algebraic
+/// gap on this bounded fixture and is not a SPEX or material tolerance.
 const FIXTURE_MPB_THC_QUADRATIC_ABS: f64 = 0.5;
 
 fn dense_quadratic(matrix: &[Complex64], coefficients: &[Complex64]) -> Complex64 {
@@ -290,31 +311,15 @@ fn dense_action_norm(matrix: &[Complex64], coefficients: &[Complex64]) -> f64 {
     norm_sq.sqrt()
 }
 
-fn mpb_spec(lattice: muffintin_core::ReciprocalLattice) -> ScalarMpbSpec {
-    ScalarMpbSpec {
-        lattice,
-        product_l_max: 2,
-        product_g_max: InverseBohr(1.5),
-        overlap_tolerance: DEFAULT_TOLERANCE,
-        selections: vec![ScalarMpbSelection {
-            spin: 0,
-            k: 0,
-            left_band: 0,
-            right_band: 0,
-        }],
-    }
-}
-
 #[test]
 fn gamma_sampled_coulomb_uses_full_parent_grid_and_keeps_head_as_metadata() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
     let input = physics
-        .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
+        .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
     let grid = parent_grid(&input);
-    let thc = build_scalar_thc(std::slice::from_ref(&input), &grid, &thc_spec()).unwrap();
-    let result = build_scalar_coulomb(&[input], &thc, &coulomb_spec(), &[]).unwrap();
-    assert_eq!(result.spin, 0);
+    let thc = build_spinor_thc(std::slice::from_ref(&input), &grid, &thc_spec()).unwrap();
+    let result = build_spinor_coulomb(&[input], &thc, &coulomb_spec(), &[]).unwrap();
     assert_eq!(result.records.len(), 1);
     let record = &result.records[0];
     assert_eq!(record.q_index, 0);
@@ -342,7 +347,7 @@ fn gamma_sampled_coulomb_uses_full_parent_grid_and_keeps_head_as_metadata() {
     assert_eq!(record.operator.q(), record.q);
     let gamma = record.operator.gamma().expect("Gamma head metadata");
     assert!(gamma.spherical_average_subtracted);
-    assert!((gamma.head_prefactor - 4.0 * PI).abs() < SCALAR_COULOMB_EXACTNESS_FLOOR);
+    assert!((gamma.head_prefactor - 4.0 * PI).abs() < SPINOR_COULOMB_EXACTNESS_FLOOR);
     assert_eq!(
         gamma.constant_coefficients.len(),
         record.operator.dimension()
@@ -358,56 +363,19 @@ fn gamma_sampled_coulomb_uses_full_parent_grid_and_keeps_head_as_metadata() {
 }
 
 #[test]
-fn finite_q_preserves_transfer_q_and_rejects_dropped_umklapp() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
-    let q0 = physics
-        .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [0.0; 3])
-        .unwrap();
-    let q15 = physics
-        .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [1.5, 0.0, 0.0])
-        .unwrap();
-    assert_eq!(q15.source.q.umklapp.index, [1, 0, 0]);
-    let grid = parent_grid(&q15);
-    let thc = build_scalar_thc(&[q0.clone(), q15.clone()], &grid, &thc_spec()).unwrap();
-    let result = build_scalar_coulomb(&[q0, q15.clone()], &thc, &coulomb_spec(), &[]).unwrap();
-    assert_eq!(result.records.len(), 2);
-    let finite = &result.records[1];
-    assert_eq!(finite.q_index, 1);
-    assert_eq!(finite.q, q15.source.q);
-    assert_eq!(finite.operator.q(), q15.source.q);
-    assert_eq!(finite.operator.q().umklapp.index, [1, 0, 0]);
-    assert!(finite.operator.gamma().is_none());
-    let dropped = TransferQ::from_cartesian(finite.q.cartesian).unwrap();
-    assert_ne!(dropped, finite.q);
-    let layout = AuxiliaryLayout::from_regions(dropped, finite.operator.regions().to_vec());
-    let vertex = &finite.vertices[0];
-    let rephased = PairVertex::new(
-        layout,
-        vertex.pair(),
-        vertex.coefficients().to_vec(),
-        vertex.provenance().clone(),
-    )
-    .unwrap();
-    assert!(matches!(
-        finite.operator.apply(&rephased),
-        Err(CoulombError::VertexTransferQ)
-    ));
-}
-
-#[test]
-fn matched_pair_reports_quadratic_and_action_and_rejects_mismatch() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+fn matched_pair_reports_quadratic_and_rejects_mismatch() {
+    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
     let input = physics
-        .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
+        .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
     let grid = parent_grid(&input);
-    let thc = build_scalar_thc(std::slice::from_ref(&input), &grid, &thc_spec()).unwrap();
-    let mpb = build_scalar_mpb(&input, &mpb_spec(*physics.reciprocal())).unwrap();
-    let result = build_scalar_coulomb(
+    let thc = build_spinor_thc(std::slice::from_ref(&input), &grid, &thc_spec()).unwrap();
+    let mpb = build_spinor_mpb(&input, &mpb_spec()).unwrap();
+    let result = build_spinor_coulomb(
         std::slice::from_ref(&input),
         &thc,
         &coulomb_spec(),
-        &[ScalarCoulombPairMatch {
+        &[SpinorCoulombPairMatch {
             q_index: 0,
             mpb: &mpb,
             mpb_vertex: 0,
@@ -417,7 +385,6 @@ fn matched_pair_reports_quadratic_and_action_and_rejects_mismatch() {
     assert_eq!(result.diagnostics.len(), 1);
     let diagnostic = &result.diagnostics[0];
     assert_eq!(diagnostic.q_index, 0);
-    assert_eq!(diagnostic.spin, 0);
     assert_eq!(
         diagnostic.pair,
         OrbitalPair::Bloch {
@@ -437,143 +404,123 @@ fn matched_pair_reports_quadratic_and_action_and_rejects_mismatch() {
     let independent_mpb_action =
         dense_action_norm(mpb_operator.matrix(), mpb.vertices[0].vertex.coefficients());
     assert!(
-        (independent_quadratic - diagnostic.thc_quadratic).norm() < SCALAR_COULOMB_EXACTNESS_FLOOR,
-        "stored THC quadratic {} must match independent c†Vc {}; mpb={} thc={} abs={} rel={}",
-        diagnostic.thc_quadratic,
-        independent_quadratic,
+        (independent_quadratic - diagnostic.thc_quadratic).norm() < SPINOR_COULOMB_EXACTNESS_FLOOR
+    );
+    assert!(
+        (independent_mpb_quadratic - diagnostic.mpb_quadratic).norm()
+            < SPINOR_COULOMB_EXACTNESS_FLOOR
+    );
+    assert!(
+        (independent_thc_action - diagnostic.thc_action_norm).abs()
+            < SPINOR_COULOMB_EXACTNESS_FLOOR
+    );
+    assert!(
+        (independent_mpb_action - diagnostic.mpb_action_norm).abs()
+            < SPINOR_COULOMB_EXACTNESS_FLOOR
+    );
+    assert!(
+        diagnostic.quadratic_discrepancy.absolute < FIXTURE_MPB_THC_QUADRATIC_ABS,
+        "hydrogen rank-1 spinor fixture MPB-vs-THC quadratic gap exceeded the algebraic bound: \
+         mpb_quadratic={} thc_quadratic={} q_abs={} q_rel={} (non-material/non-SPEX)",
         diagnostic.mpb_quadratic,
         diagnostic.thc_quadratic,
         diagnostic.quadratic_discrepancy.absolute,
         diagnostic.quadratic_discrepancy.relative
     );
-    assert!(
-        (independent_mpb_quadratic - diagnostic.mpb_quadratic).norm()
-            < SCALAR_COULOMB_EXACTNESS_FLOOR,
-        "stored MPB quadratic {} must match independent c†Vc {}",
-        diagnostic.mpb_quadratic,
-        independent_mpb_quadratic
-    );
-    assert!(
-        (independent_thc_action - diagnostic.thc_action_norm).abs()
-            < SCALAR_COULOMB_EXACTNESS_FLOOR,
-        "stored THC debug action {} must match independent ||Vc|| {} in the interpolation-point basis",
-        diagnostic.thc_action_norm,
-        independent_thc_action
-    );
-    assert!(
-        (independent_mpb_action - diagnostic.mpb_action_norm).abs()
-            < SCALAR_COULOMB_EXACTNESS_FLOOR,
-        "stored MPB debug action {} must match independent ||Vc|| {} in the mixed-product basis",
-        diagnostic.mpb_action_norm,
-        independent_mpb_action
-    );
-    assert!(
-        diagnostic.quadratic_discrepancy.absolute < FIXTURE_MPB_THC_QUADRATIC_ABS,
-        "hydrogen rank-1 fixture MPB-vs-THC quadratic gap exceeded the algebraic bound: \
-         mpb_quadratic={} thc_quadratic={} q_abs={} q_rel={} mpb_action={} thc_action={}",
-        diagnostic.mpb_quadratic,
-        diagnostic.thc_quadratic,
-        diagnostic.quadratic_discrepancy.absolute,
-        diagnostic.quadratic_discrepancy.relative,
-        diagnostic.mpb_action_norm,
-        diagnostic.thc_action_norm
-    );
     assert!(matches!(
-        build_scalar_coulomb(
+        build_spinor_coulomb(
             std::slice::from_ref(&input),
             &thc,
             &coulomb_spec(),
-            &[ScalarCoulombPairMatch {
+            &[SpinorCoulombPairMatch {
                 q_index: 1,
                 mpb: &mpb,
                 mpb_vertex: 0,
             }],
         ),
-        Err(ScalarCoulombError::ComparisonQIndex(1))
-    ));
-    let mut mismatched = mpb.clone();
-    mismatched.vertices[0].spin = 1;
-    assert!(matches!(
-        build_scalar_coulomb(
-            std::slice::from_ref(&input),
-            &thc,
-            &coulomb_spec(),
-            &[ScalarCoulombPairMatch {
-                q_index: 0,
-                mpb: &mismatched,
-                mpb_vertex: 0,
-            }],
-        ),
-        Err(ScalarCoulombError::ComparisonContext { q_index: 0 })
+        Err(SpinorCoulombError::ComparisonQIndex(1))
     ));
 }
 
 #[test]
-fn selected_nodes_or_permuted_parent_rows_fail_context_or_oracle() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+fn matched_mpb_must_originate_from_the_frozen_input() {
+    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let input_a = physics
+        .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
+        .unwrap();
+    let mut input_b = input_a.clone();
+    let rows = input_b.orbitals.eigenvectors[0].rows();
+    let columns = input_b.orbitals.eigenvectors[0].columns();
+    let mut values = input_b.orbitals.eigenvectors[0].to_host_column_major();
+    values[0] += Complex64::new(0.25, -0.125);
+    input_b.orbitals.eigenvectors[0] =
+        DenseEigenvectors::from_host_column_major(rows, columns, values).unwrap();
+    assert_eq!(input_b.source.partition, input_a.source.partition);
+    assert_eq!(input_b.source.q, input_a.source.q);
+    assert_eq!(input_b.reciprocal, input_a.reciprocal);
+    assert_eq!(input_b.pair_columns, input_a.pair_columns);
+    assert_eq!(input_b.orbitals.band_window, input_a.orbitals.band_window);
+    assert_eq!(
+        input_b.orbitals.available_bands,
+        input_a.orbitals.available_bands
+    );
+    assert_ne!(
+        input_b.orbitals.eigenvectors[0],
+        input_a.orbitals.eigenvectors[0]
+    );
+
+    let grid = parent_grid(&input_a);
+    let thc = build_spinor_thc(std::slice::from_ref(&input_a), &grid, &thc_spec()).unwrap();
+    let mpb_a = build_spinor_mpb(&input_a, &mpb_spec()).unwrap();
+    build_spinor_coulomb(
+        std::slice::from_ref(&input_a),
+        &thc,
+        &coulomb_spec(),
+        &[SpinorCoulombPairMatch {
+            q_index: 0,
+            mpb: &mpb_a,
+            mpb_vertex: 0,
+        }],
+    )
+    .unwrap();
+    assert!(matches!(
+        build_spinor_coulomb(
+            std::slice::from_ref(&input_b),
+            &thc,
+            &coulomb_spec(),
+            &[SpinorCoulombPairMatch {
+                q_index: 0,
+                mpb: &mpb_a,
+                mpb_vertex: 0,
+            }],
+        ),
+        Err(SpinorCoulombError::FrozenInputMismatch { q_index: 0 })
+    ));
+}
+
+#[test]
+fn reciprocal_grid_and_bloch_mismatches_are_rejected() {
+    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
     let input = physics
-        .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
+        .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
     let grid = parent_grid(&input);
-    let thc = build_scalar_thc(std::slice::from_ref(&input), &grid, &thc_spec()).unwrap();
-    let production =
-        build_scalar_coulomb(std::slice::from_ref(&input), &thc, &coulomb_spec(), &[]).unwrap();
+    let thc = build_spinor_thc(std::slice::from_ref(&input), &grid, &thc_spec()).unwrap();
 
-    let mut truncated = thc.clone();
-    let selected = truncated
-        .selection
-        .points
-        .iter()
-        .map(|point| truncated.grid.points()[point.id])
-        .collect::<Vec<_>>();
-    truncated.grid = ThcParentGrid::new(
-        truncated.grid.partition().clone(),
-        truncated.grid.provenance().clone(),
-        selected,
-    )
+    let sheared = Cell::new([
+        [Bohr(8.0), Bohr(0.0), Bohr(0.0)],
+        [Bohr(2.0), Bohr(8.0), Bohr(0.0)],
+        [Bohr(0.0), Bohr(0.0), Bohr(8.0)],
+    ])
     .unwrap();
-    assert!(!truncated.records_match_parent_grid());
+    let spec = SpinorCoulombSpec {
+        request: CoulombRequest::new(sheared, 2).unwrap(),
+        projection: InterpolationProjection::new(InverseBohr(1.5), 1).unwrap(),
+    };
+    assert_ne!(spec.request.reciprocal(), &input.reciprocal);
     assert!(matches!(
-        build_scalar_coulomb(
-            std::slice::from_ref(&input),
-            &truncated,
-            &coulomb_spec(),
-            &[]
-        ),
-        Err(ScalarCoulombError::GridIdentity { index: 0 })
-    ));
-
-    let mut nodes = thc.clone();
-    let ids = nodes
-        .selection
-        .points
-        .iter()
-        .map(|point| point.id)
-        .collect::<Vec<_>>();
-    let selected = ids
-        .iter()
-        .map(|&id| nodes.grid.points()[id])
-        .collect::<Vec<_>>();
-    nodes.grid = ThcParentGrid::new(
-        nodes.grid.partition().clone(),
-        nodes.grid.provenance().clone(),
-        selected,
-    )
-    .unwrap();
-    for record in &mut nodes.records {
-        let n_mu = record.fit.n_mu;
-        let mut zeta = Vec::with_capacity(ids.len() * n_mu);
-        for &id in &ids {
-            let start = id * n_mu;
-            zeta.extend_from_slice(&record.fit.zeta[start..start + n_mu]);
-        }
-        record.fit.zeta = zeta;
-        record.fit.n_points = ids.len();
-    }
-    assert!(!nodes.records_match_parent_grid());
-    assert!(matches!(
-        build_scalar_coulomb(std::slice::from_ref(&input), &nodes, &coulomb_spec(), &[]),
-        Err(ScalarCoulombError::GridIdentity { index: 0 })
+        build_spinor_coulomb(std::slice::from_ref(&input), &thc, &spec, &[]),
+        Err(SpinorCoulombError::ReciprocalMismatch)
     ));
 
     let mut permuted = thc.clone();
@@ -585,60 +532,17 @@ fn selected_nodes_or_permuted_parent_rows_fail_context_or_oracle() {
         points,
     )
     .unwrap();
-    assert_eq!(permuted.records[0].fit.zeta, thc.records[0].fit.zeta);
     assert!(!permuted.records_match_parent_grid());
     assert!(matches!(
-        build_scalar_coulomb(
+        build_spinor_coulomb(
             std::slice::from_ref(&input),
             &permuted,
             &coulomb_spec(),
             &[]
         ),
-        Err(ScalarCoulombError::GridIdentity { index: 0 })
+        Err(SpinorCoulombError::GridIdentity { index: 0 })
     ));
-    assert_eq!(production.records[0].sampled.n_grid(), 6);
-}
 
-#[test]
-fn same_volume_skew_reciprocal_is_rejected_before_assembly() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
-    let input = physics
-        .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
-        .unwrap();
-    assert_eq!(input.reciprocal, *physics.reciprocal());
-    let grid = parent_grid(&input);
-    let thc = build_scalar_thc(std::slice::from_ref(&input), &grid, &thc_spec()).unwrap();
-    let sheared = Cell::new([
-        [Bohr(8.0), Bohr(0.0), Bohr(0.0)],
-        [Bohr(2.0), Bohr(8.0), Bohr(0.0)],
-        [Bohr(0.0), Bohr(0.0), Bohr(8.0)],
-    ])
-    .unwrap();
-    assert_ne!(
-        sheared.basis()[1][0].get(),
-        0.0,
-        "adversarial cell must be sheared, not merely anisotropic-diagonal"
-    );
-    assert!((sheared.volume().get() - 512.0).abs() < SCALAR_COULOMB_EXACTNESS_FLOOR);
-    let spec = ScalarCoulombSpec {
-        request: CoulombRequest::new(sheared, 2).unwrap(),
-        projection: InterpolationProjection::new(InverseBohr(1.5), 1).unwrap(),
-    };
-    assert_ne!(spec.request.reciprocal(), &input.reciprocal);
-    assert!(matches!(
-        build_scalar_coulomb(std::slice::from_ref(&input), &thc, &spec, &[]),
-        Err(ScalarCoulombError::ReciprocalMismatch)
-    ));
-}
-
-#[test]
-fn tampered_vertex_layout_or_order_is_rejected() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
-    let input = physics
-        .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
-        .unwrap();
-    let grid = parent_grid(&input);
-    let thc = build_scalar_thc(std::slice::from_ref(&input), &grid, &thc_spec()).unwrap();
     assert!(
         thc.records[0].vertices.len() >= 2,
         "fixture must expose at least two pair columns"
@@ -646,13 +550,13 @@ fn tampered_vertex_layout_or_order_is_rejected() {
     let mut tampered = thc.clone();
     tampered.records[0].vertices.swap(0, 1);
     assert!(matches!(
-        build_scalar_coulomb(
+        build_spinor_coulomb(
             std::slice::from_ref(&input),
             &tampered,
             &coulomb_spec(),
             &[]
         ),
-        Err(ScalarCoulombError::VertexIdentity {
+        Err(SpinorCoulombError::VertexIdentity {
             index: 0,
             column: 0
         })
@@ -660,78 +564,36 @@ fn tampered_vertex_layout_or_order_is_rejected() {
 }
 
 #[test]
-fn tampered_vertex_provenance_is_rejected() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
-    let input = physics
-        .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
+fn finite_q_preserves_transfer_q() {
+    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let q0 = physics
+        .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();
-    let grid = parent_grid(&input);
-    let thc = build_scalar_thc(std::slice::from_ref(&input), &grid, &thc_spec()).unwrap();
-    let vertex = &thc.records[0].vertices[0];
-    assert_eq!(
-        vertex.provenance(),
-        &thc.records[0].auxiliary.provenance,
-        "auxiliaries and generated vertices must bind the same provenance at construction"
-    );
-    let forged = PairVertex::new(
-        vertex.layout().clone(),
+    let q15 = physics
+        .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [1.5, 0.0, 0.0])
+        .unwrap();
+    assert_eq!(q15.source.q.umklapp.index, [1, 0, 0]);
+    let grid = parent_grid(&q15);
+    let thc = build_spinor_thc(&[q0.clone(), q15.clone()], &grid, &thc_spec()).unwrap();
+    let result = build_spinor_coulomb(&[q0, q15.clone()], &thc, &coulomb_spec(), &[]).unwrap();
+    let finite = &result.records[1];
+    assert_eq!(finite.q_index, 1);
+    assert_eq!(finite.q, q15.source.q);
+    assert_eq!(finite.operator.q(), q15.source.q);
+    assert!(finite.operator.gamma().is_none());
+    let dropped = TransferQ::from_cartesian(finite.q.cartesian).unwrap();
+    assert_ne!(dropped, finite.q);
+    let layout = AuxiliaryLayout::from_regions(dropped, finite.operator.regions().to_vec());
+    let vertex = &finite.vertices[0];
+    let rephased = PairVertex::new(
+        layout,
         vertex.pair(),
-        vertex.coefficients().to_vec(),
-        Provenance {
-            recipe: Some("tampered-vertex-provenance".to_owned()),
-            reference: vertex.provenance().reference.clone(),
-        },
-    )
-    .unwrap();
-    assert_ne!(forged.provenance(), &thc.records[0].auxiliary.provenance);
-    let mut tampered = thc.clone();
-    tampered.records[0].vertices[0] = forged;
-    assert!(matches!(
-        build_scalar_coulomb(
-            std::slice::from_ref(&input),
-            &tampered,
-            &coulomb_spec(),
-            &[]
-        ),
-        Err(ScalarCoulombError::VertexIdentity {
-            index: 0,
-            column: 0
-        })
-    ));
-}
-
-#[test]
-fn malformed_bloch_index_is_rejected_without_encode() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
-    let input = physics
-        .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
-        .unwrap();
-    let grid = parent_grid(&input);
-    let thc = build_scalar_thc(std::slice::from_ref(&input), &grid, &thc_spec()).unwrap();
-    let vertex = &thc.records[0].vertices[0];
-    let malformed = PairVertex::new(
-        vertex.layout().clone(),
-        OrbitalPair::Bloch {
-            k_index: usize::MAX,
-            left: 0,
-            right: 0,
-        },
         vertex.coefficients().to_vec(),
         vertex.provenance().clone(),
     )
     .unwrap();
-    let mut tampered = thc.clone();
-    tampered.records[0].vertices[0] = malformed;
     assert!(matches!(
-        build_scalar_coulomb(
-            std::slice::from_ref(&input),
-            &tampered,
-            &coulomb_spec(),
-            &[]
-        ),
-        Err(ScalarCoulombError::VertexIdentity {
-            index: 0,
-            column: 0
-        })
+        finite.operator.apply(&rephased),
+        Err(CoulombError::VertexTransferQ)
     ));
 }

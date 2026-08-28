@@ -2,9 +2,10 @@
 
 use crate::scalar_mpb::ScalarMpbResult;
 use crate::scalar_product::ScalarProductInput;
-use crate::scalar_thc::{ScalarThcGrid, ScalarThcQRecord, ScalarThcRegion, ScalarThcResult};
+use crate::scalar_thc::ScalarThcResult;
+use crate::thc_grid::{ThcParentGrid, ThcQRecord, ThcRegion, is_gamma_fractional};
 use muffintin_auxiliary_ir::{OrbitalPair, PairColumnLayout, PairVertex, ProductSource, TransferQ};
-use muffintin_core::VolumeBohr3;
+use muffintin_core::{ExponentialMesh, VolumeBohr3};
 use muffintin_coulomb::{
     CoulombError, CoulombOperator, CoulombRequest, InterpolationProjection,
     SampledAuxiliaryFunctions, SampledPointSupport, assemble_coulomb, assemble_sampled_coulomb,
@@ -14,8 +15,6 @@ use thiserror::Error;
 
 /// Absolute/relative discrepancy floor for the quadratic $c^\dagger V c$ diagnostic.
 pub const SCALAR_COULOMB_EXACTNESS_FLOOR: f64 = 1.0e-12;
-
-const Q_SLICE_TOLERANCE: f64 = 1.0e-12;
 
 /// Explicit Coulomb request and interpolation projection for one M-L4 run.
 #[derive(Clone, Debug, PartialEq)]
@@ -113,7 +112,7 @@ pub enum ScalarCoulombError {
     #[error("scalar Coulomb THC record {index} is not bound to the parent grid used to fit zeta")]
     GridIdentity { index: usize },
     #[error(
-        "scalar Coulomb THC record {index} vertex {column} layout or Bloch order does not match the compiled auxiliary"
+        "scalar Coulomb THC record {index} vertex {column} layout, Bloch order, or provenance does not match the compiled auxiliary"
     )]
     VertexIdentity { index: usize, column: usize },
     #[error("scalar Coulomb request reciprocal lattice does not match the frozen product source")]
@@ -130,6 +129,20 @@ pub enum ScalarCoulombError {
         "scalar Coulomb comparison at q-index {q_index} does not match the THC pair, layout, spin, or transfer q"
     )]
     ComparisonContext { q_index: usize },
+}
+
+impl From<CoulombBridgeError> for ScalarCoulombError {
+    fn from(error: CoulombBridgeError) -> Self {
+        match error {
+            CoulombBridgeError::Coulomb(error) => Self::Coulomb(error),
+            CoulombBridgeError::InterpolationProjection => Self::InterpolationProjection,
+            CoulombBridgeError::GridIdentity { index } => Self::GridIdentity { index },
+            CoulombBridgeError::ThcRecord { index } => Self::ThcRecord { index },
+            CoulombBridgeError::VertexIdentity { index, column } => {
+                Self::VertexIdentity { index, column }
+            }
+        }
+    }
 }
 
 /// Assemble sampled-$\zeta$ $V^q$ on the M-L3 parent grid for a complete $q$ slice.
@@ -170,12 +183,13 @@ pub fn build_scalar_coulomb(
         return Err(ScalarCoulombError::ReciprocalMismatch);
     }
     for (index, (input, record)) in inputs.iter().zip(&thc.records).enumerate() {
-        require_thc_record(input, thc, record, index)?;
+        require_thc_q_record(input.source.q, input.pair_columns, &thc.grid, record, index)?;
     }
-    let request = bind_request(&spec.request, spec.projection)?;
+    let request = bind_interpolation_request(&spec.request, spec.projection)?;
+    let site_meshes = site_meshes(&first.source);
     let mut records = Vec::with_capacity(thc.records.len());
     for record in &thc.records {
-        let sampled = sampled_from_thc(record, &thc.grid, &first.source)?;
+        let sampled = sampled_from_thc_record(record, &thc.grid, site_meshes.clone())?;
         let operator = assemble_sampled_coulomb(&record.auxiliary, &request, &sampled)?;
         records.push(ScalarCoulombQRecord {
             q_index: record.q_index,
@@ -199,15 +213,12 @@ pub fn build_scalar_coulomb(
     })
 }
 
-fn bind_request(
-    request: &CoulombRequest,
-    projection: InterpolationProjection,
-) -> Result<CoulombRequest, ScalarCoulombError> {
-    match request.interpolation() {
-        None => Ok(request.clone().with_interpolation(projection)?),
-        Some(existing) if existing == projection => Ok(request.clone()),
-        Some(_) => Err(ScalarCoulombError::InterpolationProjection),
-    }
+fn site_meshes(source: &ProductSource) -> Vec<ExponentialMesh> {
+    source
+        .radials
+        .iter()
+        .map(|radials| radials.mesh.clone())
+        .collect()
 }
 
 fn require_compatible_slice(inputs: &[ScalarProductInput]) -> Result<(), ScalarCoulombError> {
@@ -242,99 +253,6 @@ fn require_compatible_slice(inputs: &[ScalarProductInput]) -> Result<(), ScalarC
         }
     }
     Ok(())
-}
-
-fn is_gamma_fractional(fractional: [f64; 3]) -> bool {
-    fractional
-        .iter()
-        .all(|component| component.abs() <= Q_SLICE_TOLERANCE)
-}
-
-fn require_thc_record(
-    input: &ScalarProductInput,
-    thc: &ScalarThcResult,
-    record: &ScalarThcQRecord,
-    index: usize,
-) -> Result<(), ScalarCoulombError> {
-    if record.grid_identity() != thc.grid.identity() {
-        return Err(ScalarCoulombError::GridIdentity { index });
-    }
-    let n_col = record.layout.n_columns()?;
-    let n_points = thc.grid.points().len();
-    let n_mu = record.auxiliary.dimension();
-    let ok = record.q_index == index
-        && record.q == input.source.q
-        && record.layout == input.pair_columns
-        && record.auxiliary.q == record.q
-        && record.auxiliary.partition == *thc.grid.partition()
-        && record.fit.q == record.q
-        && record.fit.q_index == index
-        && record.fit.n_points == n_points
-        && record.fit.n_mu == n_mu
-        && record.fit.zeta.len() == n_points.saturating_mul(n_mu)
-        && record.vertices.len() == n_col;
-    if !ok {
-        return Err(ScalarCoulombError::ThcRecord { index });
-    }
-    let expected_layout = record.auxiliary.layout();
-    for (column, vertex) in record.vertices.iter().enumerate() {
-        match vertex.pair() {
-            OrbitalPair::Bloch {
-                k_index,
-                left,
-                right,
-            } if vertex.layout() == &expected_layout
-                && record.layout.decode(column) == (k_index, left, right) => {}
-            _ => {
-                return Err(ScalarCoulombError::VertexIdentity { index, column });
-            }
-        }
-    }
-    Ok(())
-}
-
-fn sampled_from_thc(
-    record: &ScalarThcQRecord,
-    grid: &ScalarThcGrid,
-    source: &ProductSource,
-) -> Result<SampledAuxiliaryFunctions, ScalarCoulombError> {
-    let points = grid
-        .points()
-        .iter()
-        .map(|point| point.coordinate)
-        .collect::<Vec<_>>();
-    let weights = grid
-        .points()
-        .iter()
-        .map(|point| VolumeBohr3(point.weight))
-        .collect::<Vec<_>>();
-    let supports = grid
-        .points()
-        .iter()
-        .map(|point| sampled_support(point.region))
-        .collect::<Vec<_>>();
-    let site_meshes = source
-        .radials
-        .iter()
-        .map(|radials| radials.mesh.clone())
-        .collect::<Vec<_>>();
-    Ok(SampledAuxiliaryFunctions::new(
-        record.auxiliary.layout(),
-        site_meshes,
-        points,
-        weights,
-        supports,
-        record.fit.zeta.clone(),
-    )?)
-}
-
-fn sampled_support(region: ScalarThcRegion) -> SampledPointSupport {
-    match region {
-        ScalarThcRegion::MuffinTin { site, radial_index } => {
-            SampledPointSupport::MuffinTin { site, radial_index }
-        }
-        ScalarThcRegion::Interstitial => SampledPointSupport::Interstitial,
-    }
 }
 
 fn pair_diagnostic(
@@ -386,8 +304,10 @@ fn pair_diagnostic(
     let mpb_operator = assemble_coulomb(&comparison.mpb.auxiliary, request)?;
     let mpb_quadratic = mpb_operator.quadratic_form(&mpb_vertex.vertex, &mpb_vertex.vertex)?;
     let thc_quadratic = record.operator.quadratic_form(thc_vertex, thc_vertex)?;
-    let mpb_action_norm = action_norm(&mpb_operator, &mpb_vertex.vertex)?;
-    let thc_action_norm = action_norm(&record.operator, thc_vertex)?;
+    let mpb_action_norm = vertex_action_norm(&mpb_operator, &mpb_vertex.vertex)?;
+    let thc_action_norm = vertex_action_norm(&record.operator, thc_vertex)?;
+    let (absolute, relative) =
+        quadratic_discrepancy(mpb_quadratic, thc_quadratic, SCALAR_COULOMB_EXACTNESS_FLOOR);
     Ok(ScalarCoulombPairDiagnostic {
         q_index,
         spin: thc.spin,
@@ -397,23 +317,130 @@ fn pair_diagnostic(
         thc_quadratic,
         mpb_action_norm,
         thc_action_norm,
-        quadratic_discrepancy: complex_discrepancy(mpb_quadratic, thc_quadratic),
+        quadratic_discrepancy: ScalarCoulombDiscrepancy { absolute, relative },
     })
 }
 
-fn action_norm(operator: &CoulombOperator, vertex: &PairVertex) -> Result<f64, ScalarCoulombError> {
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum CoulombBridgeError {
+    Coulomb(CoulombError),
+    InterpolationProjection,
+    GridIdentity { index: usize },
+    ThcRecord { index: usize },
+    VertexIdentity { index: usize, column: usize },
+}
+
+pub(crate) fn bind_interpolation_request(
+    request: &CoulombRequest,
+    projection: InterpolationProjection,
+) -> Result<CoulombRequest, CoulombBridgeError> {
+    match request.interpolation() {
+        None => request
+            .clone()
+            .with_interpolation(projection)
+            .map_err(CoulombBridgeError::Coulomb),
+        Some(existing) if existing == projection => Ok(request.clone()),
+        Some(_) => Err(CoulombBridgeError::InterpolationProjection),
+    }
+}
+
+pub(crate) fn require_thc_q_record(
+    input_q: TransferQ,
+    input_layout: PairColumnLayout,
+    grid: &ThcParentGrid,
+    record: &ThcQRecord,
+    index: usize,
+) -> Result<(), CoulombBridgeError> {
+    if record.grid_identity() != grid.identity() {
+        return Err(CoulombBridgeError::GridIdentity { index });
+    }
+    let n_col = record
+        .layout
+        .n_columns()
+        .map_err(|_| CoulombBridgeError::ThcRecord { index })?;
+    let n_points = grid.points().len();
+    let n_mu = record.auxiliary.dimension();
+    let ok = record.q_index == index
+        && record.q == input_q
+        && record.layout == input_layout
+        && record.auxiliary.q == record.q
+        && record.auxiliary.partition == *grid.partition()
+        && record.fit.q == record.q
+        && record.fit.q_index == index
+        && record.fit.n_points == n_points
+        && record.fit.n_mu == n_mu
+        && record.fit.zeta.len() == n_points.saturating_mul(n_mu)
+        && record.vertices.len() == n_col;
+    if !ok {
+        return Err(CoulombBridgeError::ThcRecord { index });
+    }
+    let expected_layout = record.auxiliary.layout();
+    for (column, vertex) in record.vertices.iter().enumerate() {
+        match vertex.pair() {
+            OrbitalPair::Bloch {
+                k_index,
+                left,
+                right,
+            } if vertex.layout() == &expected_layout
+                && record.layout.decode(column) == (k_index, left, right)
+                && vertex.provenance() == &record.auxiliary.provenance => {}
+            _ => {
+                return Err(CoulombBridgeError::VertexIdentity { index, column });
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn sampled_from_thc_record(
+    record: &ThcQRecord,
+    grid: &ThcParentGrid,
+    site_meshes: Vec<ExponentialMesh>,
+) -> Result<SampledAuxiliaryFunctions, CoulombError> {
+    let points = grid
+        .points()
+        .iter()
+        .map(|point| point.coordinate)
+        .collect::<Vec<_>>();
+    let weights = grid
+        .points()
+        .iter()
+        .map(|point| VolumeBohr3(point.weight))
+        .collect::<Vec<_>>();
+    let supports = grid
+        .points()
+        .iter()
+        .map(|point| sampled_support(point.region))
+        .collect::<Vec<_>>();
+    SampledAuxiliaryFunctions::new(
+        record.auxiliary.layout(),
+        site_meshes,
+        points,
+        weights,
+        supports,
+        record.fit.zeta.clone(),
+    )
+}
+
+fn sampled_support(region: ThcRegion) -> SampledPointSupport {
+    match region {
+        ThcRegion::MuffinTin { site, radial_index } => {
+            SampledPointSupport::MuffinTin { site, radial_index }
+        }
+        ThcRegion::Interstitial => SampledPointSupport::Interstitial,
+    }
+}
+
+pub(crate) fn vertex_action_norm(
+    operator: &CoulombOperator,
+    vertex: &PairVertex,
+) -> Result<f64, CoulombError> {
     let applied = operator.apply(vertex)?;
     Ok(applied.iter().map(Complex64::norm_sqr).sum::<f64>().sqrt())
 }
 
-fn complex_discrepancy(left: Complex64, right: Complex64) -> ScalarCoulombDiscrepancy {
+pub(crate) fn quadratic_discrepancy(left: Complex64, right: Complex64, floor: f64) -> (f64, f64) {
     let absolute = (left - right).norm();
-    let scale = left
-        .norm()
-        .max(right.norm())
-        .max(SCALAR_COULOMB_EXACTNESS_FLOOR);
-    ScalarCoulombDiscrepancy {
-        absolute,
-        relative: absolute / scale,
-    }
+    let scale = left.norm().max(right.norm()).max(floor);
+    (absolute, absolute / scale)
 }

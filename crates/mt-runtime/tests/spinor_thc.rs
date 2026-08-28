@@ -1,15 +1,14 @@
-//! Public M-L3 scalar adaptive-THC tests on frozen M-L1 product input.
+//! Public M-L5d spinor AllQL2 THC tests on frozen M-L5b product input.
 
 use std::collections::BTreeMap;
 
 use muffintin::{
-    RankPolicy, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarProductInput, ScalarThcError,
-    ScalarThcSpec, SnapshotDftPhysics, ThcCandidates, ThcEngine, ThcParentGrid, ThcPoint,
-    ThcRegion, build_scalar_thc,
+    RankPolicy, SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, SnapshotDftPhysics,
+    SpinorProductInput, SpinorThcSpec, ThcCandidates, ThcEngine, ThcParentGrid, ThcPoint,
+    ThcRegion, build_spinor_thc,
 };
-use muffintin_auxiliary_ir::{ProductOrbitalKind, ProductPartition, ProductRadialId, TransferQ};
 use muffintin_core::{
-    Bohr, Hartree, VolumeBohr3, complex_spherical_harmonics, lm_from_index, lm_index,
+    Bohr, Hartree, RelativisticChannel, SpinProjection, complex_spherical_harmonics, lm_index,
 };
 use muffintin_dft::{
     LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
@@ -25,12 +24,12 @@ use muffintin_io::{
     RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
-use muffintin_lapw::{CompiledBasis, Provenance};
+use muffintin_lapw::Provenance;
 use muffintin_operators::CompiledSiteProjection;
-use muffintin_thc::{GridPath, L2Engine, SelectorStrategy, ThcError};
+use muffintin_thc::{GridPath, L2Engine, SelectorStrategy};
 use num_complex::Complex64;
 
-fn hydrogen_snapshot() -> SnapshotV2 {
+fn hydrogen_spinor_snapshot() -> SnapshotV2 {
     let point_count = 61;
     let first: f64 = 1.0e-4;
     let radius: f64 = 1.0;
@@ -40,7 +39,7 @@ fn hydrogen_snapshot() -> SnapshotV2 {
         .collect::<Vec<_>>();
     SnapshotV1::new(
         MetaV1 {
-            title: "scalar THC hydrogen smoke".to_owned(),
+            title: "spinor THC hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,
             energy_zero: "zero interstitial Fourier mean".to_owned(),
@@ -72,7 +71,7 @@ fn hydrogen_snapshot() -> SnapshotV2 {
                         last: first * ((point_count - 1) as f64 * increment).exp(),
                         consistency_tolerance: 1.0e-12,
                     },
-                    radial_equation: RadialEquationTagV1::ScalarKoellingHarmon,
+                    radial_equation: RadialEquationTagV1::FullyRelativisticDirac,
                     potential_unit: EnergyUnitV1::Hartree,
                     potential_channels: vec![PotentialChannelV1 {
                         l: 0,
@@ -116,7 +115,7 @@ fn hydrogen_snapshot() -> SnapshotV2 {
     .unwrap()
 }
 
-fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
+fn spinor_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
     ScfConfig {
         electron_count: 1.0,
         k_mesh: ScfKMesh {
@@ -145,6 +144,15 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },
+                ScfChannelRecipe {
+                    site: "H-1".to_owned(),
+                    identity: ScfChannelIdentity::Kappa { n: 2, kappa: 1 },
+                    treatment: ScfChannelTreatment::Hdlo,
+                    derivative_order: 2,
+                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    seed: None,
+                    provenance: ScfChannelProvenance::Site,
+                },
             ],
             resolved_channels: Vec::new(),
         },
@@ -156,7 +164,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
         },
         mixing: ScfMixing::Linear { alpha: 1.0 },
-        relativity: ScfRelativity::Scalar,
+        relativity: ScfRelativity::SpinorFirstVariation,
         convergence: ScfConvergence {
             energy_tolerance: Hartree(1.0e100),
             density_tolerance: 1.0e100,
@@ -182,7 +190,7 @@ fn on_shell(origin: [Bohr; 3], radius: f64, direction: [f64; 3]) -> [Bohr; 3] {
     ]
 }
 
-fn parent_grid(input: &ScalarProductInput) -> ThcParentGrid {
+fn parent_grid(input: &SpinorProductInput) -> ThcParentGrid {
     let origin = input.source.partition.sites()[0].position;
     let mesh = &input.source.radials[0].mesh;
     let mid = mesh.radii().len() / 2;
@@ -236,48 +244,16 @@ fn parent_grid(input: &ScalarProductInput) -> ThcParentGrid {
     .unwrap()
 }
 
-fn spec_all(n_mu: usize) -> ScalarThcSpec {
+fn spec_all(n_mu: usize) -> SpinorThcSpec {
     spec_all_engine(n_mu, ThcEngine::FullColumnPivotedQr)
 }
 
-fn spec_all_engine(n_mu: usize, engine: ThcEngine) -> ScalarThcSpec {
-    ScalarThcSpec {
-        spin: 0,
+fn spec_all_engine(n_mu: usize, engine: ThcEngine) -> SpinorThcSpec {
+    SpinorThcSpec {
         rank: RankPolicy::Exact { n_mu },
         candidates: ThcCandidates::All,
         engine,
     }
-}
-
-fn site_id(
-    compiled: &CompiledBasis,
-    site: usize,
-    spin: u8,
-    coord: usize,
-) -> Option<(ProductRadialId, i32)> {
-    let n_lm = compiled
-        .site_augmentations
-        .get(site)
-        .and_then(|waves| waves.first())
-        .map_or(0, |wave| wave.coefficients.len());
-    if coord < 2 * n_lm {
-        let lm = lm_from_index(coord / 2);
-        return Some((
-            ProductRadialId {
-                site,
-                kind: ProductOrbitalKind::Valence,
-                l: lm.l,
-                n: if coord % 2 == 0 {
-                    SCALAR_RADIAL_U
-                } else {
-                    SCALAR_RADIAL_UDOT
-                },
-                spin,
-            },
-            lm.m,
-        ));
-    }
-    None
 }
 
 #[derive(Clone, Copy)]
@@ -287,20 +263,63 @@ enum MtKPhase {
     Opposite,
 }
 
-#[allow(clippy::too_many_arguments)]
-fn independent_pq(
-    input: &ScalarProductInput,
+#[derive(Clone, Copy)]
+enum SmallAngular {
+    OppositeKappa,
+    SameKappa,
+}
+
+#[derive(Clone, Copy)]
+enum SmallRadial {
+    PhysicalQ,
+    CQ,
+    Skip,
+}
+
+#[derive(Clone, Copy, Default)]
+struct PauliSample {
+    large: [Complex64; 2],
+    small: [Complex64; 2],
+}
+
+fn pauli_omega(channel: RelativisticChannel, harmonics: &[Complex64]) -> [Complex64; 2] {
+    let mut pauli = [Complex64::default(); 2];
+    for term in channel.spinor_harmonic_terms().into_iter().flatten() {
+        let y = harmonics[lm_index(term.orbital.l, term.orbital.m).unwrap()];
+        let spin = match term.spin {
+            SpinProjection::Up => 0,
+            SpinProjection::Down => 1,
+        };
+        pauli[spin] += Complex64::from(term.coefficient) * y;
+    }
+    pauli
+}
+
+fn site_channels(
+    compiled: &muffintin_lapw::SpinorCompiledBasis,
+    site: usize,
+) -> &[RelativisticChannel] {
+    compiled.site_augmentations[site][0].channels.as_slice()
+}
+
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+fn independent_sample(
+    input: &SpinorProductInput,
     grid: &ThcParentGrid,
     point: usize,
     k: usize,
     band: usize,
-    skip_udot: bool,
-    skip_q: bool,
+    skip_pdot: bool,
+    skip_lo: bool,
+    small_angular: SmallAngular,
+    small_radial: SmallRadial,
     mt_k_phase: MtKPhase,
-) -> (Complex64, Complex64) {
-    let channel = &input.orbitals.channels[0];
-    let compiled = &channel.bases[k];
-    let evecs = &channel.eigenvectors[k];
+    omit_spin: Option<usize>,
+    conjugate_rows: bool,
+    reverse_g: bool,
+) -> PauliSample {
+    let compiled = &input.orbitals.bases[k];
+    let evecs = &input.orbitals.eigenvectors[k];
     match grid.points()[point].region {
         ThcRegion::Interstitial => {
             let volume = input
@@ -310,25 +329,41 @@ fn independent_pq(
                 .cell_volume()
                 .get()
                 .sqrt();
-            let mut large = Complex64::default();
             let r = grid.points()[point].coordinate;
-            for (row, wave) in compiled.plane_waves.iter().enumerate() {
-                let argument = wave
+            let mut large = [Complex64::default(); 2];
+            for (g, wave) in compiled.plane_waves.iter().enumerate() {
+                let argument: f64 = wave
                     .g
                     .cartesian
                     .iter()
                     .zip(r)
                     .map(|(g, x)| g.get() * x.get())
                     .sum();
-                large += evecs.at(row, band) * Complex64::from_polar(1.0, argument) / volume;
+                let phase =
+                    Complex64::from_polar(1.0, if reverse_g { -argument } else { argument });
+                for spin in 0..2 {
+                    if omit_spin == Some(spin) {
+                        continue;
+                    }
+                    let row = compiled.layout.plane_wave_index(spin, g).unwrap();
+                    let mut coeff = evecs.at(row, band);
+                    if conjugate_rows {
+                        coeff = coeff.conj();
+                    }
+                    large[spin] += coeff * phase / volume;
+                }
             }
-            (large, Complex64::default())
+            PauliSample {
+                large,
+                small: [Complex64::default(); 2],
+            }
         }
         ThcRegion::MuffinTin { site, radial_index } => {
-            let projected = CompiledSiteProjection::scalar(compiled, site)
-                .unwrap()
-                .project_eigenvectors(evecs)
-                .unwrap();
+            let projected =
+                CompiledSiteProjection::spinor(compiled, site, site_channels(compiled, site))
+                    .unwrap()
+                    .project_eigenvectors(evecs)
+                    .unwrap();
             let radials = &input.source.radials[site];
             let origin = input.source.partition.sites()[site].position;
             let r = grid.points()[point].coordinate;
@@ -339,30 +374,42 @@ fn independent_pq(
             ];
             let radius = radials.mesh.radii()[radial_index].get();
             let inv_r = 1.0 / radius;
-            let l_max = (0..projected.coordinate_count())
-                .filter_map(|coord| site_id(compiled, site, 0, coord).map(|(id, _)| id.l))
-                .max()
-                .unwrap_or(0);
-            let harmonics = complex_spherical_harmonics(l_max, direction);
-            let mut large = Complex64::default();
-            let mut small = Complex64::default();
+            let mut l_max = 0;
             for coord in 0..projected.coordinate_count() {
-                let Some((id, m)) = site_id(compiled, site, 0, coord) else {
+                let (id, _) = input.site_projection_identity(site, coord).unwrap();
+                l_max = l_max.max(id.kappa.large_l()).max(id.kappa.small_l());
+            }
+            let harmonics = complex_spherical_harmonics(l_max, direction);
+            let mut sample = PauliSample::default();
+            for coord in 0..projected.coordinate_count() {
+                let (id, twice_mu) = input.site_projection_identity(site, coord).unwrap();
+                if skip_pdot && id.n == SPINOR_RADIAL_PDOT {
                     continue;
-                };
-                if skip_udot && id.n == SCALAR_RADIAL_UDOT {
+                }
+                if skip_lo && id.n >= SPINOR_RADIAL_LO0 {
                     continue;
                 }
                 let radial = radials
                     .valence
                     .iter()
-                    .find(|radial| radial.l == id.l && radial.n == id.n && radial.spin == id.spin)
+                    .find(|radial| radial.kappa == id.kappa && radial.n == id.n)
                     .unwrap();
-                let y = harmonics[lm_index(id.l, m).unwrap()];
-                let amplitude = projected.at(coord, band) * y * inv_r;
-                large += amplitude * radial.samples.large[radial_index];
-                if !skip_q && let Some(q) = radial.samples.small.as_ref() {
-                    small += amplitude * q[radial_index];
+                let channel = RelativisticChannel::new(id.kappa, twice_mu).unwrap();
+                let large_omega = pauli_omega(channel, &harmonics);
+                let small_channel = match small_angular {
+                    SmallAngular::OppositeKappa => channel.opposite_kappa(),
+                    SmallAngular::SameKappa => channel,
+                };
+                let small_omega = pauli_omega(small_channel, &harmonics);
+                let amplitude = projected.at(coord, band) * inv_r;
+                let p = amplitude * radial.samples.large[radial_index];
+                let mut q = amplitude * radial.samples.small[radial_index];
+                if matches!(small_radial, SmallRadial::Skip) {
+                    q = Complex64::default();
+                }
+                for spin in 0..2 {
+                    sample.large[spin] += p * large_omega[spin];
+                    sample.small[spin] += q * small_omega[spin];
                 }
             }
             let argument: f64 = compiled.plane_waves[0]
@@ -376,12 +423,16 @@ fn independent_pq(
                 MtKPhase::Missing => Complex64::new(1.0, 0.0),
                 MtKPhase::Opposite => Complex64::from_polar(1.0, argument),
             };
-            (large * phase, small * phase)
+            for spin in 0..2 {
+                sample.large[spin] *= phase;
+                sample.small[spin] *= phase;
+            }
+            sample
         }
     }
 }
 
-fn wrap_phase(input: &ScalarProductInput, k: usize, r: [Bohr; 3]) -> Complex64 {
+fn wrap_phase(input: &SpinorProductInput, k: usize, r: [Bohr; 3], sign: f64) -> Complex64 {
     let mapped = input
         .k_minus_q
         .iter()
@@ -393,55 +444,80 @@ fn wrap_phase(input: &ScalarProductInput, k: usize, r: [Bohr; 3]) -> Complex64 {
         .iter()
         .zip(r)
         .map(|(g, x)| g.get() * x.get())
-        .sum();
+        .sum::<f64>()
+        * sign;
     Complex64::from_polar(1.0, argument)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 fn independent_pair(
-    input: &ScalarProductInput,
+    input: &SpinorProductInput,
     grid: &ThcParentGrid,
     point: usize,
     k: usize,
     left: usize,
     right: usize,
-    skip_udot: bool,
-    skip_q: bool,
+    skip_pdot: bool,
+    skip_lo: bool,
+    small_angular: SmallAngular,
+    small_radial: SmallRadial,
     phase_sign: f64,
-    extra_q: Option<TransferQ>,
+    extra_q: bool,
     mt_k_phase: MtKPhase,
+    omit_spin: Option<usize>,
+    conjugate_rows: bool,
+    reverse_g: bool,
 ) -> Complex64 {
     let mapped = input
         .k_minus_q
         .iter()
         .find(|mapped| mapped.k_index == k)
         .unwrap();
-    let (p_l, q_l) = independent_pq(
+    let mut left_s = independent_sample(
         input,
         grid,
         point,
         mapped.kq_index,
         left,
-        skip_udot,
-        skip_q,
+        skip_pdot,
+        skip_lo,
+        small_angular,
+        small_radial,
         mt_k_phase,
+        omit_spin,
+        conjugate_rows,
+        reverse_g,
     );
-    let (p_r, q_r) = independent_pq(
+    let right_s = independent_sample(
         input,
         grid,
         point,
         mapped.k_index,
         right,
-        skip_udot,
-        skip_q,
+        skip_pdot,
+        skip_lo,
+        small_angular,
+        SmallRadial::PhysicalQ,
         mt_k_phase,
+        omit_spin,
+        conjugate_rows,
+        reverse_g,
     );
-    let mut phase = wrap_phase(input, k, grid.points()[point].coordinate);
-    if phase_sign < 0.0 {
-        phase = phase.conj();
+    if matches!(small_radial, SmallRadial::CQ) {
+        for spin in 0..2 {
+            left_s.small[spin] *= Complex64::new(0.0, 1.0);
+        }
     }
-    if let Some(q) = extra_q {
-        let argument = q
+    let mut density = Complex64::default();
+    for spin in 0..2 {
+        density += left_s.large[spin].conj() * right_s.large[spin]
+            + left_s.small[spin].conj() * right_s.small[spin];
+    }
+    let mut phase = wrap_phase(input, k, grid.points()[point].coordinate, phase_sign);
+    if extra_q {
+        let argument = input
+            .source
+            .q
             .umklapp
             .cartesian
             .iter()
@@ -450,11 +526,11 @@ fn independent_pair(
             .sum();
         phase *= Complex64::from_polar(1.0, argument);
     }
-    phase * (p_l.conj() * p_r + q_l.conj() * q_r)
+    phase * density
 }
 
 fn selected_pair(
-    result: &muffintin::ScalarThcResult,
+    result: &muffintin::SpinorThcResult,
     q: usize,
     parent: usize,
     column: usize,
@@ -468,11 +544,37 @@ fn selected_pair(
     result.records[q].vertices[column].coefficients()[mu]
 }
 
+fn default_pair(
+    input: &SpinorProductInput,
+    grid: &ThcParentGrid,
+    point: usize,
+    k: usize,
+) -> Complex64 {
+    independent_pair(
+        input,
+        grid,
+        point,
+        k,
+        0,
+        0,
+        false,
+        false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
+        1.0,
+        false,
+        MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
+    )
+}
+
 #[test]
-fn q0_mt_and_interstitial_orbitals_match_independent_pp_qq_oracle() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+fn q0_mt_pp_qq_oracle_and_interstitial_two_pauli() {
+    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
     let input = physics
-        .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
+        .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
     let grid = parent_grid(&input);
     let n_parent = grid.points().len();
@@ -483,15 +585,19 @@ fn q0_mt_and_interstitial_orbitals_match_independent_pp_qq_oracle() {
         .count();
     assert_eq!(n_parent, 6);
     assert_eq!(n_positive, 5);
+    assert!(
+        input.source.radials[0]
+            .valence
+            .iter()
+            .any(|radial| radial.n == SPINOR_RADIAL_P
+                && radial.samples.small.iter().any(|q| q.abs() > 0.0))
+    );
     let result =
-        build_scalar_thc(std::slice::from_ref(&input), &grid, &spec_all(n_positive)).unwrap();
+        build_spinor_thc(std::slice::from_ref(&input), &grid, &spec_all(n_positive)).unwrap();
     assert_eq!(result.records.len(), 1);
-    assert_eq!(result.spin, 0);
     assert_eq!(result.effective_rank, n_positive);
     assert_eq!(result.records[0].fit.n_points, n_parent);
-    assert_eq!(result.records[0].fit.zeta.len(), n_parent * n_positive);
     assert!(!result.selection.points.iter().any(|point| point.id == 1));
-    assert!(!result.selection.pivots.contains(&1));
     assert_eq!(
         result.selection.provenance.grid_path,
         GridPath::External {
@@ -503,36 +609,23 @@ fn q0_mt_and_interstitial_orbitals_match_independent_pp_qq_oracle() {
         result.selection.provenance.strategy,
         SelectorStrategy::AllQL2
     );
-    assert_eq!(
-        result.selection.provenance.engine,
-        L2Engine::FullColumnPivotedQr
-    );
-    let has_q = input.source.radials[0]
-        .valence
-        .iter()
-        .any(|radial| radial.samples.small.is_some());
     let mt = 0;
+    let mt_mid = 2;
     let interstitial = 3;
     let column = input.pair_columns.encode(0, 0, 0);
-    let exact_mt = independent_pair(
-        &input,
-        &grid,
-        mt,
-        0,
-        0,
-        0,
-        false,
-        false,
-        1.0,
-        None,
-        MtKPhase::CellPeriodic,
-    );
+    let exact_mt = default_pair(&input, &grid, mt, 0);
     let got_mt = selected_pair(&result, 0, mt, column);
     assert!(
         (got_mt - exact_mt).norm() < 1.0e-8,
         "{got_mt} vs {exact_mt}"
     );
-    let without_udot = independent_pair(
+    let exact_mid = default_pair(&input, &grid, mt_mid, 0);
+    let got_mid = selected_pair(&result, 0, mt_mid, column);
+    assert!(
+        (got_mid - exact_mid).norm() < 1.0e-8,
+        "{got_mid} vs {exact_mid}"
+    );
+    let without_pdot = independent_pair(
         &input,
         &grid,
         mt,
@@ -541,34 +634,63 @@ fn q0_mt_and_interstitial_orbitals_match_independent_pp_qq_oracle() {
         0,
         true,
         false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
         1.0,
-        None,
+        false,
         MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
+    );
+    let without_lo = independent_pair(
+        &input,
+        &grid,
+        mt,
+        0,
+        0,
+        0,
+        false,
+        true,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
+        1.0,
+        false,
+        MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
     );
     assert!(
-        (without_udot - exact_mt).norm() > 1.0e-8,
-        "UDOT must contribute to the MT pair density"
+        (without_pdot - exact_mt).norm() > 1.0e-8 || (without_lo - exact_mt).norm() > 1.0e-8,
+        "Pdot or signed-kappa LO/RLO must contribute to the MT pair density"
     );
-    if has_q {
-        let without_q = independent_pair(
-            &input,
-            &grid,
-            mt,
-            0,
-            0,
-            0,
-            false,
-            true,
-            1.0,
-            None,
-            MtKPhase::CellPeriodic,
-        );
-        assert!(
-            (without_q - exact_mt).norm() > 1.0e-10,
-            "KH small-component QQ must contribute"
-        );
-    }
-    let exact_i = independent_pair(
+    let without_qq = independent_pair(
+        &input,
+        &grid,
+        mt_mid,
+        0,
+        0,
+        0,
+        false,
+        false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::Skip,
+        1.0,
+        false,
+        MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
+    );
+    assert!(
+        (without_qq - exact_mid).norm() > 1.0e-10,
+        "physical QQ must contribute: {without_qq} vs {exact_mid}"
+    );
+    let exact_i = default_pair(&input, &grid, interstitial, 0);
+    let got_i = selected_pair(&result, 0, interstitial, column);
+    assert!((got_i - exact_i).norm() < 1.0e-8, "{got_i} vs {exact_i}");
+    let conjugated = independent_pair(
         &input,
         &grid,
         interstitial,
@@ -577,51 +699,82 @@ fn q0_mt_and_interstitial_orbitals_match_independent_pp_qq_oracle() {
         0,
         false,
         false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
         1.0,
-        None,
+        false,
         MtKPhase::CellPeriodic,
+        None,
+        true,
+        false,
     );
-    let got_i = selected_pair(&result, 0, interstitial, column);
-    assert!((got_i - exact_i).norm() < 1.0e-8, "{got_i} vs {exact_i}");
+    let reversed = independent_pair(
+        &input,
+        &grid,
+        interstitial,
+        0,
+        0,
+        0,
+        false,
+        false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
+        1.0,
+        false,
+        MtKPhase::CellPeriodic,
+        None,
+        false,
+        true,
+    );
+    let omit_down = independent_pair(
+        &input,
+        &grid,
+        interstitial,
+        0,
+        0,
+        0,
+        false,
+        false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
+        1.0,
+        false,
+        MtKPhase::CellPeriodic,
+        Some(1),
+        false,
+        false,
+    );
+    assert!((got_i - conjugated).norm() > 1.0e-8);
+    assert!((got_i - reversed).norm() > 1.0e-8);
+    assert!(
+        (got_i - omit_down).norm() > 1.0e-10,
+        "both Pauli PW blocks must contribute"
+    );
 }
 
 #[test]
-fn finite_q_pair_density_uses_stored_positive_wrap_not_global_umklapp() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+fn finite_q_uses_cell_periodic_k_phase_and_stored_wrap() {
+    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
     let q0 = physics
-        .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [0.0; 3])
+        .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();
     let q15 = physics
-        .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [1.5, 0.0, 0.0])
+        .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [1.5, 0.0, 0.0])
         .unwrap();
     assert_eq!(q15.source.q.umklapp.index, [1, 0, 0]);
     assert_eq!(q15.k_minus_q[0].umklapp.index, [-1, 0, 0]);
     let grid = parent_grid(&q15);
-    let spec = ScalarThcSpec {
-        spin: 0,
+    let spec = SpinorThcSpec {
         rank: RankPolicy::Exact { n_mu: 1 },
         candidates: ThcCandidates::Indices(vec![0]),
         engine: ThcEngine::FullColumnPivotedQr,
     };
-    let result = build_scalar_thc(&[q0, q15.clone()], &grid, &spec).unwrap();
-    assert_eq!(result.spin, 0);
+    let result = build_spinor_thc(&[q0.clone(), q15.clone()], &grid, &spec).unwrap();
     assert_eq!(result.records[1].q_index, 1);
     assert_eq!(result.records[1].q, q15.source.q);
     let parent = 0;
     let column = q15.pair_columns.encode(0, 0, 0);
-    let exact = independent_pair(
-        &q15,
-        &grid,
-        parent,
-        0,
-        0,
-        0,
-        false,
-        false,
-        1.0,
-        None,
-        MtKPhase::CellPeriodic,
-    );
+    let exact = default_pair(&q15, &grid, parent, 0);
     let got = selected_pair(&result, 1, parent, column);
     assert!((got - exact).norm() < 1.0e-8, "{got} vs {exact}");
     let flipped = independent_pair(
@@ -633,9 +786,14 @@ fn finite_q_pair_density_uses_stored_positive_wrap_not_global_umklapp() {
         0,
         false,
         false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
         -1.0,
-        None,
+        false,
         MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
     );
     let doubled = independent_pair(
         &q15,
@@ -646,9 +804,14 @@ fn finite_q_pair_density_uses_stored_positive_wrap_not_global_umklapp() {
         0,
         false,
         false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
         1.0,
-        Some(q15.source.q),
+        true,
         MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
     );
     let missing_k = independent_pair(
         &q15,
@@ -659,9 +822,14 @@ fn finite_q_pair_density_uses_stored_positive_wrap_not_global_umklapp() {
         0,
         false,
         false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
         1.0,
-        None,
+        false,
         MtKPhase::Missing,
+        None,
+        false,
+        false,
     );
     let opposite_k = independent_pair(
         &q15,
@@ -672,31 +840,178 @@ fn finite_q_pair_density_uses_stored_positive_wrap_not_global_umklapp() {
         0,
         false,
         false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
         1.0,
-        None,
+        false,
         MtKPhase::Opposite,
+        None,
+        false,
+        false,
     );
     assert!((got - flipped).norm() > 1.0e-8);
     assert!((got - doubled).norm() > 1.0e-8);
+    assert!((got - missing_k).norm() > 1.0e-8);
+    assert!((got - opposite_k).norm() > 1.0e-8);
+
+    let spec_mid = SpinorThcSpec {
+        rank: RankPolicy::Exact { n_mu: 1 },
+        candidates: ThcCandidates::Indices(vec![2]),
+        engine: ThcEngine::FullColumnPivotedQr,
+    };
+    let mid_fit = build_spinor_thc(&[q0.clone(), q15.clone()], &grid, &spec_mid).unwrap();
+    let mid = 2;
+    let exact_mid = default_pair(&q15, &grid, mid, 0);
+    let got_mid = selected_pair(&mid_fit, 1, mid, column);
     assert!(
-        (got - missing_k).norm() > 1.0e-8,
-        "cell-periodic MT factor must differ from the missing Bloch factor"
+        (got_mid - exact_mid).norm() < 1.0e-8,
+        "{got_mid} vs {exact_mid}"
+    );
+    let without_qq_mid = independent_pair(
+        &q15,
+        &grid,
+        mid,
+        0,
+        0,
+        0,
+        false,
+        false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::Skip,
+        1.0,
+        false,
+        MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
+    );
+    let cq_mid = independent_pair(
+        &q15,
+        &grid,
+        mid,
+        0,
+        0,
+        0,
+        false,
+        false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::CQ,
+        1.0,
+        false,
+        MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
+    );
+    let mapped = q15
+        .k_minus_q
+        .iter()
+        .find(|mapped| mapped.k_index == 0)
+        .unwrap();
+    let small_right = independent_sample(
+        &q15,
+        &grid,
+        mid,
+        mapped.k_index,
+        0,
+        false,
+        false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
+        MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
+    );
+    let small_wrong = independent_sample(
+        &q15,
+        &grid,
+        mid,
+        mapped.k_index,
+        0,
+        false,
+        false,
+        SmallAngular::SameKappa,
+        SmallRadial::PhysicalQ,
+        MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
+    );
+    let omega_field_diff = (0..2)
+        .map(|spin| (small_right.small[spin] - small_wrong.small[spin]).norm())
+        .fold(0.0, f64::max);
+    assert!(
+        (without_qq_mid - exact_mid).norm() > 1.0e-10,
+        "mid-shell QQ must contribute: {without_qq_mid} vs {exact_mid}"
     );
     assert!(
-        (got - opposite_k).norm() > 1.0e-8,
-        "cell-periodic MT factor must differ from the opposite sign"
+        omega_field_diff > 1.0e-10,
+        "Omega_-kappa and Omega_kappa small Pauli fields must differ at the mid-shell point: {omega_field_diff}"
     );
-    assert!((missing_k - opposite_k).norm() > 1.0e-8);
+    assert!(
+        (cq_mid - exact_mid).norm() > 1.0e-10,
+        "mid-shell cQ scaling must not be used: {cq_mid} vs {exact_mid}"
+    );
+
+    let spec_i = SpinorThcSpec {
+        rank: RankPolicy::Exact { n_mu: 1 },
+        candidates: ThcCandidates::Indices(vec![3]),
+        engine: ThcEngine::FullColumnPivotedQr,
+    };
+    let interstitial_fit = build_spinor_thc(&[q0.clone(), q15.clone()], &grid, &spec_i).unwrap();
+    let i_col = q15.pair_columns.encode(0, 0, 0);
+    let exact_i = default_pair(&q15, &grid, 3, 0);
+    let got_i = selected_pair(&interstitial_fit, 1, 3, i_col);
+    assert!((got_i - exact_i).norm() < 1.0e-8, "{got_i} vs {exact_i}");
+    let wrap_flip = independent_pair(
+        &q15,
+        &grid,
+        3,
+        0,
+        0,
+        0,
+        false,
+        false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
+        -1.0,
+        false,
+        MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
+    );
+    let umklapp = independent_pair(
+        &q15,
+        &grid,
+        3,
+        0,
+        0,
+        0,
+        false,
+        false,
+        SmallAngular::OppositeKappa,
+        SmallRadial::PhysicalQ,
+        1.0,
+        true,
+        MtKPhase::CellPeriodic,
+        None,
+        false,
+        false,
+    );
+    assert!((got_i - wrap_flip).norm() > 1.0e-8);
+    assert!((got_i - umklapp).norm() > 1.0e-8);
 }
 
 #[test]
-fn multi_q_allq_l2_fits_heterogeneous_weights_with_independent_residual() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+fn multi_q_engines_keep_zero_weight_zeta_row() {
+    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
     let q0 = physics
-        .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [0.0; 3])
+        .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();
     let qh = physics
-        .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [0.5, 0.0, 0.0])
+        .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [0.5, 0.0, 0.0])
         .unwrap();
     let grid = parent_grid(&q0);
     let inputs = [q0.clone(), qh.clone()];
@@ -712,19 +1027,7 @@ fn multi_q_allq_l2_fits_heterogeneous_weights_with_independent_residual() {
             for i in 0..q0.pair_columns.n_orb {
                 for j in 0..q0.pair_columns.n_orb {
                     let column = q0.pair_columns.encode(k, i, j);
-                    exact[p * n_col + column] = independent_pair(
-                        &qh,
-                        &grid,
-                        p,
-                        k,
-                        i,
-                        j,
-                        false,
-                        false,
-                        1.0,
-                        None,
-                        MtKPhase::CellPeriodic,
-                    );
+                    exact[p * n_col + column] = default_pair(&qh, &grid, p, k);
                 }
             }
         }
@@ -733,10 +1036,9 @@ fn multi_q_allq_l2_fits_heterogeneous_weights_with_independent_residual() {
     let mut rank_one = Vec::new();
     let mut rank_two = Vec::new();
     for engine in engines {
-        let one = build_scalar_thc(&inputs, &grid, &spec_all_engine(1, engine)).unwrap();
-        let two = build_scalar_thc(&inputs, &grid, &spec_all_engine(2, engine)).unwrap();
+        let one = build_spinor_thc(&inputs, &grid, &spec_all_engine(1, engine)).unwrap();
+        let two = build_spinor_thc(&inputs, &grid, &spec_all_engine(2, engine)).unwrap();
         assert_eq!(two.records.len(), 2);
-        assert_eq!(two.spin, 0);
         assert_eq!(two.records[0].q_index, 0);
         assert_eq!(two.records[1].q_index, 1);
         assert_eq!(two.effective_rank, 2);
@@ -753,6 +1055,8 @@ fn multi_q_allq_l2_fits_heterogeneous_weights_with_independent_residual() {
             }
         );
         assert!(!two.selection.points.iter().any(|point| point.id == 1));
+        assert_eq!(two.records[1].fit.n_points, n_pts);
+        assert_eq!(two.records[1].fit.zeta.len(), n_pts * 2);
         rank_one.push(one);
         rank_two.push(two);
     }
@@ -764,30 +1068,22 @@ fn multi_q_allq_l2_fits_heterogeneous_weights_with_independent_residual() {
         .iter()
         .map(|result| reconstruction_residual(result, &exact, &weights, n_col, 1))
         .collect();
-    let baseline = residuals_one[0];
-    assert!(baseline.is_finite() && baseline > 0.0);
     let exactness_floor = 1.0e-12;
     for (engine, (&rank1, &rank2)) in engines
         .iter()
         .zip(residuals_one.iter().zip(residuals_two.iter()))
     {
+        assert!(rank1.is_finite() && rank1 >= 0.0, "engine={engine:?}");
         assert!(rank2.is_finite() && rank2 >= 0.0, "engine={engine:?}");
         assert!(
             rank2 < rank1.max(exactness_floor),
             "rank-2 must improve on rank-1 or stay below the exactness floor for {engine:?}: {rank2} vs {rank1}"
         );
-        assert!(
-            rank2 < baseline.max(exactness_floor),
-            "rank-2 must improve on the shared QRCP rank-1 baseline or stay below the exactness floor for {engine:?}: {rank2} vs {baseline}"
-        );
-    }
-    if rank_two[0].selection.pivots == rank_two[1].selection.pivots {
-        assert_eq!(rank_two[0].selection.points, rank_two[1].selection.points);
     }
 }
 
 fn reconstruction_residual(
-    result: &muffintin::ScalarThcResult,
+    result: &muffintin::SpinorThcResult,
     exact: &[Complex64],
     weights: &[f64],
     n_col: usize,
@@ -805,36 +1101,16 @@ fn reconstruction_residual(
     for &id in &ids {
         selected.extend_from_slice(&exact[id * n_col..(id + 1) * n_col]);
     }
-    let recon = reconstruct_pairs(&selected, n_mu, n_col, &result.records[q].fit.zeta, n_pts);
-    weighted_frobenius(exact, &recon, weights, n_col)
-}
-
-fn reconstruct_pairs(
-    selected: &[Complex64],
-    n_mu: usize,
-    n_col: usize,
-    zeta: &[Complex64],
-    n_pts: usize,
-) -> Vec<Complex64> {
     let mut recon = vec![Complex64::default(); n_pts * n_col];
     for p in 0..n_pts {
         for col in 0..n_col {
             let mut acc = Complex64::default();
             for mu in 0..n_mu {
-                acc += zeta[p * n_mu + mu] * selected[mu * n_col + col];
+                acc += result.records[q].fit.zeta[p * n_mu + mu] * selected[mu * n_col + col];
             }
             recon[p * n_col + col] = acc;
         }
     }
-    recon
-}
-
-fn weighted_frobenius(
-    exact: &[Complex64],
-    recon: &[Complex64],
-    weights: &[f64],
-    n_col: usize,
-) -> f64 {
     let mut acc = 0.0;
     for p in 0..weights.len() {
         for col in 0..n_col {
@@ -842,95 +1118,4 @@ fn weighted_frobenius(
         }
     }
     acc.sqrt()
-}
-
-#[test]
-fn parent_grid_construction_identity_binds_q_fits() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
-    let input = physics
-        .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
-        .unwrap();
-    let grid = parent_grid(&input);
-    let thc = build_scalar_thc(std::slice::from_ref(&input), &grid, &spec_all(1)).unwrap();
-    assert!(thc.records_match_parent_grid());
-    let mut permuted = thc.clone();
-    let mut points = permuted.grid.points().to_vec();
-    points.swap(3, 4);
-    permuted.grid = ThcParentGrid::new(
-        permuted.grid.partition().clone(),
-        permuted.grid.provenance().clone(),
-        points,
-    )
-    .unwrap();
-    assert!(!permuted.records_match_parent_grid());
-    assert_eq!(permuted.records[0].fit.zeta, thc.records[0].fit.zeta);
-}
-
-#[test]
-fn scalar_thc_rejects_empty_slice_or_partition_mismatch() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
-    let input = physics
-        .scalar_product_input(&scalar_config([1, 1, 1], 0.5), [0.0; 3])
-        .unwrap();
-    let grid = parent_grid(&input);
-    assert!(matches!(
-        build_scalar_thc(&[], &grid, &spec_all(2)),
-        Err(ScalarThcError::EmptySlice)
-    ));
-    let other = ProductPartition::from_interstitial(
-        muffintin_core::InterstitialGeometry::new(
-            VolumeBohr3(1000.0),
-            input.source.partition.interstitial().spheres().to_vec(),
-        )
-        .unwrap(),
-    );
-    let bad = ThcParentGrid::new(other, Provenance::default(), grid.points().to_vec()).unwrap();
-    assert!(matches!(
-        build_scalar_thc(std::slice::from_ref(&input), &bad, &spec_all(2)),
-        Err(ScalarThcError::GridPartitionMismatch)
-    ));
-    assert!(matches!(
-        build_scalar_thc(
-            std::slice::from_ref(&input),
-            &grid,
-            &spec_all(grid.points().len())
-        ),
-        Err(ScalarThcError::Thc(ThcError::RankExceedsGrid {
-            n_mu: 6,
-            n_points: 5
-        }))
-    ));
-    let zero_candidate = ScalarThcSpec {
-        spin: 0,
-        rank: RankPolicy::Exact { n_mu: 1 },
-        candidates: ThcCandidates::Indices(vec![1]),
-        engine: ThcEngine::FullColumnPivotedQr,
-    };
-    assert!(matches!(
-        build_scalar_thc(std::slice::from_ref(&input), &grid, &zero_candidate),
-        Err(ScalarThcError::Thc(ThcError::ZeroWeightCandidate(1)))
-    ));
-    let origin = input.source.partition.sites()[0].position;
-    let mid = input.source.radials[0].mesh.radii().len() / 2;
-    let r_mid = input.source.radials[0].mesh.radii()[mid].get();
-    let mut off_shell = grid.points().to_vec();
-    off_shell[0].coordinate = on_shell(origin, r_mid, [0.4, -0.3, 0.2]);
-    off_shell[0].region = ThcRegion::MuffinTin {
-        site: 0,
-        radial_index: 0,
-    };
-    let bad_shell = ThcParentGrid::new(
-        input.source.partition.clone(),
-        Provenance::default(),
-        off_shell,
-    )
-    .unwrap();
-    assert!(matches!(
-        build_scalar_thc(std::slice::from_ref(&input), &bad_shell, &spec_all(1)),
-        Err(ScalarThcError::RadialShellMismatch {
-            index: 0,
-            site: 0,
-            radial_index: 0
-        })
-    ));
 }

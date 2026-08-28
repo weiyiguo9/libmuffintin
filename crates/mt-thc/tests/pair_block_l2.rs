@@ -1,6 +1,7 @@
 //! AllQL2 full L2 engines on already-evaluated pair blocks.
 
 use muffintin_auxiliary_ir::{InterpolationRegion, PairColumnLayout, TransferQ};
+use muffintin_basis::Provenance;
 use muffintin_core::InverseBohr;
 use muffintin_thc::toy::mt_partition;
 use muffintin_thc::{
@@ -58,6 +59,7 @@ fn allq_l2_pair_block_fit_uses_true_weights_and_full_engines() {
             rank,
             engine,
             candidates,
+            default_fit_provenance(),
         )
     };
     let qr = fit(
@@ -103,6 +105,60 @@ fn allq_l2_pair_block_fit_uses_true_weights_and_full_engines() {
     )
     .unwrap_err();
     assert_eq!(sketch, ThcError::PairBlockRequiresFullEngine);
+}
+
+fn default_fit_provenance() -> Provenance {
+    Provenance {
+        recipe: Some("pair-block-l2".to_owned()),
+        reference: Some("mt-thc-test".to_owned()),
+    }
+}
+
+#[test]
+fn auxiliaries_and_vertices_bind_provenance_at_construction() {
+    let layout = PairColumnLayout::new(1, 1, None);
+    let n_points = 3;
+    let n_col = layout.n_columns().unwrap();
+    let mut values = vec![Complex64::default(); n_points * n_col];
+    values[0] = Complex64::new(2.0, 0.0);
+    values[n_col] = Complex64::new(0.5, 0.1);
+    values[2 * n_col] = Complex64::new(1.5, -0.2);
+    let blocks = [PairBlock::new(0, n_points, layout, values).unwrap()];
+    let points = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+    let weights = [0.4, 0.3, 0.3];
+    let regions = [
+        InterpolationRegion::MuffinTin { site: 0 },
+        InterpolationRegion::Interstitial,
+        InterpolationRegion::Interstitial,
+    ];
+    let transfers = [TransferQ::from_cartesian([InverseBohr(0.0); 3]).unwrap()];
+    let provenance = Provenance {
+        recipe: Some("intended-before-vertex".to_owned()),
+        reference: Some("fails-if-mutated-after-vertices".to_owned()),
+    };
+    let result = fit_allq_l2_pair_blocks(
+        &blocks,
+        &points,
+        &weights,
+        &regions,
+        mt_partition(),
+        &transfers,
+        RankPolicy::Exact { n_mu: 1 },
+        L2Engine::FullColumnPivotedQr,
+        None,
+        provenance.clone(),
+    )
+    .unwrap();
+    assert_eq!(result.auxiliaries[0].provenance, provenance);
+    assert_eq!(result.vertices[0][0].provenance(), &provenance);
+    assert_eq!(
+        result.auxiliaries[0].provenance,
+        *result.vertices[0][0].provenance()
+    );
+    assert_ne!(
+        result.vertices[0][0].provenance().recipe.as_deref(),
+        Some("thc-isdf")
+    );
 }
 
 fn assert_engine_contract(

@@ -178,8 +178,9 @@ basis-pair term.
 $q$-index order: `inputs[iq]` is the M-L1 bundle whose canonical $q$ is the
 $iq$-th k-mesh point. Bundles share the frozen orbital window, spins, k mesh,
 partition, radials, and `PairColumnLayout`. `ScalarThcSpec` selects one
-collinear spin, an existing THC `RankPolicy`, candidate points, and one
-production L2 engine (`FullColumnPivotedQr` or `FullPivotedCholesky`).
+collinear spin, an existing THC `RankPolicy`, candidate points
+([`ThcCandidates`]), and one production L2 engine ([`ThcEngine`],
+`FullColumnPivotedQr` or `FullPivotedCholesky`).
 `All` uses strictly positive-weight parent indices in parent order; explicit
 zero-weight indices are rejected. Both engines run AllQL2 on the same ordered
 pair blocks, positive-weight candidates, true weights, and rank policy. The
@@ -188,7 +189,7 @@ Pivoted Cholesky does not form the dense point Gram, but it still
 materializes the stacked weighted pair matrix. Core-orbital diagnostics stay
 empty.
 
-`ScalarThcGrid` is an externally supplied immutable parent support bound to
+`ThcParentGrid` is an externally supplied immutable parent support bound to
 the exact `ProductPartition`. Muffin-tin points name `{site, radial_index}`
 on the stored exponential mesh and must lie on that sample's Cartesian
 radius; interstitial points are partitioned interstitial. Weights may be
@@ -209,8 +210,10 @@ Global `TransferQ` Umklapp stays on the $q$ record.
 The result carries the selected spin, the parent grid, selection with
 requested and effective rank, and one per-$q$ interpolation-point
 `CompiledAuxiliaryBasis`, parent-grid-by-selected-point $\zeta$, and
-`PairVertex` columns. It does not build `SampledAuxiliaryFunctions` or
-Coulomb operators.
+`PairVertex` columns. Interpolation-point auxiliaries are created with the
+scalar THC provenance before Bloch pair vertices, so auxiliary and vertex
+records bind the same $q$/layout/partition/provenance at construction. It
+does not build `SampledAuxiliaryFunctions` or Coulomb operators.
 
 ## 6. Scalar M-L4 sampled Coulomb
 
@@ -269,7 +272,7 @@ vertex primitive). Runtime M-L5b consumes those public types and does not
 redefine them. Scalar `ProductRadialId` / `ProductSource` / `RawProductSpace`
 stay unchanged. M-L5c adds Dirac overlap cutoff, retained scalar-charge
 modes of the PP/QQ union, and interstitial spinor plane-wave contraction.
-THC and Coulomb remain later seams.
+M-L5d adds spinor all-$q$ THC and sampled-$\zeta$ Coulomb.
 
 ## 9. M-L5b frozen spinor product input
 
@@ -311,7 +314,7 @@ of $G_{\mathrm{right}}-G_{\mathrm{left}}+G_{\mathrm{wrap}}$ over actual
 spinor plane-wave $G$ labels. Global `TransferQ` Umklapp is excluded.
 `ScfState` is not the orbital source.
 
-M-L5c contracts selected spinor bands into that primitive. M-L5d will add
+M-L5c contracts selected spinor bands into that primitive. M-L5d adds
 all-$q$ THC and sampled-$\zeta$ Coulomb.
 
 ## 10. M-L5c selected-band spinor mixed-product bridge
@@ -325,7 +328,19 @@ caller lattice and no collinear spin tag. The result owns the untruncated
 $n_{\mathrm{spin}}=1$, the frozen [`ReciprocalLattice`] and
 [`PairColumnLayout`], and [`SpinorMpbPairVertex`] records with pair-column
 identity $k\cdot N_{\mathrm{orb}}^2+i\cdot N_{\mathrm{orb}}+j$ and a checked
-[`PairVertex`] whose identity is [`OrbitalPair::Bloch`].
+[`PairVertex`] whose identity is [`OrbitalPair::Bloch`]. Construction seals a
+runtime-private frozen-input identity of the originating
+[`SpinorProductInput`]: the complete Dirac source (partition, $q$,
+provenance, site meshes, physical $P$/$Q$ identities and samples, cores, raw
+interstitial support), frozen orbitals (k fractions, band window and
+available counts, every ordered [`SpinorCompiledBasis`] layout / plane-wave /
+site-augmentation / LO mapping, eigenvalues, and every complex eigenvector
+entry), the $k-q$ map and per-$k$ wraps, [`PairColumnLayout`], and the
+authoritative [`ReciprocalLattice`]. The mixer is the same splitmix-style
+64-bit fold as the parent-grid construction fingerprint: an internal binding
+stamp, not scientific provenance or a cryptographic digest, with a
+per-comparison collision residual of one part in $2^{64}$. External struct
+literals cannot forge that stamp.
 
 Dirac overlap spectra are the real-symmetric eigensystems of the ordered
 PP then QQ union at each $(site,L)$. Raw products stay sector-tagged; they
@@ -362,3 +377,53 @@ $G_{\mathrm{rel}}$ must exist on the M-L5b raw pair support. The global
 MPB $\Theta_I$ argument $G_{\mathrm{aux}}-G_{\mathrm{transfer}}-G_{\mathrm{rel}}$.
 The MPB accumulator [`DiracBlochVertexAccumulator`] sums those primitive
 terms into one checked vertex.
+
+## 11. M-L5d spinor all-$q$ THC and sampled-$\zeta$ Coulomb
+
+`build_spinor_thc(&[SpinorProductInput], &ThcParentGrid, &SpinorThcSpec)`
+consumes a complete ordered $q$ slice with one record for every k-mesh
+point, sharing frozen orbitals, band window, partition, reciprocal lattice,
+and `PairColumnLayout`. `SpinorThcSpec` requires an explicit `RankPolicy`,
+[`ThcEngine`] (`FullColumnPivotedQr` or `FullPivotedCholesky`), and
+[`ThcCandidates`] (`All` or explicit positive-weight parent indices). There
+is no collinear spin tag: one spinor band manifold, with the two Pauli
+components summed inside each physical density. The shared parent-grid
+fingerprint, candidate policy, and full engines are the same objects as
+scalar M-L3. Zero-weight parent rows remain in $\zeta$ and cannot be
+candidates.
+
+Muffin-tin reconstruction uses [`CompiledSiteProjection::spinor`] and
+`SpinorProductInput::site_projection_identity` on the stored mesh shell.
+Large $P/\dot P$/LO-RLO uses $\Omega_{\kappa\mu}$; physical small
+$Q/\dot Q$/LO-RLO uses $\Omega_{-\kappa\mu}$. Pair density is the
+same-Pauli PP plus QQ sum; there is no PQ/QP and no $cQ$. Each reconstructed
+Bloch spinor is converted to cell-periodic form by one
+$\exp(-i k\cdot r)$, then the stored per-$k$ $+G_{\mathrm{wrap}}$ pair
+phase. Global `TransferQ` Umklapp is not applied again. Interstitial
+evaluation uses the two Pauli plane-wave blocks
+
+```math
+\sum_{s=0,1}
+\mathrm{conj}\bigl(C_{\mathrm{left}}[s,G_{\mathrm{left}}]\bigr)
+C_{\mathrm{right}}[s,G_{\mathrm{right}}]/\Omega
+```
+
+with G-only cell-periodic phases; there is no interstitial small component.
+Selection and $\zeta$ reuse `mt-thc::fit_allq_l2_pair_blocks`. Auxiliaries
+are created with the intended provenance before Bloch pair vertices.
+
+`build_spinor_coulomb` builds `SampledAuxiliaryFunctions` on the full
+`ThcParentGrid` in original order (Cartesian Bohr coordinates, true weights
+including zero, MT `{site,radial_index}` / interstitial support, per-site
+meshes, row-major parent-grid $\zeta$) and calls production
+`assemble_sampled_coulomb`. The request reciprocal must equal the frozen
+`SpinorProductInput` reciprocal. Gamma keeps the finite body plus
+`GammaHead` metadata. Explicit bounded matches to `SpinorMpbResult` must
+originate from `inputs[q_index]`: the sealed frozen-input identity is
+checked, then the public reciprocal lattice and pair-column layout, before
+mixed-product Coulomb assembly. THC vertices must carry the compiled
+auxiliary provenance at the shared record helper. Matched pairs compare
+$c^\dagger V c$ with absolute/relative discrepancy; per-side $\|Vc\|$ remain
+debug numbers in each auxiliary basis. This stage does not implement
+core-valence products, HDF5/CoQui, material/SPEX acceptance, a
+principal-angle engine, or GW/RPA.
