@@ -1045,6 +1045,7 @@ dependencies = [
  "libmuffintin-coulomb",
  "libmuffintin-dft",
  "libmuffintin-envelope",
+ "libmuffintin-grid",
  "libmuffintin-io",
  "libmuffintin-lapw",
  "libmuffintin-mpb",

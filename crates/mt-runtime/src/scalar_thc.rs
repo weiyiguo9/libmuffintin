@@ -85,12 +85,20 @@ pub struct ScalarThcPoint {
     pub region: ScalarThcRegion,
 }
 
+/// Content fingerprint binding a parent grid to the per-$q$ $\zeta$ fits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ParentGridIdentity(u64);
+
 /// Externally supplied parent support for scalar adaptive THC.
+///
+/// Construction fingerprints the ordered points, weights, regions, partition,
+/// and provenance so a later permutation cannot keep the original $\zeta$ fits.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarThcGrid {
     partition: ProductPartition,
     provenance: Provenance,
     points: Vec<ScalarThcPoint>,
+    identity: ParentGridIdentity,
 }
 
 impl ScalarThcGrid {
@@ -121,10 +129,12 @@ impl ScalarThcGrid {
         muffintin_thc::validate_quadrature_weights(
             &points.iter().map(|point| point.weight).collect::<Vec<_>>(),
         )?;
+        let identity = parent_grid_identity(&partition, &provenance, &points);
         Ok(Self {
             partition,
             provenance,
             points,
+            identity,
         })
     }
 
@@ -142,6 +152,10 @@ impl ScalarThcGrid {
     pub fn points(&self) -> &[ScalarThcPoint] {
         &self.points
     }
+
+    pub(crate) const fn identity(&self) -> ParentGridIdentity {
+        self.identity
+    }
 }
 
 /// Per-$q$ interpolation-point auxiliary, $\zeta$, and pair vertices.
@@ -153,6 +167,13 @@ pub struct ScalarThcQRecord {
     pub auxiliary: CompiledAuxiliaryBasis,
     pub fit: PerQFit,
     pub vertices: Vec<PairVertex>,
+    grid_identity: ParentGridIdentity,
+}
+
+impl ScalarThcQRecord {
+    pub(crate) const fn grid_identity(&self) -> ParentGridIdentity {
+        self.grid_identity
+    }
 }
 
 /// Scalar AllQL2 result carrying the M-L4 interpolation-point seam.
@@ -169,6 +190,15 @@ pub struct ScalarThcResult {
     /// label.
     pub spin: u8,
     pub records: Vec<ScalarThcQRecord>,
+}
+
+impl ScalarThcResult {
+    /// Whether every per-$q$ $\zeta$ record was fitted on the stored parent grid.
+    pub fn records_match_parent_grid(&self) -> bool {
+        self.records
+            .iter()
+            .all(|record| record.grid_identity == self.grid.identity)
+    }
 }
 
 /// Scalar adaptive-THC stage-boundary error.
@@ -276,6 +306,7 @@ pub fn build_scalar_thc(
                 auxiliary,
                 fit,
                 vertices,
+                grid_identity: grid.identity,
             }
         })
         .collect::<Vec<_>>();
@@ -322,6 +353,7 @@ fn require_compatible_slice(inputs: &[ScalarProductInput]) -> Result<(), ScalarT
             || input.pair_columns != first.pair_columns
             || input.source.partition != first.source.partition
             || input.source.radials != first.source.radials
+            || input.reciprocal != first.reciprocal
             || input.k_minus_q.len() != n_k
         {
             return Err(ScalarThcError::IncompatibleInputs);
@@ -373,6 +405,63 @@ fn require_grid_radials(
         }
     }
     Ok(())
+}
+
+fn parent_grid_identity(
+    partition: &ProductPartition,
+    provenance: &Provenance,
+    points: &[ScalarThcPoint],
+) -> ParentGridIdentity {
+    let mut hash = mix(0xA11C_941D_0001_0001, points.len() as u64);
+    hash = mix(hash, partition.site_count() as u64);
+    hash = mix(hash, partition.interstitial().cell_volume().get().to_bits());
+    for site in partition.sites() {
+        hash = mix(hash, site.index as u64);
+        for coordinate in site.position {
+            hash = mix(hash, coordinate.get().to_bits());
+        }
+        hash = mix(hash, site.radius.get().to_bits());
+    }
+    hash = mix_opt_str(hash, partition.provenance().recipe.as_deref());
+    hash = mix_opt_str(hash, partition.provenance().reference.as_deref());
+    hash = mix_opt_str(hash, provenance.recipe.as_deref());
+    hash = mix_opt_str(hash, provenance.reference.as_deref());
+    for (index, point) in points.iter().enumerate() {
+        hash = mix(hash, index as u64);
+        for coordinate in point.coordinate {
+            hash = mix(hash, coordinate.get().to_bits());
+        }
+        hash = mix(hash, point.weight.to_bits());
+        match point.region {
+            ScalarThcRegion::MuffinTin { site, radial_index } => {
+                hash = mix(hash, 1);
+                hash = mix(hash, site as u64);
+                hash = mix(hash, radial_index as u64);
+            }
+            ScalarThcRegion::Interstitial => {
+                hash = mix(hash, 2);
+            }
+        }
+    }
+    ParentGridIdentity(hash)
+}
+
+fn mix(hash: u64, lane: u64) -> u64 {
+    hash.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(lane)
+}
+
+fn mix_opt_str(hash: u64, value: Option<&str>) -> u64 {
+    match value {
+        None => mix(hash, 0),
+        Some(text) => {
+            let mut hash = mix(hash, 1);
+            hash = mix(hash, text.len() as u64);
+            for &byte in text.as_bytes() {
+                hash = mix(hash, u64::from(byte));
+            }
+            hash
+        }
+    }
 }
 
 fn cartesian_distance(point: [Bohr; 3], origin: [Bohr; 3]) -> f64 {

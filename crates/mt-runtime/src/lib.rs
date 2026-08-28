@@ -7,6 +7,7 @@ mod channel_token;
 mod error;
 mod input;
 mod runner;
+mod scalar_coulomb;
 mod scalar_mpb;
 mod scalar_product;
 mod scalar_thc;
@@ -33,6 +34,11 @@ pub use muffintin_thc::RankPolicy;
 pub use runner::{
     PreparedSource, PreparedTask, PreparedWorkflow, TaskResult, WorkflowResult,
     execute_prepared_with, load_input_path, prepare_input, prepare_input_with_recipes,
+};
+pub use scalar_coulomb::{
+    SCALAR_COULOMB_EXACTNESS_FLOOR, ScalarCoulombDiscrepancy, ScalarCoulombError,
+    ScalarCoulombPairDiagnostic, ScalarCoulombPairMatch, ScalarCoulombQRecord, ScalarCoulombResult,
+    ScalarCoulombSpec, build_scalar_coulomb,
 };
 pub use scalar_mpb::{
     SCALAR_MPB_NSPIN, ScalarMpbError, ScalarMpbPairVertex, ScalarMpbResult, ScalarMpbSelection,

@@ -845,6 +845,28 @@ fn weighted_frobenius(
 }
 
 #[test]
+fn parent_grid_construction_identity_binds_q_fits() {
+    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let input = physics
+        .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
+        .unwrap();
+    let grid = parent_grid(&input);
+    let thc = build_scalar_thc(std::slice::from_ref(&input), &grid, &spec_all(1)).unwrap();
+    assert!(thc.records_match_parent_grid());
+    let mut permuted = thc.clone();
+    let mut points = permuted.grid.points().to_vec();
+    points.swap(3, 4);
+    permuted.grid = ScalarThcGrid::new(
+        permuted.grid.partition().clone(),
+        permuted.grid.provenance().clone(),
+        points,
+    )
+    .unwrap();
+    assert!(!permuted.records_match_parent_grid());
+    assert_eq!(permuted.records[0].fit.zeta, thc.records[0].fit.zeta);
+}
+
+#[test]
 fn scalar_thc_rejects_empty_slice_or_partition_mismatch() {
     let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
     let input = physics

@@ -1,9 +1,9 @@
-# 18. Scalar M-L1 product input, M-L2 mixed-product, and M-L3 adaptive THC
+# 18. Scalar M-L1 product input, M-L2 mixed-product, M-L3 adaptive THC, and M-L4 Coulomb
 
 This note records the implemented M-L1 boundary, the M-L2 scalar mixed-product
-bridge, and the M-L3 scalar AllQL2 interpolation-point seam.
-It does not assemble Weinert $V^q$, export HDF5, include core–valence
-products, or accept a SPEX/material comparison.
+bridge, the M-L3 scalar AllQL2 interpolation-point seam, and the M-L4 sampled-$\zeta$
+Coulomb bridge. It does not export HDF5, include core–valence products, or
+accept a SPEX/material comparison.
 
 Product kinematics remain [13](13_product_space_and_lapw_mpb.md). The toy
 canonical $q$ / Umklapp pair gauge remains [14](14_toy_kpoint_isdf_thc.md).
@@ -17,14 +17,19 @@ The DFT snapshot kernel remains [17](17_minimal_lda_scf.md).
 | `crates/mt-auxiliary-ir` | `libmuffintin-auxiliary-ir` (`muffintin_auxiliary_ir`) |
 | `crates/mt-mpb` | `libmuffintin-mpb` (`muffintin_mpb`) |
 | `crates/mt-thc` | `libmuffintin-thc` (`muffintin_thc`) |
+| `crates/mt-coulomb` | `libmuffintin-coulomb` (`muffintin_coulomb`) |
 
 `SnapshotDftPhysics::scalar_product_input` owns the M-L1 capability. It
 depends on `libmuffintin-auxiliary-ir` for [`ProductSource`] and
 [`PairColumnLayout`]. It does not depend on `libmuffintin-thc`.
 `build_scalar_mpb` owns the M-L2 capability and depends on
 `libmuffintin-mpb`. `build_scalar_thc` owns the M-L3 capability and depends
-on `libmuffintin-thc`. `libmuffintin-mpb` and `libmuffintin-thc` do not
-depend on runtime, and THC does not depend on MPB or Coulomb.
+on `libmuffintin-thc`. `build_scalar_coulomb` owns the M-L4 capability and
+depends on `libmuffintin-coulomb`. Production dependencies: `libmuffintin-mpb`, `libmuffintin-thc`, and
+`libmuffintin-coulomb` do not depend on runtime. THC does not depend on
+MPB or Coulomb, and Coulomb does not depend on MPB or THC. Coulomb's
+dev-dependencies include MPB and THC for representation and vertex tests;
+those are not production DAG edges.
 
 ## 2. Implemented boundary
 
@@ -50,6 +55,9 @@ regular mesh, solves the regular full-BZ scalar eigenproblem, and returns
   `muffintin_auxiliary_ir`, with
   $k\cdot N_{\mathrm{orb}}^2+i\cdot N_{\mathrm{orb}}+j$. The old packed
   $12\times 12$ experiment flattening is not used.
+- `reciprocal`: the exact [`ReciprocalLattice`] used to fold $q_{\mathrm{in}}$
+  and $G_{\mathrm{wrap}}$. M-L4 requires `CoulombRequest` to carry this lattice;
+  a same-volume sheared cell is rejected.
 - `orbitals.band_window`: common leading window `{start: 0, count: n_orb}`.
   Each spin channel also stores `available_bands[k]`, the untruncated
   eigenpair count at that $k$.
@@ -198,18 +206,50 @@ requested and effective rank, and one per-$q$ interpolation-point
 `PairVertex` columns. It does not build `SampledAuxiliaryFunctions` or
 Coulomb operators.
 
-## 6. Explicit exclusions
+## 6. Scalar M-L4 sampled Coulomb
 
-M-L1, M-L2, and M-L3 do not:
+`build_scalar_coulomb` consumes the same complete ordered $q$ slice, a matching
+`ScalarThcResult`, an existing `CoulombRequest` plus `InterpolationProjection`,
+and an explicit bounded subset of matching M-L2 `ScalarMpbResult` vertices.
+The request reciprocal lattice must equal the frozen `ScalarProductInput`
+reciprocal; it is not inferred from the caller's cell recipe. For every THC
+$q$ record it builds `SampledAuxiliaryFunctions` on the full M-L3 parent grid
+in original order: Cartesian Bohr coordinates, true weights including
+zero-weight rows, exact muffin-tin `{site, radial_index}` or interstitial
+support, per-site meshes, and that record's row-major parent-grid $\zeta$.
+A private construction fingerprint binds that ordered grid to every $q$
+record/fit; a permuted or substituted parent grid is rejected. Interpolation
+nodes are not substituted for the $\zeta$ grid. It then calls production
+`assemble_sampled_coulomb`. Gauge is unchanged: no extra pair rephasing and no
+second global Umklapp insertion. Gamma keeps the finite body plus `GammaHead`
+metadata; the singular head is not inserted.
 
-- assemble Weinert or SPEX Coulomb operators or `SampledAuxiliaryFunctions`
+Each per-$q$ record returns the sampled-$\zeta$ `CoulombOperator` with $q$
+index, `TransferQ`, spin, pair-column layout, interpolation-point auxiliary,
+parent-grid sampled $\zeta$, and semantic pair vertices. Returned M-L3 vertices
+must carry the compiled auxiliary `AuxiliaryLayout` and an
+`OrbitalPair::Bloch` identity that matches the decoded column
+$(k,\mathrm{left},\mathrm{right})$. Malformed public Bloch indices are
+rejected without calling `PairColumnLayout::encode`. Matched M-L2/M-L3 pairs
+compare quadratic forms $c^\dagger V c$ across representations, with an
+absolute/relative discrepancy using the stated floor $10^{-12}$. Per-side
+action norms $\|Vc\|$ are debug diagnostics in each auxiliary basis and are
+not compared across representations. Elementwise MPB/THC matrices and
+principal-angle spans are not compared.
+
+## 7. Explicit exclusions
+
+M-L1, M-L2, M-L3, and M-L4 do not:
+
+- copy or reimplement Weinert assembly inside runtime
 - inject Coulomb Grams or run Q0L2 / AllQCoulombPool
 - include selected core radials in the product window
-- extend `ProductRadialId` with $\kappa$ or four-component $PP$/$QQ`
+- extend `ProductRadialId` with $\kappa$ or four-component $PP/QQ$
 - implement spinor or signed-$\kappa$ product vertices
+- add a principal-angle engine
 - claim SPEX or material acceptance
 - complete M-L
 
-Later M-L stages consume this scalar product-input, mixed-product, and
-interpolation-point contract rather than reaching into snapshot solver
-internals.
+Later M-L stages consume this scalar product-input, mixed-product,
+interpolation-point, and sampled-$\zeta$ Coulomb contract rather than reaching
+into snapshot solver internals.

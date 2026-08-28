@@ -86,12 +86,15 @@ pub struct ScalarFrozenOrbitals {
 /// [`SCALAR_RADIAL_U`], [`SCALAR_RADIAL_UDOT`], then local orbitals from
 /// [`SCALAR_RADIAL_LO0`]. Pair columns use [`PairColumnLayout`] indexing
 /// $k\cdot N_{\mathrm{orb}}^2+i\cdot N_{\mathrm{orb}}+j$. Cores are empty.
+/// `reciprocal` is the exact lattice used to fold $q_{\mathrm{in}}$ and
+/// $G_{\mathrm{wrap}}$; it is not inferred from a later Coulomb request.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarProductInput {
     pub source: ProductSource,
     pub orbitals: ScalarFrozenOrbitals,
     pub k_minus_q: Vec<ScalarKMinusQ>,
     pub pair_columns: PairColumnLayout,
+    pub reciprocal: ReciprocalLattice,
 }
 
 impl SnapshotDftPhysics {
@@ -249,6 +252,7 @@ fn emit_scalar_product_input(
         },
         k_minus_q,
         pair_columns,
+        reciprocal: *physics.reciprocal(),
     })
 }
 

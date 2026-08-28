@@ -233,6 +233,7 @@ fn q0_frozen_scalar_product_input_emits_neutral_source_and_orbitals() {
     let config = scalar_config([1, 1, 1], 0.5);
     let input = physics.scalar_product_input(&config, [0.0; 3]).unwrap();
 
+    assert_eq!(input.reciprocal, *physics.reciprocal());
     assert_eq!(input.source.q.umklapp.index, [0; 3]);
     assert!(
         input
@@ -373,6 +374,7 @@ fn finite_q_wrap_uses_reciprocal_lattice_umklapp_and_k_minus_q_phase() {
     let input = physics.scalar_product_input(&config, q_fractional).unwrap();
 
     let reciprocal = *physics.reciprocal();
+    assert_eq!(input.reciprocal, reciprocal);
     let q_input = cartesian_from_fractional(reciprocal, q_fractional);
     let transfer_g = reciprocal.cartesian([1, 0, 0]);
     assert_eq!(input.source.q.umklapp.index, [1, 0, 0]);

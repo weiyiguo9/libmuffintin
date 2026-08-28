@@ -35,6 +35,7 @@ thiserror.workspace = true
 toml = "0.8.20"
 
 [dev-dependencies]
+libmuffintin-grid = { path = "../mt-grid" }
 libmuffintin-io = { path = "../mt-io" }
 libmuffintin-lapw = { path = "../mt-lapw" }
 libmuffintin-operators = { path = "../mt-operators" }
