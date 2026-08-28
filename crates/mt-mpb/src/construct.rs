@@ -1,15 +1,14 @@
 //! SPEX mixed-basis enumeration, spectra, and retained transforms.
 
+use crate::overlap::{lowdin_modes, overlap_spectrum, product_channel_functions};
 use crate::{MpbError, auxiliary_interstitial_support};
 use muffintin_auxiliary_ir::{
-    AuxiliaryRepresentation, ChannelSpectrum, CompiledAuxiliaryBasis, CoupledChannel, CutoffKind,
-    CutoffRecord, MixedProductAuxiliary, MtAuxiliaryMode, PairChannel, ProductOrbitalKind,
-    ProductRadial, ProductRadialId, ProductSource, RawProductSpace, RawRadialProduct,
-    SiteAuxiliaryBlock, SiteRadialSet,
+    AuxiliaryRepresentation, CompiledAuxiliaryBasis, CoupledChannel, CutoffKind, CutoffRecord,
+    MixedProductAuxiliary, PairChannel, ProductOrbitalKind, ProductRadial, ProductRadialId,
+    ProductSource, RawProductSpace, RawRadialProduct, SiteAuxiliaryBlock, SiteRadialSet,
 };
 use muffintin_basis::Provenance;
-use muffintin_core::{ExponentialMesh, InverseBohr, ReciprocalLattice};
-use muffintin_operators::solve_real_symmetric;
+use muffintin_core::{InverseBohr, ReciprocalLattice};
 use muffintin_radial::RadialComponents;
 use std::collections::BTreeSet;
 
@@ -22,13 +21,6 @@ fn spex_provenance(cutoff: Option<&CutoffRecord>) -> Provenance {
         }),
         reference: Some("SPEX mixedbasis.f".to_owned()),
     }
-}
-
-/// Keep strictly positive eigenvalues that are not below the SPEX threshold.
-///
-/// SPEX drops `eig < tolerance*nspin` (`mixedbasis.f:463`), so equality is kept.
-pub(crate) fn retain_overlap_eigenvalue(eigenvalue: f64, threshold: f64) -> bool {
-    eigenvalue > 0.0 && eigenvalue >= threshold
 }
 
 /// Untruncated SPEX mixed product basis: full spectra and MPB auxiliary PW.
@@ -132,8 +124,12 @@ fn untruncated_product_space(
             if products.is_empty() {
                 continue;
             }
-            let functions = channel_functions(&radials.mesh, l, &products)?;
-            let spectrum = spectrum_with_mesh(site, l, &radials.mesh, &functions)?;
+            let functions = product_channel_functions(
+                &radials.mesh,
+                l,
+                products.iter().map(|product| product.samples.as_slice()),
+            )?;
+            let spectrum = overlap_spectrum(site, l, &radials.mesh, &functions)?;
             let coupled_l = l as i32;
             for m in -coupled_l..=coupled_l {
                 for radial_index in 0..products.len() {
@@ -296,77 +292,6 @@ fn one_particle_norm(radials: &SiteRadialSet, radial: &ProductRadial) -> Result<
     Ok(radials.mesh.integrate(&integrand)?)
 }
 
-pub(crate) fn channel_functions(
-    mesh: &ExponentialMesh,
-    l: u32,
-    products: &[RawRadialProduct],
-) -> Result<Vec<Vec<f64>>, MpbError> {
-    let radius = mesh.last().get();
-    let constant_norm = (radius.powi(3) / 3.0).sqrt();
-    let mut functions = Vec::with_capacity(products.len());
-    for product in products {
-        let mut samples = product.samples.clone();
-        if l == 0 {
-            let projection_integrand = mesh
-                .radii()
-                .iter()
-                .zip(&samples)
-                .map(|(radius, sample)| sample * radius.get())
-                .collect::<Vec<_>>();
-            let projection = mesh.integrate(&projection_integrand)? / constant_norm;
-            for (sample, radius) in samples.iter_mut().zip(mesh.radii()) {
-                *sample -= projection * radius.get() / constant_norm;
-            }
-        }
-        let norm_sq = mesh.integrate(
-            &samples
-                .iter()
-                .map(|value| value * value)
-                .collect::<Vec<_>>(),
-        )?;
-        let scale = norm_sq.max(0.0).sqrt();
-        if scale > 0.0 {
-            for sample in &mut samples {
-                *sample /= scale;
-            }
-        }
-        functions.push(samples);
-    }
-    Ok(functions)
-}
-
-fn spectrum_with_mesh(
-    site: usize,
-    l: u32,
-    mesh: &ExponentialMesh,
-    functions: &[Vec<f64>],
-) -> Result<ChannelSpectrum, MpbError> {
-    let n = functions.len();
-    if n == 0 {
-        return Err(MpbError::EmptyChannel { site, l });
-    }
-    let mut overlaps = vec![0.0; n * n];
-    for row in 0..n {
-        for column in row..n {
-            let integrand = functions[row]
-                .iter()
-                .zip(&functions[column])
-                .map(|(left, right)| left * right)
-                .collect::<Vec<_>>();
-            let value = mesh.integrate(&integrand)?;
-            overlaps[row * n + column] = value;
-            overlaps[column * n + row] = value;
-        }
-    }
-    let solution = solve_real_symmetric(n, |row, column| overlaps[row * n + column])?;
-    Ok(ChannelSpectrum {
-        site,
-        l,
-        eigenvalues: solution.eigenvalues,
-        eigenvectors: solution.eigenvectors,
-    })
-}
-
 fn retained_auxiliary(
     raw: &RawProductSpace,
     source: &ProductSource,
@@ -395,7 +320,11 @@ fn retained_auxiliary(
                 })
                 .cloned()
                 .collect::<Vec<_>>();
-            let functions = channel_functions(&radials.mesh, l, &products)?;
+            let functions = product_channel_functions(
+                &radials.mesh,
+                l,
+                products.iter().map(|product| product.samples.as_slice()),
+            )?;
             let spectrum = raw
                 .spectrum(site, l)
                 .ok_or(MpbError::EmptyChannel { site, l })?;
@@ -426,65 +355,4 @@ fn retained_auxiliary(
     };
     auxiliary.validate_against_source(source)?;
     Ok(auxiliary)
-}
-
-fn lowdin_modes(
-    l: u32,
-    mesh: &ExponentialMesh,
-    functions: &[Vec<f64>],
-    spectrum: &ChannelSpectrum,
-    cutoff: Option<&CutoffRecord>,
-) -> Result<Vec<MtAuxiliaryMode>, MpbError> {
-    let n = functions.len();
-    let threshold = cutoff
-        .map(|record| record.value * record.nspin_factor)
-        .unwrap_or(0.0);
-    let mut kept = Vec::new();
-    for (index, &eigenvalue) in spectrum.eigenvalues.iter().enumerate() {
-        if retain_overlap_eigenvalue(eigenvalue, threshold) {
-            kept.push(index);
-        }
-    }
-    if kept.is_empty() {
-        return Err(MpbError::EmptyRetainedChannel {
-            site: spectrum.site,
-            l,
-        });
-    }
-    let n_mesh = functions[0].len();
-    let mut transformed = vec![vec![0.0; n_mesh]; kept.len()];
-    for (kept_index, &column) in kept.iter().enumerate() {
-        let scale = 1.0 / spectrum.eigenvalues[column].sqrt();
-        for (basis, function) in functions.iter().enumerate() {
-            let coefficient = spectrum.eigenvectors[basis + column * n] * scale;
-            for (sample, value) in transformed[kept_index].iter_mut().zip(function) {
-                *sample += coefficient * value;
-            }
-        }
-    }
-    let mut modes = Vec::new();
-    let mut n_aux = 0;
-    if l == 0 {
-        let radius = mesh.last().get();
-        let constant_norm = (radius.powi(3) / 3.0).sqrt();
-        modes.push(MtAuxiliaryMode {
-            l: 0,
-            n: 0,
-            radial: mesh
-                .radii()
-                .iter()
-                .map(|sample| sample.get() / constant_norm)
-                .collect(),
-        });
-        n_aux = 1;
-    }
-    for radial in transformed {
-        modes.push(MtAuxiliaryMode {
-            l,
-            n: n_aux,
-            radial,
-        });
-        n_aux += 1;
-    }
-    Ok(modes)
 }

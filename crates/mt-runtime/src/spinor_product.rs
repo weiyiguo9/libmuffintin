@@ -212,6 +212,39 @@ impl SpinorProductInput {
         None
     }
 
+    /// Invert a site-projection coordinate to [`DiracRadialId`] and $2\mu$.
+    ///
+    /// Coordinates follow the live APW-then-LO layout used by
+    /// [`Self::site_projection_row`]. Large and small radial samples share that
+    /// coordinate; they are not a collinear spin index.
+    pub fn site_projection_identity(
+        &self,
+        site: usize,
+        coordinate: usize,
+    ) -> Option<(DiracRadialId, TwiceMu)> {
+        let radials = self.source.radials.get(site)?;
+        for shell in shells(radials) {
+            for twice_mu in shell.kappa.twice_mu_values() {
+                for radial_n in 0..(SPINOR_RADIAL_LO0 + shell.lo_count) {
+                    if self.site_projection_row(site, shell.kappa, twice_mu, radial_n)
+                        == Some(coordinate)
+                    {
+                        return Some((
+                            DiracRadialId {
+                                site,
+                                kind: ProductOrbitalKind::Valence,
+                                kappa: shell.kappa,
+                                n: radial_n,
+                            },
+                            twice_mu,
+                        ));
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Site-projection coordinate of $(site,\kappa,2\mu,n)$ in the live
     /// APW-then-LO order: radial column fastest inside the APW $(P,\dot P)$
     /// block, then confined LO/RLO $n$ fastest. This is not an eigenbasis row.
@@ -253,7 +286,7 @@ impl SpinorProductInput {
         )
     }
 
-    fn validate(&self) -> Result<(), SnapshotDftError> {
+    pub(crate) fn validate(&self) -> Result<(), SnapshotDftError> {
         self.source.validate()?;
         if self.source.q != self.source.interstitial_pair_support.q {
             return Err(SnapshotDftError::SpinorProductTransferQMismatch);

@@ -5,8 +5,9 @@
 //! `TOL` is constructor policy recorded on the retained auxiliary basis, not
 //! on [`muffintin_auxiliary_ir::RawProductSpace`]. Raw interstitial orbital-pair
 //! reciprocal support is supplied by [`muffintin_auxiliary_ir::ProductSource`]
-//! and is not the MPB auxiliary plane-wave set. Dirac PP/QQ muffin-tin products
-//! and checked vertices are a parallel path over
+//! and is not the MPB auxiliary plane-wave set. Dirac PP/QQ muffin-tin products,
+//! checked vertices, overlap cutoff of the ordered PP/QQ union, and Bloch
+//! pair vertices are a parallel path over
 //! [`muffintin_auxiliary_ir::DiracProductSource`]; they do not reuse scalar
 //! [`muffintin_auxiliary_ir::ProductRadialId`].
 
@@ -16,12 +17,17 @@ mod construct;
 mod dirac_construct;
 mod dirac_vertices;
 mod interstitial;
+mod overlap;
 mod vertices;
 
 pub use construct::{apply_overlap_cutoff, spex_mixed_product_basis};
-pub use dirac_construct::{require_matching_dirac_source_and_raw, untruncated_dirac_product_space};
+pub use dirac_construct::{
+    apply_dirac_overlap_cutoff, require_matching_dirac_source_and_raw,
+    untruncated_dirac_product_space,
+};
 pub use dirac_vertices::{
-    DiracPairVertexAccumulator, dirac_mt_pair_vertex, require_matching_dirac_context,
+    DiracBlochVertexAccumulator, DiracPairVertexAccumulator, dirac_mt_pair_vertex,
+    require_matching_dirac_context,
 };
 pub use interstitial::auxiliary_interstitial_support;
 pub use vertices::{PairVertexAccumulator, pair_vertex};
@@ -109,11 +115,27 @@ pub enum MpbError {
     },
     #[error("Dirac pair vertex left and right must occupy the same muffin-tin site")]
     DiracCrossSitePair,
+    #[error("Dirac overlap spectrum is missing for populated site {site} L={l}")]
+    MissingDiracOverlapSpectrum { site: usize, l: u32 },
+    #[error("Dirac overlap spectrum for site {site} L={l} has no matching raw muffin-tin block")]
+    UnmatchedDiracOverlapSpectrum { site: usize, l: u32 },
+    #[error(
+        "Dirac overlap spectrum for site {site} L={l} has {n_eigenvalues} eigenvalues and {n_eigenvectors} eigenvector entries, expected {n_products} union products (column-major {n_products}×{n_products})"
+    )]
+    DiracOverlapSpectrumDimension {
+        site: usize,
+        l: u32,
+        n_products: usize,
+        n_eigenvalues: usize,
+        n_eigenvectors: usize,
+    },
+    #[error("Dirac Bloch vertex accumulator requires OrbitalPair::Bloch")]
+    ExpectedDiracBlochPair,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::construct::retain_overlap_eigenvalue;
+    use super::overlap::retain_overlap_eigenvalue;
     use super::*;
 
     #[test]

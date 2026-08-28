@@ -23,8 +23,8 @@
 //! convention.
 
 use crate::{
-    AuxiliaryLayout, CompiledAuxiliaryBasis, CoupledChannel, ProductError, ProductOrbitalKind,
-    ProductPartition, RawInterstitialPairSupport, TransferQ,
+    AuxiliaryLayout, ChannelSpectrum, CompiledAuxiliaryBasis, CoupledChannel, ProductError,
+    ProductOrbitalKind, ProductPartition, RawInterstitialPairSupport, TransferQ,
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{ExponentialMesh, Kappa, RelativisticChannel, TwiceMu};
@@ -222,15 +222,20 @@ pub struct DiracRawRadialProduct {
     pub samples: Vec<f64>,
 }
 
-/// Untruncated Dirac product space: separate PP/QQ radials and raw pair-G support.
+/// Untruncated Dirac product space: separate PP/QQ radials, union overlap spectra,
+/// and raw pair-G support.
 ///
-/// Overlap spectra and retained mixed-product transforms are not computed here.
+/// Overlap spectra are formed from the ordered union of PP and QQ radial
+/// products at each $(site, L)$. Retained Löwdin transforms live on the
+/// compiled scalar-charge auxiliary, not on this raw space. Sectors stay
+/// unmerged in `radial_products`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DiracRawProductSpace {
     pub partition: ProductPartition,
     pub q: TransferQ,
     pub radial_products: Vec<DiracRawRadialProduct>,
     pub channels: Vec<CoupledChannel>,
+    pub overlap_spectra: Vec<ChannelSpectrum>,
     pub interstitial_pair_support: RawInterstitialPairSupport,
     pub provenance: Provenance,
 }
@@ -250,6 +255,7 @@ impl DiracRawProductSpace {
             q,
             radial_products,
             channels,
+            overlap_spectra: Vec::new(),
             interstitial_pair_support,
             provenance,
         };
@@ -257,8 +263,15 @@ impl DiracRawProductSpace {
         Ok(raw)
     }
 
+    /// Overlap spectrum for one site and coupled $L$, if present.
+    pub fn spectrum(&self, site: usize, l: u32) -> Option<&ChannelSpectrum> {
+        self.overlap_spectra
+            .iter()
+            .find(|spectrum| spectrum.site == site && spectrum.l == l)
+    }
+
     /// Reject cross-site pairs, duplicate unordered products, duplicate
-    /// $(site,L,M,n)$ channels, and an inconsistent pair support.
+    /// spectra, duplicate $(site,L,M,n)$ channels, and an inconsistent pair support.
     ///
     /// Unordered radial identity is `(canonical(left,right), sector, L)`.
     /// Transfer $q$ is space context and is not part of that identity.
@@ -290,6 +303,15 @@ impl DiracRawProductSpace {
                     right: product.channel.right,
                     sector: product.channel.sector,
                     coupled_l: product.channel.coupled_l,
+                });
+            }
+        }
+        let mut spectra = BTreeSet::new();
+        for spectrum in &self.overlap_spectra {
+            if !spectra.insert((spectrum.site, spectrum.l)) {
+                return Err(DiracProductError::DuplicateChannelSpectrum {
+                    site: spectrum.site,
+                    l: spectrum.l,
                 });
             }
         }
@@ -518,6 +540,8 @@ pub enum DiracProductError {
         m: i32,
         radial_index: usize,
     },
+    #[error("duplicate Dirac overlap spectrum for site {site} and L={l}")]
+    DuplicateChannelSpectrum { site: usize, l: u32 },
     #[error("Dirac radial product at site {site} L={coupled_l} is not finite")]
     NonFiniteProduct { site: usize, coupled_l: u32 },
     #[error(

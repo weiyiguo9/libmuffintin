@@ -2,12 +2,13 @@
 
 use crate::MpbError;
 use crate::construct::require_matching_context;
+use crate::interstitial::add_raw_support_theta_i;
 use muffintin_auxiliary_ir::{
     CompiledAuxiliaryBasis, InterstitialPairSpec, MtPairSpec, OrbitalPair, PairVertex,
     PairVertexSpec, ProductOrbitalKind, ProductRadial, ProductRadialId, ProductSource,
     RawProductSpace,
 };
-use muffintin_core::{InverseBohr, gaunt};
+use muffintin_core::gaunt;
 use muffintin_envelope::site_translation_phase;
 use num_complex::Complex64;
 
@@ -74,7 +75,12 @@ impl<'a> PairVertexAccumulator<'a> {
     /// [`muffintin_auxiliary_ir::TransferQ::umklapp`] enters the $\Theta_I$
     /// argument only.
     pub fn add_interstitial(&mut self, spec: InterstitialPairSpec) -> Result<(), MpbError> {
-        add_interstitial(self.raw, self.auxiliary, spec, &mut self.coefficients)
+        add_raw_support_theta_i(
+            &self.raw.interstitial_pair_support,
+            self.auxiliary,
+            spec,
+            &mut self.coefficients,
+        )
     }
 
     /// Seal the accumulated coefficients as a checked [`PairVertex`].
@@ -215,38 +221,6 @@ fn add_muffin_tin(
             coefficients[index] +=
                 amplitude * phase * Complex64::new(angular * radial_overlap, 0.0);
         }
-    }
-    Ok(())
-}
-
-fn add_interstitial(
-    raw: &RawProductSpace,
-    auxiliary: &CompiledAuxiliaryBasis,
-    spec: InterstitialPairSpec,
-    coefficients: &mut [Complex64],
-) -> Result<(), MpbError> {
-    if raw
-        .interstitial_pair_support
-        .find(&spec.g_relative)
-        .is_none()
-    {
-        return Err(MpbError::UnknownInterstitialPair {
-            g: spec.g_relative.index,
-        });
-    }
-    let wrap = auxiliary.q.umklapp;
-    let offset = auxiliary.mt_dimension();
-    let payload = auxiliary.require_mixed_product()?;
-    for (local, wave) in payload.interstitial.waves.iter().enumerate() {
-        let argument = std::array::from_fn(|axis| {
-            InverseBohr(
-                wave.g.cartesian[axis].get()
-                    - wrap.cartesian[axis].get()
-                    - spec.g_relative.cartesian[axis].get(),
-            )
-        });
-        let theta = auxiliary.partition.interstitial().coefficient(argument)?;
-        coefficients[offset + local] += spec.amplitude * theta;
     }
     Ok(())
 }

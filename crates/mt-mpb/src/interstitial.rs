@@ -1,8 +1,12 @@
-//! MPB auxiliary $|q+G|$ interstitial plane-wave support.
+//! MPB auxiliary $|q+G|$ interstitial plane-wave support and raw-pair $\Theta_I$.
 
 use crate::MpbError;
-use muffintin_auxiliary_ir::{AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, TransferQ};
+use muffintin_auxiliary_ir::{
+    AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, CompiledAuxiliaryBasis,
+    InterstitialPairSpec, RawInterstitialPairSupport, TransferQ,
+};
 use muffintin_core::{InverseBohr, ReciprocalLattice};
+use num_complex::Complex64;
 
 /// SPEX mixed-basis interstitial PW set: $|q+G|\le g_{\mathrm{cut}}$, ordered
 /// by $|G|$ then $G$ index.
@@ -39,4 +43,36 @@ pub fn auxiliary_interstitial_support(
         }
     }
     Ok(AuxiliaryInterstitialSupport { q, g_cut, waves })
+}
+
+/// Add $A\Theta_I(G_{\mathrm{aux}}-G_{\mathrm{wrap}}-G_{\mathrm{rel}})$ onto a vertex.
+///
+/// `g_relative` must exist on the raw pair support. Global
+/// [`TransferQ::umklapp`] enters the $\Theta_I$ argument only.
+pub(crate) fn add_raw_support_theta_i(
+    pair_support: &RawInterstitialPairSupport,
+    auxiliary: &CompiledAuxiliaryBasis,
+    spec: InterstitialPairSpec,
+    coefficients: &mut [Complex64],
+) -> Result<(), MpbError> {
+    if pair_support.find(&spec.g_relative).is_none() {
+        return Err(MpbError::UnknownInterstitialPair {
+            g: spec.g_relative.index,
+        });
+    }
+    let wrap = auxiliary.q.umklapp;
+    let offset = auxiliary.mt_dimension();
+    let payload = auxiliary.require_mixed_product()?;
+    for (local, wave) in payload.interstitial.waves.iter().enumerate() {
+        let argument = std::array::from_fn(|axis| {
+            InverseBohr(
+                wave.g.cartesian[axis].get()
+                    - wrap.cartesian[axis].get()
+                    - spec.g_relative.cartesian[axis].get(),
+            )
+        });
+        let theta = auxiliary.partition.interstitial().coefficient(argument)?;
+        coefficients[offset + local] += spec.amplitude * theta;
+    }
+    Ok(())
 }

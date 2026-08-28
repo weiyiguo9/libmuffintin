@@ -9,9 +9,11 @@
 
 use crate::MpbError;
 use crate::dirac_construct::require_matching_dirac_source_and_raw;
+use crate::interstitial::add_raw_support_theta_i;
 use muffintin_auxiliary_ir::{
     CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracPairVertex,
-    DiracProductSource, DiracRadialId, DiracRawProductSpace,
+    DiracProductSource, DiracRadialId, DiracRawProductSpace, InterstitialPairSpec, OrbitalPair,
+    PairVertex,
 };
 use muffintin_core::{Lm, RelativisticChannel, RelativisticChannelError, spinor_gaunt};
 use muffintin_envelope::site_translation_phase;
@@ -87,6 +89,96 @@ impl<'a> DiracPairVertexAccumulator<'a> {
             amplitude,
             &mut self.coefficients,
         )
+    }
+}
+
+/// Accumulator that finishes a Dirac muffin-tin plus interstitial expansion
+/// into a generic checked [`PairVertex`].
+///
+/// Muffin-tin PP/QQ terms reuse the M-L5a primitive, including the site phase
+/// $\exp(+i q\cdot R_a)$ once. Interstitial terms reuse the shared raw-support
+/// $\Theta_I$ helper. Construction accepts only [`OrbitalPair::Bloch`].
+#[derive(Debug)]
+pub struct DiracBlochVertexAccumulator<'a> {
+    source: &'a DiracProductSource,
+    raw: &'a DiracRawProductSpace,
+    auxiliary: &'a CompiledAuxiliaryBasis,
+    pair: OrbitalPair,
+    coefficients: Vec<Complex64>,
+}
+
+impl<'a> DiracBlochVertexAccumulator<'a> {
+    /// Start an empty Bloch vertex on a matching Dirac source / raw / auxiliary context.
+    pub fn new(
+        source: &'a DiracProductSource,
+        raw: &'a DiracRawProductSpace,
+        auxiliary: &'a CompiledAuxiliaryBasis,
+        pair: OrbitalPair,
+    ) -> Result<Self, MpbError> {
+        require_matching_dirac_context(source, raw, auxiliary)?;
+        if !matches!(pair, OrbitalPair::Bloch { .. }) {
+            return Err(MpbError::ExpectedDiracBlochPair);
+        }
+        Ok(Self {
+            source,
+            raw,
+            auxiliary,
+            pair,
+            coefficients: vec![Complex64::default(); auxiliary.dimension()],
+        })
+    }
+
+    /// Add PP ($\Omega_\kappa$) muffin-tin terms for one radial-factor pair.
+    pub fn add_pp(&mut self, spec: DiracMtPairSpec, amplitude: Complex64) -> Result<(), MpbError> {
+        require_pair_orbitals(self.source, spec)?;
+        add_sector(
+            self.source,
+            self.raw,
+            self.auxiliary,
+            spec,
+            DiracChargeSector::LargeLarge,
+            amplitude,
+            &mut self.coefficients,
+        )
+    }
+
+    /// Add QQ ($\Omega_{-\kappa}$) muffin-tin terms for one radial-factor pair.
+    pub fn add_qq(&mut self, spec: DiracMtPairSpec, amplitude: Complex64) -> Result<(), MpbError> {
+        require_pair_orbitals(self.source, spec)?;
+        add_sector(
+            self.source,
+            self.raw,
+            self.auxiliary,
+            spec,
+            DiracChargeSector::SmallSmall,
+            amplitude,
+            &mut self.coefficients,
+        )
+    }
+
+    /// Add one interstitial pair expansion through shared $\Theta_I$.
+    ///
+    /// Coefficients are
+    /// $A\Theta_I(G_{\mathrm{aux}}-G_{\mathrm{wrap}}-G_{\mathrm{rel}})$.
+    /// `g_relative` must exist on the raw pair support. Global
+    /// [`muffintin_auxiliary_ir::TransferQ::umklapp`] enters the $\Theta_I$
+    /// argument only.
+    pub fn add_interstitial(&mut self, spec: InterstitialPairSpec) -> Result<(), MpbError> {
+        add_raw_support_theta_i(
+            &self.raw.interstitial_pair_support,
+            self.auxiliary,
+            spec,
+            &mut self.coefficients,
+        )
+    }
+
+    /// Seal the accumulated coefficients as a checked [`PairVertex`].
+    pub fn finish(self) -> Result<PairVertex, MpbError> {
+        Ok(PairVertex::from_auxiliary(
+            self.auxiliary,
+            self.pair,
+            self.coefficients,
+        )?)
     }
 }
 

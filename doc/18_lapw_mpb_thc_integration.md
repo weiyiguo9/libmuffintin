@@ -1,10 +1,11 @@
-# 18. Scalar M-L1–L4 product/MPB/THC/Coulomb and spinor M-L5a/M-L5b
+# 18. Scalar M-L1–L4 product/MPB/THC/Coulomb and spinor M-L5a/M-L5b/M-L5c
 
 This note records the implemented M-L1 boundary, the M-L2 scalar mixed-product
 bridge, the M-L3 scalar AllQL2 interpolation-point seam, the M-L4 sampled-$\zeta$
-Coulomb bridge, the M-L5a Dirac PP/QQ IR and MPB primitive, and the M-L5b
-frozen full-first-variation spinor product input. It does not export HDF5,
-include core–valence products, or accept a SPEX/material comparison.
+Coulomb bridge, the M-L5a Dirac PP/QQ IR and MPB primitive, the M-L5b
+frozen full-first-variation spinor product input, and the M-L5c selected-band
+spinor mixed-product bridge. It does not export HDF5, include core–valence
+products, or accept a SPEX/material comparison.
 
 Product kinematics remain [13](13_product_space_and_lapw_mpb.md). The toy
 canonical $q$ / Umklapp pair gauge remains [14](14_toy_kpoint_isdf_thc.md).
@@ -28,8 +29,9 @@ depends on `libmuffintin-auxiliary-ir` for [`ProductSource`] and
 on `libmuffintin-thc`. `build_scalar_coulomb` owns the M-L4 capability and
 depends on `libmuffintin-coulomb`. `SnapshotDftPhysics::spinor_product_input`
 owns the M-L5b capability and consumes M-L5a `DiracProductSource` from
-`libmuffintin-auxiliary-ir`; it does not edit that crate or MPB.
-Production dependencies: `libmuffintin-mpb`, `libmuffintin-thc`, and
+`libmuffintin-auxiliary-ir`. `build_spinor_mpb` owns the M-L5c capability
+and depends on `libmuffintin-mpb`; MPB does not depend on runtime, THC, or
+Coulomb. Production dependencies: `libmuffintin-mpb`, `libmuffintin-thc`, and
 `libmuffintin-coulomb` do not depend on runtime. THC does not depend on
 MPB or Coulomb, and Coulomb does not depend on MPB or THC. Coulomb's
 dev-dependencies include MPB and THC for representation and vertex tests;
@@ -265,8 +267,9 @@ $P$ and $Q$, explicit `DiracChargeSector::{LargeLarge, SmallSmall}`) and
 `libmuffintin-mpb` (untruncated PP/QQ raw products and the checked muffin-tin
 vertex primitive). Runtime M-L5b consumes those public types and does not
 redefine them. Scalar `ProductRadialId` / `ProductSource` / `RawProductSpace`
-stay unchanged. Full retained-auxiliary construction, interstitial spinor
-plane-wave contraction, THC, and Coulomb remain later seams.
+stay unchanged. M-L5c adds Dirac overlap cutoff, retained scalar-charge
+modes of the PP/QQ union, and interstitial spinor plane-wave contraction.
+THC and Coulomb remain later seams.
 
 ## 9. M-L5b frozen spinor product input
 
@@ -292,7 +295,8 @@ the regular full-BZ full-first-variation eigenproblem, and returns
   $(\kappa, 2\mu, n)$ with $n$ fastest. APW $(P,\dot P)$ are matching
   coefficients on plane-wave rows, not extra eigenbasis rows. Site-projection
   coordinates $(site,\kappa,2\mu,n)$ including $n=0,1$ invert through
-  `SpinorProductInput::site_projection_row`.
+  `SpinorProductInput::site_projection_row` and
+  `SpinorProductInput::site_projection_identity`.
 - `k_minus_q`: folded $k-q_{\mathrm{canonical}}$ mesh index and per-column
   $G_{\mathrm{wrap}}$ with the same positive pair-density convention as M-L1.
 - `pair_columns`: `PairColumnLayout::new(n_k, n_orb, None)` with left band
@@ -307,6 +311,54 @@ of $G_{\mathrm{right}}-G_{\mathrm{left}}+G_{\mathrm{wrap}}$ over actual
 spinor plane-wave $G$ labels. Global `TransferQ` Umklapp is excluded.
 `ScfState` is not the orbital source.
 
-M-L5c will contract selected spinor bands into the M-L5a MPB primitive.
-M-L5d will add all-$q$ THC and sampled-$\zeta$ Coulomb. Neither is
-implemented here.
+M-L5c contracts selected spinor bands into that primitive. M-L5d will add
+all-$q$ THC and sampled-$\zeta$ Coulomb.
+
+## 10. M-L5c selected-band spinor mixed-product bridge
+
+`build_spinor_mpb(&SpinorProductInput, &SpinorMpbSpec)` consumes the published
+M-L5b bundle and an explicit spec: `product_l_max`, `product_g_max`,
+`overlap_tolerance`, and a nonempty list of selections
+`(k, left_band, right_band)` inside the M-L5b leading window. There is no
+caller lattice and no collinear spin tag. The result owns the untruncated
+[`DiracRawProductSpace`], the `TOL`-retained [`CompiledAuxiliaryBasis`] with
+$n_{\mathrm{spin}}=1$, the frozen [`ReciprocalLattice`] and
+[`PairColumnLayout`], and [`SpinorMpbPairVertex`] records with pair-column
+identity $k\cdot N_{\mathrm{orb}}^2+i\cdot N_{\mathrm{orb}}+j$ and a checked
+[`PairVertex`] whose identity is [`OrbitalPair::Bloch`].
+
+Dirac overlap spectra are the real-symmetric eigensystems of the ordered
+PP then QQ union at each $(site,L)$. Raw products stay sector-tagged; they
+are not cast to scalar [`RawProductSpace`] and are not merged into
+$(P_i P_j+Q_i Q_j)/r$. `apply_dirac_overlap_cutoff` projects that union into
+the retained scalar-charge modes with $\lambda\ge\mathrm{tol}\times n_{\mathrm{spin}}$,
+the $L=0$ constant first, then interstitial $|q+G|$ waves. Flatten remains
+$site\to L\to M\to n$ then $G$.
+
+Muffin-tin contraction uses [`CompiledSiteProjection::spinor`] and
+`SpinorProductInput::site_projection_identity`. The coefficient is
+$\mathrm{conj}(d_{\mathrm{left}})d_{\mathrm{right}}$ times the inverse
+canonical site phase $\exp(-i q\cdot R_a)$ so the MPB primitive
+$+\mathrm{i}q\cdot R_a$ is not double-counted. Large coordinates route only
+to PP/$\Omega_\kappa$; small coordinates route only to QQ/$\Omega_{-\kappa}$.
+There is no $cQ$ and no PQ/QP.
+
+Interstitial contraction is the same-component Pauli sum
+
+```math
+\sum_{s=0,1}
+\mathrm{conj}\bigl(C_{\mathrm{left}}[s,G_{\mathrm{left}}]\bigr)
+C_{\mathrm{right}}[s,G_{\mathrm{right}}]/\Omega
+```
+
+at
+
+```math
+G_{\mathrm{rel}} = G_{\mathrm{right}} - G_{\mathrm{left}} + G_{\mathrm{wrap}}.
+```
+
+$G_{\mathrm{rel}}$ must exist on the M-L5b raw pair support. The global
+`TransferQ` Umklapp is not folded into $G_{\mathrm{rel}}$; it remains the
+MPB $\Theta_I$ argument $G_{\mathrm{aux}}-G_{\mathrm{transfer}}-G_{\mathrm{rel}}$.
+The MPB accumulator [`DiracBlochVertexAccumulator`] sums those primitive
+terms into one checked vertex.
