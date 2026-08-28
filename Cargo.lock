@@ -1052,6 +1052,7 @@ dependencies = [
  "libmuffintin-radial",
  "libmuffintin-sphere",
  "libmuffintin-tensor",
+ "libmuffintin-thc",
  "num-complex",
  "serde",
  "thiserror 2.0.20",

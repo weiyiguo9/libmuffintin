@@ -1,15 +1,14 @@
 //! Scalar mixed-product bridge from frozen [`ScalarProductInput`] to MPB vertices.
 
-use crate::scalar_product::{
-    SCALAR_RADIAL_LO0, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarProductInput, ScalarSpinChannel,
-};
+use crate::scalar_product::{ScalarProductInput, ScalarSpinChannel};
+use crate::site_coords::site_coordinate;
 use muffintin_auxiliary_ir::{
     CompiledAuxiliaryBasis, InterstitialPairSpec, MtPairSpec, OrbitalPair, PairVertex,
-    ProductOrbitalKind, ProductRadialId, RawProductSpace,
+    ProductRadialId, RawProductSpace,
 };
-use muffintin_core::{InverseBohr, ReciprocalLattice, lm_from_index};
+use muffintin_core::{InverseBohr, ReciprocalLattice};
 use muffintin_envelope::site_translation_phase;
-use muffintin_lapw::{CompiledBasis, LocalOrbitalLayout};
+use muffintin_lapw::CompiledBasis;
 use muffintin_mpb::{
     MpbError, PairVertexAccumulator, apply_overlap_cutoff, spex_mixed_product_basis,
 };
@@ -362,67 +361,4 @@ fn raw_mt_pairs(raw: &RawProductSpace) -> HashSet<(ProductRadialId, ProductRadia
         pairs.insert((product.channel.right, product.channel.left));
     }
     pairs
-}
-
-fn site_coordinate(
-    compiled: &CompiledBasis,
-    site: usize,
-    spin: u8,
-    coord: usize,
-) -> Option<(ProductRadialId, i32)> {
-    let n_lm = compiled
-        .site_augmentations
-        .get(site)
-        .and_then(|waves| waves.first())
-        .map_or(0, |wave| wave.coefficients.len());
-    if coord < 2 * n_lm {
-        let lm = lm_from_index(coord / 2);
-        let n = if coord % 2 == 0 {
-            SCALAR_RADIAL_U
-        } else {
-            SCALAR_RADIAL_UDOT
-        };
-        return Some((
-            ProductRadialId {
-                site,
-                kind: ProductOrbitalKind::Valence,
-                l: lm.l,
-                n,
-                spin,
-            },
-            lm.m,
-        ));
-    }
-    let layout = compiled.layout.site_layout(site)?;
-    let (l, m, ordinal) = lo_quantum_numbers(layout, coord - 2 * n_lm)?;
-    Some((
-        ProductRadialId {
-            site,
-            kind: ProductOrbitalKind::Valence,
-            l,
-            n: SCALAR_RADIAL_LO0 + ordinal,
-            spin,
-        },
-        m,
-    ))
-}
-
-fn lo_quantum_numbers(
-    layout: &LocalOrbitalLayout,
-    local_index: usize,
-) -> Option<(u32, i32, usize)> {
-    let mut remaining = local_index;
-    for (l, &count) in layout.counts_by_l().iter().enumerate() {
-        if count == 0 {
-            continue;
-        }
-        let stride = (2 * l + 1) * count;
-        if remaining < stride {
-            let m_block = remaining / count;
-            let n = remaining % count;
-            return Some((l as u32, m_block as i32 - l as i32, n));
-        }
-        remaining -= stride;
-    }
-    None
 }

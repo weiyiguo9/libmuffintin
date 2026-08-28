@@ -70,7 +70,10 @@ pub enum L2Engine {
     StructuredSketch { rows: usize },
     /// Full weighted QRCP from `thc_lapw_end_to_end_test.py:311-323`.
     FullColumnPivotedQr,
-    /// Matrix-free pivoted Cholesky of the full weighted point Gram.
+    /// Pivoted Cholesky of the weighted point Gram.
+    ///
+    /// The dense point Gram is not formed. The stacked weighted pair matrix
+    /// is still materialized; this is not a matrix-free orbital evaluator.
     FullPivotedCholesky,
 }
 
@@ -98,6 +101,11 @@ pub enum GridPath {
     },
     /// Synthetic two-region composite grid.
     Composite { name: String },
+    /// Externally supplied parent support (production scalar THC).
+    External {
+        n_points: usize,
+        n_candidates: usize,
+    },
 }
 
 /// Uniform-grid origin convention from `thc_mt_kpoint_test.py:103-119`.
@@ -400,7 +408,7 @@ pub fn select_points(
     })
 }
 
-fn truncate_rank(
+pub(crate) fn truncate_rank(
     mut pivots: (Vec<usize>, Vec<f64>),
     rank: RankPolicy,
 ) -> Result<Vec<usize>, ThcError> {
@@ -616,6 +624,20 @@ fn cholesky_pivots_from_pair_blocks(
     pivoted_cholesky_pivots(&stacked, nrows, n_pts, n_keep)
 }
 
+/// Weighted AllQL2 pivots on already-evaluated pair blocks for a full L2 engine.
+pub(crate) fn pair_block_l2_pivots(
+    engine: L2Engine,
+    blocks: &[PairBlock],
+    weights: &[f64],
+    n_keep: usize,
+) -> Result<(Vec<usize>, Vec<f64>), ThcError> {
+    match engine {
+        L2Engine::FullColumnPivotedQr => pivots_from_pair_blocks(blocks, weights, n_keep),
+        L2Engine::FullPivotedCholesky => cholesky_pivots_from_pair_blocks(blocks, weights, n_keep),
+        L2Engine::StructuredSketch { .. } => Err(ThcError::PairBlockRequiresFullEngine),
+    }
+}
+
 fn stacked_weighted_pair_blocks(
     blocks: &[PairBlock],
     weights: &[f64],
@@ -721,7 +743,7 @@ fn coulomb_rerank(
         .collect())
 }
 
-fn interpolation_points(
+pub(crate) fn interpolation_points(
     pivots: &[usize],
     points: &[[f64; 3]],
     weights: &[f64],

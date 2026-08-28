@@ -89,6 +89,20 @@ pub enum ThcError {
     InvalidLattice(f64),
     #[error("interpolation point {0} is outside the parent grid")]
     PointIndex(usize),
+    #[error("expected {expected} transfer-q records, got {actual}")]
+    TransferQCount { expected: usize, actual: usize },
+    #[error("pair block {index} has q-index {actual}, expected {expected}")]
+    PairBlockQIndex {
+        index: usize,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("candidate index {0} is duplicated")]
+    DuplicateCandidate(usize),
+    #[error("candidate index {0} has zero quadrature weight")]
+    ZeroWeightCandidate(usize),
+    #[error("pair-block AllQL2 requires FullColumnPivotedQr or FullPivotedCholesky")]
+    PairBlockRequiresFullEngine,
 }
 
 /// Product of axis lengths that must fit in one contiguous storage buffer.

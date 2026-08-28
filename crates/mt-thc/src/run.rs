@@ -6,8 +6,11 @@ use crate::fit::{
 };
 use crate::gram::CoulombGramSet;
 use crate::kmesh::KMesh;
-use crate::pair::{BlochOrbitals, UmklappGauge, evaluate_pair_block};
-use crate::select::{GridPath, Selection, SelectionRequest, SelectorStrategy, select_points};
+use crate::pair::{BlochOrbitals, PairBlock, UmklappGauge, evaluate_pair_block};
+use crate::select::{
+    GridPath, L2Engine, RankPolicy, Selection, SelectionProvenance, SelectionRequest,
+    SelectorStrategy, interpolation_points, pair_block_l2_pivots, select_points, truncate_rank,
+};
 use crate::toy::ToyGrid;
 use muffintin_auxiliary_ir::{
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationPointAuxiliary, OrbitalPair,
@@ -166,6 +169,223 @@ pub fn compare_strategies(
         )?);
     }
     Ok(results)
+}
+
+/// AllQL2 selection and per-$q$ $\zeta$ fit on evaluated pair blocks.
+///
+/// Pair blocks are already collocated on the parent grid. Quadrature weights are
+/// the true supplied values; zeros are allowed if at least one weight is
+/// positive. Zero-weight parent rows may remain on the fit grid and in $\zeta$.
+/// `candidates` is `None` for every strictly positive-weight parent point in
+/// parent order, or explicit parent indices. Explicit zero-weight indices are
+/// rejected rather than dropped. `engine` must be
+/// [`L2Engine::FullColumnPivotedQr`] or [`L2Engine::FullPivotedCholesky`]; a
+/// structured sketch is rejected. Both full engines consume the same ordered
+/// pair blocks, positive-weight candidates, true weights, and [`RankPolicy`].
+/// Pivoted Cholesky does not form the dense point Gram; it still materializes
+/// the stacked weighted pair matrix. Selected interpolation points are
+/// returned in canonical muffin-tin-then-interstitial layout order. This is
+/// not Coulomb ranking and does not use [`ToyGrid`].
+#[allow(clippy::too_many_arguments)]
+pub fn fit_allq_l2_pair_blocks(
+    blocks: &[PairBlock],
+    points: &[[f64; 3]],
+    weights: &[f64],
+    regions: &[muffintin_auxiliary_ir::InterpolationRegion],
+    partition: ProductPartition,
+    transfers: &[TransferQ],
+    rank: RankPolicy,
+    engine: L2Engine,
+    candidates: Option<&[usize]>,
+) -> Result<ThcResult, ThcError> {
+    if blocks.is_empty() {
+        return Err(ThcError::EmptyRank);
+    }
+    if points.is_empty() {
+        return Err(ThcError::EmptyGrid);
+    }
+    if points.len() != weights.len() {
+        return Err(ThcError::GridWeightCount {
+            points: points.len(),
+            weights: weights.len(),
+        });
+    }
+    if points.len() != regions.len() {
+        return Err(ThcError::GridRegionCount {
+            points: points.len(),
+            regions: regions.len(),
+        });
+    }
+    crate::error::validate_quadrature_weights(weights)?;
+    if transfers.len() != blocks.len() {
+        return Err(ThcError::TransferQCount {
+            expected: blocks.len(),
+            actual: transfers.len(),
+        });
+    }
+    for (index, block) in blocks.iter().enumerate() {
+        if block.q_index != index {
+            return Err(ThcError::PairBlockQIndex {
+                index,
+                expected: index,
+                actual: block.q_index,
+            });
+        }
+        if block.n_points != points.len() {
+            return Err(ThcError::PairBlockPointCount {
+                index,
+                expected: points.len(),
+                actual: block.n_points,
+            });
+        }
+        if block.layout != blocks[0].layout {
+            return Err(ThcError::PairBlockLayout { index });
+        }
+    }
+    let candidate_ids = match candidates {
+        None => (0..points.len())
+            .filter(|&index| weights[index] > 0.0)
+            .collect::<Vec<_>>(),
+        Some(indices) => {
+            let mut seen = vec![false; points.len()];
+            let mut ids = Vec::with_capacity(indices.len());
+            for &index in indices {
+                if index >= points.len() {
+                    return Err(ThcError::PointIndex(index));
+                }
+                if seen[index] {
+                    return Err(ThcError::DuplicateCandidate(index));
+                }
+                if weights[index] <= 0.0 {
+                    return Err(ThcError::ZeroWeightCandidate(index));
+                }
+                seen[index] = true;
+                ids.push(index);
+            }
+            ids
+        }
+    };
+    if candidate_ids.is_empty() {
+        return Err(ThcError::EmptyGrid);
+    }
+    let n_mu_cap = match rank {
+        RankPolicy::Exact { n_mu } => n_mu,
+        RankPolicy::Threshold { thresh, n_max } => {
+            if !thresh.is_finite() || thresh <= 0.0 {
+                return Err(ThcError::InvalidThreshold(thresh));
+            }
+            n_max
+        }
+    };
+    if n_mu_cap == 0 {
+        return Err(ThcError::EmptyRank);
+    }
+    if n_mu_cap > candidate_ids.len() {
+        return Err(ThcError::RankExceedsGrid {
+            n_mu: n_mu_cap,
+            n_points: candidate_ids.len(),
+        });
+    }
+    let layout = blocks[0].layout;
+    layout.require_core_orbital()?;
+    let restricted = restrict_blocks(blocks, &candidate_ids)?;
+    let local = pair_block_l2_pivots(
+        engine,
+        &restricted,
+        &candidate_weights(weights, &candidate_ids),
+        n_mu_cap,
+    )?;
+    let local_pivots = truncate_rank(local, rank)?;
+    let pivots = local_pivots
+        .into_iter()
+        .map(|local| candidate_ids[local])
+        .collect::<Vec<_>>();
+    let interpolation = interpolation_points(&pivots, points, weights, regions)?;
+    let selection = Selection {
+        pivots: pivots.clone(),
+        points: interpolation,
+        provenance: SelectionProvenance {
+            strategy: SelectorStrategy::AllQL2,
+            seed: 0,
+            shift: None,
+            pool_factor: None,
+            n_mu: pivots.len(),
+            n_pool: None,
+            q_set: "allq",
+            grid_path: GridPath::External {
+                n_points: points.len(),
+                n_candidates: candidate_ids.len(),
+            },
+            engine,
+            weights: "sqrt(quadrature)",
+            pair_column_window: layout,
+        },
+    };
+    let ids = selection
+        .points
+        .iter()
+        .map(|point| point.id)
+        .collect::<Vec<_>>();
+    let n_mu = ids.len();
+    let mut fits = Vec::with_capacity(blocks.len());
+    let mut auxiliaries = Vec::with_capacity(blocks.len());
+    let mut vertices = Vec::with_capacity(blocks.len());
+    for (block, &q) in blocks.iter().zip(transfers) {
+        let selected_rows = block.selected_rows(&ids)?;
+        let fit = fit_per_q(&selected_rows, n_mu, block, weights, q, None, false)?;
+        let auxiliary = interpolation_auxiliary(partition.clone(), q, selection.points.clone())?;
+        let q_vertices = bloch_pair_vertices(q, &selected_rows, n_mu, layout, &auxiliary)?;
+        fits.push(fit);
+        auxiliaries.push(auxiliary);
+        vertices.push(q_vertices);
+    }
+    let diagnostics = StrategyDiagnostics {
+        strategy: SelectorStrategy::AllQL2,
+        n_mu,
+        q0_l2: None,
+        worst_finite_q_l2: None,
+        worst_finite_q_index: None,
+        q0_coulomb: None,
+        worst_finite_q_coulomb: None,
+        worst_finite_q_coulomb_index: None,
+        q0_core: None,
+        q0_valence: None,
+        finite_q_core: None,
+        finite_q_valence: None,
+    };
+    Ok(ThcResult {
+        selection,
+        fits,
+        auxiliaries,
+        vertices,
+        diagnostics,
+    })
+}
+
+fn restrict_blocks(blocks: &[PairBlock], candidates: &[usize]) -> Result<Vec<PairBlock>, ThcError> {
+    let mut restricted = Vec::with_capacity(blocks.len());
+    for block in blocks {
+        let n_col = block.n_columns();
+        let mut values = Vec::with_capacity(candidates.len() * n_col);
+        for &point in candidates {
+            if point >= block.n_points {
+                return Err(ThcError::PointIndex(point));
+            }
+            let start = point * n_col;
+            values.extend_from_slice(&block.values()[start..start + n_col]);
+        }
+        restricted.push(PairBlock::new(
+            block.q_index,
+            candidates.len(),
+            block.layout,
+            values,
+        )?);
+    }
+    Ok(restricted)
+}
+
+fn candidate_weights(weights: &[f64], candidates: &[usize]) -> Vec<f64> {
+    candidates.iter().map(|&index| weights[index]).collect()
 }
 
 /// Interpolation-point auxiliary at one $q$.

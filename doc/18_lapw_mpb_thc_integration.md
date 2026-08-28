@@ -1,13 +1,9 @@
-# 18. Scalar M-L1 product input and M-L2 mixed-product bridge
+# 18. Scalar M-L1 product input, M-L2 mixed-product, and M-L3 adaptive THC
 
-This note records the implemented M-L1 boundary and the M-L2 scalar
-mixed-product bridge: a snapshot-backed frozen scalar LAPW solve that emits a
-method-neutral [`ProductSource`] together with the minimal real scalar Bloch
-coefficients and the exact per-$k$ compiled basis, then a runtime-owned
-construction of the SPEX mixed-product space, `TOL`-retained auxiliary basis,
-and selected same-spin band-pair vertices.
-It does not run THC selection, assemble Weinert $V^q$, export HDF5, include
-core–valence products, or accept a SPEX/material comparison.
+This note records the implemented M-L1 boundary, the M-L2 scalar mixed-product
+bridge, and the M-L3 scalar AllQL2 interpolation-point seam.
+It does not assemble Weinert $V^q$, export HDF5, include core–valence
+products, or accept a SPEX/material comparison.
 
 Product kinematics remain [13](13_product_space_and_lapw_mpb.md). The toy
 canonical $q$ / Umklapp pair gauge remains [14](14_toy_kpoint_isdf_thc.md).
@@ -20,13 +16,15 @@ The DFT snapshot kernel remains [17](17_minimal_lda_scf.md).
 | `crates/mt-runtime` | `libmuffintin-runtime` (`muffintin`) |
 | `crates/mt-auxiliary-ir` | `libmuffintin-auxiliary-ir` (`muffintin_auxiliary_ir`) |
 | `crates/mt-mpb` | `libmuffintin-mpb` (`muffintin_mpb`) |
+| `crates/mt-thc` | `libmuffintin-thc` (`muffintin_thc`) |
 
 `SnapshotDftPhysics::scalar_product_input` owns the M-L1 capability. It
 depends on `libmuffintin-auxiliary-ir` for [`ProductSource`] and
 [`PairColumnLayout`]. It does not depend on `libmuffintin-thc`.
 `build_scalar_mpb` owns the M-L2 capability and depends on
-`libmuffintin-mpb`. `libmuffintin-mpb` does not depend on runtime, THC, or
-Coulomb.
+`libmuffintin-mpb`. `build_scalar_thc` owns the M-L3 capability and depends
+on `libmuffintin-thc`. `libmuffintin-mpb` and `libmuffintin-thc` do not
+depend on runtime, and THC does not depend on MPB or Coulomb.
 
 ## 2. Implemented boundary
 
@@ -160,18 +158,58 @@ The MPB accumulator [`PairVertexAccumulator`] sums those primitive terms into
 one checked vertex. Runtime does not build a complete primitive vertex per
 basis-pair term.
 
-## 5. Explicit exclusions
+## 5. Scalar M-L3 adaptive THC
 
-M-L1 and M-L2 do not:
+`build_scalar_thc` consumes a nonempty complete $q$ slice in production
+$q$-index order: `inputs[iq]` is the M-L1 bundle whose canonical $q$ is the
+$iq$-th k-mesh point. Bundles share the frozen orbital window, spins, k mesh,
+partition, radials, and `PairColumnLayout`. `ScalarThcSpec` selects one
+collinear spin, an existing THC `RankPolicy`, candidate points, and one
+production L2 engine (`FullColumnPivotedQr` or `FullPivotedCholesky`).
+`All` uses strictly positive-weight parent indices in parent order; explicit
+zero-weight indices are rejected. Both engines run AllQL2 on the same ordered
+pair blocks, positive-weight candidates, true weights, and rank policy. The
+result type is shared; the engine is recorded on selection provenance.
+Pivoted Cholesky does not form the dense point Gram, but it still
+materializes the stacked weighted pair matrix. Core-orbital diagnostics stay
+empty.
 
-- run THC selection, $\zeta$ fits, or interpolation-point auxiliaries
-- assemble Weinert or SPEX $V^q$
-- evaluate grid-sampled `BlochOrbitals` / `PairBlock` tensors
+`ScalarThcGrid` is an externally supplied immutable parent support bound to
+the exact `ProductPartition`. Muffin-tin points name `{site, radial_index}`
+on the stored exponential mesh and must lie on that sample's Cartesian
+radius; interstitial points are partitioned interstitial. Weights may be
+zero if at least one is positive; they are never clamped and are not L2
+selection candidates. There is no radial interpolation.
+
+Muffin-tin orbitals use `CompiledSiteProjection` and the published $u$,
+$\dot u$, LO map. Physical KH samples are $P=p/r$ and optional $Q=q/r$. The
+reconstructed muffin-tin Bloch value is converted to the cell-periodic
+representation by $\exp(-i k\cdot r)$ at the Cartesian point, using the
+stored plane-wave Cartesian $k$, so muffin-tin and interstitial orbitals
+share one gauge. The pair density is $\mathrm{conj}(P_{\mathrm{left}})P_{\mathrm{right}}
++\mathrm{conj}(Q_{\mathrm{left}})Q_{\mathrm{right}}$. Interstitial evaluation
+uses the PW large component $C_G\exp(i G\cdot r)/\sqrt{\Omega}$. The pair
+phase is the stored per-column wrap $\exp(+i G_{\mathrm{wrap}}\cdot r)$.
+Global `TransferQ` Umklapp stays on the $q$ record.
+
+The result carries the selected spin, the parent grid, selection with
+requested and effective rank, and one per-$q$ interpolation-point
+`CompiledAuxiliaryBasis`, parent-grid-by-selected-point $\zeta$, and
+`PairVertex` columns. It does not build `SampledAuxiliaryFunctions` or
+Coulomb operators.
+
+## 6. Explicit exclusions
+
+M-L1, M-L2, and M-L3 do not:
+
+- assemble Weinert or SPEX Coulomb operators or `SampledAuxiliaryFunctions`
+- inject Coulomb Grams or run Q0L2 / AllQCoulombPool
 - include selected core radials in the product window
 - extend `ProductRadialId` with $\kappa$ or four-component $PP$/$QQ`
 - implement spinor or signed-$\kappa$ product vertices
 - claim SPEX or material acceptance
 - complete M-L
 
-Later M-L stages consume this scalar product-input and mixed-product contract
-rather than reaching into snapshot solver internals.
+Later M-L stages consume this scalar product-input, mixed-product, and
+interpolation-point contract rather than reaching into snapshot solver
+internals.

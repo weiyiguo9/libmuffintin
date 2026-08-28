@@ -32,7 +32,7 @@ pub use kmesh::{KMesh, umklapp_phase};
 pub use pair::{BlochOrbitals, PairBlock, UmklappGauge, evaluate_pair_block};
 pub use run::{
     StrategyDiagnostics, ThcResult, bloch_pair_vertices, compare_strategies,
-    interpolation_auxiliary, run_thc,
+    fit_allq_l2_pair_blocks, interpolation_auxiliary, run_thc,
 };
 pub use select::{
     DEFAULT_POOL_FACTOR, DEFAULT_SELECTOR, DEFAULT_SKETCH_ROWS, GridPath, HEADLINE_SEED, L2Engine,
