@@ -3,9 +3,10 @@
 This note records the implemented M-L1 boundary, the M-L2 scalar mixed-product
 bridge, the M-L3 scalar AllQL2 interpolation-point seam, the M-L4 sampled-$\zeta$
 Coulomb bridge, the M-L5a Dirac PP/QQ IR and MPB primitive, the M-L5b
-frozen full-first-variation spinor product input, and the M-L5c selected-band
-spinor mixed-product bridge. It does not export HDF5, include core–valence
-products, or accept a SPEX/material comparison.
+frozen full-first-variation spinor product input, the M-L5c selected-band
+spinor mixed-product bridge, and the M-L6b2 runtime materialization of those
+scalar objects into MLDUMP v1. Core–valence products and SPEX/material
+comparison remain out of scope. The on-disk schema is [19](19_versioned_mldump_interchange.md).
 
 Product kinematics remain [13](13_product_space_and_lapw_mpb.md). The toy
 canonical $q$ / Umklapp pair gauge remains [14](14_toy_kpoint_isdf_thc.md).
@@ -427,3 +428,26 @@ $c^\dagger V c$ with absolute/relative discrepancy; per-side $\|Vc\|$ remain
 debug numbers in each auxiliary basis. This stage does not implement
 core-valence products, HDF5/CoQui, material/SPEX acceptance, a
 principal-angle engine, or GW/RPA.
+
+## M-L6b2 scalar MLDUMP materialization
+
+`write_scalar_mldump(path, header, inputs, thc, coulomb, spec)` is the
+runtime-owned writer. The caller supplies `MldumpHeaderV1` because species
+and labels cannot be reconstructed from `ScalarProductInput`.
+`build_scalar_coulomb` seals the effective request and interpolation
+projection inside `ScalarCoulombResult`. Before the HDF5 file is created,
+runtime preflights the header cell/reciprocal/volume, ordered sites, radii,
+radial meshes, full-BZ $k$ with uniform weights $1/n_k$, exact $q$
+input/canonical/global Umklapp and per-$k$ wraps, the shared $q$-slice
+contract, and the crate-private Coulomb export-context guard: the passed
+spec must match that sealed request/projection, each Coulomb $q$ record must
+bind `inputs[q]` and the accepted THC $q$/layout/auxiliary/vertices with a
+sampled-$\zeta$ interpolation-point operator on that auxiliary layout, and the
+THC strategy/engine plus Coulomb projection metadata must be serializable. A
+tampered header or result is rejected with no output file.
+
+The on-disk write uses `ScalarMldumpStreamV1`. Conversion scratch is bounded
+to one $k$ eigenvector/APW-matching record, one $q$ $\zeta$/vertex record, or
+one $q$ $V$/Gamma record. `/mpb` and `/exchange/{valence,core,total}` remain
+`absent_not_computed`. Occupations are not invented. The owned reader and
+MLDUMP v1 tree are unchanged.

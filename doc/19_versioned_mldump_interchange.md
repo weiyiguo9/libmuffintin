@@ -290,23 +290,30 @@ never inserted into $V$.
 ## 6. Public API
 
 `MldumpWriterV1::create(path, &MldumpHeaderV1)` writes the accepted
-header and reserved absent groups. Section methods
-`write_scalar_orbitals`, `write_scalar_products`, `write_scalar_thc`,
-and `write_scalar_coulomb` borrow descriptors and slices and write
-blocks directly; they do not clone eigenvector, $\zeta$, or operator
-arrays. Each section may be written at most once. Local payload
-validators run before an absent group is replaced and again after the
-owned reader materializes a section. `finish` accepts either no scalar
-sections (`scalar=None` on read) or all four required scalar sections.
-When all four are written, `finish` runs one shared cross-section
-alignment validator on retained summaries (counts, $q$ Cartesian/global
-labels, vertex integer columns/triples, and provenance strings) without
-cloning or rereading eigenvector, $\zeta$, or $V$ arrays. Mixed partial
-sections and cross-section mismatches are typed validation errors. A
-mismatch may be reported after section data is already on disk.
-`/mpb` stays `absent_not_computed`. `/exchange` stays present with three
-absent children and no `total_relation`. A failed write may leave an
-incomplete file.
+header and reserved absent groups. Header-only files call
+`MldumpWriterV1::finish`. Populated scalar files continue with
+`begin_scalar()` into [`ScalarMldumpStreamV1`]. Each of `/orbitals`,
+`/products`, `/thc`, and `/coulomb` is opened with a `begin_*` method,
+written as ordered per-$(spin,k)$, per-site, or per-$q$ records, and
+closed with `finish_*`. Products must be written before THC. Large arrays
+are written immediately. An extra site, $k$, or $q$ record is a typed
+validation error before any further HDF5 child is created. Semantic THC
+vertex `column` identity is checked $q$-locally against the product
+$n_k$/$n_{\mathrm{orb}}$ pair layout while the borrowed $q$ record is
+alive; the session retains only small counters, $q$ bindings, auxiliary
+dimension/provenance, and pair-layout counts, not vertex tables.
+`ScalarMldumpStreamV1::finish` requires all four sections and runs the
+shared cross-section alignment validator. Mixed partial sections and
+cross-section mismatches are typed validation errors. A failed or
+interrupted write may leave an incomplete file. `/mpb` stays
+`absent_not_computed`. `/exchange` stays present with three absent
+children and no `total_relation`.
+
+Runtime `write_scalar_mldump` preflights the caller-owned header against
+the frozen $q$ slice, THC, the sealed Coulomb request/projection, and
+`ScalarCoulombSpec` before creating the HDF5 file, then streams one $k$
+eigenvector/APW record, one $q$ $\zeta$/vertex record, or one $q$
+$V$/Gamma record of conversion scratch at a time.
 
 `read_mldump_v1(path)` returns `MldumpFileV1 { header, scalar, exchange }`.
 All four scalar groups absent yields `scalar=None`. All four present and
@@ -315,9 +322,12 @@ cross-section mismatch, or a local payload violation is rejected and
 never returns `ScalarMldumpV1`. Exchange valence/core/total remain
 absent in this stage.
 Borrowed writer DTOs are public concrete structs with slice references
-and explicit shapes. Owned reader DTOs use `Vec`/`String` records with
+and explicit shapes, including `ScalarOrbitalsBeginV1`,
+`ScalarProductsBeginV1`, `ScalarThcBeginV1`, `ScalarCoulombBeginV1`, and
+the per-record refs. Owned reader DTOs use `Vec`/`String` records with
 declared dimensions. There is no public `ScalarMpb*` type or writer
-method.
+method. Aggregate whole-section writer methods are not part of this
+API.
 
 Validation is the trust boundary: schema name/version, exact numeric
 HDF5 dtypes including attributes, finite numbers, nonnegative full-BZ

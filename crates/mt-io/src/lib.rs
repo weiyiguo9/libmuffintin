@@ -4,7 +4,8 @@
 //! noncollinear Pauli-field [`SnapshotV2`] files. [`GridArtifactV1`] is
 //! deliberately a separate format for materialized integration grids and is
 //! never embedded in a snapshot. [`MldumpFileV1`] is the libmuffintin-owned
-//! MLDUMP v1 HDF5 schema; it is not CoQui-native or SPEX-native.
+//! MLDUMP v1 HDF5 schema; it is not CoQui-native or SPEX-native. Populated
+//! scalar files are written through [`ScalarMldumpStreamV1`].
 
 mod error;
 mod grid;
@@ -29,13 +30,13 @@ pub use mldump::{
     MLDUMP_UNIT_LENGTH, MLDUMP_UNIT_VOLUME, MldumpExchangeStatusesV1, MldumpFileV1,
     MldumpGeometryV1, MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1,
     MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1, MldumpStatus, MldumpWriterV1,
-    ScalarApwSiteMatchRefV1, ScalarApwSiteMatchV1, ScalarCoulombGammaRefV1, ScalarCoulombGammaV1,
-    ScalarCoulombQRecordRefV1, ScalarCoulombQRecordV1, ScalarCoulombRefV1, ScalarCoulombV1,
-    ScalarLocalOrbitalRowV1, ScalarLocalOrbitalTableRefV1, ScalarMldumpV1, ScalarOrbitalKRecordV1,
-    ScalarOrbitalKRefV1, ScalarOrbitalSpinRefV1, ScalarOrbitalSpinV1, ScalarOrbitalsRefV1,
+    ScalarApwSiteMatchRefV1, ScalarApwSiteMatchV1, ScalarCoulombBeginV1, ScalarCoulombGammaRefV1,
+    ScalarCoulombGammaV1, ScalarCoulombQRecordRefV1, ScalarCoulombQRecordV1, ScalarCoulombV1,
+    ScalarLocalOrbitalRowV1, ScalarLocalOrbitalTableRefV1, ScalarMldumpStreamV1, ScalarMldumpV1,
+    ScalarOrbitalKRecordV1, ScalarOrbitalKRefV1, ScalarOrbitalSpinV1, ScalarOrbitalsBeginV1,
     ScalarOrbitalsV1, ScalarProductQRecordRefV1, ScalarProductQRecordV1, ScalarProductSiteRefV1,
-    ScalarProductSiteV1, ScalarProductsRefV1, ScalarProductsV1, ScalarThcParentGridRefV1,
-    ScalarThcParentGridV1, ScalarThcQRecordRefV1, ScalarThcQRecordV1, ScalarThcRefV1,
+    ScalarProductSiteV1, ScalarProductsBeginV1, ScalarProductsV1, ScalarThcBeginV1,
+    ScalarThcParentGridRefV1, ScalarThcParentGridV1, ScalarThcQRecordRefV1, ScalarThcQRecordV1,
     ScalarThcResidualV1, ScalarThcSelectionRefV1, ScalarThcSelectionV1, ScalarThcV1,
     ScalarThcVertexTableRefV1, ScalarThcVertexV1, read_mldump_v1,
 };

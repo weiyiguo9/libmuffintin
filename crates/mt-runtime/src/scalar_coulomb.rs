@@ -1,15 +1,16 @@
 //! Scalar sampled-$\zeta$ Coulomb bridge from M-L3 THC and optional M-L2 pairs.
 
 use crate::scalar_mpb::ScalarMpbResult;
-use crate::scalar_product::ScalarProductInput;
+use crate::scalar_product::{ScalarProductInput, ScalarQSliceError, require_scalar_q_slice};
 use crate::scalar_thc::ScalarThcResult;
-use crate::thc_grid::{ThcParentGrid, ThcQRecord, ThcRegion, is_gamma_fractional};
+use crate::thc_grid::{ThcParentGrid, ThcQRecord, ThcRegion, records_match_parent_grid};
 use muffintin_auxiliary_ir::{OrbitalPair, PairColumnLayout, PairVertex, ProductSource, TransferQ};
 use muffintin_core::{ExponentialMesh, VolumeBohr3};
 use muffintin_coulomb::{
-    CoulombError, CoulombOperator, CoulombRequest, InterpolationProjection,
+    AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, InterpolationProjection,
     SampledAuxiliaryFunctions, SampledPointSupport, assemble_coulomb, assemble_sampled_coulomb,
 };
+use muffintin_thc::{L2Engine, SelectorStrategy};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -86,6 +87,10 @@ pub struct ScalarCoulombResult {
     pub spin: u8,
     pub records: Vec<ScalarCoulombQRecord>,
     pub diagnostics: Vec<ScalarCoulombPairDiagnostic>,
+    /// Effective request and projection used by [`build_scalar_coulomb`].
+    ///
+    /// Not caller-forgeable through a public struct literal.
+    pub(crate) context: ScalarCoulombSpec,
 }
 
 /// Scalar Coulomb stage-boundary error.
@@ -119,6 +124,18 @@ pub enum ScalarCoulombError {
     ReciprocalMismatch,
     #[error("scalar Coulomb interpolation projection does not match the Coulomb request")]
     InterpolationProjection,
+    #[error(
+        "scalar Coulomb spec does not match the effective request/projection used to construct the result"
+    )]
+    SpecMismatch,
+    #[error(
+        "scalar Coulomb record {index} does not match inputs[q] or the accepted THC q/layout/auxiliary/vertices"
+    )]
+    CoulombRecord { index: usize },
+    #[error("scalar Coulomb cannot export THC selection strategy")]
+    UnsupportedStrategy,
+    #[error("scalar Coulomb cannot export THC engine {0:?}")]
+    UnsupportedEngine(L2Engine),
     #[error("scalar Coulomb comparison q-index {0} is outside the THC q-slice")]
     ComparisonQIndex(usize),
     #[error(
@@ -160,8 +177,7 @@ pub fn build_scalar_coulomb(
     spec: &ScalarCoulombSpec,
     comparisons: &[ScalarCoulombPairMatch<'_>],
 ) -> Result<ScalarCoulombResult, ScalarCoulombError> {
-    let first = inputs.first().ok_or(ScalarCoulombError::EmptySlice)?;
-    require_compatible_slice(inputs)?;
+    let first = require_scalar_q_slice(inputs)?;
     if thc.records.len() != inputs.len() {
         return Err(ScalarCoulombError::RecordCount {
             actual: thc.records.len(),
@@ -210,6 +226,7 @@ pub fn build_scalar_coulomb(
         spin: thc.spin,
         records,
         diagnostics,
+        context: spec.clone(),
     })
 }
 
@@ -221,38 +238,16 @@ fn site_meshes(source: &ProductSource) -> Vec<ExponentialMesh> {
         .collect()
 }
 
-fn require_compatible_slice(inputs: &[ScalarProductInput]) -> Result<(), ScalarCoulombError> {
-    let first = &inputs[0];
-    let n_k = first.orbitals.k_fractional.len();
-    if inputs.len() != n_k {
-        return Err(ScalarCoulombError::IncompleteQSlice {
-            actual: inputs.len(),
-            expected: n_k,
-        });
-    }
-    for (iq, input) in inputs.iter().enumerate() {
-        if input.orbitals != first.orbitals
-            || input.pair_columns != first.pair_columns
-            || input.source.partition != first.source.partition
-            || input.source.radials != first.source.radials
-            || input.reciprocal != first.reciprocal
-            || input.k_minus_q.len() != n_k
-        {
-            return Err(ScalarCoulombError::IncompatibleInputs);
-        }
-        let mapped = input
-            .k_minus_q
-            .iter()
-            .find(|mapped| mapped.k_index == iq)
-            .ok_or(ScalarCoulombError::IncompatibleInputs)?;
-        if !is_gamma_fractional(first.orbitals.k_fractional[mapped.kq_index]) {
-            return Err(ScalarCoulombError::IncompleteQSlice {
-                actual: iq,
-                expected: n_k,
-            });
+impl From<ScalarQSliceError> for ScalarCoulombError {
+    fn from(error: ScalarQSliceError) -> Self {
+        match error {
+            ScalarQSliceError::EmptySlice => Self::EmptySlice,
+            ScalarQSliceError::IncompleteQSlice { actual, expected } => {
+                Self::IncompleteQSlice { actual, expected }
+            }
+            ScalarQSliceError::IncompatibleInputs => Self::IncompatibleInputs,
         }
     }
-    Ok(())
 }
 
 fn pair_diagnostic(
@@ -328,6 +323,100 @@ pub(crate) enum CoulombBridgeError {
     GridIdentity { index: usize },
     ThcRecord { index: usize },
     VertexIdentity { index: usize, column: usize },
+}
+
+/// Exact Coulomb export context: sealed spec, ordered $q$ records, THC
+/// q/layout/auxiliary/vertices, and serializable strategy/engine/projection.
+pub(crate) fn require_scalar_coulomb_export_context(
+    inputs: &[ScalarProductInput],
+    thc: &ScalarThcResult,
+    coulomb: &ScalarCoulombResult,
+    spec: &ScalarCoulombSpec,
+) -> Result<(), ScalarCoulombError> {
+    let first = require_scalar_q_slice(inputs)?;
+    if spec != &coulomb.context {
+        return Err(ScalarCoulombError::SpecMismatch);
+    }
+    bind_interpolation_request(&spec.request, spec.projection)?;
+    if spec.request.reciprocal() != &first.reciprocal {
+        return Err(ScalarCoulombError::ReciprocalMismatch);
+    }
+    if thc.records.len() != inputs.len() {
+        return Err(ScalarCoulombError::RecordCount {
+            actual: thc.records.len(),
+            expected: inputs.len(),
+        });
+    }
+    if coulomb.records.len() != inputs.len() {
+        return Err(ScalarCoulombError::RecordCount {
+            actual: coulomb.records.len(),
+            expected: inputs.len(),
+        });
+    }
+    if coulomb.spin != thc.spin {
+        return Err(ScalarCoulombError::InvalidSpin(coulomb.spin));
+    }
+    if thc.grid.partition() != &first.source.partition {
+        return Err(ScalarCoulombError::Partition);
+    }
+    if !records_match_parent_grid(&thc.grid, &thc.records) {
+        return Err(ScalarCoulombError::GridIdentity { index: 0 });
+    }
+    if thc.selection.provenance.strategy != SelectorStrategy::AllQL2 {
+        return Err(ScalarCoulombError::UnsupportedStrategy);
+    }
+    match thc.selection.provenance.engine {
+        L2Engine::FullColumnPivotedQr | L2Engine::FullPivotedCholesky => {}
+        other => return Err(ScalarCoulombError::UnsupportedEngine(other)),
+    }
+    for (index, ((input, thc_record), coulomb_record)) in inputs
+        .iter()
+        .zip(&thc.records)
+        .zip(&coulomb.records)
+        .enumerate()
+    {
+        require_thc_q_record(
+            input.source.q,
+            input.pair_columns,
+            &thc.grid,
+            thc_record,
+            index,
+        )?;
+        require_coulomb_q_record(input, thc_record, coulomb_record, coulomb.spin, spec, index)?;
+    }
+    Ok(())
+}
+
+fn require_coulomb_q_record(
+    input: &ScalarProductInput,
+    thc: &ThcQRecord,
+    record: &ScalarCoulombQRecord,
+    spin: u8,
+    spec: &ScalarCoulombSpec,
+    index: usize,
+) -> Result<(), ScalarCoulombError> {
+    let aux_dimension = record.auxiliary.dimension();
+    let ok = record.q_index == index
+        && thc.q_index == index
+        && record.q == input.source.q
+        && record.q == thc.q
+        && record.layout == input.pair_columns
+        && record.layout == thc.layout
+        && record.spin == spin
+        && record.auxiliary == thc.auxiliary
+        && record.vertices == thc.vertices
+        && record.operator.dimension() == aux_dimension
+        && record.operator.dimension() == thc.fit.n_mu
+        && record.operator.q() == record.q
+        && record.operator.cell() == spec.request.cell()
+        && record.operator.reciprocal() == spec.request.reciprocal()
+        && record.operator.layout() == &record.auxiliary.layout()
+        && record.operator.kind() == AuxiliaryKind::InterpolationPoints;
+    if ok {
+        Ok(())
+    } else {
+        Err(ScalarCoulombError::CoulombRecord { index })
+    }
 }
 
 pub(crate) fn bind_interpolation_request(

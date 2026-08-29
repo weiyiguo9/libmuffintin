@@ -1,10 +1,12 @@
 //! Scalar adaptive THC from frozen [`ScalarProductInput`] on an external grid.
 
-use crate::scalar_product::{ScalarProductInput, ScalarSpinChannel};
+use crate::scalar_product::{
+    ScalarProductInput, ScalarQSliceError, ScalarSpinChannel, require_scalar_q_slice,
+};
 use crate::site_coords::site_coordinate;
 use crate::thc_grid::{
     ThcCandidates, ThcEngine, ThcGridError, ThcParentGrid, ThcQRecord, ThcRegion,
-    is_gamma_fractional, records_match_parent_grid, require_parent_grid_radials,
+    records_match_parent_grid, require_parent_grid_radials,
 };
 use muffintin_auxiliary_ir::{ProductOrbitalKind, ProductRadial, ProductRadialId, SiteRadialSet};
 use muffintin_core::{Bohr, GVector, InverseBohr, complex_spherical_harmonics, lm_index};
@@ -117,8 +119,7 @@ pub fn build_scalar_thc(
     grid: &ThcParentGrid,
     spec: &ScalarThcSpec,
 ) -> Result<ScalarThcResult, ScalarThcError> {
-    let first = inputs.first().ok_or(ScalarThcError::EmptySlice)?;
-    require_compatible_slice(inputs)?;
+    let first = require_scalar_q_slice(inputs)?;
     if grid.partition() != &first.source.partition {
         return Err(ScalarThcError::GridPartitionMismatch);
     }
@@ -183,38 +184,16 @@ fn spin_channel(
         .ok_or(ScalarThcError::InvalidSpin(spin))
 }
 
-fn require_compatible_slice(inputs: &[ScalarProductInput]) -> Result<(), ScalarThcError> {
-    let first = &inputs[0];
-    let n_k = first.orbitals.k_fractional.len();
-    if inputs.len() != n_k {
-        return Err(ScalarThcError::IncompleteQSlice {
-            actual: inputs.len(),
-            expected: n_k,
-        });
-    }
-    for (iq, input) in inputs.iter().enumerate() {
-        if input.orbitals != first.orbitals
-            || input.pair_columns != first.pair_columns
-            || input.source.partition != first.source.partition
-            || input.source.radials != first.source.radials
-            || input.reciprocal != first.reciprocal
-            || input.k_minus_q.len() != n_k
-        {
-            return Err(ScalarThcError::IncompatibleInputs);
-        }
-        let mapped = input
-            .k_minus_q
-            .iter()
-            .find(|mapped| mapped.k_index == iq)
-            .ok_or(ScalarThcError::IncompatibleInputs)?;
-        if !is_gamma_fractional(first.orbitals.k_fractional[mapped.kq_index]) {
-            return Err(ScalarThcError::IncompleteQSlice {
-                actual: iq,
-                expected: n_k,
-            });
+impl From<ScalarQSliceError> for ScalarThcError {
+    fn from(error: ScalarQSliceError) -> Self {
+        match error {
+            ScalarQSliceError::EmptySlice => Self::EmptySlice,
+            ScalarQSliceError::IncompleteQSlice { actual, expected } => {
+                Self::IncompleteQSlice { actual, expected }
+            }
+            ScalarQSliceError::IncompatibleInputs => Self::IncompatibleInputs,
         }
     }
-    Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]

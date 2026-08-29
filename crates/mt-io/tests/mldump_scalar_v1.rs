@@ -13,10 +13,10 @@ use muffintin_io::{
     MLDUMP_STATUS_PRESENT, MLDUMP_THC_ENGINE_QRCP, MLDUMP_THC_STRATEGY_ALL_QL2, MldumpGeometryV1,
     MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1, MldumpQEntryV1,
     MldumpRadialMeshV1, MldumpSiteV1, MldumpWriterV1, ScalarApwSiteMatchRefV1,
-    ScalarCoulombGammaRefV1, ScalarCoulombQRecordRefV1, ScalarCoulombRefV1,
-    ScalarLocalOrbitalTableRefV1, ScalarOrbitalKRefV1, ScalarOrbitalSpinRefV1, ScalarOrbitalsRefV1,
-    ScalarProductQRecordRefV1, ScalarProductSiteRefV1, ScalarProductsRefV1,
-    ScalarThcParentGridRefV1, ScalarThcQRecordRefV1, ScalarThcRefV1, ScalarThcSelectionRefV1,
+    ScalarCoulombBeginV1, ScalarCoulombGammaRefV1, ScalarCoulombQRecordRefV1,
+    ScalarLocalOrbitalTableRefV1, ScalarMldumpStreamV1, ScalarOrbitalKRefV1, ScalarOrbitalsBeginV1,
+    ScalarProductQRecordRefV1, ScalarProductSiteRefV1, ScalarProductsBeginV1, ScalarThcBeginV1,
+    ScalarThcParentGridRefV1, ScalarThcQRecordRefV1, ScalarThcSelectionRefV1,
     ScalarThcVertexTableRefV1, ValidationError, read_mldump_v1,
 };
 
@@ -288,15 +288,6 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
     let k1_s1 = k_record(&orbitals, 1, 1, &match_11);
     let k_points_0 = [k0_s0, k1_s0];
     let k_points_1 = [k0_s1, k1_s1];
-    let spin0 = ScalarOrbitalSpinRefV1 {
-        spin: 0,
-        k_points: &k_points_0,
-    };
-    let spin1 = ScalarOrbitalSpinRefV1 {
-        spin: 1,
-        k_points: &k_points_1,
-    };
-    let spins = [spin0, spin1];
 
     let site_indices = [0_i64, 1];
     let site_positions = [0.0, 0.0, 0.0, 4.0, 0.0, 0.0];
@@ -432,17 +423,12 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
     ];
 
     {
-        let mut writer = MldumpWriterV1::create(&path, &header).unwrap();
-        writer
-            .write_scalar_orbitals(&ScalarOrbitalsRefV1 {
-                spin_count: 2,
-                band_window_start: 0,
-                band_window_count: 2,
-                spins: &spins,
-            })
-            .unwrap();
-        writer
-            .write_scalar_products(&ScalarProductsRefV1 {
+        write_populated_scalar(
+            &path,
+            &header,
+            2,
+            [&k_points_0, &k_points_1],
+            &ScalarProductsBeginV1 {
                 n_k: 2,
                 n_orb: 2,
                 provenance_recipe: "scalar-product-test",
@@ -451,12 +437,10 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
                 site_positions: &site_positions,
                 site_radii: &site_radii,
                 interstitial_volume_bohr3: interstitial,
-                sites: &product_sites,
-                q_records: &product_qs,
-            })
-            .unwrap();
-        writer
-            .write_scalar_thc(&ScalarThcRefV1 {
+            },
+            &product_sites,
+            &product_qs,
+            &ScalarThcBeginV1 {
                 parent_grid: ScalarThcParentGridRefV1 {
                     n_points: 4,
                     coordinates: &parent_xyz,
@@ -475,18 +459,16 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
                     pivots: &pivots,
                     points: &points,
                 },
-                q_records: &thc_qs,
-            })
-            .unwrap();
-        writer
-            .write_scalar_coulomb(&ScalarCoulombRefV1 {
+            },
+            &thc_qs,
+            &ScalarCoulombBeginV1 {
                 lexp: 4,
                 interpolation_l_max: 2,
                 interpolation_pw_cutoff: 2.0,
-                q_records: &coulomb_qs,
-            })
-            .unwrap();
-        writer.finish().unwrap();
+            },
+            &coulomb_qs,
+        )
+        .unwrap();
     }
 
     let read = read_mldump_v1(&path).unwrap();
@@ -816,9 +798,13 @@ fn mldump_scalar_v1_rejects_aux_vertex_shape_before_thc_write() {
             },
         },
     ];
-    let mut writer = MldumpWriterV1::create(&path, &header).unwrap();
-    let error = writer
-        .write_scalar_thc(&ScalarThcRefV1 {
+    let mut stream = MldumpWriterV1::create(&path, &header)
+        .unwrap()
+        .begin_scalar()
+        .unwrap();
+    write_neutral_products(&mut stream).unwrap();
+    stream
+        .begin_thc(&ScalarThcBeginV1 {
             parent_grid: ScalarThcParentGridRefV1 {
                 n_points: 4,
                 coordinates: &parent_xyz,
@@ -837,9 +823,9 @@ fn mldump_scalar_v1_rejects_aux_vertex_shape_before_thc_write() {
                 pivots: &pivots,
                 points: &points,
             },
-            q_records: &bad_qs,
         })
-        .unwrap_err();
+        .unwrap();
+    let error = stream.write_thc_q(&bad_qs[0]).unwrap_err();
     match error {
         IoError::Validation(ValidationError::LengthMismatch {
             path,
@@ -852,19 +838,275 @@ fn mldump_scalar_v1_rejects_aux_vertex_shape_before_thc_write() {
         }
         other => panic!("expected vertex coefficient LengthMismatch, got {other:?}"),
     }
-    drop(writer);
+    drop(stream);
     let file = File::open(&path).unwrap();
-    assert_eq!(
-        group_status(&file, "thc"),
-        MLDUMP_STATUS_ABSENT_NOT_COMPUTED
-    );
-    assert!(
-        file.group("thc")
-            .unwrap()
-            .member_names()
-            .unwrap()
-            .is_empty()
-    );
+    assert_eq!(group_status(&file, "thc"), MLDUMP_STATUS_PRESENT);
+    assert!(!file.group("thc").unwrap().link_exists("q_000000"));
+}
+
+fn write_neutral_products(stream: &mut ScalarMldumpStreamV1) -> Result<(), IoError> {
+    let site_indices = [0_i64, 1];
+    let site_positions = [0.0, 0.0, 0.0, 4.0, 0.0, 0.0];
+    let site_radii = [1.0, 1.2];
+    let site0_kind = [0_i64, 0, 0];
+    let site0_l = [0_i64, 0, 0];
+    let site0_n = [0_i64, 1, 2];
+    let site0_spin = [0_i64, 0, 0];
+    let site0_large: Vec<f64> = (0..12).map(|i| 0.01 * i as f64).collect();
+    let site0_small: Vec<f64> = (0..12).map(|i| 0.001 * i as f64).collect();
+    let site1_kind = [0_i64, 0];
+    let site1_l = [0_i64, 0];
+    let site1_n = [0_i64, 1];
+    let site1_spin = [0_i64, 0];
+    let site1_large: Vec<f64> = (0..6).map(|i| 0.02 * i as f64).collect();
+    let raw0 = [0_i32, 0, 0, 1, 0, 0];
+    let raw1 = [0_i32, 0, 0, -1, 0, 0];
+    let q1_cart = [0.5 * bx(), 0.0, 0.0];
+    let interstitial = 512.0 - 4.0 / 3.0 * PI * (1.0 + 1.2_f64.powi(3));
+    stream.begin_products(&ScalarProductsBeginV1 {
+        n_k: 2,
+        n_orb: 2,
+        provenance_recipe: "scalar-product-test",
+        provenance_reference: "m-l6b1-neutral-fixture",
+        site_indices: &site_indices,
+        site_positions: &site_positions,
+        site_radii: &site_radii,
+        interstitial_volume_bohr3: interstitial,
+    })?;
+    stream.write_product_site(&ScalarProductSiteRefV1 {
+        site_index: 0,
+        n_radial: 3,
+        n_radial_samples: 4,
+        kind: &site0_kind,
+        l: &site0_l,
+        n: &site0_n,
+        spin: &site0_spin,
+        large: &site0_large,
+        small: Some(&site0_small),
+    })?;
+    stream.write_product_site(&ScalarProductSiteRefV1 {
+        site_index: 1,
+        n_radial: 2,
+        n_radial_samples: 3,
+        kind: &site1_kind,
+        l: &site1_l,
+        n: &site1_n,
+        spin: &site1_spin,
+        large: &site1_large,
+        small: None,
+    })?;
+    stream.write_product_q(&ScalarProductQRecordRefV1 {
+        q_index: 0,
+        transfer_cartesian: [0.0, 0.0, 0.0],
+        global_transfer: [0, 0, 0],
+        n_raw_g: 2,
+        raw_relative_g: &raw0,
+        provenance: "q0-raw-g",
+    })?;
+    stream.write_product_q(&ScalarProductQRecordRefV1 {
+        q_index: 1,
+        transfer_cartesian: q1_cart,
+        global_transfer: [1, 0, 0],
+        n_raw_g: 2,
+        raw_relative_g: &raw1,
+        provenance: "q1-raw-g",
+    })?;
+    stream.finish_products()
+}
+
+#[test]
+fn mldump_scalar_v1_rejects_product_site_and_q_overcount_before_hdf() {
+    let path = fixture_path("libmuffintin-mldump-scalar-v1-overcount.h5");
+    let header = header();
+    let site_indices = [0_i64, 1];
+    let site_positions = [0.0, 0.0, 0.0, 4.0, 0.0, 0.0];
+    let site_radii = [1.0, 1.2];
+    let site0_kind = [0_i64, 0, 0];
+    let site0_l = [0_i64, 0, 0];
+    let site0_n = [0_i64, 1, 2];
+    let site0_spin = [0_i64, 0, 0];
+    let site0_large: Vec<f64> = (0..12).map(|i| 0.01 * i as f64).collect();
+    let site0_small: Vec<f64> = (0..12).map(|i| 0.001 * i as f64).collect();
+    let site1_kind = [0_i64, 0];
+    let site1_l = [0_i64, 0];
+    let site1_n = [0_i64, 1];
+    let site1_spin = [0_i64, 0];
+    let site1_large: Vec<f64> = (0..6).map(|i| 0.02 * i as f64).collect();
+    let extra_kind = [0_i64];
+    let extra_l = [0_i64];
+    let extra_n = [0_i64];
+    let extra_spin = [0_i64];
+    let extra_large = [0.0_f64; 4];
+    let raw0 = [0_i32, 0, 0, 1, 0, 0];
+    let raw1 = [0_i32, 0, 0, -1, 0, 0];
+    let extra_raw = [0_i32, 0, 0];
+    let q1_cart = [0.5 * bx(), 0.0, 0.0];
+    let interstitial = 512.0 - 4.0 / 3.0 * PI * (1.0 + 1.2_f64.powi(3));
+    let mut stream = MldumpWriterV1::create(&path, &header)
+        .unwrap()
+        .begin_scalar()
+        .unwrap();
+    stream
+        .begin_products(&ScalarProductsBeginV1 {
+            n_k: 2,
+            n_orb: 2,
+            provenance_recipe: "scalar-product-test",
+            provenance_reference: "m-l6b1-neutral-fixture",
+            site_indices: &site_indices,
+            site_positions: &site_positions,
+            site_radii: &site_radii,
+            interstitial_volume_bohr3: interstitial,
+        })
+        .unwrap();
+    stream
+        .write_product_site(&ScalarProductSiteRefV1 {
+            site_index: 0,
+            n_radial: 3,
+            n_radial_samples: 4,
+            kind: &site0_kind,
+            l: &site0_l,
+            n: &site0_n,
+            spin: &site0_spin,
+            large: &site0_large,
+            small: Some(&site0_small),
+        })
+        .unwrap();
+    stream
+        .write_product_site(&ScalarProductSiteRefV1 {
+            site_index: 1,
+            n_radial: 2,
+            n_radial_samples: 3,
+            kind: &site1_kind,
+            l: &site1_l,
+            n: &site1_n,
+            spin: &site1_spin,
+            large: &site1_large,
+            small: None,
+        })
+        .unwrap();
+    let extra_site = stream
+        .write_product_site(&ScalarProductSiteRefV1 {
+            site_index: 2,
+            n_radial: 1,
+            n_radial_samples: 4,
+            kind: &extra_kind,
+            l: &extra_l,
+            n: &extra_n,
+            spin: &extra_spin,
+            large: &extra_large,
+            small: None,
+        })
+        .unwrap_err();
+    match extra_site {
+        IoError::Validation(ValidationError::InvalidValue {
+            path,
+            expected,
+            actual,
+        }) => {
+            assert_eq!(path, "products.sites");
+            assert_eq!(expected, "2 records");
+            assert_eq!(actual, "record 2");
+        }
+        other => panic!("expected site overcount ValidationError, got {other:?}"),
+    }
+    stream
+        .write_product_q(&ScalarProductQRecordRefV1 {
+            q_index: 0,
+            transfer_cartesian: [0.0, 0.0, 0.0],
+            global_transfer: [0, 0, 0],
+            n_raw_g: 2,
+            raw_relative_g: &raw0,
+            provenance: "q0-raw-g",
+        })
+        .unwrap();
+    stream
+        .write_product_q(&ScalarProductQRecordRefV1 {
+            q_index: 1,
+            transfer_cartesian: q1_cart,
+            global_transfer: [1, 0, 0],
+            n_raw_g: 2,
+            raw_relative_g: &raw1,
+            provenance: "q1-raw-g",
+        })
+        .unwrap();
+    let extra_q = stream
+        .write_product_q(&ScalarProductQRecordRefV1 {
+            q_index: 2,
+            transfer_cartesian: q1_cart,
+            global_transfer: [1, 0, 0],
+            n_raw_g: 1,
+            raw_relative_g: &extra_raw,
+            provenance: "q2-extra",
+        })
+        .unwrap_err();
+    match extra_q {
+        IoError::Validation(ValidationError::InvalidValue {
+            path,
+            expected,
+            actual,
+        }) => {
+            assert_eq!(path, "products.q_records");
+            assert_eq!(expected, "2 records");
+            assert_eq!(actual, "record 2");
+        }
+        other => panic!("expected q overcount ValidationError, got {other:?}"),
+    }
+    drop(stream);
+    let file = File::open(&path).unwrap();
+    let products = file.group("products").unwrap();
+    assert!(products.link_exists("site_000000"));
+    assert!(products.link_exists("site_000001"));
+    assert!(!products.link_exists("site_000002"));
+    assert!(products.link_exists("q_000000"));
+    assert!(products.link_exists("q_000001"));
+    assert!(!products.link_exists("q_000002"));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_populated_scalar(
+    path: &std::path::Path,
+    header: &MldumpHeaderV1,
+    band_window_count: usize,
+    k_by_spin: [&[ScalarOrbitalKRefV1<'_>]; 2],
+    products: &ScalarProductsBeginV1<'_>,
+    sites: &[ScalarProductSiteRefV1<'_>],
+    product_qs: &[ScalarProductQRecordRefV1<'_>],
+    thc: &ScalarThcBeginV1<'_>,
+    thc_qs: &[ScalarThcQRecordRefV1<'_>],
+    coulomb: &ScalarCoulombBeginV1,
+    coulomb_qs: &[ScalarCoulombQRecordRefV1<'_>],
+) -> Result<(), IoError> {
+    let mut stream = MldumpWriterV1::create(path, header)?.begin_scalar()?;
+    stream.begin_orbitals(&ScalarOrbitalsBeginV1 {
+        spin_count: 2,
+        band_window_start: 0,
+        band_window_count,
+    })?;
+    for (spin, records) in k_by_spin.iter().enumerate() {
+        for record in *records {
+            stream.write_orbital_k(spin, record)?;
+        }
+    }
+    stream.finish_orbitals()?;
+    stream.begin_products(products)?;
+    for site in sites {
+        stream.write_product_site(site)?;
+    }
+    for record in product_qs {
+        stream.write_product_q(record)?;
+    }
+    stream.finish_products()?;
+    stream.begin_thc(thc)?;
+    for record in thc_qs {
+        stream.write_thc_q(record)?;
+    }
+    stream.finish_thc()?;
+    stream.begin_coulomb(coulomb)?;
+    for record in coulomb_qs {
+        stream.write_coulomb_q(record)?;
+    }
+    stream.finish_coulomb()?;
+    stream.finish()
 }
 
 fn write_complete_scalar(
@@ -887,16 +1129,6 @@ fn write_complete_scalar(
     let k1_s1 = k_record(&orbitals, 1, 1, &match_11);
     let k_points_0 = [k0_s0, k1_s0];
     let k_points_1 = [k0_s1, k1_s1];
-    let spins = [
-        ScalarOrbitalSpinRefV1 {
-            spin: 0,
-            k_points: &k_points_0,
-        },
-        ScalarOrbitalSpinRefV1 {
-            spin: 1,
-            k_points: &k_points_1,
-        },
-    ];
     let site_indices = [0_i64, 1];
     let site_positions = [0.0, 0.0, 0.0, 4.0, 0.0, 0.0];
     let site_radii = [1.0, 1.2];
@@ -1023,54 +1255,52 @@ fn write_complete_scalar(
             gamma: None,
         },
     ];
-    let mut writer = MldumpWriterV1::create(path, &header)?;
-    writer.write_scalar_orbitals(&ScalarOrbitalsRefV1 {
-        spin_count: 2,
-        band_window_start: 0,
-        band_window_count: 2,
-        spins: &spins,
-    })?;
-    writer.write_scalar_products(&ScalarProductsRefV1 {
-        n_k: 2,
-        n_orb: 2,
-        provenance_recipe: "scalar-product-test",
-        provenance_reference: "m-l6b1-neutral-fixture",
-        site_indices: &site_indices,
-        site_positions: &site_positions,
-        site_radii: &site_radii,
-        interstitial_volume_bohr3: interstitial,
-        sites: &product_sites,
-        q_records: &product_qs,
-    })?;
-    writer.write_scalar_thc(&ScalarThcRefV1 {
-        parent_grid: ScalarThcParentGridRefV1 {
-            n_points: 4,
-            coordinates: &parent_xyz,
-            weights: parent_w,
-            region_kind: &parent_kind,
-            site_index: &parent_site,
-            radial_index: &parent_radial,
-            provenance: "neutral-parent-grid",
+    write_populated_scalar(
+        path,
+        &header,
+        2,
+        [&k_points_0, &k_points_1],
+        &ScalarProductsBeginV1 {
+            n_k: 2,
+            n_orb: 2,
+            provenance_recipe: "scalar-product-test",
+            provenance_reference: "m-l6b1-neutral-fixture",
+            site_indices: &site_indices,
+            site_positions: &site_positions,
+            site_radii: &site_radii,
+            interstitial_volume_bohr3: interstitial,
         },
-        strategy: MLDUMP_THC_STRATEGY_ALL_QL2,
-        engine: MLDUMP_THC_ENGINE_QRCP,
-        requested_rank: 2,
-        effective_rank: 2,
-        n_candidates: 3,
-        selection: ScalarThcSelectionRefV1 { pivots, points },
-        q_records: &thc_qs,
-    })?;
-    writer.write_scalar_coulomb(&ScalarCoulombRefV1 {
-        lexp: 4,
-        interpolation_l_max: 2,
-        interpolation_pw_cutoff: 2.0,
-        q_records: &coulomb_qs,
-    })?;
-    writer.finish()
+        &product_sites,
+        &product_qs,
+        &ScalarThcBeginV1 {
+            parent_grid: ScalarThcParentGridRefV1 {
+                n_points: 4,
+                coordinates: &parent_xyz,
+                weights: parent_w,
+                region_kind: &parent_kind,
+                site_index: &parent_site,
+                radial_index: &parent_radial,
+                provenance: "neutral-parent-grid",
+            },
+            strategy: MLDUMP_THC_STRATEGY_ALL_QL2,
+            engine: MLDUMP_THC_ENGINE_QRCP,
+            requested_rank: 2,
+            effective_rank: 2,
+            n_candidates: 3,
+            selection: ScalarThcSelectionRefV1 { pivots, points },
+        },
+        &thc_qs,
+        &ScalarCoulombBeginV1 {
+            lexp: 4,
+            interpolation_l_max: 2,
+            interpolation_pw_cutoff: 2.0,
+        },
+        &coulomb_qs,
+    )
 }
 
 #[test]
-fn mldump_scalar_v1_rejects_semantic_vertex_mismatch_at_finish_and_read() {
+fn mldump_scalar_v1_rejects_semantic_vertex_mismatch_at_q_write_and_read() {
     let path = fixture_path("libmuffintin-mldump-scalar-v1-vertex-mismatch.h5");
     let good_col = [0_i64, 3];
     let good_klr = [0_i64, 0, 0, 0, 1, 1];
@@ -1098,6 +1328,29 @@ fn mldump_scalar_v1_rejects_semantic_vertex_mismatch_at_finish_and_read() {
             assert_eq!(actual, "(0,1,1)");
         }
         other => panic!("expected vertex identity InvalidValue, got {other:?}"),
+    }
+    {
+        let file = File::open(&path).unwrap();
+        let thc = file.group("thc").unwrap();
+        assert!(thc.link_exists("q_000000"));
+        assert!(!thc.link_exists("q_000001"));
+    }
+
+    write_complete_scalar(
+        &path,
+        [&good_col, &good_col],
+        [&good_klr, &good_klr],
+        &parent_w,
+        &pivots,
+        &points,
+    )
+    .unwrap();
+    {
+        let file = File::open_rw(&path).unwrap();
+        file.dataset("thc/q_000001/vertex_column")
+            .unwrap()
+            .write_raw(&bad_col)
+            .unwrap();
     }
     match read_mldump_v1(&path) {
         Err(IoError::Validation(ValidationError::InvalidValue { path, actual, .. })) => {
@@ -1153,49 +1406,19 @@ fn mldump_scalar_v1_rejects_bad_parent_selection() {
     ];
     let parent_site = [0, 0, 1, MLDUMP_INTERSTITIAL_SENTINEL];
     let parent_radial = [0, 1, 0, MLDUMP_INTERSTITIAL_SENTINEL];
-    let zeta = fill_complex(4 * 2, 1.0);
-    let vertex_col = [0_i64, 3];
-    let vertex_klr = [0_i64, 0, 0, 0, 1, 1];
-    let vertex_c = fill_complex(2 * 2, 0.5);
     for case in cases {
         let path = fixture_path(&format!(
             "libmuffintin-mldump-scalar-v1-bad-parent-{}.h5",
             case.label
         ));
         let header = header();
-        let thc_qs = [
-            ScalarThcQRecordRefV1 {
-                q_index: 0,
-                aux_dimension: 2,
-                layout_provenance: "aux-layout-q0",
-                zeta: &zeta,
-                residual_l2_all_frobenius: 0.0,
-                residual_l2_all_column_max: 0.0,
-                vertices: ScalarThcVertexTableRefV1 {
-                    n_vertex: 2,
-                    column: &vertex_col,
-                    k_left_right: &vertex_klr,
-                    coefficients: &vertex_c,
-                },
-            },
-            ScalarThcQRecordRefV1 {
-                q_index: 1,
-                aux_dimension: 2,
-                layout_provenance: "aux-layout-q1",
-                zeta: &zeta,
-                residual_l2_all_frobenius: 0.0,
-                residual_l2_all_column_max: 0.0,
-                vertices: ScalarThcVertexTableRefV1 {
-                    n_vertex: 2,
-                    column: &vertex_col,
-                    k_left_right: &vertex_klr,
-                    coefficients: &vertex_c,
-                },
-            },
-        ];
-        let mut writer = MldumpWriterV1::create(&path, &header).unwrap();
-        let error = writer
-            .write_scalar_thc(&ScalarThcRefV1 {
+        let mut stream = MldumpWriterV1::create(&path, &header)
+            .unwrap()
+            .begin_scalar()
+            .unwrap();
+        write_neutral_products(&mut stream).unwrap();
+        let error = stream
+            .begin_thc(&ScalarThcBeginV1 {
                 parent_grid: ScalarThcParentGridRefV1 {
                     n_points: 4,
                     coordinates: &parent_xyz,
@@ -1214,7 +1437,6 @@ fn mldump_scalar_v1_rejects_bad_parent_selection() {
                     pivots: &case.pivots,
                     points: &case.points,
                 },
-                q_records: &thc_qs,
             })
             .unwrap_err();
         match error {
@@ -1245,7 +1467,7 @@ fn mldump_scalar_v1_rejects_bad_parent_selection() {
                 case.label
             ),
         }
-        drop(writer);
+        drop(stream);
 
         let good_col = [0_i64, 3];
         let good_klr = [0_i64, 0, 0, 0, 1, 1];
@@ -1323,43 +1545,13 @@ fn mldump_scalar_v1_rejects_pivot_point_set_mismatch() {
     let parent_radial = [0, 1, 0, MLDUMP_INTERSTITIAL_SENTINEL];
     let pivots = [2_i64, 0];
     let points = [0_i64, 3];
-    let zeta = fill_complex(4 * 2, 1.0);
-    let vertex_col = [0_i64, 3];
-    let vertex_klr = [0_i64, 0, 0, 0, 1, 1];
-    let vertex_c = fill_complex(2 * 2, 0.5);
-    let thc_qs = [
-        ScalarThcQRecordRefV1 {
-            q_index: 0,
-            aux_dimension: 2,
-            layout_provenance: "aux-layout-q0",
-            zeta: &zeta,
-            residual_l2_all_frobenius: 0.0,
-            residual_l2_all_column_max: 0.0,
-            vertices: ScalarThcVertexTableRefV1 {
-                n_vertex: 2,
-                column: &vertex_col,
-                k_left_right: &vertex_klr,
-                coefficients: &vertex_c,
-            },
-        },
-        ScalarThcQRecordRefV1 {
-            q_index: 1,
-            aux_dimension: 2,
-            layout_provenance: "aux-layout-q1",
-            zeta: &zeta,
-            residual_l2_all_frobenius: 0.0,
-            residual_l2_all_column_max: 0.0,
-            vertices: ScalarThcVertexTableRefV1 {
-                n_vertex: 2,
-                column: &vertex_col,
-                k_left_right: &vertex_klr,
-                coefficients: &vertex_c,
-            },
-        },
-    ];
-    let mut writer = MldumpWriterV1::create(&path, &header).unwrap();
-    let error = writer
-        .write_scalar_thc(&ScalarThcRefV1 {
+    let mut stream = MldumpWriterV1::create(&path, &header)
+        .unwrap()
+        .begin_scalar()
+        .unwrap();
+    write_neutral_products(&mut stream).unwrap();
+    let error = stream
+        .begin_thc(&ScalarThcBeginV1 {
             parent_grid: ScalarThcParentGridRefV1 {
                 n_points: 4,
                 coordinates: &parent_xyz,
@@ -1378,7 +1570,6 @@ fn mldump_scalar_v1_rejects_pivot_point_set_mismatch() {
                 pivots: &pivots,
                 points: &points,
             },
-            q_records: &thc_qs,
         })
         .unwrap_err();
     match error {
@@ -1393,7 +1584,7 @@ fn mldump_scalar_v1_rejects_pivot_point_set_mismatch() {
         }
         other => panic!("expected selection-set InvalidValue, got {other:?}"),
     }
-    drop(writer);
+    drop(stream);
 
     let good_col = [0_i64, 3];
     let good_klr = [0_i64, 0, 0, 0, 1, 1];

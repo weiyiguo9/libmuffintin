@@ -4,8 +4,10 @@ use std::collections::BTreeSet;
 
 use hdf5_metno::Group;
 
-use super::scalar_orbitals::{ScalarOrbitalsRefV1, ScalarOrbitalsV1};
-use super::scalar_products::{ScalarProductsRefV1, ScalarProductsV1};
+use super::scalar_orbitals::ScalarOrbitalsV1;
+use super::scalar_products::{
+    MLDUMP_PAIR_ORDER_K_LEFT_RIGHT, ScalarProductQRecordRefV1, ScalarProductsV1,
+};
 use super::{
     GROUP_COULOMB, GROUP_THC, MldumpHeaderV1, MldumpStatus, PREFIX_GAMMA, PREFIX_PARENT_GRID,
     PREFIX_Q, approx_eq, collect_padded_groups, complex_len, create_padded_group,
@@ -45,9 +47,9 @@ pub struct ScalarMldumpV1 {
     pub coulomb: ScalarCoulombV1,
 }
 
-/// Borrowed THC section. `zeta` slices are written without cloning.
+/// Shared `/thc` parent grid, engine, and selection for a streaming session.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarThcRefV1<'a> {
+pub struct ScalarThcBeginV1<'a> {
     pub parent_grid: ScalarThcParentGridRefV1<'a>,
     pub strategy: &'a str,
     pub engine: &'a str,
@@ -55,7 +57,6 @@ pub struct ScalarThcRefV1<'a> {
     pub effective_rank: usize,
     pub n_candidates: usize,
     pub selection: ScalarThcSelectionRefV1<'a>,
-    pub q_records: &'a [ScalarThcQRecordRefV1<'a>],
 }
 
 /// Shared parent grid stored once, including zero-weight rows.
@@ -157,13 +158,12 @@ pub struct ScalarThcVertexV1 {
     pub coefficients: Vec<f64>,
 }
 
-/// Borrowed finite Coulomb section. The body array is not cloned.
+/// Shared `/coulomb` request attributes for a streaming session.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarCoulombRefV1<'a> {
+pub struct ScalarCoulombBeginV1 {
     pub lexp: u32,
     pub interpolation_l_max: u32,
     pub interpolation_pw_cutoff: f64,
-    pub q_records: &'a [ScalarCoulombQRecordRefV1<'a>],
 }
 
 /// Finite Hermitian body at one $q$, with optional Gamma metadata.
@@ -224,6 +224,7 @@ pub(crate) struct OrbitalAlignmentSummary {
 pub(crate) struct ProductAlignmentSummary {
     pub n_k: usize,
     pub n_orb: usize,
+    pub pair_order: &'static str,
     pub q_records: Vec<ProductQAlignment>,
 }
 
@@ -234,7 +235,7 @@ pub(crate) struct ProductQAlignment {
     pub global_transfer: [i32; 3],
 }
 
-/// THC $q$ identity plus vertex integer columns/triples. No $\zeta$ arrays.
+/// THC $q$ identity, auxiliary dimension, and provenance. No vertex tables.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ThcAlignmentSummary {
     pub q_records: Vec<ThcQAlignment>,
@@ -245,15 +246,7 @@ pub(crate) struct ThcQAlignment {
     pub q_index: usize,
     pub aux_dimension: usize,
     pub layout_provenance: String,
-    pub vertices: Vec<VertexAlignment>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct VertexAlignment {
-    pub column: i64,
-    pub k: i64,
-    pub left: i64,
-    pub right: i64,
+    pub n_vertex: usize,
 }
 
 /// Coulomb $q$ identity, auxiliary provenance, and Gamma presence. No $V$ body.
@@ -271,15 +264,11 @@ pub(crate) struct CoulombQAlignment {
 }
 
 impl OrbitalAlignmentSummary {
-    pub(crate) fn from_ref(orbitals: &ScalarOrbitalsRefV1<'_>) -> Self {
+    pub(crate) fn new(spin_count: usize, n_k: usize, band_window_count: usize) -> Self {
         Self {
-            spin_count: orbitals.spin_count,
-            n_k: orbitals
-                .spins
-                .first()
-                .map(|spin| spin.k_points.len())
-                .unwrap_or(0),
-            band_window_count: orbitals.band_window_count,
+            spin_count,
+            n_k,
+            band_window_count,
         }
     }
 
@@ -297,26 +286,28 @@ impl OrbitalAlignmentSummary {
 }
 
 impl ProductAlignmentSummary {
-    pub(crate) fn from_ref(products: &ScalarProductsRefV1<'_>) -> Self {
+    pub(crate) fn new(n_k: usize, n_orb: usize) -> Self {
         Self {
-            n_k: products.n_k,
-            n_orb: products.n_orb,
-            q_records: products
-                .q_records
-                .iter()
-                .map(|record| ProductQAlignment {
-                    q_index: record.q_index,
-                    transfer_cartesian: record.transfer_cartesian,
-                    global_transfer: record.global_transfer,
-                })
-                .collect(),
+            n_k,
+            n_orb,
+            pair_order: MLDUMP_PAIR_ORDER_K_LEFT_RIGHT,
+            q_records: Vec::new(),
         }
+    }
+
+    pub(crate) fn push_q(&mut self, record: &ScalarProductQRecordRefV1<'_>) {
+        self.q_records.push(ProductQAlignment {
+            q_index: record.q_index,
+            transfer_cartesian: record.transfer_cartesian,
+            global_transfer: record.global_transfer,
+        });
     }
 
     pub(crate) fn from_owned(products: &ScalarProductsV1) -> Self {
         Self {
             n_k: products.n_k,
             n_orb: products.n_orb,
+            pair_order: MLDUMP_PAIR_ORDER_K_LEFT_RIGHT,
             q_records: products
                 .q_records
                 .iter()
@@ -331,46 +322,19 @@ impl ProductAlignmentSummary {
 }
 
 impl ThcAlignmentSummary {
-    pub(crate) fn from_ref(thc: &ScalarThcRefV1<'_>) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            q_records: thc
-                .q_records
-                .iter()
-                .map(|record| ThcQAlignment {
-                    q_index: record.q_index,
-                    aux_dimension: record.aux_dimension,
-                    layout_provenance: record.layout_provenance.to_owned(),
-                    vertices: (0..record.vertices.n_vertex)
-                        .map(|vertex| VertexAlignment {
-                            column: record
-                                .vertices
-                                .column
-                                .get(vertex)
-                                .copied()
-                                .unwrap_or(i64::MIN),
-                            k: record
-                                .vertices
-                                .k_left_right
-                                .get(vertex * 3)
-                                .copied()
-                                .unwrap_or(i64::MIN),
-                            left: record
-                                .vertices
-                                .k_left_right
-                                .get(vertex * 3 + 1)
-                                .copied()
-                                .unwrap_or(i64::MIN),
-                            right: record
-                                .vertices
-                                .k_left_right
-                                .get(vertex * 3 + 2)
-                                .copied()
-                                .unwrap_or(i64::MIN),
-                        })
-                        .collect(),
-                })
-                .collect(),
+            q_records: Vec::new(),
         }
+    }
+
+    pub(crate) fn push_q(&mut self, record: &ScalarThcQRecordRefV1<'_>) {
+        self.q_records.push(ThcQAlignment {
+            q_index: record.q_index,
+            aux_dimension: record.aux_dimension,
+            layout_provenance: record.layout_provenance.to_owned(),
+            n_vertex: record.vertices.n_vertex,
+        });
     }
 
     pub(crate) fn from_owned(thc: &ScalarThcV1) -> Self {
@@ -382,16 +346,7 @@ impl ThcAlignmentSummary {
                     q_index: record.q_index,
                     aux_dimension: record.aux_dimension,
                     layout_provenance: record.layout_provenance.clone(),
-                    vertices: record
-                        .vertices
-                        .iter()
-                        .map(|vertex| VertexAlignment {
-                            column: vertex.column,
-                            k: vertex.k,
-                            left: vertex.left,
-                            right: vertex.right,
-                        })
-                        .collect(),
+                    n_vertex: record.vertices.len(),
                 })
                 .collect(),
         }
@@ -399,19 +354,19 @@ impl ThcAlignmentSummary {
 }
 
 impl CoulombAlignmentSummary {
-    pub(crate) fn from_ref(coulomb: &ScalarCoulombRefV1<'_>) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            q_records: coulomb
-                .q_records
-                .iter()
-                .map(|record| CoulombQAlignment {
-                    q_index: record.q_index,
-                    aux_dimension: record.aux_dimension,
-                    layout_provenance: record.layout_provenance.to_owned(),
-                    gamma_present: record.gamma.is_some(),
-                })
-                .collect(),
+            q_records: Vec::new(),
         }
+    }
+
+    pub(crate) fn push_q(&mut self, record: &ScalarCoulombQRecordRefV1<'_>) {
+        self.q_records.push(CoulombQAlignment {
+            q_index: record.q_index,
+            aux_dimension: record.aux_dimension,
+            layout_provenance: record.layout_provenance.to_owned(),
+            gamma_present: record.gamma.is_some(),
+        });
     }
 
     pub(crate) fn from_owned(coulomb: &ScalarCoulombV1) -> Self {
@@ -430,12 +385,12 @@ impl CoulombAlignmentSummary {
     }
 }
 
-pub(crate) fn write_scalar_thc(
+pub(crate) fn begin_scalar_thc(
     file: &Group,
     header: &MldumpHeaderV1,
-    thc: &ScalarThcRefV1<'_>,
+    thc: &ScalarThcBeginV1<'_>,
 ) -> Result<(), IoError> {
-    validate_thc_ref(header, thc)?;
+    validate_thc_begin(header, thc)?;
     let group = reopen_present_group(file, GROUP_THC)?;
     write_str_attr(&group, "strategy", thc.strategy)?;
     write_str_attr(&group, "engine", thc.engine)?;
@@ -469,18 +424,28 @@ pub(crate) fn write_scalar_thc(
         thc.selection.points,
         &["aux"],
     )?;
-    for record in thc.q_records {
-        write_thc_q(&group, thc.parent_grid.n_points, record)?;
-    }
     Ok(())
 }
 
-pub(crate) fn write_scalar_coulomb(
+pub(crate) fn write_scalar_thc_q(
     file: &Group,
-    header: &MldumpHeaderV1,
-    coulomb: &ScalarCoulombRefV1<'_>,
+    q: usize,
+    n_parent: usize,
+    effective_rank: usize,
+    n_k: usize,
+    n_orb: usize,
+    record: &ScalarThcQRecordRefV1<'_>,
 ) -> Result<(), IoError> {
-    validate_coulomb_ref(header, coulomb)?;
+    validate_thc_q_ref(q, n_parent, effective_rank, n_k, n_orb, record)?;
+    let group = file.group(GROUP_THC)?;
+    write_thc_q(&group, n_parent, record)
+}
+
+pub(crate) fn begin_scalar_coulomb(
+    file: &Group,
+    coulomb: &ScalarCoulombBeginV1,
+) -> Result<(), IoError> {
+    validate_coulomb_begin(coulomb)?;
     let group = reopen_present_group(file, GROUP_COULOMB)?;
     write_i64_attr(&group, "lexp", i64::from(coulomb.lexp))?;
     write_i64_attr(
@@ -493,10 +458,26 @@ pub(crate) fn write_scalar_coulomb(
         "interpolation_pw_cutoff",
         coulomb.interpolation_pw_cutoff,
     )?;
-    for record in coulomb.q_records {
-        write_coulomb_q(&group, record)?;
-    }
     Ok(())
+}
+
+pub(crate) fn write_scalar_coulomb_q(
+    file: &Group,
+    q: usize,
+    record: &ScalarCoulombQRecordRefV1<'_>,
+) -> Result<(), IoError> {
+    validate_coulomb_q_payload(
+        q,
+        record.q_index,
+        record.aux_dimension,
+        record.layout_provenance,
+        record.body,
+        record
+            .gamma
+            .map(|gamma| (gamma.head_prefactor, gamma.constant_coefficients)),
+    )?;
+    let group = file.group(GROUP_COULOMB)?;
+    write_coulomb_q(&group, record)
 }
 
 pub(crate) fn read_scalar_thc(
@@ -594,8 +575,10 @@ pub(crate) fn read_scalar_coulomb(
 
 /// Cross-section scalar alignment used by writer `finish` and the owned reader.
 ///
-/// Summaries hold counts, $q$ Cartesian/global labels, vertex integers, and
-/// provenance strings. They do not hold eigenvector, $\zeta$, or $V$ arrays.
+/// Summaries hold counts, $q$ Cartesian/global labels, and provenance strings.
+/// They do not hold eigenvector, $\zeta$, vertex tables, or $V$ arrays.
+/// Semantic THC vertex identity is checked $q$-locally on write and from the
+/// owned payload on read.
 pub(crate) fn validate_scalar_alignment(
     header: &MldumpHeaderV1,
     orbitals: &OrbitalAlignmentSummary,
@@ -609,6 +592,14 @@ pub(crate) fn validate_scalar_alignment(
     require_len("orbitals.n_k", n_k, orbitals.n_k)?;
     require_len("products.n_k", n_k, products.n_k)?;
     require_len("products.n_orb", orbitals.band_window_count, products.n_orb)?;
+    if products.pair_order != MLDUMP_PAIR_ORDER_K_LEFT_RIGHT {
+        return Err(ValidationError::InvalidValue {
+            path: "products.pair_order".to_owned(),
+            expected: MLDUMP_PAIR_ORDER_K_LEFT_RIGHT.to_owned(),
+            actual: products.pair_order.to_owned(),
+        }
+        .into());
+    }
     require_len("products.q_records", n_q, products.q_records.len())?;
     require_len("thc.q_records", n_q, thc.q_records.len())?;
     require_len("coulomb.q_records", n_q, coulomb.q_records.len())?;
@@ -683,29 +674,11 @@ pub(crate) fn validate_scalar_alignment(
             }
             .into());
         }
-        for (vertex, item) in thc_q.vertices.iter().enumerate() {
-            let (k, left, right) = decode_pair_column(
-                &format!("thc.q_records[{q}].vertices[{vertex}].column"),
-                n_k,
-                products.n_orb,
-                item.column,
-            )?;
-            let expected_k =
-                i64_from_usize(&format!("thc.q_records[{q}].vertices[{vertex}].k"), k)?;
-            let expected_left =
-                i64_from_usize(&format!("thc.q_records[{q}].vertices[{vertex}].left"), left)?;
-            let expected_right = i64_from_usize(
-                &format!("thc.q_records[{q}].vertices[{vertex}].right"),
-                right,
-            )?;
-            if [item.k, item.left, item.right] != [expected_k, expected_left, expected_right] {
-                return Err(ValidationError::InvalidValue {
-                    path: format!("thc.q_records[{q}].vertices[{vertex}].k_left_right"),
-                    expected: format!("decode(column={}) = ({k},{left},{right})", item.column),
-                    actual: format!("({},{},{})", item.k, item.left, item.right),
-                }
-                .into());
+        if thc_q.n_vertex == 0 {
+            return Err(ValidationError::Empty {
+                path: format!("thc.q_records[{q}].vertices"),
             }
+            .into());
         }
         let gamma_q = mesh_q
             .canonical_fractional
@@ -723,7 +696,7 @@ pub(crate) fn validate_scalar_alignment(
     Ok(())
 }
 
-fn validate_thc_ref(header: &MldumpHeaderV1, thc: &ScalarThcRefV1<'_>) -> Result<(), IoError> {
+fn validate_thc_begin(header: &MldumpHeaderV1, thc: &ScalarThcBeginV1<'_>) -> Result<(), IoError> {
     validate_thc_shared(
         header,
         ThcSharedView {
@@ -735,13 +708,8 @@ fn validate_thc_ref(header: &MldumpHeaderV1, thc: &ScalarThcRefV1<'_>) -> Result
             parent: &thc.parent_grid,
             pivots: thc.selection.pivots,
             points: thc.selection.points,
-            n_q: thc.q_records.len(),
         },
-    )?;
-    for (q, record) in thc.q_records.iter().enumerate() {
-        validate_thc_q_ref(q, thc.parent_grid.n_points, thc.effective_rank, record)?;
-    }
-    Ok(())
+    )
 }
 
 fn validate_thc_owned(header: &MldumpHeaderV1, thc: &ScalarThcV1) -> Result<(), IoError> {
@@ -771,8 +739,12 @@ fn validate_thc_owned(header: &MldumpHeaderV1, thc: &ScalarThcV1) -> Result<(), 
             parent: &parent,
             pivots: &thc.selection.pivots,
             points: &thc.selection.points,
-            n_q: thc.q_records.len(),
         },
+    )?;
+    require_len(
+        "thc.q_records",
+        header.mesh.q_entries.len(),
+        thc.q_records.len(),
     )?;
     for (q, record) in thc.q_records.iter().enumerate() {
         validate_thc_q_owned(q, parent.n_points, thc.effective_rank, record)?;
@@ -789,7 +761,6 @@ struct ThcSharedView<'a> {
     parent: &'a ScalarThcParentGridRefV1<'a>,
     pivots: &'a [i64],
     points: &'a [i64],
-    n_q: usize,
 }
 
 fn validate_thc_shared(header: &MldumpHeaderV1, thc: ThcSharedView<'_>) -> Result<(), IoError> {
@@ -824,7 +795,6 @@ fn validate_thc_shared(header: &MldumpHeaderV1, thc: ThcSharedView<'_>) -> Resul
     validate_selected_parent_indices("thc.selection.pivots", thc.pivots, thc.parent.weights)?;
     validate_selected_parent_indices("thc.selection.points", thc.points, thc.parent.weights)?;
     require_identical_selection_sets(thc.pivots, thc.points)?;
-    require_len("thc.q_records", header.mesh.q_entries.len(), thc.n_q)?;
     Ok(())
 }
 
@@ -936,6 +906,8 @@ fn validate_thc_q_ref(
     q: usize,
     n_parent: usize,
     effective_rank: usize,
+    n_k: usize,
+    n_orb: usize,
     record: &ScalarThcQRecordRefV1<'_>,
 ) -> Result<(), IoError> {
     if record.q_index != q {
@@ -998,7 +970,14 @@ fn validate_thc_q_ref(
         &format!("thc.q_records[{q}].vertices.coefficients"),
         vertices.coefficients,
     )?;
-    Ok(())
+    validate_thc_vertex_triples(
+        q,
+        n_k,
+        n_orb,
+        vertices.n_vertex,
+        vertices.column,
+        vertices.k_left_right,
+    )
 }
 
 fn validate_thc_q_owned(
@@ -1061,10 +1040,94 @@ fn validate_thc_q_owned(
     Ok(())
 }
 
-fn validate_coulomb_ref(
-    header: &MldumpHeaderV1,
-    coulomb: &ScalarCoulombRefV1<'_>,
+pub(crate) fn validate_owned_thc_vertex_identity(
+    n_k: usize,
+    n_orb: usize,
+    thc: &ScalarThcV1,
 ) -> Result<(), IoError> {
+    for (q, record) in thc.q_records.iter().enumerate() {
+        for (vertex, item) in record.vertices.iter().enumerate() {
+            validate_one_thc_vertex(
+                q,
+                vertex,
+                n_k,
+                n_orb,
+                item.column,
+                [item.k, item.left, item.right],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_thc_vertex_triples(
+    q: usize,
+    n_k: usize,
+    n_orb: usize,
+    n_vertex: usize,
+    column: &[i64],
+    k_left_right: &[i64],
+) -> Result<(), IoError> {
+    for vertex in 0..n_vertex {
+        validate_one_thc_vertex(
+            q,
+            vertex,
+            n_k,
+            n_orb,
+            column[vertex],
+            [
+                k_left_right[vertex * 3],
+                k_left_right[vertex * 3 + 1],
+                k_left_right[vertex * 3 + 2],
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_one_thc_vertex(
+    q: usize,
+    vertex: usize,
+    n_k: usize,
+    n_orb: usize,
+    column: i64,
+    k_left_right: [i64; 3],
+) -> Result<(), IoError> {
+    let (decoded_k, decoded_left, decoded_right) = decode_pair_column(
+        &format!("thc.q_records[{q}].vertices[{vertex}].column"),
+        n_k,
+        n_orb,
+        column,
+    )?;
+    let expected_k = i64_from_usize(
+        &format!("thc.q_records[{q}].vertices[{vertex}].k"),
+        decoded_k,
+    )?;
+    let expected_left = i64_from_usize(
+        &format!("thc.q_records[{q}].vertices[{vertex}].left"),
+        decoded_left,
+    )?;
+    let expected_right = i64_from_usize(
+        &format!("thc.q_records[{q}].vertices[{vertex}].right"),
+        decoded_right,
+    )?;
+    if k_left_right != [expected_k, expected_left, expected_right] {
+        return Err(ValidationError::InvalidValue {
+            path: format!("thc.q_records[{q}].vertices[{vertex}].k_left_right"),
+            expected: format!(
+                "decode(column={column}) = ({decoded_k},{decoded_left},{decoded_right})"
+            ),
+            actual: format!(
+                "({},{},{})",
+                k_left_right[0], k_left_right[1], k_left_right[2]
+            ),
+        }
+        .into());
+    }
+    Ok(())
+}
+
+fn validate_coulomb_begin(coulomb: &ScalarCoulombBeginV1) -> Result<(), IoError> {
     if coulomb.lexp > 12 {
         return Err(ValidationError::InvalidValue {
             path: "coulomb.lexp".to_owned(),
@@ -1072,23 +1135,6 @@ fn validate_coulomb_ref(
             actual: coulomb.lexp.to_string(),
         }
         .into());
-    }
-    require_len(
-        "coulomb.q_records",
-        header.mesh.q_entries.len(),
-        coulomb.q_records.len(),
-    )?;
-    for (q, record) in coulomb.q_records.iter().enumerate() {
-        validate_coulomb_q_payload(
-            q,
-            record.q_index,
-            record.aux_dimension,
-            record.layout_provenance,
-            record.body,
-            record
-                .gamma
-                .map(|gamma| (gamma.head_prefactor, gamma.constant_coefficients)),
-        )?;
     }
     Ok(())
 }

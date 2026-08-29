@@ -21,22 +21,14 @@ pub const MLDUMP_OCCUPATIONS_NOT_EXPORTED: &str = "not_exported_not_available";
 
 const RADIAL_U_UDOT: [&str; 2] = ["u", "udot"];
 
-/// Borrowed scalar orbital section written without cloning eigenvector arrays.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarOrbitalsRefV1<'a> {
+/// Shared `/orbitals` attributes for a streaming scalar session.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ScalarOrbitalsBeginV1 {
     pub spin_count: usize,
     pub band_window_start: i64,
     /// Common leading exported window. Eigenvalues and eigenvector columns use
     /// this count, not per-$k$ [`ScalarOrbitalKRefV1::available_bands`].
     pub band_window_count: usize,
-    pub spins: &'a [ScalarOrbitalSpinRefV1<'a>],
-}
-
-/// One collinear spin channel in writer order.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarOrbitalSpinRefV1<'a> {
-    pub spin: usize,
-    pub k_points: &'a [ScalarOrbitalKRefV1<'a>],
 }
 
 /// One spin/$k$ compiled basis and eigenvectors.
@@ -135,12 +127,11 @@ pub struct ScalarLocalOrbitalRowV1 {
     pub radial_n: usize,
 }
 
-pub(crate) fn write_scalar_orbitals(
+pub(crate) fn begin_scalar_orbitals(
     file: &Group,
-    header: &MldumpHeaderV1,
-    orbitals: &ScalarOrbitalsRefV1<'_>,
+    begin: &ScalarOrbitalsBeginV1,
 ) -> Result<(), IoError> {
-    validate_orbitals_ref(header, orbitals)?;
+    validate_orbitals_begin(begin)?;
     let group = reopen_present_group(file, GROUP_ORBITALS)?;
     write_str_attr(
         &group,
@@ -150,23 +141,49 @@ pub(crate) fn write_scalar_orbitals(
     write_i64_attr(
         &group,
         "spin_count",
-        usize_as_i64("/orbitals/@spin_count", orbitals.spin_count)?,
+        usize_as_i64("/orbitals/@spin_count", begin.spin_count)?,
     )?;
-    write_i64_attr(&group, "band_window_start", orbitals.band_window_start)?;
+    write_i64_attr(&group, "band_window_start", begin.band_window_start)?;
     write_i64_attr(
         &group,
         "band_window_count",
-        usize_as_i64("/orbitals/@band_window_count", orbitals.band_window_count)?,
+        usize_as_i64("/orbitals/@band_window_count", begin.band_window_count)?,
     )?;
     write_str_attr(
         &group,
         "occupations_status",
         MLDUMP_OCCUPATIONS_NOT_EXPORTED,
     )?;
-    for spin in orbitals.spins {
-        write_spin_group(&group, orbitals.band_window_count, spin)?;
+    for spin in 0..begin.spin_count {
+        let spin_group = create_padded_group(&group, PREFIX_SPIN, spin)?;
+        write_i64_attr(
+            &spin_group,
+            "spin",
+            usize_as_i64(&format!("/orbitals/spin_{spin:06}/@spin"), spin)?,
+        )?;
     }
     Ok(())
+}
+
+pub(crate) fn write_scalar_orbital_k(
+    file: &Group,
+    header: &MldumpHeaderV1,
+    spin: usize,
+    band_window_count: usize,
+    record: &ScalarOrbitalKRefV1<'_>,
+) -> Result<(), IoError> {
+    validate_k_record(
+        header,
+        header.geometry.sites.len(),
+        band_window_count,
+        spin,
+        record.k_index,
+        record,
+    )?;
+    let spin_group = file
+        .group(GROUP_ORBITALS)?
+        .group(&padded_child(PREFIX_SPIN, spin))?;
+    write_k_group(&spin_group, spin, band_window_count, record)
 }
 
 pub(crate) fn read_scalar_orbitals(
@@ -236,53 +253,29 @@ pub(crate) fn read_scalar_orbitals(
     })
 }
 
-fn validate_orbitals_ref(
-    header: &MldumpHeaderV1,
-    orbitals: &ScalarOrbitalsRefV1<'_>,
-) -> Result<(), IoError> {
-    if orbitals.spin_count != 2 {
+fn validate_orbitals_begin(begin: &ScalarOrbitalsBeginV1) -> Result<(), IoError> {
+    if begin.spin_count != 2 {
         return Err(ValidationError::InvalidValue {
             path: "orbitals.spin_count".to_owned(),
             expected: "2".to_owned(),
-            actual: orbitals.spin_count.to_string(),
+            actual: begin.spin_count.to_string(),
         }
         .into());
     }
-    if orbitals.band_window_start != 0 {
+    if begin.band_window_start != 0 {
         return Err(ValidationError::InvalidValue {
             path: "orbitals.band_window_start".to_owned(),
             expected: "0".to_owned(),
-            actual: orbitals.band_window_start.to_string(),
+            actual: begin.band_window_start.to_string(),
         }
         .into());
     }
-    if orbitals.band_window_count == 0 {
+    if begin.band_window_count == 0 {
         return Err(ValidationError::NotPositive {
             path: "orbitals.band_window_count".to_owned(),
             value: 0.0,
         }
         .into());
-    }
-    require_len("orbitals.spins", orbitals.spin_count, orbitals.spins.len())?;
-    let n_k = header.mesh.k_points.len();
-    let n_sites = header.geometry.sites.len();
-    for (spin, channel) in orbitals.spins.iter().enumerate() {
-        if channel.spin != spin {
-            return Err(ValidationError::InvalidValue {
-                path: format!("orbitals.spins[{spin}].spin"),
-                expected: spin.to_string(),
-                actual: channel.spin.to_string(),
-            }
-            .into());
-        }
-        require_len(
-            &format!("orbitals.spins[{spin}].k_points"),
-            n_k,
-            channel.k_points.len(),
-        )?;
-        for (k, record) in channel.k_points.iter().enumerate() {
-            validate_k_record(header, n_sites, orbitals.band_window_count, spin, k, record)?;
-        }
     }
     Ok(())
 }
@@ -542,26 +535,6 @@ fn require_exported_eigendata(
         eigenvectors.len(),
     )?;
     require_finite_f64s(&format!("{path}.eigenvectors"), eigenvectors)?;
-    Ok(())
-}
-
-fn write_spin_group(
-    parent: &Group,
-    band_window_count: usize,
-    channel: &ScalarOrbitalSpinRefV1<'_>,
-) -> Result<(), IoError> {
-    let group = create_padded_group(parent, PREFIX_SPIN, channel.spin)?;
-    write_i64_attr(
-        &group,
-        "spin",
-        usize_as_i64(
-            &format!("/orbitals/spin_{:06}/@spin", channel.spin),
-            channel.spin,
-        )?,
-    )?;
-    for record in channel.k_points {
-        write_k_group(&group, channel.spin, band_window_count, record)?;
-    }
     Ok(())
 }
 

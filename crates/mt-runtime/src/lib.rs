@@ -9,6 +9,7 @@ mod input;
 mod q_mesh;
 mod runner;
 mod scalar_coulomb;
+mod scalar_mldump;
 mod scalar_mpb;
 mod scalar_product;
 mod scalar_thc;
@@ -46,6 +47,7 @@ pub use scalar_coulomb::{
     ScalarCoulombPairDiagnostic, ScalarCoulombPairMatch, ScalarCoulombQRecord, ScalarCoulombResult,
     ScalarCoulombSpec, build_scalar_coulomb,
 };
+pub use scalar_mldump::{ScalarMldumpError, write_scalar_mldump};
 pub use scalar_mpb::{
     SCALAR_MPB_NSPIN, ScalarMpbError, ScalarMpbPairVertex, ScalarMpbResult, ScalarMpbSelection,
     ScalarMpbSpec, build_scalar_mpb,

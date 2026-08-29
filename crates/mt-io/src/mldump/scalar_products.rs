@@ -24,9 +24,9 @@ pub const MLDUMP_RADIAL_KIND_VALENCE: i64 = 0;
 /// Core radial factor. Must not appear in a v1 scalar dump.
 pub const MLDUMP_RADIAL_KIND_CORE: i64 = 1;
 
-/// Borrowed product section. Radial samples are written from the caller's slices.
+/// Shared `/products` attributes and geometry binding for a streaming session.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarProductsRefV1<'a> {
+pub struct ScalarProductsBeginV1<'a> {
     pub n_k: usize,
     pub n_orb: usize,
     pub provenance_recipe: &'a str,
@@ -35,8 +35,6 @@ pub struct ScalarProductsRefV1<'a> {
     pub site_positions: &'a [f64],
     pub site_radii: &'a [f64],
     pub interstitial_volume_bohr3: f64,
-    pub sites: &'a [ScalarProductSiteRefV1<'a>],
-    pub q_records: &'a [ScalarProductQRecordRefV1<'a>],
 }
 
 /// One site's valence radial factors on the `/geometry` mesh.
@@ -101,12 +99,13 @@ pub struct ScalarProductQRecordV1 {
     pub provenance: String,
 }
 
-pub(crate) fn write_scalar_products(
+pub(crate) fn begin_scalar_products(
     file: &Group,
     header: &MldumpHeaderV1,
-    products: &ScalarProductsRefV1<'_>,
+    products: &ScalarProductsBeginV1<'_>,
 ) -> Result<(), IoError> {
-    validate_products_ref(header, products)?;
+    validate_products_begin(header, products)?;
+    let n_site = header.geometry.sites.len();
     let group = reopen_present_group(file, GROUP_PRODUCTS)?;
     write_i64_attr(&group, "n_k", usize_as_i64("/products/@n_k", products.n_k)?)?;
     write_i64_attr(
@@ -122,11 +121,7 @@ pub(crate) fn write_scalar_products(
         "provenance_reference",
         products.provenance_reference,
     )?;
-    write_i64_attr(
-        &group,
-        "n_site",
-        usize_as_i64("/products/@n_site", products.sites.len())?,
-    )?;
+    write_i64_attr(&group, "n_site", usize_as_i64("/products/@n_site", n_site)?)?;
     write_f64_attr(
         &group,
         "interstitial_volume_bohr3",
@@ -135,31 +130,46 @@ pub(crate) fn write_scalar_products(
     write_i64_dataset(
         &group,
         "site_indices",
-        &[products.sites.len()],
+        &[n_site],
         products.site_indices,
         &["site"],
     )?;
     write_f64_dataset(
         &group,
         "site_positions",
-        &[products.sites.len(), 3],
+        &[n_site, 3],
         products.site_positions,
         &["site", "cartesian"],
     )?;
     write_f64_dataset(
         &group,
         "site_radii",
-        &[products.sites.len()],
+        &[n_site],
         products.site_radii,
         &["site"],
     )?;
-    for site in products.sites {
-        write_site_group(&group, header, site)?;
-    }
-    for record in products.q_records {
-        write_q_group(&group, record)?;
-    }
     Ok(())
+}
+
+pub(crate) fn write_scalar_product_site(
+    file: &Group,
+    header: &MldumpHeaderV1,
+    site: usize,
+    record: &ScalarProductSiteRefV1<'_>,
+) -> Result<(), IoError> {
+    validate_site_ref(header, site, record)?;
+    let group = file.group(GROUP_PRODUCTS)?;
+    write_site_group(&group, header, record)
+}
+
+pub(crate) fn write_scalar_product_q(
+    file: &Group,
+    q: usize,
+    record: &ScalarProductQRecordRefV1<'_>,
+) -> Result<(), IoError> {
+    validate_q_ref(q, record)?;
+    let group = file.group(GROUP_PRODUCTS)?;
+    write_q_group(&group, record)
 }
 
 pub(crate) fn read_scalar_products(
@@ -250,9 +260,9 @@ pub(crate) fn read_scalar_products(
     Ok(products)
 }
 
-fn validate_products_ref(
+fn validate_products_begin(
     header: &MldumpHeaderV1,
-    products: &ScalarProductsRefV1<'_>,
+    products: &ScalarProductsBeginV1<'_>,
 ) -> Result<(), IoError> {
     nonempty("products.provenance_recipe", products.provenance_recipe)?;
     nonempty(
@@ -268,7 +278,6 @@ fn validate_products_ref(
         .into());
     }
     let n_site = header.geometry.sites.len();
-    require_len("products.sites", n_site, products.sites.len())?;
     require_len("products.site_indices", n_site, products.site_indices.len())?;
     require_flat_len(
         "products.site_positions",
@@ -312,17 +321,6 @@ fn validate_products_ref(
         &positions,
         products.site_radii,
     )?;
-    for (site, record) in products.sites.iter().enumerate() {
-        validate_site_ref(header, site, record)?;
-    }
-    require_len(
-        "products.q_records",
-        header.mesh.q_entries.len(),
-        products.q_records.len(),
-    )?;
-    for (q, record) in products.q_records.iter().enumerate() {
-        validate_q_ref(q, record)?;
-    }
     Ok(())
 }
 
@@ -500,45 +498,9 @@ fn validate_products_owned(
                 .collect::<Vec<_>>(),
         );
     }
-    let sites = products
-        .sites
-        .iter()
-        .map(|site| {
-            let n_radial_samples = header
-                .geometry
-                .sites
-                .get(site.site_index)
-                .map(|geometry| geometry.radial_mesh.point_count)
-                .unwrap_or(0);
-            ScalarProductSiteRefV1 {
-                site_index: site.site_index,
-                n_radial: site.kind.len(),
-                n_radial_samples,
-                kind: &site.kind,
-                l: &site.l,
-                n: &site.n,
-                spin: &site.spin,
-                large: &site.large,
-                small: site.small.as_deref(),
-            }
-        })
-        .collect::<Vec<_>>();
-    let q_records = products
-        .q_records
-        .iter()
-        .zip(raw_g.iter())
-        .map(|(record, g)| ScalarProductQRecordRefV1 {
-            q_index: record.q_index,
-            transfer_cartesian: record.transfer_cartesian,
-            global_transfer: record.global_transfer,
-            n_raw_g: record.raw_relative_g.len(),
-            raw_relative_g: g,
-            provenance: &record.provenance,
-        })
-        .collect::<Vec<_>>();
-    validate_products_ref(
+    validate_products_begin(
         header,
-        &ScalarProductsRefV1 {
+        &ScalarProductsBeginV1 {
             n_k: products.n_k,
             n_orb: products.n_orb,
             provenance_recipe: &products.provenance_recipe,
@@ -547,10 +509,55 @@ fn validate_products_owned(
             site_positions: &site_positions,
             site_radii: &products.site_radii,
             interstitial_volume_bohr3: products.interstitial_volume_bohr3,
-            sites: &sites,
-            q_records: &q_records,
         },
-    )
+    )?;
+    require_len(
+        "products.sites",
+        header.geometry.sites.len(),
+        products.sites.len(),
+    )?;
+    require_len(
+        "products.q_records",
+        header.mesh.q_entries.len(),
+        products.q_records.len(),
+    )?;
+    for (site, record) in products.sites.iter().enumerate() {
+        let n_radial_samples = header
+            .geometry
+            .sites
+            .get(record.site_index)
+            .map(|geometry| geometry.radial_mesh.point_count)
+            .unwrap_or(0);
+        validate_site_ref(
+            header,
+            site,
+            &ScalarProductSiteRefV1 {
+                site_index: record.site_index,
+                n_radial: record.kind.len(),
+                n_radial_samples,
+                kind: &record.kind,
+                l: &record.l,
+                n: &record.n,
+                spin: &record.spin,
+                large: &record.large,
+                small: record.small.as_deref(),
+            },
+        )?;
+    }
+    for (q, (record, g)) in products.q_records.iter().zip(raw_g.iter()).enumerate() {
+        validate_q_ref(
+            q,
+            &ScalarProductQRecordRefV1 {
+                q_index: record.q_index,
+                transfer_cartesian: record.transfer_cartesian,
+                global_transfer: record.global_transfer,
+                n_raw_g: record.raw_relative_g.len(),
+                raw_relative_g: g,
+                provenance: &record.provenance,
+            },
+        )?;
+    }
+    Ok(())
 }
 
 fn validate_q_ref(q: usize, record: &ScalarProductQRecordRefV1<'_>) -> Result<(), IoError> {

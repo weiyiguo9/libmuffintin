@@ -362,3 +362,50 @@ fn radial_samples(large: &[f64], small: Option<&[f64]>) -> RadialSamples {
         small: small.map(<[f64]>::to_vec),
     }
 }
+
+/// Shared q-slice contract used by scalar THC, Coulomb, and MLDUMP.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ScalarQSliceError {
+    EmptySlice,
+    IncompleteQSlice { actual: usize, expected: usize },
+    IncompatibleInputs,
+}
+
+pub(crate) fn require_scalar_q_slice(
+    inputs: &[ScalarProductInput],
+) -> Result<&ScalarProductInput, ScalarQSliceError> {
+    let first = inputs.first().ok_or(ScalarQSliceError::EmptySlice)?;
+    let n_k = first.orbitals.k_fractional.len();
+    if inputs.len() != n_k {
+        return Err(ScalarQSliceError::IncompleteQSlice {
+            actual: inputs.len(),
+            expected: n_k,
+        });
+    }
+    for (iq, input) in inputs.iter().enumerate() {
+        if input.orbitals != first.orbitals
+            || input.pair_columns != first.pair_columns
+            || input.source.partition != first.source.partition
+            || input.source.radials != first.source.radials
+            || input.reciprocal != first.reciprocal
+            || input.k_minus_q.len() != n_k
+        {
+            return Err(ScalarQSliceError::IncompatibleInputs);
+        }
+        let mapped = input
+            .k_minus_q
+            .iter()
+            .find(|mapped| mapped.k_index == iq)
+            .ok_or(ScalarQSliceError::IncompatibleInputs)?;
+        if !input.orbitals.k_fractional[mapped.kq_index]
+            .iter()
+            .all(|component| component.abs() <= 1.0e-12)
+        {
+            return Err(ScalarQSliceError::IncompleteQSlice {
+                actual: iq,
+                expected: n_k,
+            });
+        }
+    }
+    Ok(first)
+}
