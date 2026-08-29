@@ -4,13 +4,11 @@ This note freezes MLDUMP v1, a libmuffintin-owned, inspectable HDF5 schema
 for later runtime materialization. It is not CoQui-native and not
 SPEX-native. `libmuffintin-io` owns the typed DTOs, schema constants, and
 the reader/writer. Runtime, mixed-product, THC, and Coulomb types stay out
-of `libmuffintin-io`. This stage serializes the accepted header plus an
-optional representation-neutral scalar or spinor payload written from
-borrowed slices. Runtime `write_scalar_mldump` and `write_spinor_mldump`
+of `libmuffintin-io`. A file holds the accepted header plus an optional
+representation-neutral scalar or spinor payload written from borrowed
+slices; runtime `write_scalar_mldump` and `write_spinor_mldump`
 materialize frozen product/THC/Coulomb objects through the streaming
-writers after recoverable preflight, including spinor compiled-basis
-exportability and the sealed `SpinorCoulombResult` request/records.
-This development-stage spinor extension stays schema version 1.
+writers. Scalar and spinor payloads share schema version 1.
 `write_scalar_coqui_cholesky` is a separate CoQui-native Cholesky ERI
 adapter; it is not an MLDUMP payload and does not extend schema version 1.
 
@@ -51,16 +49,16 @@ Direct lattice vectors and site positions are Cartesian Bohr. Reciprocal
 primitive vectors include the crystallographic $2\pi$ and are inverse Bohr.
 Cell volume is Bohr cubed. $k$ and $q$ are fractional reciprocal coordinates.
 $G$ and Umklapp labels are integer reciprocal-lattice triples. Occupations
-are optional in later stages and are not fabricated here.
+are not exported in v1 and are never fabricated.
 
 ## 3. Status representation
 
 Every reserved group carries a string attribute `status` whose only v1
 values are `present` and `absent_not_computed`. A `present` group holds its
 documented datasets. An `absent_not_computed` group holds no child member
-and is never filled with zeros. Later stages may flip a reserved
-group from `absent_not_computed` to `present` without changing v1 names or
-the status encoding.
+and is never filled with zeros. A later writer may flip a reserved group
+from `absent_not_computed` to `present` without changing v1 names or the
+status encoding.
 
 Exchange valence, core, and total are separate seams under `/exchange`.
 `total_relation` is absent unless a real same-run valence+core payload
@@ -107,7 +105,7 @@ Root attributes: `schema_name`, `schema_version`.
   k_minus_q_g_wrap            i32 [n_q,n_k,3] axes=["q","k","reciprocal_axis"]
 /orbitals                     status=absent_not_computed | present
 /products                     status=absent_not_computed | present
-/mpb                          status=absent_not_computed   (no public MPB DTO in this stage)
+/mpb                          status=absent_not_computed   (reserved; no public MPB DTO)
 /thc                          status=absent_not_computed | present
 /coulomb                      status=absent_not_computed | present
 /exchange                     status=present   (file-level table; no numeric datasets)
@@ -123,12 +121,12 @@ child member. A populated scalar or spinor file writes all four of
 (`scalar_koelling_harmon` or `spinor_full_first_variation`). The current
 writer still emits the same tag on `/products`, `/thc`, and `/coulomb`.
 Scalar readback accepts those three companion attrs only when they are
-all absent (published B1/B2 scalar trees) or all present and equal to
-`scalar_koelling_harmon`. Spinor readback requires all three present and
+all absent (scalar files written before the companion tags) or all
+present and equal to `scalar_koelling_harmon`. Spinor readback requires all three present and
 equal to `spinor_full_first_variation`; there is no tagless spinor path.
 `/meta/@feature_representation` is provenance only. Mixed presence,
 absent/present mixture of companion tags, or mixed tag values is a typed
-validation error. Schema version stays 1. `/mpb` remains absent. Ragged
+validation error. Ragged
 records use only zero-padded integer names `spin_%06d`, `k_%06d`,
 `site_%06d`, `q_%06d`. Scalar files keep `spin_%06d` groups; spinor
 orbitals have no spin groups.
@@ -399,23 +397,19 @@ absent children and no `total_relation`.
 `payload: MldumpPayloadV1`. All four groups absent yields
 `HeaderOnly`. All four present with `/orbitals/@representation =
 scalar_koelling_harmon` yields `Scalar(ScalarMldumpV1)`, including
-published B1/B2 files whose `/products`,`/thc`,`/coulomb`
+earlier published files whose `/products`,`/thc`,`/coulomb`
 representation attrs are all absent. All four present with
 `spinor_full_first_variation` on orbitals and the three companion groups
 yields `Spinor(SpinorMldumpV1)`. Mixed presence, mixed or partial
 companion tags, a cross-section mismatch, or a local payload
-violation is rejected. There is no public `scalar: Option<_>` field.
-Exchange valence/core/total remain absent in this stage.
+violation is rejected.
 Borrowed writer DTOs are public concrete structs with slice references
 and explicit shapes, including `ScalarOrbitalsBeginV1`,
 `SpinorOrbitalsBeginV1`, `ScalarProductsBeginV1`,
 `SpinorProductsBeginV1`, `MldumpThcBeginV1`, `MldumpCoulombBeginV1`, and
 the per-record refs. Neutral `MldumpThc*` / `MldumpCoulomb*` DTOs are
-shared across representations. There are no public `ScalarThc*` or
-`ScalarCoulomb*` aliases.
+shared across representations.
 Owned reader DTOs use `Vec`/`String` records with declared dimensions.
-There is no public `ScalarMpb*` type or writer method. Aggregate
-whole-section writer methods are not part of this API.
 
 Validation is the trust boundary: schema name/version, exact numeric
 HDF5 dtypes including attributes, finite numbers, nonnegative full-BZ
@@ -433,5 +427,5 @@ payload validators apply on write and on read.
 
 MLDUMP v1 does not serialize CoQui or SPEX native layouts, runtime
 `SpinorProductInput` / `ScalarProductInput` objects, MPB payloads,
-occupations, core-valence products, the singular Gamma head, GW/RPA/self-energy,
-MPI, or material acceptance. It does not complete the product, mixed-product, THC, and Coulomb sequence.
+occupations, core-valence products, the singular Gamma head,
+GW/RPA/self-energy, or MPI.
