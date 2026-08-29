@@ -28,7 +28,7 @@ exposes:
 
 - `SnapshotDftPhysics::spinor_product_input` with
   `ScfRelativity::SpinorFirstVariation`, physical $P$ and $Q$, PP+QQ (no
-  $PQ$/$QP$/$cQ$), and a full $q$ slice;
+  $PQ/QP/cQ$), and a full $q$ slice;
 - `build_spinor_mpb` and `build_spinor_thc` on the same parent grid and
   candidate set, with an explicit `ThcEngine::FullColumnPivotedQr` or
   `FullPivotedCholesky` choice;
@@ -52,7 +52,7 @@ SPEX orbitals are $(l,E)$ plus optional $n$ when `pbas>0`; `kappa` is
 forbidden in the HDF file. Scalar string attributes are Hwrapper
 `H5T_NATIVE_CHARACTER` of content length (trailing spaces/NULs trimmed);
 dataset `@axes` is that scalar split on whitespace, or a 1-d VL token
-array. Collinear $B_x$/$B_y$ may be all-zero only
+array. Collinear $B_x/B_y$ may be all-zero only
 with `@zero_source` proving the spin layout; omitted $B$ is a blocker.
 
 The SPEX writer is published at
@@ -78,7 +78,7 @@ wrote a complete `snapshot.h5` (1 548 720 B, SHA-256
 The frozen reader loaded it. `hashes/sha256` has `STRSIZE` 248 with a
 valid 64-hex prefix and Fortran control padding; the reader keeps the
 leading 64 hex characters. `materialize_snapshot_v2` matched the SPEX
-scalar LOs ($l=0,1$, $n=5$) with a caller-owned signed-$\kappa$ recipe.
+scalar LOs ($l=0,1$, $n=5$) with a caller-owned signed $\kappa$ recipe.
 `materialize_snapshot_v2` now ingests ULP-scale interstitial pairs with
 tolerance $10^{-12}\max(|c|,|c'|,1)$ and writes conjugate-symmetric
 averages so Snapshot V2 is exactly Hermitian. `SnapshotDftPhysics::new`
@@ -159,7 +159,7 @@ included by path. Observed contract:
 
 The focused `consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane` oracle
 consumes the complete hashed SPEX artifact. It keeps both imported radial
-bases tagged scalar Koelling–Harmon, uses one caller-owned signed-$\kappa$
+bases tagged scalar Koelling–Harmon, uses one caller-owned signed $\kappa$
 recipe for the $5s$ LO and $5p_{1/2}$ rLO, and binds those records to the
 target runtime basis. A deliberate derivative-order mismatch is typed-
 rejected before authorization. The accepted binding produces finite,

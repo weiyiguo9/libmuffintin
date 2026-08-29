@@ -162,12 +162,12 @@ When `/orbitals` is `present`:
             @radial_component_labels ["u","udot"]
 ```
 
-`available_bands` is per-$k$ metadata and may exceed the common exported
+`available_bands` is per $k$ metadata and may exceed the common exported
 window `band_window_count`. Stored eigenvalues and eigenvector columns
 use `band_window_count`, not `available_bands`. Cartesian $k$ and
 $q=k+G$ are stored explicitly so compiled plane-wave rows can be
 reconstructed; norms are not a substitute. Local-orbital tables identify
-every non-PW basis row. Per-$k$ PW and basis counts may differ.
+every non-PW basis row. Per $k$ PW and basis counts may differ.
 
 When `/products` is `present`, static partition/radials are stored once
 and positional $q$ records bind by mesh $q$ index:
@@ -198,13 +198,13 @@ and positional $q$ records bind by mesh $q$ index:
 
 Site indices, positions, radii, and mesh identity bind to `/geometry`.
 They are not a second geometry. `/mesh` remains the owner of input and
-canonical $q$ and of the per-$k$ wrap map. Each product $q$ record binds
+canonical $q$ and of the per $k$ wrap map. Each product $q$ record binds
 by positional $q$ index: `global_transfer` equals mesh
 `q_global_umklapp`, and `transfer_cartesian` equals the mesh canonical
 $q$ converted with the header reciprocal basis (already including
 $2\pi$) at the accepted $10^{-12}$ scale-aware tolerance. The input $q$
 is not reused and the global label is not inserted a second time.
-Scalar $U$/$\dot U$/LO identities stay $l$-based. Cores are empty and
+Scalar $U/\dot U$ and LO identities stay based on $l$. Cores are empty and
 never enter fitting. Radial ID tables (`kind`,`l`,`n`,`spin`) have equal
 length, unique $(kind,l,n,spin)$ within a site, valence kind only, and
 spin $0$ or $1$.
@@ -240,8 +240,8 @@ When `/orbitals` is spinor `present`:
 
 There is no collinear spin field and no `spin_%06d` group. Shared spatial
 $G$ labels are stored once. Pauli rows satisfy
-$\mathrm{row}=\mathrm{pauli\_component}\,N_G+\mathrm{plane\_wave\_index}$
-with $\mathrm{pauli\_component}\in\{0,1\}$. Local-orbital tables identify
+$\mathrm{row}=$ `pauli_component` $\,N_G+$ `plane_wave_index`
+with `pauli_component` $\in\{0,1\}$. Local-orbital tables identify
 confined LO/RLO eigenbasis rows only; APW $P$ and $\dot P$ are matching
 columns on those plane-wave rows, flattened onto the projection-coordinate
 axis so the matching dataset stays rank 4. The projection table is a
@@ -251,7 +251,7 @@ tail whose ordered $(site,\kappa,2\mu,n)$ identities match that site's
 local-row table. The matching third axis is that APW prefix length.
 Signed $\kappa$ is nonzero; $2\mu$ belongs to $j=|\kappa|-1/2$.
 Eigenvectors remain C-order
-$[\mathrm{basis\_row},\mathrm{band},\mathrm{re\_im}]$ with width equal to
+[`basis_row`, `band`, `re_im`] with width equal to
 the common window; `available_bands` may be larger.
 
 When `/products` is spinor `present`:
@@ -270,7 +270,7 @@ When `/products` is spinor `present`:
 ```
 
 Dirac radial identity is $(kind,\kappa,n)$ with no $\mu$ and no fake
-scalar $l$/spin fields. Physical $P$ and $Q$ are both required.
+scalar $l$ / spin fields. Physical $P$ and $Q$ are both required.
 $n=0$ is $(P,Q)$, $n=1$ is $(\dot P,\dot Q)$, and $n\ge 2$ is LO/RLO.
 Cores remain empty/diagnostic-only.
 
@@ -333,7 +333,7 @@ The stored matrix is the finite Hermitian body. The singular Gamma head
 is never inserted into $V$. A present `/gamma` stores only the current
 finite GammaHead metadata and is allowed only when the header canonical
 $q$ is the zero vector at the same $10^{-12}$ tolerance. An absent
-`/gamma` has no members, including at $q=0$. Per-$q$ auxiliary dimension
+`/gamma` has no members, including at $q=0$. Per $q$ auxiliary dimension
 and `layout_provenance` must equal the THC record at the same $q$.
 $\zeta$, vertices, and the parent grid are not duplicated here.
 
@@ -349,7 +349,7 @@ $|a-b|\le 10^{-12}\max(|a|,|b|,1)$, the same $10^{-12}$ floor as the
 M-L1/M-L5b mesh-coordinate gate. Every canonical $q$ component lies in
 $[0,1)$. Each $q$ stores exactly $n_k$ $k-q$ records in canonical $k$
 order: the record at position $i_k$ has $k_{\mathrm{index}}=i_k$. The
-per-$k$ wrap satisfies
+per $k$ wrap satisfies
 $k_{\mathrm{frac}}-q_{\mathrm{canonical}}=k_{\mathrm{frac}}^{\mathrm{mapped}}+G_{\mathrm{wrap}}$
 with that same tolerance and does not reinsert the global transfer
 Umklapp. Stored $k$ fractions are used as written; they are not
@@ -379,12 +379,12 @@ header and reserved absent groups. Header-only files call
 `begin_scalar()` into [`ScalarMldumpStreamV1`]. Populated spinor files
 continue with `begin_spinor()` into [`SpinorMldumpStreamV1`]. Each of
 `/orbitals`, `/products`, `/thc`, and `/coulomb` is opened with a
-`begin_*` method, written as ordered per-$(spin,k)$ or per-$k$, per-site,
-or per-$q$ records, and closed with `finish_*`. Products must be written
+`begin_*` method, written as ordered per $(spin,k)$ or per $k$, per-site,
+or per $q$ records, and closed with `finish_*`. Products must be written
 before THC. Large arrays are written immediately. An extra site, $k$, or
 $q$ record is a typed validation error before any further HDF5 child is
-created. Semantic THC vertex `column` identity is checked $q$-locally
-against the product $n_k$/$n_{\mathrm{orb}}$ pair layout while the
+created. Semantic THC vertex `column` identity is checked locally in $q$
+against the product $n_k/n_{\mathrm{orb}}$ pair layout while the
 borrowed $q$ record is alive; the session retains only small counters,
 $q$ bindings, auxiliary dimension/provenance, and pair-layout counts, not
 vertex tables. Stream `finish` requires all four sections and runs the
@@ -425,7 +425,7 @@ ordered $k-q$ wrap identities, $k+G$ Cartesian reconstruction, product
 $q$ Cartesian/global binding to mesh canonical $q$, semantic vertex
 column decode, THC/Coulomb auxiliary dimension and provenance identity,
 Gamma metadata only at canonical $q=0$, Hermitian finite $V$, positive
-selected parent-grid weights, auxiliary/$\zeta$/vertex layout alignment,
+selected parent-grid weights, auxiliary, $\zeta$, and vertex layout alignment,
 required groups/datasets, and status-versus-payload consistency. These
 payload validators apply on write and on read.
 

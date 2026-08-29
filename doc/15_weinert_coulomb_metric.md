@@ -210,7 +210,7 @@ $Y_{LM}^*/R^{L+1}$ (including $L=8$ and $L=12$).
 ### MT-PW (`coulombmatrix.f:438-545`)
 
 Plane waves are $\Theta_I(r) e^{i(q+G)\cdot r}/\sqrt{\Omega}$. The
-finite $q$ element is (2a) Bessel overlap $/|q+G|^2$ minus (2b) the
+finite $q$ element is (2a) Bessel overlap divided by $|q+G|^2$ minus (2b) the
 Weinert intra-sphere kernel plus (2c) inter-sphere structure-constant
 coupling of Bessel moments, all divided by $\sqrt{\Omega}$, with
 $Y_{LM}^*(q+G)$ and $i^L$, matching SPEX `harmonicsr` then `conjg`.
@@ -295,7 +295,7 @@ compared.
 | MT-PW $2a+2b+2c$ | independent SPEX reconstruction | $10^{-8}$ relative |
 | One-sphere PW-PW | independent (3a)+(3b)+(3c) | $10^{-8}$ relative |
 | Gamma empty-sphere finite $G$ | $4\pi/\lvert G\rvert^2$; $G=0$ body omitted | $10^{-8}$ relative |
-| Gamma PW-PW Taylor | independent `~830-915` on $G=0$/finite pairs | $10^{-8}$ relative |
+| Gamma PW-PW Taylor | independent `~830-915` on $G=0$ / finite pairs | $10^{-8}$ relative |
 | Hermiticity | $\max\lvert V-V^\dagger\rvert$ | $10^{-10}$ mixed product / Gamma PW-PW, $10^{-8}$ interpolation |
 | Finite $q$ min eigenvalue | faer self-adjoint EVD | $>-10^{-6}$ mixed product, $>-10^{-5}$ sampled $\zeta$, $>-10^{-4}$ THC $\zeta$ |
 | Ewald successive residual | cutoff scan, not Abramowitz–Stegun `erfc` | $10^{-6}$; `erfc` $\sim 1.5\times 10^{-7}$ |

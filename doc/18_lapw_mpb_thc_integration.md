@@ -1,7 +1,7 @@
 # 18. Scalar M-L1–L4 product/MPB/THC/Coulomb and spinor M-L5a/M-L5b/M-L5c
 
 This note records the implemented M-L1 boundary, the M-L2 scalar mixed-product
-bridge, the M-L3 scalar AllQL2 interpolation-point seam, the M-L4 sampled-$\zeta$
+bridge, the M-L3 scalar AllQL2 interpolation-point seam, the M-L4 sampled $\zeta$
 Coulomb bridge, the M-L5a Dirac PP/QQ IR and MPB primitive, the M-L5b
 frozen full-first-variation spinor product input, the M-L5c selected-band
 spinor mixed-product bridge, and the M-L6b2 runtime materialization of those
@@ -51,7 +51,7 @@ regular mesh, solves the regular full-BZ scalar eigenproblem, and returns
   (`ProductPartition` / `InterstitialGeometry`, per-site `ExponentialMesh`,
   valence $p=ru$ samples with optional Koelling–Harmon $Q$, empty cores,
   finite raw interstitial pair support of relative $G$ labels).
-- `orbitals`: per-spin, per-$k$ column-major `[basis, band]` eigenvectors
+- `orbitals`: per-spin, per $k$ column-major `[basis, band]` eigenvectors
   together with the exact [`CompiledBasis`] used by `solve_points` (plane-wave
   $G$ labels, APW $(u,\dot u)$ matching coefficients, confined LO layout).
   Spin labels are `0` (up) and `1` (down). This bundle does **not** put
@@ -73,7 +73,7 @@ Valence [`ProductRadial`] $n$ is stable: $n=0$ is $u$, $n=1$ is $\dot u$,
 and $n=2+\mathrm{ordinal}$ are local orbitals. APW matching coefficients
 multiply $(u,\dot u)$. Local-orbital rows follow
 [`BasisLayout::site_local_orbital_range`]. `ProductRadialId` remains the
-scalar $l$-based identifier. M-L1 does not add $\kappa$, $PP$, or $QQ$.
+identifier based on scalar $l$. M-L1 does not add $\kappa$, $PP$, or $QQ$.
 
 `ScfState` is not the orbital source. Private
 `SnapshotBandSolution` / `SnapshotKPointSolution` fields stay private.
@@ -140,12 +140,12 @@ The left orbital is the mapped $k-q$ side; the right orbital is at $k$.
 Band indices are the published M-L1 common leading window. Pair columns stay
 [`PairColumnLayout`]; the old $12\times 12$ packing is not used. The vertex
 identity is [`OrbitalPair::Bloch`]; spin is stored on the runtime record, not
-on the shared [`OrbitalPair`] model. Empty selection, a spin/$k$/band outside
+on the shared [`OrbitalPair`] model. Empty selection, a spin, $k$, or band outside
 the frozen input, or an incompatible pair-column layout is a typed
 stage-boundary error.
 
 Muffin-tin contraction uses [`CompiledSiteProjection`] for every APW $u$,
-APW $\dot u$, and LO site coordinate present in the exact per-$k$
+APW $\dot u$, and LO site coordinate present in the exact per $k$
 [`CompiledBasis`]. The coefficient order is
 $\mathrm{conj}(C_{\mathrm{left}})C_{\mathrm{right}}$ times the inverse
 canonical site phase $\exp(-i q\cdot R_a)$ so the primitive MPB
@@ -176,8 +176,8 @@ basis-pair term.
 ## 5. Scalar M-L3 adaptive THC
 
 `build_scalar_thc` consumes a nonempty complete $q$ slice in production
-$q$-index order: `inputs[iq]` is the M-L1 bundle whose canonical $q$ is the
-$iq$-th k-mesh point. Bundles share the frozen orbital window, spins, k mesh,
+$q$ index order: `inputs[iq]` is the M-L1 bundle whose canonical $q$ is
+k-mesh point $iq$. Bundles share the frozen orbital window, spins, k mesh,
 partition, radials, and `PairColumnLayout`. `ScalarThcSpec` selects one
 collinear spin, an existing THC `RankPolicy`, candidate points
 ([`ThcCandidates`]), and one production L2 engine ([`ThcEngine`],
@@ -209,11 +209,11 @@ phase is the stored per-column wrap $\exp(+i G_{\mathrm{wrap}}\cdot r)$.
 Global `TransferQ` Umklapp stays on the $q$ record.
 
 The result carries the selected spin, the parent grid, selection with
-requested and effective rank, and one per-$q$ interpolation-point
+requested and effective rank, and one per $q$ interpolation-point
 `CompiledAuxiliaryBasis`, parent-grid-by-selected-point $\zeta$, and
 `PairVertex` columns. Interpolation-point auxiliaries are created with the
 scalar THC provenance before Bloch pair vertices, so auxiliary and vertex
-records bind the same $q$/layout/partition/provenance at construction. It
+records bind the same $q$, layout, partition, and provenance at construction. It
 does not build `SampledAuxiliaryFunctions` or Coulomb operators.
 
 ## 6. Scalar M-L4 sampled Coulomb
@@ -234,7 +234,7 @@ nodes are not substituted for the $\zeta$ grid. It then calls production
 second global Umklapp insertion. Gamma keeps the finite body plus `GammaHead`
 metadata; the singular head is not inserted.
 
-Each per-$q$ record returns the sampled-$\zeta$ `CoulombOperator` with $q$
+Each per $q$ record returns the sampled $\zeta$ `CoulombOperator` with $q$
 index, `TransferQ`, spin, pair-column layout, interpolation-point auxiliary,
 parent-grid sampled $\zeta$, and semantic pair vertices. Returned M-L3 vertices
 must carry the compiled auxiliary `AuxiliaryLayout` and an
@@ -255,13 +255,13 @@ M-L1, M-L2, M-L3, and M-L4 do not:
 - inject Coulomb Grams or run Q0L2 / AllQCoulombPool
 - include selected core radials in the product window
 - extend `ProductRadialId` with $\kappa$ or four-component $PP/QQ$
-- implement spinor or signed-$\kappa$ product vertices
+- implement spinor or signed $\kappa$ product vertices
 - add a principal-angle engine
 - claim SPEX or material acceptance
 - complete M-L
 
 Later M-L stages consume this scalar product-input, mixed-product,
-interpolation-point, and sampled-$\zeta$ Coulomb contract rather than reaching
+interpolation-point, and sampled $\zeta$ Coulomb contract rather than reaching
 into snapshot solver internals.
 
 ## 8. M-L5a Dirac PP/QQ IR and MPB primitive
@@ -273,7 +273,7 @@ vertex primitive). Runtime M-L5b consumes those public types and does not
 redefine them. Scalar `ProductRadialId` / `ProductSource` / `RawProductSpace`
 stay unchanged. M-L5c adds Dirac overlap cutoff, retained scalar-charge
 modes of the PP/QQ union, and interstitial spinor plane-wave contraction.
-M-L5d adds spinor all-$q$ THC and sampled-$\zeta$ Coulomb.
+M-L5d adds spinor all $q$ THC and sampled $\zeta$ Coulomb.
 
 ## 9. M-L5b frozen spinor product input
 
@@ -289,10 +289,10 @@ the regular full-BZ full-first-variation eigenproblem, and returns
   site mesh, empty cores, `ProductPartition` / `TransferQ` / raw interstitial
   pair support. `DiracRadialId.n` is $n=0$ APW $(P,Q)$, $n=1$ analytic
   $(\dot P,\dot Q)$, and $n=2+\mathrm{ordinal}$ for each compiled
-  signed-$\kappa$ LO/RLO in that shell's request order. Identity
-  $(site,kind,\kappa,n)$ is $\mu$-degenerate. There is no $cQ$ scaling and
+  signed $\kappa$ LO/RLO in that shell's request order. Identity
+  $(site,kind,\kappa,n)$ is degenerate in $\mu$. There is no $cQ$ scaling and
   no collinear `spin=0/1` field.
-- `orbitals`: per-$k$ column-major `[basis, band]` eigenvectors, eigenvalues,
+- `orbitals`: per $k$ column-major `[basis, band]` eigenvectors, eigenvalues,
   and the exact [`SpinorCompiledBasis`] used by `solve_points`. Live row
   order is two Pauli interstitial blocks $\mathrm{spin}\,N_G+G$ (shared
   spatial $G$ labels), then site confined LO/RLO rows
@@ -310,13 +310,13 @@ the regular full-BZ full-first-variation eigenproblem, and returns
   keeps the untruncated eigenpair count. Eigenvector **rows** equal the
   k-local basis dimension and are not truncated to a common size.
 
-Raw interstitial support is the deduplicated, $|G|$-then-index sorted union
+Raw interstitial support is the deduplicated union, sorted by $|G|$ then index,
 of $G_{\mathrm{right}}-G_{\mathrm{left}}+G_{\mathrm{wrap}}$ over actual
 spinor plane-wave $G$ labels. Global `TransferQ` Umklapp is excluded.
 `ScfState` is not the orbital source.
 
 M-L5c contracts selected spinor bands into that primitive. M-L5d adds
-all-$q$ THC and sampled-$\zeta$ Coulomb.
+all $q$ THC and sampled $\zeta$ Coulomb.
 
 ## 10. M-L5c selected-band spinor mixed-product bridge
 
@@ -332,11 +332,11 @@ identity $k\cdot N_{\mathrm{orb}}^2+i\cdot N_{\mathrm{orb}}+j$ and a checked
 [`PairVertex`] whose identity is [`OrbitalPair::Bloch`]. Construction seals a
 runtime-private frozen-input identity of the originating
 [`SpinorProductInput`]: the complete Dirac source (partition, $q$,
-provenance, site meshes, physical $P$/$Q$ identities and samples, cores, raw
+provenance, site meshes, physical $P/Q$ identities and samples, cores, raw
 interstitial support), frozen orbitals (k fractions, band window and
 available counts, every ordered [`SpinorCompiledBasis`] layout / plane-wave /
 site-augmentation / LO mapping, eigenvalues, and every complex eigenvector
-entry), the $k-q$ map and per-$k$ wraps, [`PairColumnLayout`], and the
+entry), the $k-q$ map and per $k$ wraps, [`PairColumnLayout`], and the
 authoritative [`ReciprocalLattice`]. The mixer is the same splitmix-style
 64-bit fold as the parent-grid construction fingerprint: an internal binding
 stamp, not scientific provenance or a cryptographic digest, with a
@@ -356,7 +356,7 @@ Muffin-tin contraction uses [`CompiledSiteProjection::spinor`] and
 $\mathrm{conj}(d_{\mathrm{left}})d_{\mathrm{right}}$ times the inverse
 canonical site phase $\exp(-i q\cdot R_a)$ so the MPB primitive
 $+\mathrm{i}q\cdot R_a$ is not double-counted. Large coordinates route only
-to PP/$\Omega_\kappa$; small coordinates route only to QQ/$\Omega_{-\kappa}$.
+to $PP/\Omega_\kappa$; small coordinates route only to $QQ/\Omega_{-\kappa}$.
 There is no $cQ$ and no PQ/QP.
 
 Interstitial contraction is the same-component Pauli sum
@@ -379,7 +379,7 @@ MPB $\Theta_I$ argument $G_{\mathrm{aux}}-G_{\mathrm{transfer}}-G_{\mathrm{rel}}
 The MPB accumulator [`DiracBlochVertexAccumulator`] sums those primitive
 terms into one checked vertex.
 
-## 11. M-L5d spinor all-$q$ THC and sampled-$\zeta$ Coulomb
+## 11. M-L5d spinor all $q$ THC and sampled $\zeta$ Coulomb
 
 `build_spinor_thc(&[SpinorProductInput], &ThcParentGrid, &SpinorThcSpec)`
 consumes a complete ordered $q$ slice with one record for every k-mesh
@@ -395,11 +395,11 @@ candidates.
 
 Muffin-tin reconstruction uses [`CompiledSiteProjection::spinor`] and
 `SpinorProductInput::site_projection_identity` on the stored mesh shell.
-Large $P/\dot P$/LO-RLO uses $\Omega_{\kappa\mu}$; physical small
-$Q/\dot Q$/LO-RLO uses $\Omega_{-\kappa\mu}$. Pair density is the
+Large $P/\dot P$ and LO-RLO uses $\Omega_{\kappa\mu}$; physical small
+$Q/\dot Q$ and LO-RLO uses $\Omega_{-\kappa\mu}$. Pair density is the
 same-Pauli PP plus QQ sum; there is no PQ/QP and no $cQ$. Each reconstructed
 Bloch spinor is converted to cell-periodic form by one
-$\exp(-i k\cdot r)$, then the stored per-$k$ $+G_{\mathrm{wrap}}$ pair
+$\exp(-i k\cdot r)$, then the stored per $k$ $+G_{\mathrm{wrap}}$ pair
 phase. Global `TransferQ` Umklapp is not applied again. Interstitial
 evaluation uses the two Pauli plane-wave blocks
 
@@ -438,17 +438,17 @@ and labels cannot be reconstructed from `ScalarProductInput`.
 projection inside `ScalarCoulombResult`. Before the HDF5 file is created,
 runtime preflights the header cell/reciprocal/volume, ordered sites, radii,
 radial meshes, full-BZ $k$ with uniform weights $1/n_k$, exact $q$
-input/canonical/global Umklapp and per-$k$ wraps, the shared $q$-slice
+input/canonical/global Umklapp and per $k$ wraps, the shared $q$ slice
 contract, and the crate-private Coulomb export-context guard: the passed
 spec must match that sealed request/projection, each Coulomb $q$ record must
-bind `inputs[q]` and the accepted THC $q$/layout/auxiliary/vertices with a
-sampled-$\zeta$ interpolation-point operator on that auxiliary layout, and the
+bind `inputs[q]` and the accepted THC $q$, layout, auxiliary, and vertices with a
+sampled $\zeta$ interpolation-point operator on that auxiliary layout, and the
 THC strategy/engine plus Coulomb projection metadata must be serializable. A
 tampered header or result is rejected with no output file.
 
 The on-disk write uses `ScalarMldumpStreamV1`. Conversion scratch is bounded
-to one $k$ eigenvector/APW-matching record, one $q$ $\zeta$/vertex record, or
-one $q$ $V$/Gamma record. `/mpb` and `/exchange/{valence,core,total}` remain
+to one $k$ eigenvector/APW-matching record, one $q$ $\zeta$ / vertex record, or
+one $q$ $V$ / Gamma record. `/mpb` and `/exchange/{valence,core,total}` remain
 `absent_not_computed`. Occupations are not invented. The owned reader and
 MLDUMP v1 tree are unchanged.
 
@@ -458,21 +458,21 @@ MLDUMP v1 tree are unchanged.
 runtime-owned spinor writer. The caller supplies `MldumpHeaderV1` because
 species and labels cannot be reconstructed from `SpinorProductInput`.
 `build_spinor_coulomb` seals the effective request and interpolation
-projection inside `SpinorCoulombResult`. Sampled-$\zeta$ $V^q$ records are
+projection inside `SpinorCoulombResult`. Sampled $\zeta$ $V^q$ records are
 crate-private and exposed only through the read-only `records()` accessor.
 Before the HDF5 file is created, runtime preflights the header
 cell/reciprocal/volume, ordered sites, radii, radial meshes, full-BZ $k$
 with uniform weights $1/n_k$, exact $q$ input/canonical/global Umklapp and
-per-$k$ wraps, the shared spinor $q$-slice contract (canonical $q$ Cartesian
+per $k$ wraps, the shared spinor $q$ slice contract (canonical $q$ Cartesian
 equals $k_{\mathrm{frac}}[q]$ Cartesian at scale-aware $10^{-12}$, and
 $k_{\mathrm{frac}}[k]-q_{\mathrm{canonical}}=k_{\mathrm{frac}}[\mathrm{mapped}]+G_{\mathrm{wrap}}$
-using stored fractional indices; global `TransferQ` Umklapp is not a per-$k$
+using stored fractional indices; global `TransferQ` Umklapp is not a per $k$
 label), every frozen $k$ compiled basis and site augmentation
-(site count, geometry, plane-wave count, native signed-$\kappa$ then
+(site count, geometry, plane-wave count, native signed $\kappa$ then
 $2\mu$ channels, complete Pauli coefficient arrays), and the crate-private
 Coulomb export-context guard: the passed spec must match that sealed
 request/projection, each Coulomb $q$ record must bind `inputs[q]` and the
-accepted THC $q$/layout/auxiliary/vertices with a sampled-$\zeta$
+accepted THC $q$, layout, auxiliary, and vertices with a sampled $\zeta$
 interpolation-point operator on that auxiliary layout, and the THC
 strategy/engine plus Coulomb projection metadata must be serializable. A
 tampered header, compiled basis, wrap, or replacement operator is rejected
@@ -481,7 +481,7 @@ with no output file. There is no MPB argument; `/mpb` stays absent.
 The on-disk write uses `SpinorMldumpStreamV1` and the neutral `MldumpThc*` /
 `MldumpCoulomb*` DTOs. Conversion scratch is bounded to one $k$
 eigenvector/site-matching record, one site radial record, one $q$
-$\zeta$/vertex record, or one $q$ $V$/Gamma record. Occupations are not
+$\zeta$ / vertex record, or one $q$ $V$ / Gamma record. Occupations are not
 invented. The MLDUMP v1 tree is unchanged.
 
 ## M-L6d1 CoQui-native scalar Cholesky adapter
