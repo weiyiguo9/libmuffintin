@@ -954,7 +954,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "libmuffintin-auxiliary-ir"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libmuffintin-basis",
  "libmuffintin-core",
@@ -965,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-basis"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libmuffintin-core",
  "libmuffintin-envelope",
@@ -976,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "num-complex",
  "proptest",
@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-coulomb"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "faer 0.22.6",
  "libmuffintin-auxiliary-ir",
@@ -1000,7 +1000,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-dft"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libm",
  "libmuffintin-basis",
@@ -1019,7 +1019,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-envelope"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libmuffintin-core",
  "num-complex",
@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-grid"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libmuffintin-core",
  "rstsr",
@@ -1037,7 +1037,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-io"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "hdf5-metno",
  "libmuffintin-core",
@@ -1049,7 +1049,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-lapw"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libmuffintin-basis",
  "libmuffintin-core",
@@ -1064,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-mpb"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libmuffintin-auxiliary-ir",
  "libmuffintin-basis",
@@ -1078,7 +1078,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-operators"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "faer 0.22.6",
  "libmuffintin-basis",
@@ -1092,7 +1092,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-radial"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libmuffintin-core",
  "num-complex",
@@ -1101,7 +1101,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-recipes"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libmuffintin-basis",
  "libmuffintin-core",
@@ -1111,7 +1111,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-runtime"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libmuffintin-auxiliary-ir",
  "libmuffintin-core",
@@ -1135,7 +1135,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-sphere"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libmuffintin-core",
  "libmuffintin-radial",
@@ -1145,7 +1145,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-tensor"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "num-complex",
  "rstsr",
@@ -1158,7 +1158,7 @@ dependencies = [
 
 [[package]]
 name = "libmuffintin-thc"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "faer 0.22.6",
  "libmuffintin-auxiliary-ir",
