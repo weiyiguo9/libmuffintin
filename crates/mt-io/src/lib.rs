@@ -3,7 +3,7 @@
 //! [`SnapshotFile`] dispatches legacy scalar/collinear [`SnapshotV1`] and
 //! noncollinear Pauli-field [`SnapshotV2`] files. [`GridArtifactV1`] is
 //! deliberately a separate format for materialized integration grids and is
-//! never embedded in a snapshot. [`MldumpV1`] is the libmuffintin-owned
+//! never embedded in a snapshot. [`MldumpFileV1`] is the libmuffintin-owned
 //! MLDUMP v1 HDF5 schema; it is not CoQui-native or SPEX-native.
 
 mod error;
@@ -19,11 +19,25 @@ pub use grid::{
     grid_artifact_to_toml,
 };
 pub use mldump::{
-    MLDUMP_SCHEMA_NAME, MLDUMP_SCHEMA_VERSION, MLDUMP_STATUS_ABSENT_NOT_COMPUTED,
-    MLDUMP_STATUS_PRESENT, MLDUMP_UNIT_ENERGY, MLDUMP_UNIT_G_UMKLAPP, MLDUMP_UNIT_INVERSE_LENGTH,
-    MLDUMP_UNIT_K_Q, MLDUMP_UNIT_LENGTH, MLDUMP_UNIT_VOLUME, MldumpGeometryV1, MldumpKMinusQV1,
-    MldumpKPointV1, MldumpMeshV1, MldumpMetaV1, MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1,
-    MldumpStatus, MldumpStatusesV1, MldumpV1, read_mldump_v1, write_mldump_v1,
+    ComplexF64V1, MLDUMP_CORE_EMPTY_NOT_FITTED, MLDUMP_INTERSTITIAL_SENTINEL,
+    MLDUMP_OCCUPATIONS_NOT_EXPORTED, MLDUMP_PAIR_ORDER_K_LEFT_RIGHT,
+    MLDUMP_PARENT_REGION_INTERSTITIAL, MLDUMP_PARENT_REGION_MUFFIN_TIN, MLDUMP_RADIAL_KIND_CORE,
+    MLDUMP_RADIAL_KIND_VALENCE, MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON, MLDUMP_SCHEMA_NAME,
+    MLDUMP_SCHEMA_VERSION, MLDUMP_STATUS_ABSENT_NOT_COMPUTED, MLDUMP_STATUS_PRESENT,
+    MLDUMP_THC_ENGINE_PIVOTED_CHOLESKY, MLDUMP_THC_ENGINE_QRCP, MLDUMP_THC_STRATEGY_ALL_QL2,
+    MLDUMP_UNIT_ENERGY, MLDUMP_UNIT_G_UMKLAPP, MLDUMP_UNIT_INVERSE_LENGTH, MLDUMP_UNIT_K_Q,
+    MLDUMP_UNIT_LENGTH, MLDUMP_UNIT_VOLUME, MldumpExchangeStatusesV1, MldumpFileV1,
+    MldumpGeometryV1, MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1,
+    MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1, MldumpStatus, MldumpWriterV1,
+    ScalarApwSiteMatchRefV1, ScalarApwSiteMatchV1, ScalarCoulombGammaRefV1, ScalarCoulombGammaV1,
+    ScalarCoulombQRecordRefV1, ScalarCoulombQRecordV1, ScalarCoulombRefV1, ScalarCoulombV1,
+    ScalarLocalOrbitalRowV1, ScalarLocalOrbitalTableRefV1, ScalarMldumpV1, ScalarOrbitalKRecordV1,
+    ScalarOrbitalKRefV1, ScalarOrbitalSpinRefV1, ScalarOrbitalSpinV1, ScalarOrbitalsRefV1,
+    ScalarOrbitalsV1, ScalarProductQRecordRefV1, ScalarProductQRecordV1, ScalarProductSiteRefV1,
+    ScalarProductSiteV1, ScalarProductsRefV1, ScalarProductsV1, ScalarThcParentGridRefV1,
+    ScalarThcParentGridV1, ScalarThcQRecordRefV1, ScalarThcQRecordV1, ScalarThcRefV1,
+    ScalarThcResidualV1, ScalarThcSelectionRefV1, ScalarThcSelectionV1, ScalarThcV1,
+    ScalarThcVertexTableRefV1, ScalarThcVertexV1, read_mldump_v1,
 };
 pub use snapshot::{
     AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, ExponentialMeshSpecV1,

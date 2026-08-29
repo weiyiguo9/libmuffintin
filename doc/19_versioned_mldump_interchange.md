@@ -4,9 +4,9 @@ This note freezes MLDUMP v1, a libmuffintin-owned, inspectable HDF5 schema
 for later runtime materialization. It is not CoQui-native and not
 SPEX-native. `libmuffintin-io` owns the typed DTOs, schema constants, and
 the reader/writer. Runtime, mixed-product, THC, and Coulomb types stay out
-of `libmuffintin-io`. M-L6b and later stages write live objects into this
-stable boundary; this stage serializes only the header, geometry, mesh, and
-group-status table.
+of `libmuffintin-io`. This stage serializes the accepted header plus an
+optional representation-neutral scalar payload written from borrowed
+slices. Runtime materialization of live objects is a later stage.
 
 ## 1. Identity and ownership
 
@@ -16,10 +16,12 @@ Every file carries root attributes
 - `schema_version = 1`
 
 Indices are zero-based. Floating-point payloads are IEEE-754 `f64`; integer
-indices/counts use `i64`, and reciprocal labels use `i32`. Complex arrays,
-when a later stage writes them, use a final length-2 axis with index $0$
-the real part and index $1$ the imaginary part. That convention is recorded
-on `/meta` in v1 even though this stage writes no complex dataset.
+indices/counts use `i64`, and reciprocal labels use `i32`. Complex arrays use a final length-2 axis with index $0$
+the real part and index $1$ the imaginary part. Header-only files record
+that convention on `/meta` without writing a complex dataset. Scalar
+payload files store eigenvectors, matching coefficients, $\zeta$,
+semantic vertex coefficients, and the finite Coulomb body as `f64`
+with a final `re_im` axis.
 
 The crate does not accept serde/TOML blobs renamed `.h5`. The file must be a
 real HDF5 container whose groups, datasets, and attributes are independently
@@ -97,16 +99,159 @@ Root attributes: `schema_name`, `schema_version`.
   k_minus_q_k_index           i64 [n_q,n_k] axes=["q","k"]
   k_minus_q_mapped_index      i64 [n_q,n_k] axes=["q","k"]
   k_minus_q_g_wrap            i32 [n_q,n_k,3] axes=["q","k","reciprocal_axis"]
-/orbitals                     status=absent_not_computed
-/products                     status=absent_not_computed
-/mpb                          status=absent_not_computed
-/thc                          status=absent_not_computed
-/coulomb                      status=absent_not_computed
-/exchange                     status=present   (reserved table; no numeric datasets)
+/orbitals                     status=absent_not_computed | present
+/products                     status=absent_not_computed | present
+/mpb                          status=absent_not_computed   (no public MPB DTO in this stage)
+/thc                          status=absent_not_computed | present
+/coulomb                      status=absent_not_computed | present
+/exchange                     status=present   (file-level table; no numeric datasets)
   /valence                    status=absent_not_computed
   /core                       status=absent_not_computed
   /total                      status=absent_not_computed
 ```
+
+Header-only files keep every scalar group `absent_not_computed` with no
+child member. A populated scalar file writes all four of
+`/orbitals`, `/products`, `/thc`, and `/coulomb` as `present`. Mixed
+presence is a typed validation error. `/mpb` remains absent in both
+cases. Ragged records use only zero-padded integer names
+`spin_%06d`, `k_%06d`, `site_%06d`, `q_%06d`.
+
+When `/orbitals` is `present`:
+
+```text
+/orbitals                     status=present
+  @representation             "scalar_koelling_harmon"
+  @spin_count                 i64 2
+  @band_window_start          i64 0
+  @band_window_count          i64
+  @occupations_status         "not_exported_not_available"
+  /spin_%06d
+    @spin
+    /k_%06d
+      @spin @k @available_bands @basis_dimension
+      eigenvalues             f64 [band_window_count] axes=["band"]
+      eigenvectors            f64 [basis_row,band_window_count,re_im]
+                              axes=["basis_row","band","re_im"]
+      /basis
+        plane_wave_g          i32 [plane_wave,3] axes=["plane_wave","reciprocal_axis"]
+        plane_wave_k_cartesian f64 [plane_wave,3] axes=["plane_wave","cartesian"]
+        plane_wave_q_cartesian f64 [plane_wave,3] axes=["plane_wave","cartesian"]
+        local_orbital_*       i64 [local_orbital] axes=["local_orbital"]
+                              (row_index, site, l, m, ordinal, radial_n)
+        /site_%06d
+          lm_l, lm_m          i32 [lm] axes=["lm"]
+          matching_coefficients f64 [plane_wave,lm,radial_component,re_im]
+            axes=["plane_wave","lm","radial_component","re_im"]
+            @radial_component_labels ["u","udot"]
+```
+
+`available_bands` is per-$k$ metadata and may exceed the common exported
+window `band_window_count`. Stored eigenvalues and eigenvector columns
+use `band_window_count`, not `available_bands`. Cartesian $k$ and
+$q=k+G$ are stored explicitly so compiled plane-wave rows can be
+reconstructed; norms are not a substitute. Local-orbital tables identify
+every non-PW basis row. Per-$k$ PW and basis counts may differ.
+
+When `/products` is `present`, static partition/radials are stored once
+and positional $q$ records bind by mesh $q$ index:
+
+```text
+/products                     status=present
+  @n_k @n_orb
+  @pair_order                 "k,left_at_k_minus_q,right_at_k"
+  @core_status                "empty_not_fitted_diagnostic_only"
+  @provenance_recipe @provenance_reference
+  @n_site @interstitial_volume_bohr3
+  site_indices                i64 [n_site] axes=["site"]
+  site_positions              f64 [n_site,3] axes=["site","cartesian"]
+  site_radii                  f64 [n_site] axes=["site"]
+  /site_%06d
+    @site @mesh_first_bohr @mesh_log_increment @mesh_point_count
+    @small_status
+    kind,l,n,spin             i64 [radial] axes=["radial"]
+    large                     f64 [radial,n_r] axes=["radial","radial_sample"]
+    small                     optional f64 [radial,n_r]
+  /q_%06d
+    @q_index @provenance
+    transfer_cartesian        f64 [3] axes=["cartesian"]
+    global_transfer           i32 [3] axes=["reciprocal_axis"]
+    raw_relative_g            i32 [n_raw,3] axes=["raw_g","reciprocal_axis"]
+```
+
+Site indices, positions, radii, and mesh identity bind to `/geometry`.
+They are not a second geometry. `/mesh` remains the owner of input and
+canonical $q$ and of the per-$k$ wrap map. Each product $q$ record binds
+by positional $q$ index: `global_transfer` equals mesh
+`q_global_umklapp`, and `transfer_cartesian` equals the mesh canonical
+$q$ converted with the header reciprocal basis (already including
+$2\pi$) at the accepted $10^{-12}$ scale-aware tolerance. The input $q$
+is not reused and the global label is not inserted a second time.
+Scalar $U$/$\dot U$/LO identities stay $l$-based. Cores are empty and
+never enter fitting. Radial ID tables (`kind`,`l`,`n`,`spin`) have equal
+length, unique $(kind,l,n,spin)$ within a site, valence kind only, and
+spin $0$ or $1$.
+
+When `/thc` is `present`, the parent grid is stored once:
+
+```text
+/thc                          status=present
+  @strategy                   "AllQL2"
+  @engine                     "full_column_pivoted_qr" | "full_pivoted_cholesky"
+  @requested_rank @effective_rank @n_candidates
+  pivots                      i64 [rank_order] axes=["rank_order"]
+  points                      i64 [aux] axes=["aux"]
+  /parent_grid
+    coordinates               f64 [parent_point,3] axes=["parent_point","cartesian"]
+    weights                   f64 [parent_point] axes=["parent_point"]
+    region_kind               i64 [parent_point]  0 muffin-tin, 1 interstitial
+    site_index, radial_index  i64 [parent_point]  interstitial sentinel $-1$
+  /q_%06d
+    @q_index @aux_dimension @layout_provenance
+    zeta                      f64 [parent_point,aux,re_im]
+                              axes=["parent_point","aux","re_im"]
+    fit_residual_l2_all       f64 [2] axes=["metric"]
+    vertex_column             i64 [vertex] axes=["vertex"]
+    vertex_k_left_right       i64 [vertex,3] axes=["vertex","k_left_right"]
+    vertex_coefficients       f64 [vertex,aux,re_im] axes=["vertex","aux","re_im"]
+```
+
+`pivots` is QRCP/Cholesky ranking. `points` is the same selected
+parent-index set in canonical auxiliary/layout order. The two arrays are
+distinct fields and must not be compared as vectors; both are unique, in
+parent bounds, and every selected index references a strictly positive
+parent weight. Zero parent-grid weights remain allowed as $\zeta$ rows but
+cannot be selected. Parent weights are finite and nonnegative. Region
+kind is muffin-tin or interstitial only, with interstitial sentinel
+$-1$. The parent grid is not duplicated under $q$ groups. Each semantic
+vertex `column` decodes as
+$k\cdot n_{\mathrm{orb}}^2+\mathrm{left}\cdot n_{\mathrm{orb}}+\mathrm{right}$
+in pair order `k,left_at_k_minus_q,right_at_k` and must equal the stored
+`k_left_right` triple. Overflow or an out-of-range column is a
+validation error.
+
+When `/coulomb` is `present`:
+
+```text
+/coulomb                      status=present
+  @lexp @interpolation_l_max @interpolation_pw_cutoff
+  /q_%06d
+    @q_index @aux_dimension @layout_provenance
+    body                      f64 [aux_row,aux_col,re_im]
+                              axes=["aux_row","aux_col","re_im"]
+    /gamma                    status=present | absent_not_computed
+      @spherical_average_subtracted   i64 0 or 1
+      @head_prefactor         f64
+      constant_coefficients   f64 [aux,re_im] axes=["aux","re_im"]
+```
+
+The stored matrix is the finite Hermitian body. The singular Gamma head
+is never inserted into $V$. A present `/gamma` stores only the current
+finite GammaHead metadata and is allowed only when the header canonical
+$q$ is the zero vector at the same $10^{-12}$ tolerance. An absent
+`/gamma` has no members, including at $q=0$. Per-$q$ auxiliary dimension
+and `layout_provenance` must equal the THC record at the same $q$.
+$\zeta$, vertices, and the parent grid are not duplicated here.
 
 Every multidimensional numeric dataset has an `axes` attribute. Row-major
 storage matches HDF5 C order: for `direct_basis`, row $i$ is primitive
@@ -132,35 +277,63 @@ Radial meshes record site binding, first radius $r_0$, logarithmic
 increment $h$ in $r_i=r_0 e^{i h}$, and point count. They do not embed
 runtime mesh types.
 
-## 5. Complex encoding for later stages
+## 5. Complex encoding
 
-A later complex array with logical shape $(d_0,\ldots,d_N)$ is stored as
+A complex array with logical shape $(d_0,\ldots,d_N)$ is stored as
 `f64` with shape $(d_0,\ldots,d_N,2)$ and a final axis named `re_im`.
-Index $0$ is $\mathrm{Re}$ and index $1$ is $\mathrm{Im}$. v1 header files
-contain no such dataset. Pair vertices and the finite Coulomb body are
-permitted by the schema later; the Gamma singular head is never inserted
-into $V$. This stage serializes neither quantity.
+Index $0$ is $\mathrm{Re}$ and index $1$ is $\mathrm{Im}$. Header-only
+files contain no such dataset. Scalar payload files store eigenvectors,
+APW matching coefficients, $\zeta$, semantic vertex coefficients, and
+the finite Coulomb body in that encoding. The Gamma singular head is
+never inserted into $V$.
 
 ## 6. Public API
 
-`write_mldump_v1(path, &MldumpV1)` and `read_mldump_v1(path)` are the
-only I/O entry points. `MldumpV1` holds producer metadata, geometry, the
-$k$/$q$ mesh, and reserved-group statuses. The M-L6a writer and reader
-require orbitals, products, MPB, THC, Coulomb, and all three exchange
-seams to be `absent_not_computed`. An absent group may not carry any
-child member (dataset or subgroup); `/exchange` itself stays `present`
-because it owns the three status children. Validation is the trust
-boundary: schema name/version, exact numeric HDF5 dtypes, finite numbers,
-nonnegative full-BZ weights, positive volume/radii/mesh first radius/log
-increment/counts,
+`MldumpWriterV1::create(path, &MldumpHeaderV1)` writes the accepted
+header and reserved absent groups. Section methods
+`write_scalar_orbitals`, `write_scalar_products`, `write_scalar_thc`,
+and `write_scalar_coulomb` borrow descriptors and slices and write
+blocks directly; they do not clone eigenvector, $\zeta$, or operator
+arrays. Each section may be written at most once. Local payload
+validators run before an absent group is replaced and again after the
+owned reader materializes a section. `finish` accepts either no scalar
+sections (`scalar=None` on read) or all four required scalar sections.
+When all four are written, `finish` runs one shared cross-section
+alignment validator on retained summaries (counts, $q$ Cartesian/global
+labels, vertex integer columns/triples, and provenance strings) without
+cloning or rereading eigenvector, $\zeta$, or $V$ arrays. Mixed partial
+sections and cross-section mismatches are typed validation errors. A
+mismatch may be reported after section data is already on disk.
+`/mpb` stays `absent_not_computed`. `/exchange` stays present with three
+absent children and no `total_relation`. A failed write may leave an
+incomplete file.
+
+`read_mldump_v1(path)` returns `MldumpFileV1 { header, scalar, exchange }`.
+All four scalar groups absent yields `scalar=None`. All four present and
+internally aligned yields `Some(ScalarMldumpV1)`. Mixed presence, a
+cross-section mismatch, or a local payload violation is rejected and
+never returns `ScalarMldumpV1`. Exchange valence/core/total remain
+absent in this stage.
+Borrowed writer DTOs are public concrete structs with slice references
+and explicit shapes. Owned reader DTOs use `Vec`/`String` records with
+declared dimensions. There is no public `ScalarMpb*` type or writer
+method.
+
+Validation is the trust boundary: schema name/version, exact numeric
+HDF5 dtypes including attributes, finite numbers, nonnegative full-BZ
+weights, positive volume/radii/mesh first radius/log increment/counts,
 canonical $q$ in $[0,1)$, $q_{\mathrm{in}}=q_{\mathrm{canonical}}+G_{\mathrm{transfer}}$,
-ordered $k-q$ wrap identities, $3$-vector and $k$-map shapes, required
-groups/datasets, and status-versus-payload consistency.
+ordered $k-q$ wrap identities, $k+G$ Cartesian reconstruction, product
+$q$ Cartesian/global binding to mesh canonical $q$, semantic vertex
+column decode, THC/Coulomb auxiliary dimension and provenance identity,
+Gamma metadata only at canonical $q=0$, Hermitian finite $V$, positive
+selected parent-grid weights, auxiliary/$\zeta$/vertex layout alignment,
+required groups/datasets, and status-versus-payload consistency. These
+payload validators apply on write and on read.
 
 ## 7. Exclusions
 
 MLDUMP v1 does not serialize CoQui or SPEX native layouts, runtime
-`SpinorProductInput` / `ScalarProductInput` objects, MPB or THC results,
-Coulomb operators, PairVertex coefficients, occupations, core-valence
-products, Gamma singular heads, GW/RPA/self-energy, MPI, or material
-acceptance. It does not complete M-L.
+`SpinorProductInput` / `ScalarProductInput` objects, MPB payloads,
+occupations, core-valence products, the singular Gamma head, GW/RPA/self-energy,
+MPI, or material acceptance. It does not complete M-L.

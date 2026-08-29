@@ -8,17 +8,18 @@ use hdf5_metno::types::VarLenUnicode;
 use muffintin_io::{
     IoError, MLDUMP_SCHEMA_NAME, MLDUMP_SCHEMA_VERSION, MLDUMP_STATUS_ABSENT_NOT_COMPUTED,
     MLDUMP_STATUS_PRESENT, MLDUMP_UNIT_ENERGY, MLDUMP_UNIT_G_UMKLAPP, MLDUMP_UNIT_INVERSE_LENGTH,
-    MLDUMP_UNIT_K_Q, MLDUMP_UNIT_LENGTH, MLDUMP_UNIT_VOLUME, MldumpGeometryV1, MldumpKMinusQV1,
-    MldumpKPointV1, MldumpMeshV1, MldumpMetaV1, MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1,
-    MldumpV1, ValidationError, read_mldump_v1, write_mldump_v1,
+    MLDUMP_UNIT_K_Q, MLDUMP_UNIT_LENGTH, MLDUMP_UNIT_VOLUME, MldumpExchangeStatusesV1,
+    MldumpGeometryV1, MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1,
+    MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1, MldumpWriterV1, ValidationError,
+    read_mldump_v1,
 };
 
 fn fixture_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(name)
 }
 
-fn dump() -> MldumpV1 {
-    MldumpV1::new(
+fn dump() -> MldumpHeaderV1 {
+    MldumpHeaderV1::new(
         MldumpMetaV1 {
             producer_name: "libmuffintin-io-test".to_owned(),
             producer_version: "0.1.0".to_owned(),
@@ -125,6 +126,13 @@ fn group_status(file: &File, group: &str) -> String {
     value.as_str().to_owned()
 }
 
+fn write_header(path: &std::path::Path, header: &MldumpHeaderV1) {
+    MldumpWriterV1::create(path, header)
+        .unwrap()
+        .finish()
+        .unwrap();
+}
+
 fn axes(file: &File, dataset: &str) -> Vec<String> {
     file.dataset(dataset)
         .unwrap()
@@ -141,9 +149,14 @@ fn axes(file: &File, dataset: &str) -> Vec<String> {
 fn mldump_v1_roundtrip_has_inspectable_hdf5_structure() {
     let path = fixture_path("libmuffintin-mldump-v1-fixture.h5");
     let original = dump();
-    write_mldump_v1(&path, &original).unwrap();
+    write_header(&path, &original);
     let read = read_mldump_v1(&path).unwrap();
-    assert_eq!(read, original);
+    assert_eq!(read.header, original);
+    assert!(read.scalar.is_none());
+    assert_eq!(
+        read.exchange,
+        MldumpExchangeStatusesV1::absent_not_computed()
+    );
 
     let file = File::open(&path).unwrap();
     assert_eq!(attr_string(&file, "schema_name"), MLDUMP_SCHEMA_NAME);
@@ -317,7 +330,7 @@ fn mldump_v1_roundtrip_has_inspectable_hdf5_structure() {
 #[test]
 fn mldump_v1_rejects_unsupported_schema_version() {
     let path = fixture_path("libmuffintin-mldump-v1-bad-version.h5");
-    write_mldump_v1(&path, &dump()).unwrap();
+    write_header(&path, &dump());
     {
         let file = File::open_rw(&path).unwrap();
         file.delete_attr("schema_version").unwrap();
@@ -341,7 +354,7 @@ fn mldump_v1_rejects_unsupported_schema_version() {
 fn mldump_v1_rejects_inconsistent_q_and_k_maps() {
     struct Case {
         label: &'static str,
-        mutate: fn(&mut MldumpV1),
+        mutate: fn(&mut MldumpHeaderV1),
         path: &'static str,
     }
     let cases = [
@@ -371,7 +384,8 @@ fn mldump_v1_rejects_inconsistent_q_and_k_maps() {
             other => panic!("{}: expected InvalidValue, got {other:?}", case.label),
         }
         assert!(
-            write_mldump_v1(fixture_path("libmuffintin-mldump-v1-invalid-map.h5"), &dump).is_err(),
+            MldumpWriterV1::create(fixture_path("libmuffintin-mldump-v1-invalid-map.h5"), &dump)
+                .is_err(),
             "{}",
             case.label
         );
@@ -433,7 +447,7 @@ fn mldump_v1_rejects_convertible_but_wrong_numeric_dtype() {
             "libmuffintin-mldump-v1-wrong-dtype-{}.h5",
             case.label
         ));
-        write_mldump_v1(&path, &dump()).unwrap();
+        write_header(&path, &dump());
         {
             let file = File::open_rw(&path).unwrap();
             (case.rewrite)(&file);
@@ -451,7 +465,7 @@ fn mldump_v1_rejects_convertible_but_wrong_numeric_dtype() {
 #[test]
 fn mldump_v1_rejects_nested_group_under_absent_exchange_child() {
     let path = fixture_path("libmuffintin-mldump-v1-absent-child-payload.h5");
-    write_mldump_v1(&path, &dump()).unwrap();
+    write_header(&path, &dump());
     {
         let file = File::open_rw(&path).unwrap();
         file.group("exchange")
