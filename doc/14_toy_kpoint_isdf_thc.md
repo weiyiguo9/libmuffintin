@@ -1,6 +1,6 @@
 # 14. Toy k-point ISDF/THC selectors
 
-This note records the M-I public contract. It does not add a production
+This note records the toy k-point THC public contract. It does not add a production
 Coulomb assembler, real-material SCF/GW, MPI, or an umbrella crate. Product
 kinematics remain [13](13_product_space_and_lapw_mpb.md). Grids remain
 [07](07_grids_sphere_algebra_and_snapshot_formats.md).
@@ -10,7 +10,7 @@ kinematics remain [13](13_product_space_and_lapw_mpb.md). Grids remain
 `libmuffintin-thc` compresses orbital-pair densities on a **finite
 deterministic periodic toy basis**. Selection is k-point ISDF: one
 interpolation-point set shared across canonical $q$, with per $q$
-interpolation vectors $\zeta^q$. The crate consumes the M-H product IR
+interpolation vectors $\zeta^q$. The crate consumes the product-space IR product IR
 (`ProductPartition`, `TransferQ`, `OrbitalPair`, `PairVertex`) and emits
 `CompiledAuxiliaryBasis` interpolation-point payloads.
 
@@ -112,7 +112,7 @@ production Coulomb assembler. Production $V^q$ is
 `SampledPointSupport` labels, per-site radial meshes, and the exact
 `AuxiliaryLayout`). Interpolation *nodes* are not the
 production $\zeta$ functions; a weighted point-charge Gram is only the
-explicit toy Ewald oracle. M-J does not claim elementwise
+explicit toy Ewald oracle. Weinert Coulomb does not claim elementwise
 $V^{\mathrm{MPB}}=V^{\mathrm{THC}}$ when the spans differ.
 
 Every injected Gram used for a Coulomb residual is checked for q-index,
@@ -191,5 +191,5 @@ valence-only column groups when the fixture names a core orbital.
 
 ## 8. Exclusions
 
-No M-J Weinert assembler, no real-material LAPW/SCF/GW API, no MPI/CTF, no
+No Weinert assembler, no real-material LAPW/SCF/GW API, no MPI/CTF, no
 CI changes, no `scratch/` tracking, no umbrella crate, no MSRV raise.

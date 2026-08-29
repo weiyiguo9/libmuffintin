@@ -1,6 +1,6 @@
 # 16. Relativistic spinor substrate, SRA-LAPW, and confined HDLO
 
-This note defines the M-Ka contract that activates a parallel
+This note defines the Dirac valence contract that activates a parallel
 four-component valence route.  It extends the Dirac conventions in
 [06](06_dirac_4c_core_and_valence.md) and adapts them to the value/slope LAPW
 machinery in [08](08_lapw_matching_and_overlap.md).  It does not change the
@@ -115,7 +115,7 @@ inhomogeneous system
 \qquad \dot Q=\frac{\dot q}{c}.
 ```
 
-Thus the M-Ka `solve_valence_dirac` contract returns a normalized physical
+Thus the `solve_valence_dirac` contract returns a normalized physical
 solution and its analytic energy derivatives; it does not estimate them by
 finite differences.  The regular-origin phase is fixed by choosing the
 leading nonzero coefficient of $P$ positive.  After applying the same
@@ -141,7 +141,7 @@ The resulting gauge obeys
 ```
 
 The first derivative is not separately normalized.  Its norm is retained as a
-basis metric.  M-Ka also requires the analytic second energy derivative.  At
+basis metric.  The Dirac valence path also requires the analytic second energy derivative.  At
 fixed $V$, differentiating the inhomogeneous system once more gives
 
 ```math
@@ -194,7 +194,7 @@ lossily converted at the radial-solver boundary.
 The current valence solver produces the default real trace. The scalar type
 parameter permits a later complex-energy scattering solver to return
 `DiracBoundaryTrace<Complex64>` without changing the channel or boundary
-shape; M-Ka itself does not implement that solver.
+shape; The Dirac valence path itself does not implement that solver.
 
 SRA-LAPW is an explicit downstream adapter.  It discards the small-component
 boundary data for envelope matching and maps the large component to the
@@ -389,7 +389,7 @@ not the canonical radial representation.
 This boundary preserves the information that later fully relativistic
 KKR/LMTO consumers need to construct convention-tagged regular/irregular
 Wronskians, complex-energy single-site $t_{\Lambda\Lambda'}(z)$, screened
-potential functions, and kink or slope matrices.  M-Ka does not implement
+potential functions, and kink or slope matrices.  The Dirac valence path does not implement
 those consumers, complex-energy radial integration, structure constants,
 screening, or Green functions.  A future complex-energy generalization must
 extend the representation rather than reconstructing $Q$ and $Q'$ from the
@@ -397,19 +397,19 @@ SRA pair $(U,U_r)$.
 
 ## 7. Explicit non-goals and failure boundaries
 
-M-Ka is SRA-only and does not provide FRA-LAPW or relativistic interstitial
+The Dirac valence path is SRA-only and does not provide FRA-LAPW or relativistic interstitial
 plane waves; radial magnetic fields or general Dirac equations coupled in
 $\kappa$; spinor product, MPB, or THC identities; density and potential
 synthesis; occupations, XC, mixing, or SCF.  It does not add
 `kappa` to scalar `ProductRadialId`; the relativistic orbital/product bridge
-belongs to M-L. Scattering and magnetic-radial request APIs are likewise not
+belongs to the product, mixed-product, THC, and Coulomb notes. Scattering and magnetic-radial request APIs are likewise not
 part of this milestone; absence of those modes must not be represented by a
 fallback to SRA, Koelling–Harmon, or scalar data.
 
 ### Far-future FRA research option
 
 FRA is retained only as a far-future, non-production research option for
-methodological completeness.  It is outside v0.2, outside the current M-Ka
+methodological completeness.  It is outside v0.2, outside the current the Dirac valence contract
 implementation and acceptance boundary, and does not justify an FRA request
 API or negative-test surface now.  Any later FRA investigation must first
 define relativistic interstitial basis functions, four-component matching,
@@ -418,7 +418,7 @@ must not widen or silently alter the present SRA contract.
 
 ## 8. Acceptance boundary
 
-M-Ka is accepted only when all of the following are demonstrated:
+the Dirac valence contract is accepted only when all of the following are demonstrated:
 
 1. Complete deterministic $(\kappa,2\mu)$ enumeration, rejection of invalid
    labels, normalized spinor harmonics, and a fixed Clebsch–Gordan phase.
@@ -448,9 +448,9 @@ M-Ka is accepted only when all of the following are demonstrated:
 
 The second-derivative/HDLO gate and the item 9 repository-local large $c$
 fixture are implemented and exercised by focused regression tests.  This does
-not claim completion of the full M-Ka acceptance list or cross-code validation
+not claim completion of the full Dirac-valence acceptance list or cross-code validation
 against a FlapwMBPT/source-equivalent band fixture. FRA is deliberately excluded
-from both the implementation and the executable acceptance gates; M-Ka exposes
+from both the implementation and the executable acceptance gates; the Dirac valence contract exposes
 only SRA rather than a relativistic-mode request enum.
 
 An independent frozen FlapwMBPT-SRA or source-equivalent fixture must still

@@ -222,7 +222,7 @@ The forms coincide on the diagonal but are not interchangeable off diagonal.
 The SPEX-named enum variant records the production reference; the gradient
 variant records the formula written in the v0.1 plan. Surface-discontinuity
 handling remains private to the LAPW assembly strategy as required by A7.
-The `libmuffintin-lapw` M-E assembler explicitly selects the SPEX symmetric-Laplacian
+The `libmuffintin-lapw` Hamiltonian assembler explicitly selects the SPEX symmetric-Laplacian
 form and combines it only with the matching SPEX radial Hamiltonian identity.
 
 ## LAPW radial Hamiltonian and overlap filtering

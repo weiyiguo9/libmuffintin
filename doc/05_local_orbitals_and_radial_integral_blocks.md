@@ -247,8 +247,7 @@ diagonal $G=G'$ elements cannot distinguish the two.
 
 ## Source anchors
 
-The SPEX anchors below were inspected in the local tree
-`<spex-source>`.
+The SPEX anchors below were inspected in the SPEX 06.00pre36 source tree.
 
 - SPEX APW boundary matrix and derivative norm: `spex06.00pre36/src/hamilton.f:77-125`.
 - SPEX LO boundary construction: `spex06.00pre36/src/hamilton.f:314-392`.

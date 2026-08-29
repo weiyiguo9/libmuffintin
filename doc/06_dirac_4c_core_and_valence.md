@@ -204,12 +204,12 @@ $j=l\pm1/2$ splitting and no spin-angular entanglement.  It is therefore a
 functional two-component scalar-relativistic valence formulation.  A true 4c
 valence implementation needs homogeneous solutions resolved by $\kappa$,
 energy derivatives, relativistic envelope expansions, typed boundary
-adapters, and compatible Hamiltonian/overlap assembly. M-Ka now supplies the
+adapters, and compatible Hamiltonian/overlap assembly. The Dirac valence path now supplies the
 central-potential real-energy solution and makes its analytic first and second
 energy derivatives part of the active contract.  The fixed normalized gauge
 requires
 $\langle R_\kappa|\dot R_\kappa\rangle=0$ and
-$\langle R_\kappa|\ddot R_\kappa\rangle=-\langle\dot R_\kappa|\dot R_\kappa\rangle$.  M-Ka preserves the physical
+$\langle R_\kappa|\ddot R_\kappa\rangle=-\langle\dot R_\kappa|\dot R_\kappa\rangle$.  The Dirac valence path preserves the physical
 $(P,Q,P',Q')$ trace and exposes SRA as a separate lossy large-component
 adapter, including the confined HDLO specified in [16]. It does not silently
 fall back to Koelling–Harmon. Complex-energy scattering and magnetic radial
@@ -280,10 +280,7 @@ Rydberg factor belongs in the library equations or stored canonical fields.
 
 ## Source anchors
 
-These anchors were inspected in the local source trees
-`<spex-source>`,
-`<fleur-source>`, and
-`<flapwmbpt-source>`.
+These anchors were inspected in the SPEX 06.00pre36 source tree, the FLEUR source tree, and the FlapwMBPT source tree.
 
 - SPEX $\kappa$ convention and full Dirac equations: `spex06.00pre36/src/dirac.f:638-657,678-1007`.
 - SPEX outward/inward core matching: `spex06.00pre36/src/dirac.f:1565-1677`.

@@ -1,6 +1,6 @@
 # 09. LAPW Hamiltonian, filtered eigensolver, and reference reports
 
-This note fixes the M-E implementation against SPEX
+This note fixes the Hamiltonian eigensolver implementation against SPEX
 `src/hamilton.f:396-488,938-980` and `src/wrapper.f:2433-2474`.  It covers the
 Hamiltonian and numerical comparison machinery.  It does not claim a Cu
 cross-code result unless a complete external reference fixture is supplied.
@@ -11,7 +11,7 @@ the `libmuffintin-lapw` facade. See
 
 ## 1. One kinetic convention
 
-M-E uses the SPEX symmetric-Laplacian convention consistently:
+The Hamiltonian eigensolver uses the SPEX symmetric-Laplacian convention consistently:
 
 ```math
  H^I_{ij}=\frac{|\mathbf q_i|^2+|\mathbf q_j|^2}{4}
@@ -127,7 +127,7 @@ potential and basis parameters.  Therefore the real Cu $\le 1\,\mathrm{meV}$ gat
 pending external fixture data; synthetic tests must not be presented as that
 cross-code result.
 
-## 5. M-E focused acceptance
+## 5. Focused acceptance
 
 The in-repository tests require:
 

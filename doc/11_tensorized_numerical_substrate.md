@@ -1,6 +1,6 @@
 # 11. Tensorized numerical substrate
 
-This note records the M-Fb local tensor contract. It does not add a mixed
+This note records the local tensor contract. It does not add a mixed
 product basis, THC, Coulomb operators, package renaming, or a distributed
 runtime. CTF, SLATE, MPI, and manual shard types are deferred non-goals.
 
@@ -99,9 +99,7 @@ reduced ordinary problem
 H_{\mathrm{reduced}} Z = Z\varepsilon.
 ```
 
-M-Fb1 does not change overlap-spectrum filtering. M-Fb2 evaluates the
-reductions with the same einsum layer. faer still diagonalizes $S$ and the
-reduced $H$.
+The muffin-tin congruence einsum does not change overlap-spectrum filtering. The overlap-filtered reductions use the same einsum layer. faer still diagonalizes $S$ and the reduced $H$.
 
 ```math
 X = U_{\mathrm{keep}}\,\mathrm{diag}(s_{\mathrm{keep}}^{-1/2}),
@@ -115,25 +113,25 @@ In subscripts these are `ik,k->ik`, `ir,ij,js->rs`, and `ir,rb->ib`. The
 residual $HC-SC\varepsilon$ is `ij,jb->ib` for $HC$ and $SC$, `ib,b->ib`
 for the eigenvalue scale, and `ib,ib->b` for the squared column norms.
 
-- M-Fb2 tensorizes $X$, $X^\dagger H X$, $C=XZ$, and the batched residual
+- The overlap-filtered path tensorizes $X$, $X^\dagger H X$, $C=XZ$, and the batched residual
   contraction. The filtering algorithm and faer Hermitian EVD stay in place.
-- M-Fb3 stores public LAPW $H$, $S$, and eigenvector columns as tensor-native
+- Public LAPW $H$, $S$, and eigenvector columns are stored as tensor-native
   `DenseHermitianMatrix` and `DenseEigenvectors`. Eigenvectors use the
   column-major `[basis, band]` convention, matching SPEX, FLEUR, ELK, and QE;
   a fixed band is one contiguous basis-expansion column. "Dense" is the local
   storage kind; the old unnamed `Vec<Complex64>` buffers are gone.
-- M-Fb4 adds `einsum_tenferro` behind `backend-tenferro` using
+- The optional tenferro backend adds `einsum_tenferro` behind `backend-tenferro` using
   tenferro-einsum on CPU/faer, without AD, GPU, or XLA. Compiling that
   feature requires rustc 1.96; the workspace MSRV remains 1.85. RSTSR+TBLIS
   stays the default `einsum` path.
 
 ## 6. Acceptance
 
-M-Fb1 requires `einsum("ci,cd,dj->ij", ...)` through RSTSR+TBLIS to match
+The muffin-tin congruence einsum requires `einsum("ci,cd,dj->ij", ...)` through RSTSR+TBLIS to match
 direct analytic APW–APW, APW–LO, and LO–LO values, including complex
 conjugation and a nonzero $k$ site phase; a no-LO site must reduce to the
 APW-only congruence; the scattered global matrices remain Hermitian; axis and
-shape errors are traceable; and every existing M-F $H$, $S$, retained rank,
+shape errors are traceable; and every existing APW+LO $H$, $S$, retained rank,
 eigenvalue, eigenvector, and residual regression stays within its previous
 tolerance. `DenseEigenvectors` must preserve logical `(basis, band)` indexing
 while exporting the linear offset `basis + basis_count * band`. This document

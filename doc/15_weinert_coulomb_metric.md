@@ -1,6 +1,6 @@
 # 15. Weinert/SPEX finite $q$ Coulomb metric
 
-This note records the M-J public contract. Product kinematics remain
+This note records the Weinert Coulomb public contract. Product kinematics remain
 [13](13_product_space_and_lapw_mpb.md). Toy k-point ISDF/THC remains
 [14](14_toy_kpoint_isdf_thc.md). There is no DFT/SCF driver, no GW/ERI
 production consumer, no live SPEX $V^q$ dump, and no umbrella crate.
@@ -40,7 +40,7 @@ coulomb → auxiliary-ir, core, basis, grid
 coulomb (dev) → mpb, thc
 ```
 
-The DAG stays acyclic. M-I still injects toy Grams; its production L2
+The DAG stays acyclic. The toy k-point THC path still injects toy Grams; its production L2
 default remains `allq_l2`.
 
 ## 3. Public types
@@ -101,7 +101,7 @@ $w_p\zeta_\mu(r_p)e^{-i(q+G)\cdot r_p}/\sqrt{\Omega}$. This is not a
 delta at the interpolation *node*. Use `assemble_sampled_coulomb`.
 $q$, point/order, and dimension mismatches are rejected.
 
-M-I integration feeds `ThcResult.fits[iq].zeta` on the matching parent
+Toy k-point THC integration feeds `ThcResult.fits[iq].zeta` on the matching parent
 grid. Spans differ from mixed product; tests do **not** claim elementwise
 $V^{\mathrm{MPB}}=V^{\mathrm{THC}}$.
 
@@ -328,9 +328,9 @@ elementwise $V^{\mathrm{MPB}}=V^{\mathrm{THC}}$.
 
 - Convention and toy fixtures only. No live SPEX untruncated product dump
   and no SPEX $V^q$ dump.
-- No Coulomb assembler consumption in GW/ERI, no SCF/Hartree driver (M-K),
+- No Coulomb assembler consumption in GW/ERI, no SCF/Hartree driver (DFT),
   no MPI/CTF, no HDF5 export.
-- M-I Coulomb ranking still uses injected Grams. Production $V^q$ for
+- Toy k-point THC Coulomb ranking still uses injected Grams. Production $V^q$ for
   interpolation points requires sampled $\zeta$, not the node list.
 - `LEXP` is capped at 12 in this crate. Default toy `LEXP` is 4.
   `LEXP`$>12$ is rejected.

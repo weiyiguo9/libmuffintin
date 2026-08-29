@@ -207,8 +207,7 @@ must form $r^2u_iu_j$ before integration.
 
 ## Source anchors
 
-The SPEX anchors below were inspected in the local tree
-`<spex-source>`.
+The SPEX anchors below were inspected in the SPEX 06.00pre36 source tree.
 
 - SPEX mesh construction: `spex06.00pre36/src/getinput.f:560-604,663-688`.
 - SPEX mesh import: `spex06.00pre36/src/readwrite_fleur.f:169-227`.

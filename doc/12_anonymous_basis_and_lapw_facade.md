@@ -1,6 +1,6 @@
 # 12. Anonymous basis extraction and the LAPW facade
 
-This note records the M-G public contract. It does not add a mixed product
+This note records the anonymous-basis facade contract. It does not add a mixed product
 basis, THC, Coulomb operators, an umbrella `libmuffintin` crate, or a
 distributed tensor runtime. Formulae for matching, the SPEX kinetic
 convention, and APW+lo layout remain in [08](08_lapw_matching_and_overlap.md),
@@ -108,7 +108,7 @@ calls `libmuffintin-operators::add_site_contributions` for every
 $P^\dagger B P$ site congruence. The filtered generalized solver is
 `libmuffintin-operators::solve_generalized_hermitian`.
 
-Two construction routes must agree within the M-F tolerances:
+Two construction routes must agree within the APW+LO tolerances:
 
 - **Facade.** `assemble_eigenproblem` receives a `PlaneWaveEnvelope`,
   geometry, potential, `LapwSiteInput` recipe sites, and local
@@ -151,7 +151,7 @@ with $\mathbf q = \mathbf k+\mathbf G$. The prefactor is
 `KineticOperatorConvention::SpexSymmetricLaplacian.prefactor`, not a hidden
 literal. The gradient form must not be mixed with the SPEX radial identity.
 
-Site contributions remain the M-Fb congruence
+Site contributions remain the tensor substrate congruence
 
 ```math
 M_a = P_a^\dagger B_a P_a
@@ -163,7 +163,7 @@ storage.
 
 ## 5. Acceptance
 
-M-G requires the M-F $H$, $S$, retained overlap rank, filtered rank,
+The facade requires the APW+LO $H$, $S$, retained overlap rank, filtered rank,
 eigenvalues, absolute and relative residuals, and (up to a global phase on
 non-degenerate columns) eigenvectors to match between the facade and
 explicit-`BasisSpec` routes on the existing empty-lattice, translated-sphere,

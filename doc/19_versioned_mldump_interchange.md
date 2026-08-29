@@ -64,7 +64,7 @@ the status encoding.
 
 Exchange valence, core, and total are separate seams under `/exchange`.
 `total_relation` is absent unless a real same-run valence+core payload
-exists. M-L6a writes all three exchange seams as `absent_not_computed` and
+exists. The v1 writer writes all three exchange seams as `absent_not_computed` and
 does not write `total_relation`.
 
 ## 4. v1 tree
@@ -346,7 +346,7 @@ $G_{\mathrm{transfer}}$ with
 $q_{\mathrm{in}}=q_{\mathrm{canonical}}+G_{\mathrm{transfer}}$
 within the documented scale-aware tolerance
 $|a-b|\le 10^{-12}\max(|a|,|b|,1)$, the same $10^{-12}$ floor as the
-M-L1/M-L5b mesh-coordinate gate. Every canonical $q$ component lies in
+product-input mesh-coordinate gate. Every canonical $q$ component lies in
 $[0,1)$. Each $q$ stores exactly $n_k$ $k-q$ records in canonical $k$
 order: the record at position $i_k$ has $k_{\mathrm{index}}=i_k$. The
 per $k$ wrap satisfies
@@ -434,4 +434,4 @@ payload validators apply on write and on read.
 MLDUMP v1 does not serialize CoQui or SPEX native layouts, runtime
 `SpinorProductInput` / `ScalarProductInput` objects, MPB payloads,
 occupations, core-valence products, the singular Gamma head, GW/RPA/self-energy,
-MPI, or material acceptance. It does not complete M-L.
+MPI, or material acceptance. It does not complete the product, mixed-product, THC, and Coulomb sequence.

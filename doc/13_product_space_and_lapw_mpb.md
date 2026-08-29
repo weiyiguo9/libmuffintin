@@ -1,6 +1,6 @@
 # 13. Product-space IR and the SPEX mixed product basis
 
-This note records the M-H public contract. Toy k-point ISDF/THC is [14](14_toy_kpoint_isdf_thc.md).
+This note records the product-space IR public contract. Toy k-point ISDF/THC is [14](14_toy_kpoint_isdf_thc.md).
 The finite $q$ Weinert/SPEX Coulomb operator is [15](15_weinert_coulomb_metric.md).
 It does not add SCF, an umbrella crate, or a
 distributed tensor runtime. The one-particle facade remains
@@ -15,7 +15,7 @@ and [03](03_exponential_mesh_and_radial_quadrature.md).
 |---|---|
 | `crates/mt-auxiliary-ir` | `libmuffintin-auxiliary-ir` |
 | `crates/mt-mpb` | `libmuffintin-mpb` |
-| `crates/mt-thc` | `libmuffintin-thc` (M-I; interpolation-point payload) |
+| `crates/mt-thc` | `libmuffintin-thc` (toy k-point THC; interpolation-point payload) |
 
 There is no `libmuffintin-mbp` alias. `libmuffintin-auxiliary-ir` and
 `libmuffintin-mpb` do not depend on `libmuffintin-lapw`, THC, or Coulomb.
@@ -56,7 +56,7 @@ CompiledAuxiliaryBasis
     AuxiliaryInterstitialSupport: MPB |q+G| ≤ g_cut
     optional CutoffRecord
   AuxiliaryRepresentation::InterpolationPoints
-    real-space interpolation points (M-I THC)
+    real-space interpolation points (toy k-point THC THC)
     muffin-tin tagged points, then interstitial/uniform
 
 PairVertex
@@ -144,12 +144,12 @@ signs are not a SPEX convention; retained spans are compared as projectors
 (the $L=0$ constant is excluded from that comparison).
 
 Finite $q$ kinematics (canonical $q$, Umklapp, site phase, $|q+G|$
-auxiliary completeness, $\Theta_I$ pair vertices) belong to M-H. The $1/r$
+auxiliary completeness, $\Theta_I$ pair vertices) belong to the product-space IR. The $1/r$
 Coulomb kernel and Weinert $V^q$ belong to [15](15_weinert_coulomb_metric.md).
 
 ## 5. Acceptance
 
-M-H requires:
+Acceptance requires:
 
 - untruncated muffin-tin product counts and channel spectra independent of
   `TOL`;

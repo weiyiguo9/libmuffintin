@@ -1,10 +1,10 @@
 # 10. APW+lo basis layout and collinear spin channels
 
-This note fixes the M-F basis layout and assembly contract against SPEX
+This note fixes the APW+LO basis layout and assembly contract against SPEX
 `spex06.00pre36/src/hamilton.f`. It extends the APW-only conventions in
 [08](08_lapw_matching_and_overlap.md) and
 [09](09_hamiltonian_eigensolver_and_reference_reports.md); it does not add
-self-consistency or spin-orbit coupling. After M-G the `[PW][site LO]` layout
+self-consistency or spin-orbit coupling. After the anonymous-basis split the `[PW][site LO]` layout
 is `libmuffintin-basis::BasisLayout`; the LAPW facade re-exports it as
 `LapwBasisLayout`. See [12](12_anonymous_basis_and_lapw_facade.md).
 
@@ -113,7 +113,7 @@ to the SOC/noncollinear path and are outside this contract.
 
 ## 5. Scope and acceptance
 
-M-F acceptance requires deterministic `[PW][site LO]` indexing, zero LO value
+Acceptance requires deterministic `[PW][site LO]` indexing, zero LO value
 and slope at every sphere boundary, Hermitian $S$ and $H$ from the same
 projection layout, and independent residual checks for both collinear spin
 channels. This milestone consumes a frozen potential and fixed basis. It does

@@ -1,6 +1,6 @@
 # 07. Composite grids, sphere algebra, and versioned artifacts
 
-This note fixes the M-C contracts that sit between the radial primitives and
+This note fixes the grid and snapshot contracts that sit between the radial primitives and
 later LAPW/THC consumers.  It introduces no new electronic-structure theory:
 it makes the existing radial and angular conventions composable and
 serializable.
@@ -49,7 +49,7 @@ search is performed in the full direct-lattice metric, rather than by rounding
 three Cartesian components, so skew cells remain valid.  The retained midpoint
 weights converge to the analytic interstitial volume represented by
 `muffintin_core::InterstitialGeometry`; boundary correction is a measured later
-optimization, not part of the M-C contract.
+optimization, not part of the grid and snapshot contract.
 
 ## 3. Sphere fields and orbitals
 
@@ -111,7 +111,7 @@ lengths, invalid harmonic channels, and non-finite numerical samples before
 the data enters numerical kernels.
 
 The FLEUR converter remains frozen.  These formats describe what the library
-consumes; no producer-specific parser is part of M-C.
+consumes; no producer-specific parser is part of the grid and snapshot contract.
 
 ## 5. Optional tensor boundary
 
@@ -123,7 +123,7 @@ depend on a tensor implementation.  LAPW dense linear algebra uses `faer`
 directly.  A later tensor backend can consequently replace RSTSR without
 changing the physical or grid schemas.
 
-## 6. M-C acceptance
+## 6. Acceptance
 
 The focused acceptance suite checks:
 

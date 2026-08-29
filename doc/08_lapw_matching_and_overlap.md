@@ -1,9 +1,9 @@
 # 08. LAPW boundary matching and overlap assembly
 
-This note fixes the M-D LAPW conventions against SPEX
-`src/hamilton.f:105-123,248-264,938-954`.  M-D stops at the overlap matrix;
-Hamiltonian blocks and eigensolving are introduced separately in M-E.
-Crate ownership after the M-G split is recorded in
+This note fixes the LAPW matching and overlap conventions against SPEX
+`src/hamilton.f:105-123,248-264,938-954`.  The matching contract stops at the overlap matrix;
+Hamiltonian blocks and eigensolving are introduced separately in the Hamiltonian eigensolver note.
+Crate ownership after the anonymous-basis facade split is recorded in
 [12](12_anonymous_basis_and_lapw_facade.md).
 
 ## 1. Plane waves
@@ -94,11 +94,11 @@ The dense complex overlap is
 
 $\Theta_I$ is the cell-normalized interstitial coefficient from `libmuffintin-core`, so
 the first term is exactly SPEX `cstep`.  The upper triangle is evaluated and
-the lower triangle filled by conjugation.  Local orbitals do not enter M-D.
+the lower triangle filled by conjugation.  Local orbitals do not enter the matching contract.
 
 ## 5. Focused acceptance
 
-M-D requires:
+The matching contract requires:
 
 - value and slope matching residuals no larger than `1e-10`;
 - Hermitian dense $S$ for translated spheres and nonzero $k$;
@@ -108,5 +108,5 @@ M-D requires:
   so asymmetry is unrepresentable by construction.
 
 The empty-sphere result is the overlap half of the empty-lattice regression.
-Free-electron eigenvalues require the M-E kinetic matrix and are therefore not
-claimed by M-D alone.
+Free-electron eigenvalues require the Hamiltonian eigensolver kinetic matrix and are therefore not
+claimed by the matching contract alone.

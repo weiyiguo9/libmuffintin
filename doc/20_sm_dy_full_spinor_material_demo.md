@@ -1,6 +1,6 @@
 # 20. Sm/Dy full-spinor material-acceptance demo
 
-This note is the M-L7 material-acceptance record. It is not a production
+This note is the material-acceptance record. It is not a production
 release, not a `v0.1` tag, and not a SPEX or CoQui spinor consumer. The
 implemented runtime path stays in
 [18](18_lapw_mpb_thc_integration.md) and
@@ -13,7 +13,7 @@ Keep these four classes separate.
 
 | Class | Meaning |
 |---|---|
-| Implemented path | Public M-L5b/M-L5c/M-L5d/M-L6c2 APIs on HEAD. Hydrogen and other fixtures already exercise them. |
+| Implemented path | Public spinor product-input, mixed-product, THC/Coulomb, and MLDUMP APIs on HEAD. Hydrogen and other fixtures already exercise them. |
 | Material demo evidence | A named producer snapshot, hashed inputs, materialized $Z=62$ or $Z=66$ basis, one bounded grid/rank, representation-neutral $c^\dagger V c$, MLDUMP roundtrip. |
 | Cross-code limitation | SPEX `exchange_hdf` and CoQui scalar Cholesky do not ingest spinor full-first-variation MLDUMP. |
 | Missing consumer | No spinor SPEX or CoQui full-4c reader is implemented here. |
@@ -107,7 +107,7 @@ Located sources:
   `scratch/thc_smdy_experiment/` (RESULTS
   `222e9aa8dd2d98fb0ec874f918d3f4ebee4066ed169bb5aa7ec2dba42a3a7fab`).
   Those notes record fcc Sm only and state that Dy was not run.
-- Live WSL tree `wsl:<thc-experiment-root>/runs`:
+- Live WSL experiment tree `<thc-experiment-root>/runs`:
   `sm_fcc_3x3_dft`, `sm_fcc_3x3_ref`, `sm_fcc_4x4_dft`, `sm_fcc_4x4_ref`.
   No `dy_*` and no bcc DFT directory. The same tree has
   `codes/libmuffintin/scratch/grid_budget_sm_dy.py`.
@@ -124,7 +124,7 @@ Exact producer blocker:
 4. Synthetic atomic data would not be Dy material and is forbidden here.
 
 Catalogue-only facts that do not lift the blocker, checked in
-`crates/mt-runtime/tests/ml7_dy_bcc.rs`:
+`crates/mt-runtime/tests/dy_bcc_material.rs`:
 
 - FLEUR `default.econfig` for $Z=66$ is
   `1s2 \ldots 4d10 | 5s2 5p6 6s2 4f10`.
@@ -138,8 +138,8 @@ A materialized spinor basis, including required $4f$, $5p_{1/2}$ rLO, and
 any HDLO, can be asserted only from `ScfBasis::resolved_channels` after
 `SnapshotDftPhysics` consumes a real snapshot. That step did not run.
 
-Tracked Dy evidence: `crates/mt-runtime/tests/ml7_dy_evidence.toml`. New
-artifact paths would have used the `ml7-dy` prefix only. No such path was
+Tracked Dy evidence: `crates/mt-runtime/tests/dy_bcc_material_evidence.toml`. New
+artifact paths would have used the `dy-bcc-material` prefix only. No such path was
 created.
 
 No synthetic Dy-shaped viability fixture is retained in the material lane.
@@ -147,11 +147,11 @@ Native atomic $\to$ SCF $\to$ Snapshot V2 was not honestly converged.
 
 ## 5. Sm fcc lane: bounded material path executed
 
-Shared harness `crates/mt-runtime/tests/ml7_material_common.rs` is
+Shared harness `crates/mt-runtime/tests/material_lane_common.rs` is
 included by path. Observed contract:
 
-- `Ml7Provenance`, `load_spinor_snapshot_v2` (missing file is
-  `Ml7CommonError::MissingSnapshot`; scalar relativity is rejected
+- `MaterialProvenance`, `load_spinor_snapshot_v2` (missing file is
+  `MaterialLaneError::MissingSnapshot`; scalar relativity is rejected
   before I/O);
 - `ordered_q_slice` for a complete $q$ mesh;
 - `compare_qrcp_cholesky` on one parent grid, candidate set, and rank,
@@ -174,7 +174,7 @@ cutoff, then executes the complete one-point $q$ slice through:
 - spinor MLDUMP write/read with source revision
   `b45d9b9e1505d25236c3e78674418b011a471666`.
 
-This is bounded M-L7 Sm evidence, not convergence, production validation,
+This is bounded material-acceptance Sm evidence, not convergence, production validation,
 or a cross-code spinor-consumer result. Dy remains externally blocked.
 
 ## 6. Cross-code limitations
@@ -207,7 +207,7 @@ CoQui spinor consumer. The Dy lane still needs:
    kept distinct from `TOL`.
 6. MLDUMP roundtrip of those frozen objects.
 
-Until those exist for Dy, M-L7 remains partially accepted: bounded Sm is
+Until those exist for Dy, material-acceptance remains partially accepted: bounded Sm is
 executed and Dy is blocked. Neither lane is a release claim.
 
 ## 8. Preservation

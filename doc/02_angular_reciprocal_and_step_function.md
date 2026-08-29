@@ -262,8 +262,7 @@ SPEX's full-plane-wave convolution comments in
 
 ## Source anchors
 
-The SPEX anchors below were inspected in the local tree
-`<spex-source>`.
+The SPEX anchors below were inspected in the SPEX 06.00pre36 source tree.
 
 - SPEX harmonics and indexing: `spex06.00pre36/src/numerics.f:482-600`.
 - SPEX real/complex transform: `spex06.00pre36/src/vector.f:241-280`.

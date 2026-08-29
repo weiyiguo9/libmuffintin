@@ -1,10 +1,7 @@
-# 18. Scalar M-L1–L4 product/MPB/THC/Coulomb and spinor M-L5a/M-L5b/M-L5c
+# 18. Scalar product/MPB/THC/Coulomb and spinor product, mixed-product, and THC paths
 
-This note records the implemented M-L1 boundary, the M-L2 scalar mixed-product
-bridge, the M-L3 scalar AllQL2 interpolation-point seam, the M-L4 sampled $\zeta$
-Coulomb bridge, the M-L5a Dirac PP/QQ IR and MPB primitive, the M-L5b
-frozen full-first-variation spinor product input, the M-L5c selected-band
-spinor mixed-product bridge, and the M-L6b2 runtime materialization of those
+This note records the implemented scalar product-input boundary, the scalar mixed-product
+bridge, the scalar AllQL2 interpolation-point seam, the sampled $\zeta$ Coulomb bridge, the Dirac PP/QQ IR and MPB primitive, the frozen full-first-variation spinor product input, the selected-band spinor mixed-product bridge, and the runtime materialization of those
 scalar objects into MLDUMP v1. Core–valence products and SPEX/material
 comparison remain out of scope. The on-disk schema is [19](19_versioned_mldump_interchange.md).
 
@@ -22,15 +19,15 @@ The DFT snapshot kernel remains [17](17_minimal_lda_scf.md).
 | `crates/mt-thc` | `libmuffintin-thc` (`muffintin_thc`) |
 | `crates/mt-coulomb` | `libmuffintin-coulomb` (`muffintin_coulomb`) |
 
-`SnapshotDftPhysics::scalar_product_input` owns the M-L1 capability. It
+`SnapshotDftPhysics::scalar_product_input` owns the scalar product-input capability. It
 depends on `libmuffintin-auxiliary-ir` for [`ProductSource`] and
 [`PairColumnLayout`]. It does not depend on `libmuffintin-thc`.
-`build_scalar_mpb` owns the M-L2 capability and depends on
-`libmuffintin-mpb`. `build_scalar_thc` owns the M-L3 capability and depends
-on `libmuffintin-thc`. `build_scalar_coulomb` owns the M-L4 capability and
+`build_scalar_mpb` owns the scalar mixed-product capability and depends on
+`libmuffintin-mpb`. `build_scalar_thc` owns the scalar AllQL2 THC capability and depends
+on `libmuffintin-thc`. `build_scalar_coulomb` owns the sampled $\zeta$ Coulomb capability and
 depends on `libmuffintin-coulomb`. `SnapshotDftPhysics::spinor_product_input`
-owns the M-L5b capability and consumes M-L5a `DiracProductSource` from
-`libmuffintin-auxiliary-ir`. `build_spinor_mpb` owns the M-L5c capability
+owns the spinor product-input capability and consumes `DiracProductSource` from
+`libmuffintin-auxiliary-ir`. `build_spinor_mpb` owns the spinor mixed-product capability
 and depends on `libmuffintin-mpb`; MPB does not depend on runtime, THC, or
 Coulomb. Production dependencies: `libmuffintin-mpb`, `libmuffintin-thc`, and
 `libmuffintin-coulomb` do not depend on runtime. THC does not depend on
@@ -63,7 +60,7 @@ regular mesh, solves the regular full-BZ scalar eigenproblem, and returns
   $k\cdot N_{\mathrm{orb}}^2+i\cdot N_{\mathrm{orb}}+j$. The old packed
   $12\times 12$ experiment flattening is not used.
 - `reciprocal`: the exact [`ReciprocalLattice`] used to fold $q_{\mathrm{in}}$
-  and $G_{\mathrm{wrap}}$. M-L4 requires `CoulombRequest` to carry this lattice;
+  and $G_{\mathrm{wrap}}$. sampled $\zeta$ Coulomb requires `CoulombRequest` to carry this lattice;
   a same-volume sheared cell is rejected.
 - `orbitals.band_window`: common leading window `{start: 0, count: n_orb}`.
   Each spin channel also stores `available_bands[k]`, the untruncated
@@ -73,7 +70,7 @@ Valence [`ProductRadial`] $n$ is stable: $n=0$ is $u$, $n=1$ is $\dot u$,
 and $n=2+\mathrm{ordinal}$ are local orbitals. APW matching coefficients
 multiply $(u,\dot u)$. Local-orbital rows follow
 [`BasisLayout::site_local_orbital_range`]. `ProductRadialId` remains the
-identifier based on scalar $l$. M-L1 does not add $\kappa$, $PP$, or $QQ$.
+identifier based on scalar $l$. The scalar product-input path does not add $\kappa$, $PP$, or $QQ$.
 
 `ScfState` is not the orbital source. Private
 `SnapshotBandSolution` / `SnapshotKPointSolution` fields stay private.
@@ -122,12 +119,12 @@ in $G_{\mathrm{wrap}}$ reverses $\exp(+i G\cdot R)$ at a muffin-tin site
 whose $G\cdot R$ is not a multiple of $\pi$.
 
 This is the production $k-q$ gauge. There is no second $k+q$ convention in
-M-L1.
+scalar product-input.
 
-## 4. Scalar M-L2 mixed-product bridge
+## 4. Scalar scalar mixed-product mixed-product bridge
 
 `build_scalar_mpb(&ScalarProductInput, &ScalarMpbSpec)` consumes the published
-M-L1 bundle and an explicit spec: the reciprocal lattice required by
+scalar product-input bundle and an explicit spec: the reciprocal lattice required by
 `spex_mixed_product_basis`, `product_l_max`, `product_g_max`,
 `overlap_tolerance`, and a nonempty list of same-spin selections
 `(spin, k, left_band, right_band)`. The result owns the untruncated
@@ -137,7 +134,7 @@ pair-column identity $k\cdot N_{\mathrm{orb}}^2+i\cdot N_{\mathrm{orb}}+j$,
 band indices, and a checked [`PairVertex`].
 
 The left orbital is the mapped $k-q$ side; the right orbital is at $k$.
-Band indices are the published M-L1 common leading window. Pair columns stay
+Band indices are the published scalar product-input common leading window. Pair columns stay
 [`PairColumnLayout`]; the old $12\times 12$ packing is not used. The vertex
 identity is [`OrbitalPair::Bloch`]; spin is stored on the runtime record, not
 on the shared [`OrbitalPair`] model. Empty selection, a spin, $k$, or band outside
@@ -161,7 +158,7 @@ G_{\mathrm{rel}} = G_{\mathrm{right}} - G_{\mathrm{left}} + G_{\mathrm{wrap}}
 ```
 
 and amplitude $\mathrm{conj}(C_{\mathrm{left}})C_{\mathrm{right}}/\Omega$.
-$G_{\mathrm{rel}}$ must exist on the M-L1 raw pair support. The global
+$G_{\mathrm{rel}}$ must exist on the scalar product-input raw pair support. The global
 `TransferQ` Umklapp is not folded into $G_{\mathrm{rel}}$; it remains the
 MPB $\Theta_I$ argument
 
@@ -173,10 +170,10 @@ The MPB accumulator [`PairVertexAccumulator`] sums those primitive terms into
 one checked vertex. Runtime does not build a complete primitive vertex per
 basis-pair term.
 
-## 5. Scalar M-L3 adaptive THC
+## 5. Scalar scalar AllQL2 THC adaptive THC
 
 `build_scalar_thc` consumes a nonempty complete $q$ slice in production
-$q$ index order: `inputs[iq]` is the M-L1 bundle whose canonical $q$ is
+$q$ index order: `inputs[iq]` is the scalar product-input bundle whose canonical $q$ is
 k-mesh point $iq$. Bundles share the frozen orbital window, spins, k mesh,
 partition, radials, and `PairColumnLayout`. `ScalarThcSpec` selects one
 collinear spin, an existing THC `RankPolicy`, candidate points
@@ -216,14 +213,14 @@ scalar THC provenance before Bloch pair vertices, so auxiliary and vertex
 records bind the same $q$, layout, partition, and provenance at construction. It
 does not build `SampledAuxiliaryFunctions` or Coulomb operators.
 
-## 6. Scalar M-L4 sampled Coulomb
+## 6. Scalar sampled $\zeta$ Coulomb
 
 `build_scalar_coulomb` consumes the same complete ordered $q$ slice, a matching
 `ScalarThcResult`, an existing `CoulombRequest` plus `InterpolationProjection`,
-and an explicit bounded subset of matching M-L2 `ScalarMpbResult` vertices.
+and an explicit bounded subset of matching scalar mixed-product `ScalarMpbResult` vertices.
 The request reciprocal lattice must equal the frozen `ScalarProductInput`
 reciprocal; it is not inferred from the caller's cell recipe. For every THC
-$q$ record it builds `SampledAuxiliaryFunctions` on the full M-L3 parent grid
+$q$ record it builds `SampledAuxiliaryFunctions` on the full THC parent grid
 in original order: Cartesian Bohr coordinates, true weights including
 zero-weight rows, exact muffin-tin `{site, radial_index}` or interstitial
 support, per-site meshes, and that record's row-major parent-grid $\zeta$.
@@ -236,11 +233,11 @@ metadata; the singular head is not inserted.
 
 Each per $q$ record returns the sampled $\zeta$ `CoulombOperator` with $q$
 index, `TransferQ`, spin, pair-column layout, interpolation-point auxiliary,
-parent-grid sampled $\zeta$, and semantic pair vertices. Returned M-L3 vertices
+parent-grid sampled $\zeta$, and semantic pair vertices. Returned scalar AllQL2 THC vertices
 must carry the compiled auxiliary `AuxiliaryLayout` and an
 `OrbitalPair::Bloch` identity that matches the decoded column
 $(k,\mathrm{left},\mathrm{right})$. Malformed public Bloch indices are
-rejected without calling `PairColumnLayout::encode`. Matched M-L2/M-L3 pairs
+rejected without calling `PairColumnLayout::encode`. Matched mixed-product/THC pairs
 compare quadratic forms $c^\dagger V c$ across representations, with an
 absolute/relative discrepancy using the stated floor $10^{-12}$. Per-side
 action norms $\|Vc\|$ are debug diagnostics in each auxiliary basis and are
@@ -249,7 +246,7 @@ principal-angle spans are not compared.
 
 ## 7. Explicit exclusions
 
-M-L1, M-L2, M-L3, and M-L4 do not:
+scalar product-input, scalar mixed-product, scalar AllQL2 THC, and sampled $\zeta$ Coulomb do not:
 
 - copy or reimplement Weinert assembly inside runtime
 - inject Coulomb Grams or run Q0L2 / AllQCoulombPool
@@ -258,30 +255,30 @@ M-L1, M-L2, M-L3, and M-L4 do not:
 - implement spinor or signed $\kappa$ product vertices
 - add a principal-angle engine
 - claim SPEX or material acceptance
-- complete M-L
+- complete the product, mixed-product, THC, and Coulomb sequence
 
-Later M-L stages consume this scalar product-input, mixed-product,
+Later stages consume this scalar product-input, mixed-product,
 interpolation-point, and sampled $\zeta$ Coulomb contract rather than reaching
 into snapshot solver internals.
 
-## 8. M-L5a Dirac PP/QQ IR and MPB primitive
+## 8. Dirac PP/QQ IR and MPB primitive
 
-M-L5a lives in `libmuffintin-auxiliary-ir` (`DiracProductSource`, physical
+The Dirac PP/QQ IR and MPB primitive lives in `libmuffintin-auxiliary-ir` (`DiracProductSource`, physical
 $P$ and $Q$, explicit `DiracChargeSector::{LargeLarge, SmallSmall}`) and
 `libmuffintin-mpb` (untruncated PP/QQ raw products and the checked muffin-tin
-vertex primitive). Runtime M-L5b consumes those public types and does not
+vertex primitive). The spinor product-input path consumes those public types and does not
 redefine them. Scalar `ProductRadialId` / `ProductSource` / `RawProductSpace`
-stay unchanged. M-L5c adds Dirac overlap cutoff, retained scalar-charge
+stay unchanged. The spinor mixed-product bridge adds Dirac overlap cutoff, retained scalar-charge
 modes of the PP/QQ union, and interstitial spinor plane-wave contraction.
-M-L5d adds spinor all $q$ THC and sampled $\zeta$ Coulomb.
+The spinor THC/Coulomb bridge adds spinor all $q$ THC and sampled $\zeta$ Coulomb.
 
-## 9. M-L5b frozen spinor product input
+## 9. Frozen spinor product input
 
 `SnapshotDftPhysics::spinor_product_input(&ScfConfig, q_fractional)` accepts
 only `ScfRelativity::SpinorFirstVariation`. Scalar Koelling–Harmon and SOC
 second variation are distinct typed rejections; signed $\kappa$ is not routed
 through second variation. The kernel materializes the frozen-snapshot
-iteration basis, reuses the M-L1 canonical $q$ / mesh $k-q$ helper, solves
+iteration basis, reuses the scalar product-input canonical $q$ / mesh $k-q$ helper, solves
 the regular full-BZ full-first-variation eigenproblem, and returns
 [`SpinorProductInput`]:
 
@@ -302,7 +299,7 @@ the regular full-BZ full-first-variation eigenproblem, and returns
   `SpinorProductInput::site_projection_row` and
   `SpinorProductInput::site_projection_identity`.
 - `k_minus_q`: folded $k-q_{\mathrm{canonical}}$ mesh index and per-column
-  $G_{\mathrm{wrap}}$ with the same positive pair-density convention as M-L1.
+  $G_{\mathrm{wrap}}$ with the same positive pair-density convention as the scalar product-input path.
 - `pair_columns`: `PairColumnLayout::new(n_k, n_orb, None)` with left band
   at $k-q$ and right band at $k$.
 - `reciprocal`: the exact snapshot lattice. Off-mesh $q$ is `OffMeshTransfer`.
@@ -315,15 +312,15 @@ of $G_{\mathrm{right}}-G_{\mathrm{left}}+G_{\mathrm{wrap}}$ over actual
 spinor plane-wave $G$ labels. Global `TransferQ` Umklapp is excluded.
 `ScfState` is not the orbital source.
 
-M-L5c contracts selected spinor bands into that primitive. M-L5d adds
+spinor mixed-product contracts selected spinor bands into that primitive. The spinor THC/Coulomb bridge adds
 all $q$ THC and sampled $\zeta$ Coulomb.
 
-## 10. M-L5c selected-band spinor mixed-product bridge
+## 10. Selected-band spinor mixed-product bridge
 
 `build_spinor_mpb(&SpinorProductInput, &SpinorMpbSpec)` consumes the published
-M-L5b bundle and an explicit spec: `product_l_max`, `product_g_max`,
+spinor product-input bundle and an explicit spec: `product_l_max`, `product_g_max`,
 `overlap_tolerance`, and a nonempty list of selections
-`(k, left_band, right_band)` inside the M-L5b leading window. There is no
+`(k, left_band, right_band)` inside the spinor product-input leading window. There is no
 caller lattice and no collinear spin tag. The result owns the untruncated
 [`DiracRawProductSpace`], the `TOL`-retained [`CompiledAuxiliaryBasis`] with
 $n_{\mathrm{spin}}=1$, the frozen [`ReciprocalLattice`] and
@@ -373,13 +370,13 @@ at
 G_{\mathrm{rel}} = G_{\mathrm{right}} - G_{\mathrm{left}} + G_{\mathrm{wrap}}.
 ```
 
-$G_{\mathrm{rel}}$ must exist on the M-L5b raw pair support. The global
+$G_{\mathrm{rel}}$ must exist on the spinor product-input raw pair support. The global
 `TransferQ` Umklapp is not folded into $G_{\mathrm{rel}}$; it remains the
 MPB $\Theta_I$ argument $G_{\mathrm{aux}}-G_{\mathrm{transfer}}-G_{\mathrm{rel}}$.
 The MPB accumulator [`DiracBlochVertexAccumulator`] sums those primitive
 terms into one checked vertex.
 
-## 11. M-L5d spinor all $q$ THC and sampled $\zeta$ Coulomb
+## 11. spinor THC/Coulomb spinor all $q$ THC and sampled $\zeta$ Coulomb
 
 `build_spinor_thc(&[SpinorProductInput], &ThcParentGrid, &SpinorThcSpec)`
 consumes a complete ordered $q$ slice with one record for every k-mesh
@@ -390,7 +387,7 @@ and `PairColumnLayout`. `SpinorThcSpec` requires an explicit `RankPolicy`,
 is no collinear spin tag: one spinor band manifold, with the two Pauli
 components summed inside each physical density. The shared parent-grid
 fingerprint, candidate policy, and full engines are the same objects as
-scalar M-L3. Zero-weight parent rows remain in $\zeta$ and cannot be
+scalar scalar AllQL2 THC. Zero-weight parent rows remain in $\zeta$ and cannot be
 candidates.
 
 Muffin-tin reconstruction uses [`CompiledSiteProjection::spinor`] and
@@ -429,7 +426,7 @@ debug numbers in each auxiliary basis. This stage does not implement
 core-valence products, HDF5/CoQui, material/SPEX acceptance, a
 principal-angle engine, or GW/RPA.
 
-## M-L6b2 scalar MLDUMP materialization
+## Scalar MLDUMP materialization
 
 `write_scalar_mldump(path, header, inputs, thc, coulomb, spec)` is the
 runtime-owned writer. The caller supplies `MldumpHeaderV1` because species
@@ -452,7 +449,7 @@ one $q$ $V$ / Gamma record. `/mpb` and `/exchange/{valence,core,total}` remain
 `absent_not_computed`. Occupations are not invented. The owned reader and
 MLDUMP v1 tree are unchanged.
 
-## M-L6c2 spinor MLDUMP materialization
+## Spinor MLDUMP materialization
 
 `write_spinor_mldump(path, header, inputs, thc, coulomb, spec)` is the
 runtime-owned spinor writer. The caller supplies `MldumpHeaderV1` because
@@ -484,13 +481,13 @@ eigenvector/site-matching record, one site radial record, one $q$
 $\zeta$ / vertex record, or one $q$ $V$ / Gamma record. Occupations are not
 invented. The MLDUMP v1 tree is unchanged.
 
-## M-L6d1 CoQui-native scalar Cholesky adapter
+## CoQui-native scalar Cholesky adapter
 
 `write_scalar_coqui_cholesky(path, inputs, thc, coulomb, coulomb_spec, factor)`
 writes a **CoQui-native** single-file Cholesky ERI. It is not MLDUMP, not a
 SPEX dump, and does not claim that q-dependent THC/MLDUMP is CoQui-compatible.
 The on-disk tree follows live CoQui `chol_reader_t`
-(`<coqui-inspect-checkout>`, `wg-dev` @
+(the CoQui inspect checkout, `wg-dev` @
 `a19774d03fb979bd852fae4f7f95c045a4cbca78`): `/Interaction` scalars
 `Np,nspin,nspin_in_basis,nkpts,nbnd,nbnd_aux=0,tol`, Cartesian `kpts`/`qpts`,
 `qk_to_kmq`, and `Vq{iq}` as native `f64` `[Np,1,nk,nbnd,nbnd,2]` with

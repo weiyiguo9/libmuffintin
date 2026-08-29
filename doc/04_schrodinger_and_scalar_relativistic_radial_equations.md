@@ -213,9 +213,7 @@ conditioned $B_l$, not continue with unstable coefficients.
 
 ## Source anchors
 
-The SPEX and FLEUR anchors below were inspected in the local trees
-`<spex-source>` and
-`<fleur-source>`.
+The SPEX and FLEUR anchors below were inspected in the SPEX 06.00pre36 source tree and the FLEUR source tree.
 
 - SPEX homogeneous scalar-relativistic equations: `spex06.00pre36/src/dirac.f:44-204`.
 - SPEX inhomogeneous energy-derivative equations: `spex06.00pre36/src/dirac.f:311-531`.

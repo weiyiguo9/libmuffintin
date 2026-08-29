@@ -190,8 +190,7 @@ within the declared tolerance. For each radial solution, serialize enough bounda
 
 ## Source anchors
 
-The SPEX anchors below were inspected in the local tree
-`<spex-source>`.
+The SPEX anchors below were inspected in the SPEX 06.00pre36 source tree.
 
 - SPEX constants and radial-grid type: `spex06.00pre36/src/global.f:302-326` (`gridtype`, `hartree`, `clight`, `bohr`).
 - SPEX explicit input conversions: `spex06.00pre36/src/key.f:34-52` and `spex06.00pre36/src/getkey.inc:432-438,482-488`.
