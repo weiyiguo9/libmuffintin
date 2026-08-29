@@ -5,15 +5,16 @@ use crate::scalar_coulomb::{
     sampled_from_thc_record, vertex_action_norm,
 };
 use crate::spinor_mpb::{SpinorMpbResult, spinor_frozen_input_identity};
-use crate::spinor_product::SpinorProductInput;
+use crate::spinor_product::{SpinorProductInput, SpinorQSliceError, require_spinor_q_slice};
 use crate::spinor_thc::SpinorThcResult;
-use crate::thc_grid::is_gamma_fractional;
+use crate::thc_grid::{ThcQRecord, records_match_parent_grid};
 use muffintin_auxiliary_ir::{OrbitalPair, PairColumnLayout, PairVertex, TransferQ};
 use muffintin_core::ExponentialMesh;
 use muffintin_coulomb::{
-    CoulombError, CoulombOperator, CoulombRequest, InterpolationProjection,
+    AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, InterpolationProjection,
     SampledAuxiliaryFunctions, assemble_coulomb, assemble_sampled_coulomb,
 };
+use muffintin_thc::{L2Engine, SelectorStrategy};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -85,8 +86,22 @@ pub struct SpinorCoulombPairDiagnostic {
 /// Spinor M-L5d sampled-$\zeta$ Coulomb result.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpinorCoulombResult {
-    pub records: Vec<SpinorCoulombQRecord>,
+    pub(crate) records: Vec<SpinorCoulombQRecord>,
     pub diagnostics: Vec<SpinorCoulombPairDiagnostic>,
+    /// Effective request and projection used by [`build_spinor_coulomb`].
+    ///
+    /// Not caller-forgeable through a public struct literal.
+    pub(crate) context: SpinorCoulombSpec,
+}
+
+impl SpinorCoulombResult {
+    /// Sealed sampled-$\zeta$ $V^q$ records in production $q$ order.
+    ///
+    /// Populated only by [`build_spinor_coulomb`]. The slice is read-only;
+    /// replacement operators cannot be installed through this accessor.
+    pub fn records(&self) -> &[SpinorCoulombQRecord] {
+        &self.records
+    }
 }
 
 /// Spinor Coulomb stage-boundary error.
@@ -102,6 +117,14 @@ pub enum SpinorCoulombError {
     IncompleteQSlice { actual: usize, expected: usize },
     #[error("spinor Coulomb inputs do not share one frozen orbital window, layout, and partition")]
     IncompatibleInputs,
+    #[error("spinor Coulomb q-slice contains a non-finite k, q, or wrap component")]
+    NonFiniteQSlice,
+    #[error(
+        "spinor Coulomb canonical q at index {q_index} is not the complete-slice k-mesh transfer"
+    )]
+    CanonicalQMismatch { q_index: usize },
+    #[error("spinor Coulomb k-minus-q wrap at q-index {q_index} k-index {k_index} is inconsistent")]
+    KMinusQWrap { q_index: usize, k_index: usize },
     #[error("spinor Coulomb THC result has {actual} q-records, expected {expected}")]
     RecordCount { actual: usize, expected: usize },
     #[error("spinor Coulomb THC result is not bound to the frozen product partition")]
@@ -130,6 +153,18 @@ pub enum SpinorCoulombError {
     MpbPairLayoutMismatch { q_index: usize },
     #[error("spinor Coulomb interpolation projection does not match the Coulomb request")]
     InterpolationProjection,
+    #[error(
+        "spinor Coulomb spec does not match the effective request/projection used to construct the result"
+    )]
+    SpecMismatch,
+    #[error(
+        "spinor Coulomb record {index} does not match inputs[q] or the accepted THC q/layout/auxiliary/vertices"
+    )]
+    CoulombRecord { index: usize },
+    #[error("spinor Coulomb cannot export THC selection strategy")]
+    UnsupportedStrategy,
+    #[error("spinor Coulomb cannot export THC engine {0:?}")]
+    UnsupportedEngine(L2Engine),
     #[error("spinor Coulomb comparison q-index {0} is outside the THC q-slice")]
     ComparisonQIndex(usize),
     #[error(
@@ -173,8 +208,7 @@ pub fn build_spinor_coulomb(
     spec: &SpinorCoulombSpec,
     comparisons: &[SpinorCoulombPairMatch<'_>],
 ) -> Result<SpinorCoulombResult, SpinorCoulombError> {
-    let first = inputs.first().ok_or(SpinorCoulombError::EmptySlice)?;
-    require_compatible_slice(inputs)?;
+    let first = require_spinor_q_slice(inputs)?;
     if thc.records.len() != inputs.len() {
         return Err(SpinorCoulombError::RecordCount {
             actual: thc.records.len(),
@@ -221,47 +255,27 @@ pub fn build_spinor_coulomb(
     Ok(SpinorCoulombResult {
         records,
         diagnostics,
+        context: spec.clone(),
     })
 }
 
-fn require_compatible_slice(inputs: &[SpinorProductInput]) -> Result<(), SpinorCoulombError> {
-    let first = &inputs[0];
-    first
-        .validate()
-        .map_err(|_| SpinorCoulombError::IncompatibleInputs)?;
-    let n_k = first.orbitals.k_fractional.len();
-    if inputs.len() != n_k {
-        return Err(SpinorCoulombError::IncompleteQSlice {
-            actual: inputs.len(),
-            expected: n_k,
-        });
-    }
-    for (iq, input) in inputs.iter().enumerate() {
-        input
-            .validate()
-            .map_err(|_| SpinorCoulombError::IncompatibleInputs)?;
-        if input.orbitals != first.orbitals
-            || input.pair_columns != first.pair_columns
-            || input.source.partition != first.source.partition
-            || input.source.radials != first.source.radials
-            || input.reciprocal != first.reciprocal
-            || input.k_minus_q.len() != n_k
-        {
-            return Err(SpinorCoulombError::IncompatibleInputs);
-        }
-        let mapped = input
-            .k_minus_q
-            .iter()
-            .find(|mapped| mapped.k_index == iq)
-            .ok_or(SpinorCoulombError::IncompatibleInputs)?;
-        if !is_gamma_fractional(first.orbitals.k_fractional[mapped.kq_index]) {
-            return Err(SpinorCoulombError::IncompleteQSlice {
-                actual: iq,
-                expected: n_k,
-            });
+impl From<SpinorQSliceError> for SpinorCoulombError {
+    fn from(error: SpinorQSliceError) -> Self {
+        match error {
+            SpinorQSliceError::EmptySlice => Self::EmptySlice,
+            SpinorQSliceError::IncompleteQSlice { actual, expected } => {
+                Self::IncompleteQSlice { actual, expected }
+            }
+            SpinorQSliceError::IncompatibleInputs => Self::IncompatibleInputs,
+            SpinorQSliceError::NonFiniteQSlice => Self::NonFiniteQSlice,
+            SpinorQSliceError::CanonicalQMismatch { q_index } => {
+                Self::CanonicalQMismatch { q_index }
+            }
+            SpinorQSliceError::KMinusQWrap { q_index, k_index } => {
+                Self::KMinusQWrap { q_index, k_index }
+            }
         }
     }
-    Ok(())
 }
 
 fn require_matched_mpb_origin(
@@ -346,4 +360,93 @@ fn pair_diagnostic(
         thc_action_norm,
         quadratic_discrepancy: SpinorCoulombDiscrepancy { absolute, relative },
     })
+}
+
+/// Exact Coulomb export context: sealed spec, ordered $q$ records, THC
+/// q/layout/auxiliary/vertices, and serializable strategy/engine/projection.
+pub(crate) fn require_spinor_coulomb_export_context(
+    inputs: &[SpinorProductInput],
+    thc: &SpinorThcResult,
+    coulomb: &SpinorCoulombResult,
+    spec: &SpinorCoulombSpec,
+) -> Result<(), SpinorCoulombError> {
+    let first = require_spinor_q_slice(inputs)?;
+    if spec != &coulomb.context {
+        return Err(SpinorCoulombError::SpecMismatch);
+    }
+    bind_interpolation_request(&spec.request, spec.projection)?;
+    if spec.request.reciprocal() != &first.reciprocal {
+        return Err(SpinorCoulombError::ReciprocalMismatch);
+    }
+    if thc.records.len() != inputs.len() {
+        return Err(SpinorCoulombError::RecordCount {
+            actual: thc.records.len(),
+            expected: inputs.len(),
+        });
+    }
+    if coulomb.records.len() != inputs.len() {
+        return Err(SpinorCoulombError::RecordCount {
+            actual: coulomb.records.len(),
+            expected: inputs.len(),
+        });
+    }
+    if thc.grid.partition() != &first.source.partition {
+        return Err(SpinorCoulombError::Partition);
+    }
+    if !records_match_parent_grid(&thc.grid, &thc.records) {
+        return Err(SpinorCoulombError::GridIdentity { index: 0 });
+    }
+    if thc.selection.provenance.strategy != SelectorStrategy::AllQL2 {
+        return Err(SpinorCoulombError::UnsupportedStrategy);
+    }
+    match thc.selection.provenance.engine {
+        L2Engine::FullColumnPivotedQr | L2Engine::FullPivotedCholesky => {}
+        other => return Err(SpinorCoulombError::UnsupportedEngine(other)),
+    }
+    for (index, ((input, thc_record), coulomb_record)) in inputs
+        .iter()
+        .zip(&thc.records)
+        .zip(&coulomb.records)
+        .enumerate()
+    {
+        require_thc_q_record(
+            input.source.q,
+            input.pair_columns,
+            &thc.grid,
+            thc_record,
+            index,
+        )?;
+        require_coulomb_q_record(input, thc_record, coulomb_record, spec, index)?;
+    }
+    Ok(())
+}
+
+fn require_coulomb_q_record(
+    input: &SpinorProductInput,
+    thc: &ThcQRecord,
+    record: &SpinorCoulombQRecord,
+    spec: &SpinorCoulombSpec,
+    index: usize,
+) -> Result<(), SpinorCoulombError> {
+    let aux_dimension = record.auxiliary.dimension();
+    let ok = record.q_index == index
+        && thc.q_index == index
+        && record.q == input.source.q
+        && record.q == thc.q
+        && record.layout == input.pair_columns
+        && record.layout == thc.layout
+        && record.auxiliary == thc.auxiliary
+        && record.vertices == thc.vertices
+        && record.operator.dimension() == aux_dimension
+        && record.operator.dimension() == thc.fit.n_mu
+        && record.operator.q() == record.q
+        && record.operator.cell() == spec.request.cell()
+        && record.operator.reciprocal() == spec.request.reciprocal()
+        && record.operator.layout() == &record.auxiliary.layout()
+        && record.operator.kind() == AuxiliaryKind::InterpolationPoints;
+    if ok {
+        Ok(())
+    } else {
+        Err(SpinorCoulombError::CoulombRecord { index })
+    }
 }

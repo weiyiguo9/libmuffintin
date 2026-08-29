@@ -6,8 +6,11 @@ SPEX-native. `libmuffintin-io` owns the typed DTOs, schema constants, and
 the reader/writer. Runtime, mixed-product, THC, and Coulomb types stay out
 of `libmuffintin-io`. This stage serializes the accepted header plus an
 optional representation-neutral scalar or spinor payload written from
-borrowed slices. Runtime materialization of live objects is a later
-stage. This development-stage spinor extension stays schema version 1.
+borrowed slices. Runtime `write_scalar_mldump` and `write_spinor_mldump`
+materialize frozen product/THC/Coulomb objects through the streaming
+writers after recoverable preflight, including spinor compiled-basis
+exportability and the sealed `SpinorCoulombResult` request/records.
+This development-stage spinor extension stays schema version 1.
 
 ## 1. Identity and ownership
 

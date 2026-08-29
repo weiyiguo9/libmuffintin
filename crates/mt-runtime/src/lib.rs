@@ -2,10 +2,14 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(test)]
+extern crate self as muffintin;
+
 mod channel_recipe;
 mod channel_token;
 mod error;
 mod input;
+mod mldump_header;
 mod q_mesh;
 mod runner;
 mod scalar_coulomb;
@@ -16,6 +20,7 @@ mod scalar_thc;
 mod site_coords;
 mod snapshot_dft;
 mod spinor_coulomb;
+mod spinor_mldump;
 mod spinor_mpb;
 mod spinor_product;
 mod spinor_thc;
@@ -63,6 +68,7 @@ pub use spinor_coulomb::{
     SpinorCoulombPairDiagnostic, SpinorCoulombPairMatch, SpinorCoulombQRecord, SpinorCoulombResult,
     SpinorCoulombSpec, build_spinor_coulomb,
 };
+pub use spinor_mldump::{SpinorMldumpError, write_spinor_mldump};
 pub use spinor_mpb::{
     SPINOR_MPB_NSPIN, SpinorMpbError, SpinorMpbPairVertex, SpinorMpbResult, SpinorMpbSelection,
     SpinorMpbSpec, build_spinor_mpb,

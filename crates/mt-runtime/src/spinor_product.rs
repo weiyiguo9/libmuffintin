@@ -20,6 +20,7 @@ use crate::snapshot_dft::{
     SnapshotBandSolution, SnapshotDftError, SnapshotDftPhysics, SnapshotKPointSolution,
     regular_k_points,
 };
+use crate::thc_grid::is_gamma_fractional;
 
 /// `DiracRadialId.n` for the APW base $(P,Q)$.
 pub const SPINOR_RADIAL_P: usize = 0;
@@ -327,6 +328,142 @@ impl SpinorProductInput {
         }
         Ok(())
     }
+}
+
+/// Shared q-slice contract used by spinor THC, Coulomb, and MLDUMP.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SpinorQSliceError {
+    EmptySlice,
+    IncompleteQSlice { actual: usize, expected: usize },
+    IncompatibleInputs,
+    NonFiniteQSlice,
+    CanonicalQMismatch { q_index: usize },
+    KMinusQWrap { q_index: usize, k_index: usize },
+}
+
+const Q_SLICE_EQ_TOLERANCE: f64 = 1.0e-12;
+
+pub(crate) fn require_spinor_q_slice(
+    inputs: &[SpinorProductInput],
+) -> Result<&SpinorProductInput, SpinorQSliceError> {
+    let first = inputs.first().ok_or(SpinorQSliceError::EmptySlice)?;
+    first
+        .validate()
+        .map_err(|_| SpinorQSliceError::IncompatibleInputs)?;
+    let n_k = first.orbitals.k_fractional.len();
+    if inputs.len() != n_k {
+        return Err(SpinorQSliceError::IncompleteQSlice {
+            actual: inputs.len(),
+            expected: n_k,
+        });
+    }
+    for (iq, input) in inputs.iter().enumerate() {
+        input
+            .validate()
+            .map_err(|_| SpinorQSliceError::IncompatibleInputs)?;
+        if input.orbitals != first.orbitals
+            || input.pair_columns != first.pair_columns
+            || input.source.partition != first.source.partition
+            || input.source.radials != first.source.radials
+            || input.reciprocal != first.reciprocal
+            || input.k_minus_q.len() != n_k
+        {
+            return Err(SpinorQSliceError::IncompatibleInputs);
+        }
+        if input
+            .source
+            .q
+            .cartesian
+            .iter()
+            .any(|component| !component.get().is_finite())
+        {
+            return Err(SpinorQSliceError::NonFiniteQSlice);
+        }
+        let k_fractional = first.orbitals.k_fractional.as_slice();
+        let q_canonical_frac = k_fractional[iq];
+        let expected_q = cartesian_from_fractional(first.reciprocal, q_canonical_frac)?;
+        if input
+            .source
+            .q
+            .cartesian
+            .iter()
+            .zip(expected_q)
+            .any(|(stored, expected)| !scale_aware_eq(stored.get(), expected))
+        {
+            return Err(SpinorQSliceError::CanonicalQMismatch { q_index: iq });
+        }
+        for (k, mapped) in input.k_minus_q.iter().enumerate() {
+            if mapped.k_index != k || mapped.kq_index >= n_k {
+                return Err(SpinorQSliceError::IncompatibleInputs);
+            }
+            require_k_minus_q_wrap(k_fractional, q_canonical_frac, mapped, iq, k)?;
+        }
+        let mapped = &input.k_minus_q[iq];
+        if !is_gamma_fractional(k_fractional[mapped.kq_index]) {
+            return Err(SpinorQSliceError::IncompleteQSlice {
+                actual: iq,
+                expected: n_k,
+            });
+        }
+    }
+    Ok(first)
+}
+
+fn require_k_minus_q_wrap(
+    k_fractional: &[[f64; 3]],
+    q_canonical_frac: [f64; 3],
+    mapped: &SpinorKMinusQ,
+    q_index: usize,
+    k_index: usize,
+) -> Result<(), SpinorQSliceError> {
+    let k_frac = k_fractional[k_index];
+    let mapped_frac = k_fractional[mapped.kq_index];
+    for (((&k_comp, &q_comp), &mapped_comp), &wrap_index) in k_frac
+        .iter()
+        .zip(&q_canonical_frac)
+        .zip(&mapped_frac)
+        .zip(&mapped.umklapp.index)
+    {
+        let wrap = f64::from(wrap_index);
+        if !k_comp.is_finite()
+            || !q_comp.is_finite()
+            || !mapped_comp.is_finite()
+            || !wrap.is_finite()
+        {
+            return Err(SpinorQSliceError::NonFiniteQSlice);
+        }
+        let residual = k_comp - q_comp - mapped_comp - wrap;
+        if !residual.is_finite() || !scale_aware_eq(residual, 0.0) {
+            return Err(SpinorQSliceError::KMinusQWrap { q_index, k_index });
+        }
+    }
+    Ok(())
+}
+
+fn cartesian_from_fractional(
+    reciprocal: ReciprocalLattice,
+    fractional: [f64; 3],
+) -> Result<[f64; 3], SpinorQSliceError> {
+    if fractional.iter().any(|value| !value.is_finite()) {
+        return Err(SpinorQSliceError::NonFiniteQSlice);
+    }
+    let basis = reciprocal.basis();
+    let cartesian = std::array::from_fn(|axis| {
+        fractional
+            .iter()
+            .zip(basis.iter())
+            .map(|(&coefficient, vector)| coefficient * vector[axis].get())
+            .sum::<f64>()
+    });
+    if cartesian.iter().any(|value| !value.is_finite()) {
+        return Err(SpinorQSliceError::NonFiniteQSlice);
+    }
+    Ok(cartesian)
+}
+
+fn scale_aware_eq(left: f64, right: f64) -> bool {
+    let scale = left.abs().max(right.abs()).max(1.0);
+    (left - right).abs() <= Q_SLICE_EQ_TOLERANCE * scale
 }
 
 fn emit_spinor_product_input(

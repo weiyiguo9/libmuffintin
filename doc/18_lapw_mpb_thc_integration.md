@@ -451,3 +451,35 @@ to one $k$ eigenvector/APW-matching record, one $q$ $\zeta$/vertex record, or
 one $q$ $V$/Gamma record. `/mpb` and `/exchange/{valence,core,total}` remain
 `absent_not_computed`. Occupations are not invented. The owned reader and
 MLDUMP v1 tree are unchanged.
+
+## M-L6c2 spinor MLDUMP materialization
+
+`write_spinor_mldump(path, header, inputs, thc, coulomb, spec)` is the
+runtime-owned spinor writer. The caller supplies `MldumpHeaderV1` because
+species and labels cannot be reconstructed from `SpinorProductInput`.
+`build_spinor_coulomb` seals the effective request and interpolation
+projection inside `SpinorCoulombResult`. Sampled-$\zeta$ $V^q$ records are
+crate-private and exposed only through the read-only `records()` accessor.
+Before the HDF5 file is created, runtime preflights the header
+cell/reciprocal/volume, ordered sites, radii, radial meshes, full-BZ $k$
+with uniform weights $1/n_k$, exact $q$ input/canonical/global Umklapp and
+per-$k$ wraps, the shared spinor $q$-slice contract (canonical $q$ Cartesian
+equals $k_{\mathrm{frac}}[q]$ Cartesian at scale-aware $10^{-12}$, and
+$k_{\mathrm{frac}}[k]-q_{\mathrm{canonical}}=k_{\mathrm{frac}}[\mathrm{mapped}]+G_{\mathrm{wrap}}$
+using stored fractional indices; global `TransferQ` Umklapp is not a per-$k$
+label), every frozen $k$ compiled basis and site augmentation
+(site count, geometry, plane-wave count, native signed-$\kappa$ then
+$2\mu$ channels, complete Pauli coefficient arrays), and the crate-private
+Coulomb export-context guard: the passed spec must match that sealed
+request/projection, each Coulomb $q$ record must bind `inputs[q]` and the
+accepted THC $q$/layout/auxiliary/vertices with a sampled-$\zeta$
+interpolation-point operator on that auxiliary layout, and the THC
+strategy/engine plus Coulomb projection metadata must be serializable. A
+tampered header, compiled basis, wrap, or replacement operator is rejected
+with no output file. There is no MPB argument; `/mpb` stays absent.
+
+The on-disk write uses `SpinorMldumpStreamV1` and the neutral `MldumpThc*` /
+`MldumpCoulomb*` DTOs. Conversion scratch is bounded to one $k$
+eigenvector/site-matching record, one site radial record, one $q$
+$\zeta$/vertex record, or one $q$ $V$/Gamma record. Occupations are not
+invented. The MLDUMP v1 tree is unchanged.

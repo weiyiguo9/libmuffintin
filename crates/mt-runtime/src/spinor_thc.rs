@@ -1,9 +1,9 @@
 //! Spinor AllQL2 THC from frozen [`SpinorProductInput`] on a [`ThcParentGrid`].
 
-use crate::spinor_product::SpinorProductInput;
+use crate::spinor_product::{SpinorProductInput, SpinorQSliceError, require_spinor_q_slice};
 use crate::thc_grid::{
     ThcCandidates, ThcEngine, ThcGridError, ThcParentGrid, ThcQRecord, ThcRegion,
-    is_gamma_fractional, records_match_parent_grid, require_parent_grid_radials,
+    records_match_parent_grid, require_parent_grid_radials,
 };
 use muffintin_auxiliary_ir::{DiracRadial, DiracRadialId, DiracSiteRadialSet, ProductOrbitalKind};
 use muffintin_core::{
@@ -66,6 +66,12 @@ pub enum SpinorThcError {
     IncompleteQSlice { actual: usize, expected: usize },
     #[error("spinor THC inputs do not share one frozen orbital window, layout, and partition")]
     IncompatibleInputs,
+    #[error("spinor THC q-slice contains a non-finite k, q, or wrap component")]
+    NonFiniteQSlice,
+    #[error("spinor THC canonical q at index {q_index} is not the complete-slice k-mesh transfer")]
+    CanonicalQMismatch { q_index: usize },
+    #[error("spinor THC k-minus-q wrap at q-index {q_index} k-index {k_index} is inconsistent")]
+    KMinusQWrap { q_index: usize, k_index: usize },
     #[error("spinor THC grid is not bound to the frozen product partition")]
     GridPartitionMismatch,
     #[error("spinor THC grid point {index} is outside the frozen product geometry")]
@@ -98,6 +104,25 @@ impl From<ThcGridError> for SpinorThcError {
     }
 }
 
+impl From<SpinorQSliceError> for SpinorThcError {
+    fn from(error: SpinorQSliceError) -> Self {
+        match error {
+            SpinorQSliceError::EmptySlice => Self::EmptySlice,
+            SpinorQSliceError::IncompleteQSlice { actual, expected } => {
+                Self::IncompleteQSlice { actual, expected }
+            }
+            SpinorQSliceError::IncompatibleInputs => Self::IncompatibleInputs,
+            SpinorQSliceError::NonFiniteQSlice => Self::NonFiniteQSlice,
+            SpinorQSliceError::CanonicalQMismatch { q_index } => {
+                Self::CanonicalQMismatch { q_index }
+            }
+            SpinorQSliceError::KMinusQWrap { q_index, k_index } => {
+                Self::KMinusQWrap { q_index, k_index }
+            }
+        }
+    }
+}
+
 /// Build AllQL2 interpolation points, $\zeta$, and pair vertices on a parent grid.
 ///
 /// `inputs` is the complete k-mesh $q$ slice in production $q$-index order.
@@ -118,8 +143,7 @@ pub fn build_spinor_thc(
     grid: &ThcParentGrid,
     spec: &SpinorThcSpec,
 ) -> Result<SpinorThcResult, SpinorThcError> {
-    let first = inputs.first().ok_or(SpinorThcError::EmptySlice)?;
-    require_compatible_slice(inputs)?;
+    let first = require_spinor_q_slice(inputs)?;
     if grid.partition() != &first.source.partition {
         return Err(SpinorThcError::GridPartitionMismatch);
     }
@@ -168,46 +192,6 @@ pub fn build_spinor_thc(
         effective_rank: records.first().map(|record| record.fit.n_mu).unwrap_or(0),
         records,
     })
-}
-
-fn require_compatible_slice(inputs: &[SpinorProductInput]) -> Result<(), SpinorThcError> {
-    let first = &inputs[0];
-    first
-        .validate()
-        .map_err(|_| SpinorThcError::IncompatibleInputs)?;
-    let n_k = first.orbitals.k_fractional.len();
-    if inputs.len() != n_k {
-        return Err(SpinorThcError::IncompleteQSlice {
-            actual: inputs.len(),
-            expected: n_k,
-        });
-    }
-    for (iq, input) in inputs.iter().enumerate() {
-        input
-            .validate()
-            .map_err(|_| SpinorThcError::IncompatibleInputs)?;
-        if input.orbitals != first.orbitals
-            || input.pair_columns != first.pair_columns
-            || input.source.partition != first.source.partition
-            || input.source.radials != first.source.radials
-            || input.reciprocal != first.reciprocal
-            || input.k_minus_q.len() != n_k
-        {
-            return Err(SpinorThcError::IncompatibleInputs);
-        }
-        let mapped = input
-            .k_minus_q
-            .iter()
-            .find(|mapped| mapped.k_index == iq)
-            .ok_or(SpinorThcError::IncompatibleInputs)?;
-        if !is_gamma_fractional(first.orbitals.k_fractional[mapped.kq_index]) {
-            return Err(SpinorThcError::IncompleteQSlice {
-                actual: iq,
-                expected: n_k,
-            });
-        }
-    }
-    Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]

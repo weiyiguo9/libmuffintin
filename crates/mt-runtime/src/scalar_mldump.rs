@@ -21,6 +21,10 @@ use muffintin_thc::{L2Engine, RankPolicy, SelectorStrategy};
 use num_complex::Complex64;
 use thiserror::Error;
 
+use crate::mldump_header::{
+    HeaderBind, HeaderBindError, HeaderBindKMinusQ, HeaderBindQ, HeaderBindSite,
+    preflight_mldump_header,
+};
 use crate::scalar_coulomb::{
     ScalarCoulombError, ScalarCoulombResult, ScalarCoulombSpec,
     require_scalar_coulomb_export_context,
@@ -30,8 +34,6 @@ use crate::scalar_product::{
 };
 use crate::scalar_thc::{ScalarThcError, ScalarThcResult};
 use crate::thc_grid::ThcRegion;
-
-const PREFLIGHT_TOLERANCE: f64 = 1.0e-12;
 
 /// Failure while preflighting or streaming a scalar MLDUMP file.
 #[derive(Debug, Error)]
@@ -63,6 +65,16 @@ impl From<ValidationError> for ScalarMldumpError {
 impl From<ScalarQSliceError> for ScalarMldumpError {
     fn from(error: ScalarQSliceError) -> Self {
         Self::Thc(error.into())
+    }
+}
+
+impl From<HeaderBindError> for ScalarMldumpError {
+    fn from(error: HeaderBindError) -> Self {
+        Self::HeaderMismatch {
+            path: error.path,
+            expected: error.expected,
+            actual: error.actual,
+        }
     }
 }
 
@@ -119,183 +131,59 @@ fn preflight_header(
     spec: &ScalarCoulombSpec,
 ) -> Result<(), ScalarMldumpError> {
     let cell = spec.request.cell();
-    for (row, (stored, expected)) in header
-        .geometry
-        .direct_basis_bohr
+    let sites = first
+        .source
+        .partition
+        .sites()
         .iter()
-        .zip(cell.basis().iter())
-        .enumerate()
-    {
-        for (axis, (left, right)) in stored.iter().zip(expected.iter()).enumerate() {
-            require_approx(
-                &format!("header.geometry.direct_basis_bohr[{row}][{axis}]"),
-                *left,
-                right.get(),
-            )?;
-        }
-    }
-    for (row, (stored, expected)) in header
-        .geometry
-        .reciprocal_basis_inv_bohr
+        .zip(&first.source.radials)
+        .map(|(site, radials)| HeaderBindSite {
+            position: site.position.map(|component| component.get()),
+            radius: site.radius.get(),
+            mesh_first: radials.mesh.first().get(),
+            mesh_increment: radials.mesh.increment(),
+            mesh_count: radials.mesh.len(),
+        })
+        .collect::<Vec<_>>();
+    let k_maps = inputs
         .iter()
-        .zip(first.reciprocal.basis().iter())
-        .enumerate()
-    {
-        for (axis, (left, right)) in stored.iter().zip(expected.iter()).enumerate() {
-            require_approx(
-                &format!("header.geometry.reciprocal_basis_inv_bohr[{row}][{axis}]"),
-                *left,
-                right.get(),
-            )?;
-        }
-    }
-    require_approx(
-        "header.geometry.cell_volume_bohr3",
-        header.geometry.cell_volume_bohr3,
-        cell.volume().get(),
+        .map(|input| {
+            input
+                .k_minus_q
+                .iter()
+                .map(|mapped| HeaderBindKMinusQ {
+                    k_index: mapped.k_index,
+                    mapped_index: mapped.kq_index,
+                    g_wrap: mapped.umklapp.index,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let q_records = inputs
+        .iter()
+        .zip(&k_maps)
+        .map(|(input, k_minus_q)| HeaderBindQ {
+            cartesian: input.source.q.cartesian.map(|component| component.get()),
+            umklapp: input.source.q.umklapp.index,
+            k_minus_q,
+        })
+        .collect::<Vec<_>>();
+    preflight_mldump_header(
+        header,
+        &HeaderBind {
+            direct_basis: std::array::from_fn(|row| {
+                std::array::from_fn(|axis| cell.basis()[row][axis].get())
+            }),
+            reciprocal_basis: std::array::from_fn(|row| {
+                std::array::from_fn(|axis| first.reciprocal.basis()[row][axis].get())
+            }),
+            cell_volume: cell.volume().get(),
+            partition_volume: first.source.partition.interstitial().cell_volume().get(),
+            sites: &sites,
+            k_fractional: &first.orbitals.k_fractional,
+            q_records: &q_records,
+        },
     )?;
-    require_approx(
-        "header.geometry.cell_volume_bohr3",
-        header.geometry.cell_volume_bohr3,
-        first.source.partition.interstitial().cell_volume().get(),
-    )?;
-    let n_site = first.source.partition.site_count();
-    if header.geometry.sites.len() != n_site {
-        return Err(header_mismatch(
-            "header.geometry.sites",
-            n_site.to_string(),
-            header.geometry.sites.len().to_string(),
-        ));
-    }
-    for (site, (header_site, partition_site)) in header
-        .geometry
-        .sites
-        .iter()
-        .zip(first.source.partition.sites())
-        .enumerate()
-    {
-        for (axis, (stored, expected)) in header_site
-            .position_bohr
-            .iter()
-            .zip(partition_site.position.iter())
-            .enumerate()
-        {
-            require_approx(
-                &format!("header.geometry.sites[{site}].position_bohr[{axis}]"),
-                *stored,
-                expected.get(),
-            )?;
-        }
-        require_approx(
-            &format!("header.geometry.sites[{site}].radius_bohr"),
-            header_site.radius_bohr,
-            partition_site.radius.get(),
-        )?;
-        let mesh = &first.source.radials[site].mesh;
-        require_approx(
-            &format!("header.geometry.sites[{site}].radial_mesh.first_bohr"),
-            header_site.radial_mesh.first_bohr,
-            mesh.first().get(),
-        )?;
-        require_approx(
-            &format!("header.geometry.sites[{site}].radial_mesh.log_increment"),
-            header_site.radial_mesh.log_increment,
-            mesh.increment(),
-        )?;
-        if header_site.radial_mesh.point_count != mesh.len() {
-            return Err(header_mismatch(
-                &format!("header.geometry.sites[{site}].radial_mesh.point_count"),
-                mesh.len().to_string(),
-                header_site.radial_mesh.point_count.to_string(),
-            ));
-        }
-    }
-    let n_k = first.orbitals.k_fractional.len();
-    if header.mesh.k_points.len() != n_k {
-        return Err(header_mismatch(
-            "header.mesh.k_points",
-            n_k.to_string(),
-            header.mesh.k_points.len().to_string(),
-        ));
-    }
-    let weight = 1.0 / n_k as f64;
-    for (k, (stored, expected)) in header
-        .mesh
-        .k_points
-        .iter()
-        .zip(first.orbitals.k_fractional.iter())
-        .enumerate()
-    {
-        for (axis, (left, right)) in stored.fractional.iter().zip(expected.iter()).enumerate() {
-            require_approx(
-                &format!("header.mesh.k_points[{k}].fractional[{axis}]"),
-                *left,
-                *right,
-            )?;
-        }
-        require_approx(
-            &format!("header.mesh.k_points[{k}].weight"),
-            stored.weight,
-            weight,
-        )?;
-    }
-    if header.mesh.q_entries.len() != inputs.len() {
-        return Err(header_mismatch(
-            "header.mesh.q_entries",
-            inputs.len().to_string(),
-            header.mesh.q_entries.len().to_string(),
-        ));
-    }
-    for (q, (entry, input)) in header.mesh.q_entries.iter().zip(inputs).enumerate() {
-        let expected_cart = fractional_to_cartesian(
-            header.geometry.reciprocal_basis_inv_bohr,
-            entry.canonical_fractional,
-        );
-        for (axis, (stored, expected)) in input
-            .source
-            .q
-            .cartesian
-            .iter()
-            .zip(expected_cart)
-            .enumerate()
-        {
-            require_approx(
-                &format!("header.mesh.q_entries[{q}].canonical cartesian[{axis}]"),
-                stored.get(),
-                expected,
-            )?;
-        }
-        if entry.global_umklapp != input.source.q.umklapp.index {
-            return Err(header_mismatch(
-                &format!("header.mesh.q_entries[{q}].global_umklapp"),
-                format!("{:?}", input.source.q.umklapp.index),
-                format!("{:?}", entry.global_umklapp),
-            ));
-        }
-        if entry.k_minus_q.len() != n_k {
-            return Err(header_mismatch(
-                &format!("header.mesh.q_entries[{q}].k_minus_q"),
-                n_k.to_string(),
-                entry.k_minus_q.len().to_string(),
-            ));
-        }
-        for (k, (stored, mapped)) in entry.k_minus_q.iter().zip(&input.k_minus_q).enumerate() {
-            if stored.k_index != mapped.k_index || stored.mapped_index != mapped.kq_index {
-                return Err(header_mismatch(
-                    &format!("header.mesh.q_entries[{q}].k_minus_q[{k}]"),
-                    format!("k={} mapped={}", mapped.k_index, mapped.kq_index),
-                    format!("k={} mapped={}", stored.k_index, stored.mapped_index),
-                ));
-            }
-            if stored.g_wrap != mapped.umklapp.index {
-                return Err(header_mismatch(
-                    &format!("header.mesh.q_entries[{q}].k_minus_q[{k}].g_wrap"),
-                    format!("{:?}", mapped.umklapp.index),
-                    format!("{:?}", stored.g_wrap),
-                ));
-            }
-        }
-    }
     Ok(())
 }
 
@@ -797,33 +685,4 @@ fn interstitial_volume(input: &ScalarProductInput) -> f64 {
         .map(|site| 4.0 / 3.0 * PI * site.radius.get().powi(3))
         .sum::<f64>();
     cell - muffin
-}
-
-fn fractional_to_cartesian(reciprocal: [[f64; 3]; 3], fractional: [f64; 3]) -> [f64; 3] {
-    std::array::from_fn(|axis| {
-        fractional[0] * reciprocal[0][axis]
-            + fractional[1] * reciprocal[1][axis]
-            + fractional[2] * reciprocal[2][axis]
-    })
-}
-
-fn require_approx(path: &str, stored: f64, expected: f64) -> Result<(), ScalarMldumpError> {
-    let scale = stored.abs().max(expected.abs()).max(1.0);
-    if (stored - expected).abs() <= PREFLIGHT_TOLERANCE * scale {
-        Ok(())
-    } else {
-        Err(header_mismatch(
-            path,
-            expected.to_string(),
-            stored.to_string(),
-        ))
-    }
-}
-
-fn header_mismatch(path: &str, expected: String, actual: String) -> ScalarMldumpError {
-    ScalarMldumpError::HeaderMismatch {
-        path: path.to_owned(),
-        expected,
-        actual,
-    }
 }

@@ -1,248 +1,21 @@
 //! Public M-L5d spinor AllQL2 THC tests on frozen M-L5b product input.
 
-use std::collections::BTreeMap;
-
 use muffintin::{
     RankPolicy, SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, SnapshotDftPhysics,
-    SpinorProductInput, SpinorThcSpec, ThcCandidates, ThcEngine, ThcParentGrid, ThcPoint,
+    SpinorProductInput, SpinorThcError, SpinorThcSpec, ThcCandidates, ThcEngine, ThcParentGrid,
     ThcRegion, build_spinor_thc,
 };
 use muffintin_core::{
-    Bohr, Hartree, RelativisticChannel, SpinProjection, complex_spherical_harmonics, lm_index,
+    Bohr, InverseBohr, RelativisticChannel, SpinProjection, complex_spherical_harmonics, lm_index,
 };
-use muffintin_dft::{
-    LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
-    ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfConvergence,
-    ScfCoreSite, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations, ScfRelativity,
-    XcFunctional,
-};
-use muffintin_io::{
-    AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1,
-    ExponentialMeshSpecV1, FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1,
-    GeometryV1, InterstitialV1, InverseLengthUnitV1, LatticeV1, LengthUnitV1, LinearizationV1,
-    MetaV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
-    SpinTagV1,
-};
-use muffintin_lapw::Provenance;
 use muffintin_operators::CompiledSiteProjection;
 use muffintin_thc::{GridPath, L2Engine, SelectorStrategy};
 use num_complex::Complex64;
 
-fn hydrogen_spinor_snapshot() -> SnapshotV2 {
-    let point_count = 61;
-    let first: f64 = 1.0e-4;
-    let radius: f64 = 1.0;
-    let increment = (radius / first).ln() / (point_count - 1) as f64;
-    let radii = (0..point_count)
-        .map(|index| first * (index as f64 * increment).exp())
-        .collect::<Vec<_>>();
-    SnapshotV1::new(
-        MetaV1 {
-            title: "spinor THC hydrogen smoke".to_owned(),
-            producer: "mt-runtime test".to_owned(),
-            producer_version: None,
-            energy_zero: "zero interstitial Fourier mean".to_owned(),
-            potential_convention: PotentialConventionV1 {
-                angular_basis: AngularBasisV1::ComplexCondonShortley,
-                radial_quantity: PotentialRadialQuantityV1::Potential,
-                spherical_channel: SphericalChannelConventionV1::PhysicalValue,
-            },
-            annotations: BTreeMap::new(),
-        },
-        GeometryV1 {
-            lattice: LatticeV1 {
-                unit: LengthUnitV1::Bohr,
-                vectors: [[8.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 8.0]],
-            },
-            sites: vec![SiteV1 {
-                id: "H-1".to_owned(),
-                atomic_number: 1,
-                fractional_position: [1.25, -0.5, 0.5],
-                muffin_tin_radius_unit: LengthUnitV1::Bohr,
-                muffin_tin_radius: radius,
-                spins: vec![SiteSpinV1 {
-                    spin: SpinTagV1::Scalar,
-                    mesh: ExponentialMeshSpecV1 {
-                        radius_unit: LengthUnitV1::Bohr,
-                        first,
-                        log_increment: increment,
-                        point_count,
-                        last: first * ((point_count - 1) as f64 * increment).exp(),
-                        consistency_tolerance: 1.0e-12,
-                    },
-                    radial_equation: RadialEquationTagV1::FullyRelativisticDirac,
-                    potential_unit: EnergyUnitV1::Hartree,
-                    potential_channels: vec![PotentialChannelV1 {
-                        l: 0,
-                        m: 0,
-                        real: radii.iter().map(|radius| -1.0 / radius).collect(),
-                        imaginary: Vec::new(),
-                    }],
-                    linearization: LinearizationV1 {
-                        energy_unit: EnergyUnitV1::Hartree,
-                        linearization_energies: vec![
-                            EnergyParameterV1 { l: 0, energy: -0.3 },
-                            EnergyParameterV1 {
-                                l: 1,
-                                energy: -0.15,
-                            },
-                        ],
-                        local_orbital_energies: Vec::new(),
-                    },
-                }],
-            }],
-        },
-        InterstitialV1 {
-            coefficient_unit: EnergyUnitV1::Hartree,
-            coefficients: vec![FourierCoefficientV1 {
-                g: [0; 3],
-                value: Complex64V1 {
-                    real: 0.0,
-                    imaginary: 0.0,
-                },
-            }],
-            basis_hints: BasisHintsV1 {
-                reciprocal_length_unit: InverseLengthUnitV1::BohrInverse,
-                plane_wave_cutoff: Some(0.5),
-                coefficient_cutoff: Some(1.0),
-                normalization: FourierNormalizationV1::CellNormalized,
-                phase: FourierPhaseV1::NegativeExponent,
-            },
-        },
-    )
-    .normalize_v2()
-    .unwrap()
-}
+#[path = "spinor_hydrogen.rs"]
+mod spinor_hydrogen;
 
-fn spinor_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
-    ScfConfig {
-        electron_count: 1.0,
-        k_mesh: ScfKMesh {
-            divisions,
-            shift: [0.0; 3],
-        },
-        basis: ScfBasis {
-            plane_wave_cutoff: cutoff,
-            l_max: 1,
-            channels: vec![
-                ScfChannelRecipe {
-                    site: "H-1".to_owned(),
-                    identity: ScfChannelIdentity::ScalarL { n: 1, l: 0 },
-                    treatment: ScfChannelTreatment::Valence,
-                    derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
-                    seed: None,
-                    provenance: ScfChannelProvenance::BuiltIn,
-                },
-                ScfChannelRecipe {
-                    site: "H-1".to_owned(),
-                    identity: ScfChannelIdentity::ScalarL { n: 2, l: 1 },
-                    treatment: ScfChannelTreatment::Valence,
-                    derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
-                    seed: None,
-                    provenance: ScfChannelProvenance::BuiltIn,
-                },
-                ScfChannelRecipe {
-                    site: "H-1".to_owned(),
-                    identity: ScfChannelIdentity::Kappa { n: 2, kappa: 1 },
-                    treatment: ScfChannelTreatment::Hdlo,
-                    derivative_order: 2,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
-                    seed: None,
-                    provenance: ScfChannelProvenance::Site,
-                },
-            ],
-            resolved_channels: Vec::new(),
-        },
-        occupations: ScfOccupations::FermiDirac {
-            temperature: Hartree(0.02),
-        },
-        exchange_correlation: ScfExchangeCorrelation {
-            functional: XcFunctional::LdaPw92,
-            noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
-        },
-        mixing: ScfMixing::Linear { alpha: 1.0 },
-        relativity: ScfRelativity::SpinorFirstVariation,
-        convergence: ScfConvergence {
-            energy_tolerance: Hartree(1.0e100),
-            density_tolerance: 1.0e100,
-            max_iterations: 2,
-        },
-        core_sites: vec![ScfCoreSite {
-            id: "H-1".to_owned(),
-            states: Vec::new(),
-        }],
-    }
-}
-
-fn on_shell(origin: [Bohr; 3], radius: f64, direction: [f64; 3]) -> [Bohr; 3] {
-    let norm = direction
-        .iter()
-        .map(|component| component * component)
-        .sum::<f64>()
-        .sqrt();
-    [
-        Bohr(origin[0].get() + radius * direction[0] / norm),
-        Bohr(origin[1].get() + radius * direction[1] / norm),
-        Bohr(origin[2].get() + radius * direction[2] / norm),
-    ]
-}
-
-fn parent_grid(input: &SpinorProductInput) -> ThcParentGrid {
-    let origin = input.source.partition.sites()[0].position;
-    let mesh = &input.source.radials[0].mesh;
-    let mid = mesh.radii().len() / 2;
-    let r_mid = mesh.radii()[mid].get();
-    let r0 = mesh.radii()[0].get();
-    ThcParentGrid::new(
-        input.source.partition.clone(),
-        Provenance::default(),
-        vec![
-            ThcPoint {
-                coordinate: on_shell(origin, r0, [0.4, -0.3, 0.2]),
-                weight: 0.35,
-                region: ThcRegion::MuffinTin {
-                    site: 0,
-                    radial_index: 0,
-                },
-            },
-            ThcPoint {
-                coordinate: on_shell(origin, r_mid, [1.0, 0.0, 0.0]),
-                weight: 0.0,
-                region: ThcRegion::MuffinTin {
-                    site: 0,
-                    radial_index: mid,
-                },
-            },
-            ThcPoint {
-                coordinate: on_shell(origin, r_mid, [0.0, 1.0, 0.0]),
-                weight: 0.45,
-                region: ThcRegion::MuffinTin {
-                    site: 0,
-                    radial_index: mid,
-                },
-            },
-            ThcPoint {
-                coordinate: [Bohr(0.2), Bohr(0.2), Bohr(0.2)],
-                weight: 0.8,
-                region: ThcRegion::Interstitial,
-            },
-            ThcPoint {
-                coordinate: [Bohr(5.0), Bohr(4.0), Bohr(4.0)],
-                weight: 0.15,
-                region: ThcRegion::Interstitial,
-            },
-            ThcPoint {
-                coordinate: [Bohr(2.0), Bohr(6.5), Bohr(4.0)],
-                weight: 0.25,
-                region: ThcRegion::Interstitial,
-            },
-        ],
-    )
-    .unwrap()
-}
+use spinor_hydrogen::{hydrogen_spinor_snapshot, parent_grid, spinor_config};
 
 fn spec_all(n_mu: usize) -> SpinorThcSpec {
     spec_all_engine(n_mu, ThcEngine::FullColumnPivotedQr)
@@ -1002,6 +775,37 @@ fn finite_q_uses_cell_periodic_k_phase_and_stored_wrap() {
     );
     assert!((got_i - wrap_flip).norm() > 1.0e-8);
     assert!((got_i - umklapp).norm() > 1.0e-8);
+}
+
+#[test]
+fn build_spinor_thc_rejects_forged_finite_q_wrap_and_canonical_q() {
+    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let q0 = physics
+        .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [0.0; 3])
+        .unwrap();
+    let q15 = physics
+        .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [1.5, 0.0, 0.0])
+        .unwrap();
+    let grid = parent_grid(&q15);
+    let spec = spec_all(1);
+
+    let mut forged_wrap = q15.clone();
+    forged_wrap.k_minus_q[0].umklapp.index[0] += 1;
+    match build_spinor_thc(&[q0.clone(), forged_wrap], &grid, &spec) {
+        Err(SpinorThcError::KMinusQWrap {
+            q_index: 1,
+            k_index: 0,
+        }) => {}
+        other => panic!("expected forged wrap rejection, got {other:?}"),
+    }
+
+    let mut forged_q = q15.clone();
+    forged_q.source.q.cartesian[0] = InverseBohr(forged_q.source.q.cartesian[0].get() + 1.0);
+    forged_q.source.interstitial_pair_support.q = forged_q.source.q;
+    match build_spinor_thc(&[q0, forged_q], &grid, &spec) {
+        Err(SpinorThcError::CanonicalQMismatch { q_index: 1 }) => {}
+        other => panic!("expected forged canonical q rejection, got {other:?}"),
+    }
 }
 
 #[test]
