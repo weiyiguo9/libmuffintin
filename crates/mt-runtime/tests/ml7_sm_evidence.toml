@@ -1,0 +1,67 @@
+# M-L7 Sm fcc bounded material-evidence manifest.
+
+head_sha = "89ff8f8c80711eb6ded36efba688c8a7fd640bf9"
+lane = "ml7-sm"
+status = "bounded-complete"
+
+[search]
+local_repo = "<local-repo>"
+wsl_root = "wsl:<thc-experiment-root>"
+wsl_sm_runs = [
+  "sm_fcc_3x3_dft",
+  "sm_fcc_3x3_ref",
+  "sm_fcc_4x4_dft",
+  "sm_fcc_4x4_ref",
+]
+wsl_snapshot_v2 = []
+ml0_probe = "wsl:<thc-experiment-root>/runs/rust_thc/ml0_adaptive_rank_probe_qindex0.log"
+
+[hashes]
+spex_inp_dft = "bd0734b9cfc6268489d10da7cb9bad159cc312a633650e2346e7460e3c17c179"
+spex_hf_inp = "bdc1b272b14238d22f5366fb7de1326681871d787292f2d62b70eba4c224f555"
+spex_dft = "dc124efb32a9af73be8058080abb59ee72f20494d2700e6d393d24dea169a347"
+spex_pot = "92fdd4e4362e342cca4cefebe8dc6c181b317f599b5588e4e02d6ea67078019f"
+spex_mix = "42a036b7c8e8034726deb748d20d9298dbfadb215bd265546f5ae067654488b3"
+thc_orbitals_bin = "972fa679f56653853d5b3021dd41f83e11788bca3793271b9a199e58f116abb3"
+nufft_adaptive_tight_ls_bin = "24f152cc9712aad4e6f90b2bbe07b5aa2a5bfa63e9bc8549231fd86ad53b2b6f"
+exchange_hdf_scalar = "a8417738bc8cb31b911953420b3e70ca6c3d9cf69dd63d94d6d7b9ed40d45f01"
+snapshot_hdf_f = "53d9d32614ab16ce53037af537b4bb5fa3d3d3c4423ab8a789858a4b552ea070"
+snapshot_hdf_schema_py = "0a9bf2f4070f634ae063fa5970c1fd0564ff792ba2ce109440d7f7085c77a3f7"
+spex_inv_local = "7c2c4bec4afe68e8131e9a8d3e6da5c811ecf2c97a410990c296fdf36d71d075"
+spex_noinv_local = "bfb3b6fa5977492b7c97b0310a81f43b113b64b1bc52d76da307c9ed4022980c"
+spex_producer_published = "b45d9b9e1505d25236c3e78674418b011a471666"
+
+[paths]
+wsl_sm_ref = "wsl:<thc-experiment-root>/runs/sm_fcc_3x3_ref"
+wsl_sm_dft = "wsl:<thc-experiment-root>/runs/sm_fcc_3x3_dft"
+ml6e1_exchange_h5 = "wsl:<thc-experiment-root>/build/spex-ml6e1-72563fe-run-core/exchange.h5"
+shared_helper = "crates/mt-runtime/tests/ml7_material_common.rs"
+spex_snapshot_reader = "crates/mt-io/src/spex_snapshot.rs"
+schema = "spex.snapshot_hdf v1 revised: SPEX scalar LO, no kappa; SnapshotV2 via materialize_snapshot_v2 + recipe"
+spex_writer = "spex-build:<snapshot-writer-checkout>/src/snapshot_hdf.f"
+spex_inv = "spex-build:<snapshot-writer-checkout>/src/spex.inv"
+spex_noinv = "spex-build:<snapshot-writer-checkout>/src/spex.noinv"
+schema_script = "spex-build:<snapshot-writer-checkout>/tests/snapshot_hdf_schema.py"
+spex_writer_head = "b45d9b9e1505d25236c3e78674418b011a471666"
+spex_writer_ref = "origin/codex/thc-dump-gfort15"
+live_hdf = ["/tmp/ml7-spex-artifact/snapshot.h5"]
+wsl_ml7_run = "wsl:<thc-experiment-root>/build/spex-ml7-b45d9b9-run-sm"
+wsl_compiler = "gfortran 15.2.0 Open MPI 5.0.10 HDF5 1.14.6 parallel"
+wsl_snapshot_h5 = "1548720 bytes complete; consumed by frozen reader"
+wsl_snapshot_h5_sha256 = "9f060f742e9078ec3dc8ee24d8945d38ec74a729e5dee85acfbffd345e132a59"
+
+[result]
+missing_live_spex_snapshot_hdf = false
+source_publication_no_longer_blocked = true
+snapshot_dft_physics_new_succeeds_after_hermitian_ingest = true
+raw_kh_snapshot_rejects_spinor_first_variation = true
+spex_source_radial_equation_remains_kh = true
+caller_recipe_bound_to_runtime_basis = true
+target_dirac_pq_from_v0_monopole = true
+bounded_full_q_mpb_qrcp_cholesky_thc_coulomb_mldump = true
+bounded_target_plane_wave_cutoff_inv_bohr = 0.5
+spex_artifacts_are_native_scalar_collinear = true
+nuf1_is_ml0_rank_evidence_only = true
+exchange_hdf_is_scalar_only = true
+synthetic_hydrogen_forbidden = true
+statement = """Consumed WSL snapshot.h5 sha256 9f060f74… from SPEX b45d9b9. Hermitian ingest preserves the scalar Koelling-Harmon source. SnapshotDftPhysics::new_spex_material binds the caller-owned signed-kappa recipe to runtime requests and resolved energies, then produces target Dirac P/Q from the V0 monopole. The bounded one-point full-q lane executes MPB, rank-one QRCP and pivoted-Cholesky THC on one parent grid, sampled Coulomb, and spinor MLDUMP roundtrip. Dy remains an external-data blocker."""

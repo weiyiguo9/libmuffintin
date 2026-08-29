@@ -1,0 +1,44 @@
+# M-L7 Dy bcc producer-search manifest. Not a Snapshot V2 and not a material result.
+
+head_sha = "89ff8f8c80711eb6ded36efba688c8a7fd640bf9"
+lane = "ml7-dy"
+status = "blocked"
+
+[search]
+local_repo = "<local-repo>"
+wsl_root = "wsl:<thc-experiment-root>"
+wsl_runs = [
+  "sm_fcc_3x3_dft",
+  "sm_fcc_3x3_ref",
+  "sm_fcc_4x4_dft",
+  "sm_fcc_4x4_ref",
+]
+wsl_dy_bcc_runs = []
+second_wsl_hash_ssh = "auto-mode-blocked"
+
+[hashes]
+grid_budget_sm_dy_py_local = "9e19f3ff4ebfd4a506a2966e384d9fbacd2a4564d0baa768497649a7f8f64dab"
+thc_smdy_experiment_results_md_local = "222e9aa8dd2d98fb0ec874f918d3f4ebee4066ed169bb5aa7ec2dba42a3a7fab"
+thc_smdy_experiment_log_md_local = "eb0f6d948602dc0ca3d081500fbf426c09b1e55b6482176a3fa7df97fd62d12c"
+thc_smdy_experiment_core_valence_md_local = "e29afdeed6691999356b772df65df9f3b5ba893116729bdf08f65b2617a69b89"
+
+[paths]
+grid_budget_local = "scratch/grid_budget_sm_dy.py"
+grid_budget_wsl = "wsl:<thc-experiment-root>/codes/libmuffintin/scratch/grid_budget_sm_dy.py"
+grid_budget_note = "order-of-magnitude MT/FFT budgets for Sm/Dy fcc and bcc; not a DFT potential"
+
+[shared]
+helper = "crates/mt-runtime/tests/ml7_material_common.rs"
+consumed_by = "crates/mt-runtime/tests/ml7_dy_bcc.rs"
+note = "shared helper included by path; load_spinor_snapshot_v2 for the missing-file error."
+reader = "crates/mt-io/src/spex_snapshot.rs"
+schema_name = "spex.snapshot_hdf"
+schema_version = 1
+
+[blocker]
+missing_dy_bcc_dft = true
+missing_spex_or_fleur_snapshot_v2_importer = true
+fleur_converter_frozen = true
+spex_sm_artifacts_are_native_not_snapshot_v2 = true
+synthetic_hydrogen_or_atomic_only_dy_forbidden = true
+statement = """No honest libmuffintin-consumable Dy bcc Snapshot V2 exists. WSL <thc-experiment> produced only scalar-collinear fcc Sm SPEX dumps (spex.inp/spex.pot/thc_orbitals*.bin). FLEUR conversion is frozen. SPEX exchange_hdf is not a full-first-variation spinor consumer. Do not substitute synthetic atomic data for Dy material evidence."""

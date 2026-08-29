@@ -37,7 +37,8 @@ use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_io::{
     AngularBasisV1, Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2,
     FourierCoefficientV2, InitialV2, InterstitialFieldV2, IoError, MuffinTinFieldV2, PotentialV2,
-    RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, SnapshotV2, SphericalChannelV2,
+    RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, SnapshotV2, SpexMaterialBasisRecipeV1,
+    SpexMaterialChannelKind, SphericalChannelV2,
 };
 use muffintin_lapw::{Collinear, GeneralizedEigensolution, InterstitialPotential, LapwError};
 use muffintin_operators::{
@@ -86,6 +87,19 @@ pub struct SnapshotDftPhysics {
     core_potentials: BTreeMap<usize, CorePotentialContext>,
     density_template: Option<RegionalDensity>,
     energy_terms: BTreeMap<usize, ScfEnergyTerms>,
+    spex_spinor_binding: Option<SpexSpinorMaterialBinding>,
+}
+
+#[derive(Clone, Debug)]
+struct SpexSpinorMaterialBinding {
+    channels: Vec<SpexBoundSpinorChannel>,
+}
+
+#[derive(Clone, Debug)]
+struct SpexBoundSpinorChannel {
+    l: u32,
+    requested: ScfChannelRecipe,
+    resolved: ScfResolvedChannelEnergy,
 }
 
 #[derive(Clone, Debug)]
@@ -244,6 +258,145 @@ impl SnapshotDftPhysics {
             core_potentials: BTreeMap::new(),
             density_template: None,
             energy_terms: BTreeMap::new(),
+            spex_spinor_binding: None,
+        })
+    }
+
+    /// Bind a caller-owned signed-kappa material recipe to one runtime basis.
+    ///
+    /// The SPEX snapshot remains scalar Koelling-Harmon source provenance.
+    /// This constructor authorizes a target full-Dirac solve only after every
+    /// recipe channel binds exactly to a runtime request and its resolved
+    /// energy. The Dirac radial functions are then solved from the snapshot
+    /// `V0` monopole; they are not imported from SPEX.
+    pub fn new_spex_material(
+        snapshot: &SnapshotV2,
+        recipe: &SpexMaterialBasisRecipeV1,
+        basis: &ScfBasis,
+    ) -> Result<Self, SnapshotDftError> {
+        let mut physics = Self::new(snapshot)?;
+        let recorded_sha256 = snapshot
+            .meta
+            .annotations
+            .get("material_basis.recipe_sha256");
+        let recorded_producer = snapshot.meta.annotations.get("material_basis.producer");
+        if recorded_sha256 != Some(&recipe.recipe_sha256)
+            || recorded_producer != Some(&recipe.producer)
+        {
+            return Err(SnapshotDftError::SpexMaterialProvenanceMismatch);
+        }
+        for site in &physics.sites {
+            for (spin, source) in [&site.up, &site.down].into_iter().enumerate() {
+                if source.equation != RadialEquationTagV1::ScalarKoellingHarmon {
+                    return Err(SnapshotDftError::SpexMaterialSourceRadialEquation {
+                        site: site.id.clone(),
+                        spin,
+                        equation: source.equation,
+                    });
+                }
+            }
+        }
+
+        let mut keys = BTreeSet::new();
+        let mut channels = Vec::with_capacity(recipe.channels.len());
+        for channel in &recipe.channels {
+            let treatment = match channel.kind {
+                SpexMaterialChannelKind::Lo | SpexMaterialChannelKind::Rlo => {
+                    ScfChannelTreatment::Lo
+                }
+                SpexMaterialChannelKind::Hdlo => ScfChannelTreatment::Hdlo,
+            };
+            let identity = ScfChannelIdentity::Kappa {
+                n: channel.n,
+                kappa: channel.kappa,
+            };
+            let key = (
+                channel.site_id.clone(),
+                channel.n,
+                channel.l,
+                channel.kappa,
+                match treatment {
+                    ScfChannelTreatment::Lo => 0_u8,
+                    ScfChannelTreatment::Hdlo => 1_u8,
+                    ScfChannelTreatment::Core | ScfChannelTreatment::Valence => unreachable!(),
+                },
+                channel.derivative_order,
+            );
+            let matches = basis
+                .channels
+                .iter()
+                .filter(|requested| {
+                    requested.site == channel.site_id
+                        && requested.identity == identity
+                        && requested.treatment == treatment
+                        && requested.derivative_order == channel.derivative_order
+                        && requested.generator == LinearizationEnergyGenerator::FrozenSnapshot
+                })
+                .collect::<Vec<_>>();
+            if channel_l(identity) != channel.l || !keys.insert(key) || matches.len() != 1 {
+                return Err(spex_material_channel_mismatch(channel, treatment));
+            }
+            let requested = matches[0].clone();
+            let generated = generate_frozen_snapshot_energy(Hartree(channel.energy))
+                .map_err(|source| channel_generator_error(&requested, source))?;
+            channels.push(SpexBoundSpinorChannel {
+                l: channel.l,
+                requested: requested.clone(),
+                resolved: ScfResolvedChannelEnergy {
+                    recipe: requested,
+                    energy: generated.energy,
+                    components: vec![generated],
+                },
+            });
+        }
+        physics.spex_spinor_binding = Some(SpexSpinorMaterialBinding { channels });
+        physics.validate_spex_requested_basis(basis)?;
+        Ok(physics)
+    }
+
+    fn validate_spex_requested_basis(&self, basis: &ScfBasis) -> Result<(), SnapshotDftError> {
+        let Some(binding) = &self.spex_spinor_binding else {
+            return Ok(());
+        };
+        for bound in &binding.channels {
+            if basis
+                .channels
+                .iter()
+                .filter(|requested| **requested == bound.requested)
+                .count()
+                != 1
+            {
+                return Err(spex_bound_channel_mismatch(bound));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_spex_resolved_basis(&self, basis: &ScfBasis) -> Result<(), SnapshotDftError> {
+        let Some(binding) = &self.spex_spinor_binding else {
+            return Ok(());
+        };
+        self.validate_spex_requested_basis(basis)?;
+        for bound in &binding.channels {
+            if basis
+                .resolved_channels
+                .iter()
+                .filter(|resolved| **resolved == bound.resolved)
+                .count()
+                != 1
+            {
+                return Err(spex_bound_channel_mismatch(bound));
+            }
+        }
+        Ok(())
+    }
+
+    fn spex_bound_channel(&self, requested: &ScfChannelRecipe) -> Option<&SpexBoundSpinorChannel> {
+        self.spex_spinor_binding.as_ref().and_then(|binding| {
+            binding
+                .channels
+                .iter()
+                .find(|bound| bound.requested == *requested)
         })
     }
 
@@ -498,17 +651,27 @@ impl SnapshotDftPhysics {
         basis: &ScfBasis,
     ) -> Result<Vec<SpinorSiteInput>, SnapshotDftError> {
         self.require_potential_site_count(potential)?;
+        let source_is_dirac = self.sites.iter().all(|site| {
+            [&site.up, &site.down]
+                .into_iter()
+                .all(|source| source.equation == RadialEquationTagV1::FullyRelativisticDirac)
+        });
+        if !source_is_dirac && self.spex_spinor_binding.is_some() {
+            self.validate_spex_resolved_basis(basis)?;
+        }
         self.sites
             .iter()
             .enumerate()
             .map(|(site_index, site)| {
-                for (spin, template) in [&site.up, &site.down].into_iter().enumerate() {
-                    if template.equation != RadialEquationTagV1::FullyRelativisticDirac {
-                        return Err(SnapshotDftError::SpinorRadialEquation {
-                            site: site.id.clone(),
-                            spin,
-                            equation: template.equation,
-                        });
+                if !source_is_dirac && self.spex_spinor_binding.is_none() {
+                    for (spin, template) in [&site.up, &site.down].into_iter().enumerate() {
+                        if template.equation != RadialEquationTagV1::FullyRelativisticDirac {
+                            return Err(SnapshotDftError::SpinorRadialEquation {
+                                site: site.id.clone(),
+                                spin,
+                                equation: template.equation,
+                            });
+                        }
                     }
                 }
                 let scalar = potential.scalar().muffin_tins()[site_index].field().clone();
@@ -1684,6 +1847,37 @@ fn spin_resolved_energy(resolved: &ScfResolvedChannelEnergy, spin: usize) -> Har
     }
 }
 
+fn spex_material_channel_mismatch(
+    channel: &muffintin_io::SpexMaterialChannelV1,
+    treatment: ScfChannelTreatment,
+) -> SnapshotDftError {
+    SnapshotDftError::SpexMaterialChannelMismatch {
+        site: channel.site_id.clone(),
+        n: channel.n,
+        l: channel.l,
+        kappa: channel.kappa,
+        treatment,
+        derivative_order: channel.derivative_order,
+        energy: channel.energy,
+    }
+}
+
+fn spex_bound_channel_mismatch(bound: &SpexBoundSpinorChannel) -> SnapshotDftError {
+    let (n, kappa) = match bound.requested.identity {
+        ScfChannelIdentity::Kappa { n, kappa } => (n, kappa),
+        ScfChannelIdentity::ScalarL { .. } => unreachable!("SPEX material binding is signed kappa"),
+    };
+    SnapshotDftError::SpexMaterialChannelMismatch {
+        site: bound.requested.site.clone(),
+        n,
+        l: bound.l,
+        kappa,
+        treatment: bound.requested.treatment,
+        derivative_order: bound.requested.derivative_order,
+        energy: bound.resolved.energy.get(),
+    }
+}
+
 fn channel_generator_error(
     recipe: &ScfChannelRecipe,
     source: LinearizationEnergyError,
@@ -1997,6 +2191,28 @@ pub enum SnapshotDftError {
         site: String,
         spin: usize,
         equation: RadialEquationTagV1,
+    },
+    #[error("SPEX material snapshot annotations do not match the caller-owned recipe")]
+    SpexMaterialProvenanceMismatch,
+    #[error(
+        "SPEX material source at site {site:?}, spin {spin} must remain scalar Koelling-Harmon; got {equation:?}"
+    )]
+    SpexMaterialSourceRadialEquation {
+        site: String,
+        spin: usize,
+        equation: RadialEquationTagV1,
+    },
+    #[error(
+        "SPEX material channel site={site:?}, n={n}, l={l}, kappa={kappa}, treatment={treatment:?}, derivative_order={derivative_order}, energy={energy} is not bound exactly to the runtime basis"
+    )]
+    SpexMaterialChannelMismatch {
+        site: String,
+        n: u32,
+        l: u32,
+        kappa: i32,
+        treatment: ScfChannelTreatment,
+        derivative_order: u32,
+        energy: f64,
     },
     #[error("site {0:?} potential has no spherical monopole")]
     MissingMonopole(String),

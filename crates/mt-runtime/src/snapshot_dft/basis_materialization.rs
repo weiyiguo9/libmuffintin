@@ -237,6 +237,7 @@ impl SnapshotDftPhysics {
         extended: &[muffintin_dft::BuiltExtendedCorePotential],
     ) -> Result<ScfBasis, SnapshotDftError> {
         self.require_potential_site_count(potential)?;
+        self.validate_spex_requested_basis(requested)?;
         let mut basis = requested.clone();
         basis.resolved_channels.clear();
         let mut lo_ordinals = BTreeMap::<(String, u32), usize>::new();
@@ -255,7 +256,9 @@ impl SnapshotDftPhysics {
             } else {
                 None
             };
-            let generated = if matches!(
+            let generated = if let Some(bound) = self.spex_bound_channel(recipe) {
+                bound.resolved.clone()
+            } else if matches!(
                 recipe.generator,
                 LinearizationEnergyGenerator::BandCog | LinearizationEnergyGenerator::FermiOffset
             ) {
@@ -271,6 +274,7 @@ impl SnapshotDftPhysics {
             };
             basis.resolved_channels.push(generated);
         }
+        self.validate_spex_resolved_basis(&basis)?;
         Ok(basis)
     }
 
