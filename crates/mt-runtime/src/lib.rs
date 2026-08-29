@@ -12,6 +12,7 @@ mod input;
 mod mldump_header;
 mod q_mesh;
 mod runner;
+mod scalar_coqui_cholesky;
 mod scalar_coulomb;
 mod scalar_mldump;
 mod scalar_mpb;
@@ -46,6 +47,9 @@ pub use muffintin_thc::RankPolicy;
 pub use runner::{
     PreparedSource, PreparedTask, PreparedWorkflow, TaskResult, WorkflowResult,
     execute_prepared_with, load_input_path, prepare_input, prepare_input_with_recipes,
+};
+pub use scalar_coqui_cholesky::{
+    ScalarCoquiCholeskyError, ScalarCoquiCholeskySpec, write_scalar_coqui_cholesky,
 };
 pub use scalar_coulomb::{
     SCALAR_COULOMB_EXACTNESS_FLOOR, ScalarCoulombDiscrepancy, ScalarCoulombError,

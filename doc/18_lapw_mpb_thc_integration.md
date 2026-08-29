@@ -483,3 +483,23 @@ The on-disk write uses `SpinorMldumpStreamV1` and the neutral `MldumpThc*` /
 eigenvector/site-matching record, one site radial record, one $q$
 $\zeta$/vertex record, or one $q$ $V$/Gamma record. Occupations are not
 invented. The MLDUMP v1 tree is unchanged.
+
+## M-L6d1 CoQui-native scalar Cholesky adapter
+
+`write_scalar_coqui_cholesky(path, inputs, thc, coulomb, coulomb_spec, factor)`
+writes a **CoQui-native** single-file Cholesky ERI. It is not MLDUMP, not a
+SPEX dump, and does not claim that q-dependent THC/MLDUMP is CoQui-compatible.
+The on-disk tree follows live CoQui `chol_reader_t`
+(`<coqui-inspect-checkout>`, `wg-dev` @
+`a19774d03fb979bd852fae4f7f95c045a4cbca78`): `/Interaction` scalars
+`Np,nspin,nspin_in_basis,nkpts,nbnd,nbnd_aux=0,tol`, Cartesian `kpts`/`qpts`,
+`qk_to_kmq`, and `Vq{iq}` as native `f64` `[Np,1,nk,nbnd,nbnd,2]` with
+scalar variable-length UTF-8 `__complex__="1"`. `qpts` store canonical Cartesian $q$ without a second
+global Umklapp. Gamma contributes only the finite body. Each accepted
+$V_q$ is factored as $V_q=B_q^\dagger B_q$ (Rust $B$ is row-major
+$(\mathrm{rank},n_{\mathrm{aux}})$) with `factor.tolerance` as the rank /
+small-negative roundoff policy written to `/Interaction/tol`. Semantic
+vertices map as $L_{Q,0,k,i,j}=(B_q c_{k,i,j})_Q$ in k-major pair order,
+matching GF2 $\sum_Q L_{Qpr}\mathrm{conj}(L_{Qsq})$. `libmuffintin-io`
+owns the native HDF tree; runtime owns mapping and factorization. Scratch
+is one $q$ factor and one $q$ $L$ tensor.

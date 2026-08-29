@@ -11,6 +11,8 @@ materialize frozen product/THC/Coulomb objects through the streaming
 writers after recoverable preflight, including spinor compiled-basis
 exportability and the sealed `SpinorCoulombResult` request/records.
 This development-stage spinor extension stays schema version 1.
+`write_scalar_coqui_cholesky` is a separate CoQui-native Cholesky ERI
+adapter; it is not an MLDUMP payload and does not extend schema version 1.
 
 ## 1. Identity and ownership
 

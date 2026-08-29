@@ -6,8 +6,10 @@
 //! never embedded in a snapshot. [`MldumpFileV1`] is the libmuffintin-owned
 //! MLDUMP v1 HDF5 schema; it is not CoQui-native or SPEX-native. Populated
 //! files are written through [`ScalarMldumpStreamV1`] or
-//! [`SpinorMldumpStreamV1`].
+//! [`SpinorMldumpStreamV1`]. [`CoquiCholeskyFile`] is a separate CoQui-native
+//! single-file Cholesky ERI tree and is not MLDUMP.
 
+mod coqui_cholesky;
 mod error;
 mod grid;
 mod mldump;
@@ -15,6 +17,11 @@ mod snapshot;
 mod snapshot_v2;
 mod units;
 
+pub use coqui_cholesky::{
+    COQUI_CHOLESKY_COMPLEX_ATTR, COQUI_CHOLESKY_COMPLEX_VALUE, COQUI_CHOLESKY_GROUP,
+    CoquiCholeskyFile, CoquiCholeskyHeader, CoquiCholeskyVq, CoquiCholeskyVqRef,
+    CoquiCholeskyWriter, read_coqui_cholesky,
+};
 pub use error::{IoError, ValidationError};
 pub use grid::{
     GRID_ARTIFACT_FORMAT, GRID_ARTIFACT_VERSION, GridArtifactV1, grid_artifact_from_toml,
