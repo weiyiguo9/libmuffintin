@@ -28,7 +28,7 @@ use num_complex::Complex64;
 const MATRIX_TOL: f64 = 1.0e-14;
 const ENERGY_TOL: f64 = 1.0e-12;
 const VEC_TOL: f64 = 1.0e-12;
-/// M-F bound on each stored `||Hc - Sc ε||` residual and its relative form.
+/// Bound on each stored `||Hc - Sc ε||` residual and its relative form.
 const MF_RESIDUAL_TOL: f64 = 1.0e-12;
 
 fn boundary(value: f64, derivative: f64) -> BoundaryData {
@@ -127,13 +127,13 @@ fn assert_solution_ranks_and_residuals(solution: &GeneralizedEigensolution) {
         );
         assert!(
             residual.absolute < MF_RESIDUAL_TOL,
-            "absolute residual {} for band {} exceeds M-F bound {MF_RESIDUAL_TOL}",
+            "absolute residual {} for band {} exceeds residual bound {MF_RESIDUAL_TOL}",
             residual.absolute,
             residual.band_index
         );
         assert!(
             residual.relative < MF_RESIDUAL_TOL,
-            "relative residual {} for band {} exceeds M-F bound {MF_RESIDUAL_TOL}",
+            "relative residual {} for band {} exceeds residual bound {MF_RESIDUAL_TOL}",
             residual.relative,
             residual.band_index
         );

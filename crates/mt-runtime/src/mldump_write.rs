@@ -3,7 +3,7 @@
 use std::f64::consts::PI;
 
 use muffintin_auxiliary_ir::{
-    CompiledAuxiliaryBasis, DiracSiteRadialSet, OrbitalPair, PartitionSite, ProductPartition,
+    AuxiliaryPartition, CompiledAuxiliaryBasis, DiracSiteRadialSet, OrbitalPair, PartitionSite,
     SiteRadialSet, TransferQ,
 };
 use muffintin_core::{ExponentialMesh, ReciprocalLattice};
@@ -117,7 +117,7 @@ impl_response_writer!(SpinorMldumpStreamV1);
 pub(crate) trait HeaderBindInput {
     type Radial: RadialMeshSource;
     type KMinusQ: KMinusQBind;
-    fn partition(&self) -> &ProductPartition;
+    fn partition(&self) -> &AuxiliaryPartition;
     fn radials(&self) -> &[Self::Radial];
     fn k_fractional(&self) -> &[[f64; 3]];
     fn reciprocal(&self) -> &ReciprocalLattice;
@@ -137,7 +137,7 @@ impl HeaderBindInput for ScalarProductInput {
     type Radial = SiteRadialSet;
     type KMinusQ = ScalarKMinusQ;
 
-    fn partition(&self) -> &ProductPartition {
+    fn partition(&self) -> &AuxiliaryPartition {
         &self.source.partition
     }
 
@@ -166,7 +166,7 @@ impl HeaderBindInput for SpinorProductInput {
     type Radial = DiracSiteRadialSet;
     type KMinusQ = SpinorKMinusQ;
 
-    fn partition(&self) -> &ProductPartition {
+    fn partition(&self) -> &AuxiliaryPartition {
         &self.source.partition
     }
 
@@ -611,7 +611,7 @@ pub(crate) fn provenance_key(provenance: &Provenance) -> String {
     )
 }
 
-pub(crate) fn interstitial_volume(partition: &ProductPartition) -> f64 {
+pub(crate) fn interstitial_volume(partition: &AuxiliaryPartition) -> f64 {
     let cell = partition.interstitial().cell_volume().get();
     let muffin = partition
         .sites()

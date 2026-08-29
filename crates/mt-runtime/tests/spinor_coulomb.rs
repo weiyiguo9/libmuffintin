@@ -1,4 +1,4 @@
-//! Public M-L5d spinor sampled-ζ Coulomb tests on frozen M-L5b/M-L5c/M-L5d output.
+//! Public spinor sampled-ζ Coulomb tests on frozen spinor product-input, mixed-product, and THC output.
 
 use std::f64::consts::PI;
 

@@ -17,7 +17,7 @@ use muffintin_tensor::DenseEigenvectors;
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
-/// SPEX overlap-cutoff spin factor for collinear scalar M-L2 (`nspin = 2`).
+/// SPEX overlap-cutoff spin factor for collinear scalar mixed-product construction (`nspin = 2`).
 pub const SCALAR_MPB_NSPIN: f64 = 2.0;
 
 /// Explicit mixed-product construction and same-spin band-pair selection.
@@ -34,7 +34,7 @@ pub struct ScalarMpbSpec {
     /// Nonempty same-spin selections `(spin, k, left_band, right_band)`.
     ///
     /// `left_band` is the orbital at the mapped $k-q$ side; `right_band` is
-    /// the orbital at $k$. Band indices are in the published M-L1 window.
+    /// the orbital at $k$. Band indices are in the published scalar product-input window.
     pub selections: Vec<ScalarMpbSelection>,
 }
 

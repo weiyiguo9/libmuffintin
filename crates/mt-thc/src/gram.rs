@@ -1,8 +1,8 @@
 //! Injected pair-pair Coulomb Gram contract.
 //!
 //! This is not a Coulomb assembler. Callers supply already-built Hermitian
-//! pair-pair matrices (toy finite-cutoff oracles or SPEX dumps). M-J owns
-//! production Weinert/SPEX $V^q$.
+//! pair-pair matrices (toy finite-cutoff oracles or SPEX dumps). Production
+//! Weinert/SPEX Coulomb owns $V^q$.
 
 use crate::ThcError;
 use crate::error::checked_storage_len;

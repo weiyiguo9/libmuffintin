@@ -2,7 +2,7 @@
 
 use crate::CoulombError;
 use crate::math::{parity, plane_wave_phase, structure_lm};
-use muffintin_auxiliary_ir::{ProductPartition, TransferQ};
+use muffintin_auxiliary_ir::{AuxiliaryPartition, TransferQ};
 use muffintin_core::{
     Bohr, InverseBohr, ReciprocalLattice, complex_spherical_harmonics, lm_count, lm_index,
 };
@@ -58,7 +58,7 @@ impl StructureConstants {
 pub fn structure_constants(
     cell: &Cell,
     reciprocal: &ReciprocalLattice,
-    partition: &ProductPartition,
+    partition: &AuxiliaryPartition,
     q: TransferQ,
     lexp: u32,
 ) -> Result<StructureConstants, CoulombError> {

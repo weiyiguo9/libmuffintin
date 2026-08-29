@@ -1,13 +1,13 @@
 //! Shared THC parent-grid fixture for runtime tests.
 //!
 //! Include with `#[path = "thc_fixture_common.rs"]`. This file is not a
-//! standalone test suite. `bounded_parent_grid` in `ml7_sm_fcc.rs` is a
+//! standalone test suite. `bounded_parent_grid` in `sm_fcc_material.rs` is a
 //! different interstitial layout and stays there; it reuses [`on_shell`].
 
 #![allow(dead_code)]
 
 use muffintin::{ScalarProductInput, SpinorProductInput, ThcParentGrid, ThcPoint, ThcRegion};
-use muffintin_auxiliary_ir::ProductPartition;
+use muffintin_auxiliary_ir::AuxiliaryPartition;
 use muffintin_core::{Bohr, ExponentialMesh};
 use muffintin_lapw::Provenance;
 
@@ -24,7 +24,7 @@ pub fn on_shell(origin: [Bohr; 3], radius: f64, direction: [f64; 3]) -> [Bohr; 3
     ]
 }
 
-fn parent_grid_from_mesh(partition: ProductPartition, mesh: &ExponentialMesh) -> ThcParentGrid {
+fn parent_grid_from_mesh(partition: AuxiliaryPartition, mesh: &ExponentialMesh) -> ThcParentGrid {
     let origin = partition.sites()[0].position;
     let mid = mesh.radii().len() / 2;
     let r_mid = mesh.radii()[mid].get();

@@ -1,8 +1,9 @@
 //! Frozen full-first-variation spinor product input for one requested transfer $q$.
 
 use muffintin_auxiliary_ir::{
-    DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples, DiracSiteRadialSet,
-    PairColumnLayout, ProductOrbitalKind, ProductPartition, RawInterstitialPairSupport, TransferQ,
+    AuxiliaryPartition, DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples,
+    DiracSiteRadialSet, PairColumnLayout, ProductOrbitalKind, RawInterstitialPairSupport,
+    TransferQ,
 };
 use muffintin_core::{Hartree, Kappa, ReciprocalLattice, TwiceMu};
 use muffintin_dft::{
@@ -46,7 +47,7 @@ pub struct SpinorKMinusQ {
 
 /// Common leading band window retained for pair columns.
 ///
-/// M-L5b keeps the lowest `count` eigenpairs starting at `start` (always 0).
+/// The spinor product-input window keeps the lowest `count` eigenpairs starting at `start` (always 0).
 /// Per-$k$ available counts remain on [`SpinorFrozenOrbitals::available_bands`].
 /// Eigenvector **rows** are never truncated to a common basis dimension.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -74,7 +75,7 @@ pub struct SpinorFrozenOrbitals {
     pub band_window: SpinorBandWindow,
 }
 
-/// Frozen spinor first-variation solve plus M-L5a Dirac product input at one $q$.
+/// Frozen spinor first-variation solve plus Dirac product input at one $q$.
 ///
 /// `source` is the method-neutral [`DiracProductSource`]. Valence radials use
 /// [`SPINOR_RADIAL_P`], [`SPINOR_RADIAL_PDOT`], then signed-$\kappa$ LO/RLO
@@ -152,7 +153,7 @@ impl SpinorProductInput {
     /// Pauli plane-wave eigenbasis row $\mathrm{spin}\,N_G+G$ at k-point `k`.
     ///
     /// Both spin blocks share [`SpinorCompiledBasis::plane_waves`] labels.
-    /// M-L5c sums same-component up/down products; there is no spin cross term.
+    /// The spinor mixed-product bridge sums same-component up/down products; there is no spin cross term.
     pub fn pauli_plane_wave_row(&self, k: usize, spin: u8, g: usize) -> Option<usize> {
         self.orbitals
             .bases
@@ -522,13 +523,13 @@ fn emit_spinor_product_input(
 
     let interstitial_pair_support = raw_pair_support(q, *physics.reciprocal(), &bases, &k_minus_q)?;
     let source = DiracProductSource::new(
-        ProductPartition::from_interstitial(physics.geometry().clone()),
+        AuxiliaryPartition::from_interstitial(physics.geometry().clone()),
         radials.ok_or(SnapshotDftError::EmptyKPointSet)?,
         q,
         interstitial_pair_support,
         Provenance {
             recipe: None,
-            reference: Some("snapshot-dft-frozen-spinor-ml5b".to_owned()),
+            reference: Some("snapshot-dft-frozen-spinor-product-input".to_owned()),
         },
     )?;
     let input = SpinorProductInput {

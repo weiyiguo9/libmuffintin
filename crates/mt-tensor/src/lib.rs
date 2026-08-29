@@ -71,7 +71,7 @@ pub enum MemoryLayout {
     Strided,
 }
 
-/// Element type of a dense local tensor. M-Fb stores only complex `f64`.
+/// Element type of a dense local tensor. Only complex `f64` is stored.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DType {
     Complex64,

@@ -1,4 +1,4 @@
-//! Runtime materialization of scalar MLDUMP v1 from frozen M-L1–L4 objects.
+//! Runtime materialization of scalar MLDUMP v1 from frozen scalar product-input, mixed-product, THC, and Coulomb objects.
 
 use std::path::Path;
 
@@ -224,7 +224,7 @@ fn write_products(
         .provenance
         .reference
         .as_deref()
-        .unwrap_or("snapshot-dft-frozen-scalar-ml1");
+        .unwrap_or("snapshot-dft-frozen-scalar-product-input");
     stream.begin_products(&ScalarProductsBeginV1 {
         n_k: first.orbitals.k_fractional.len(),
         n_orb: first.orbitals.band_window.count,

@@ -3,7 +3,7 @@
 use muffintin_basis::Provenance;
 use muffintin_core::{Bohr, InterstitialGeometry};
 
-/// One muffin-tin region of a [`ProductPartition`].
+/// One muffin-tin region of a [`AuxiliaryPartition`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PartitionSite {
     pub index: usize,
@@ -15,13 +15,13 @@ pub struct PartitionSite {
 ///
 /// v0.2 implements only the non-overlapping LAPW/full-potential geometry.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ProductPartition {
+pub struct AuxiliaryPartition {
     sites: Vec<PartitionSite>,
     interstitial: InterstitialGeometry,
     provenance: Provenance,
 }
 
-impl ProductPartition {
+impl AuxiliaryPartition {
     /// Build a partition from validated interstitial geometry.
     pub fn from_interstitial(interstitial: InterstitialGeometry) -> Self {
         let sites = interstitial

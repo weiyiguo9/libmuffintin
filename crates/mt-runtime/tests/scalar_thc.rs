@@ -1,4 +1,4 @@
-//! Public M-L3 scalar adaptive-THC tests on frozen M-L1 product input.
+//! Public scalar adaptive-THC tests on frozen scalar product input.
 
 use std::collections::BTreeMap;
 
@@ -7,7 +7,7 @@ use muffintin::{
     ScalarThcSpec, SnapshotDftPhysics, ThcCandidates, ThcEngine, ThcParentGrid, ThcRegion,
     build_scalar_thc,
 };
-use muffintin_auxiliary_ir::{ProductOrbitalKind, ProductPartition, ProductRadialId, TransferQ};
+use muffintin_auxiliary_ir::{AuxiliaryPartition, ProductOrbitalKind, ProductRadialId, TransferQ};
 use muffintin_core::{
     Bohr, Hartree, VolumeBohr3, complex_spherical_harmonics, lm_from_index, lm_index,
 };
@@ -815,7 +815,7 @@ fn scalar_thc_rejects_empty_slice_or_partition_mismatch() {
         build_scalar_thc(&[], &grid, &spec_all(2)),
         Err(ScalarThcError::EmptySlice)
     ));
-    let other = ProductPartition::from_interstitial(
+    let other = AuxiliaryPartition::from_interstitial(
         muffintin_core::InterstitialGeometry::new(
             VolumeBohr3(1000.0),
             input.source.partition.interstitial().spheres().to_vec(),

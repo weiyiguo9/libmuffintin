@@ -1,11 +1,10 @@
 //! Dirac PP/QQ muffin-tin products and checked vertices.
 
 use muffintin_auxiliary_ir::{
-    AuxiliaryInterstitialSupport, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
-    DiracChargeSector, DiracMtPairSpec, DiracProductSource, DiracRadial, DiracRadialId,
-    DiracRadialSamples, DiracSiteRadialSet, MixedProductAuxiliary, MtAuxiliaryMode,
-    ProductOrbitalKind, ProductPartition, RawInterstitialPairSupport, SiteAuxiliaryBlock,
-    TransferQ,
+    AuxiliaryInterstitialSupport, AuxiliaryPartition, AuxiliaryRepresentation,
+    CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracProductSource, DiracRadial,
+    DiracRadialId, DiracRadialSamples, DiracSiteRadialSet, MixedProductAuxiliary, MtAuxiliaryMode,
+    ProductOrbitalKind, RawInterstitialPairSupport, SiteAuxiliaryBlock, TransferQ,
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{
@@ -25,8 +24,8 @@ fn mesh() -> ExponentialMesh {
     ExponentialMesh::new(Bohr(first), increment, number).unwrap()
 }
 
-fn partition() -> ProductPartition {
-    ProductPartition::from_interstitial(
+fn partition() -> AuxiliaryPartition {
+    AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
             VolumeBohr3(512.0),
             vec![Sphere {
@@ -393,7 +392,7 @@ fn dirac_context_rejects_auxiliary_partition_mismatch() {
     }]);
     let raw = untruncated_dirac_product_space(&source, 0).unwrap();
     let mut auxiliary = auxiliary(&source, &[0]);
-    auxiliary.partition = ProductPartition::from_interstitial(
+    auxiliary.partition = AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
             VolumeBohr3(1000.0),
             vec![Sphere {
@@ -556,7 +555,7 @@ fn mixed_mu_nonzero_m_uses_density_coefficient_not_ylm_slot() {
 #[test]
 fn coupled_channel_radial_index_restarts_in_each_site_l_block() {
     let q = q_gamma();
-    let partition = ProductPartition::from_interstitial(
+    let partition = AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
             VolumeBohr3(512.0),
             vec![

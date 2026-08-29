@@ -79,7 +79,7 @@ pub const MLDUMP_UNIT_G_UMKLAPP: &str = "integer_reciprocal_lattice";
 /// Scale-aware fractional-coordinate tolerance for $q_{\mathrm{in}}$ and $k-q$ identities.
 ///
 /// Two values compare equal when their absolute difference is at most this
-/// constant times $\max(|a|,|b|,1)$. The $10^{-12}$ floor matches the M-L1/M-L5b
+/// constant times $\max(|a|,|b|,1)$. The $10^{-12}$ floor matches the product-input
 /// mesh-coordinate gate; the scale factor is the same form used by parent-grid
 /// radial matching.
 pub(crate) const FRACTIONAL_EQ_TOLERANCE: f64 = 1.0e-12;
@@ -254,7 +254,7 @@ pub struct MldumpMeshV1 {
     pub q_entries: Vec<MldumpQEntryV1>,
 }
 
-/// File-level exchange valence/core/total statuses. M-L6b1 writes all three absent.
+/// File-level exchange valence/core/total statuses. Scalar MLDUMP writes all three absent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MldumpExchangeStatusesV1 {
     pub valence: MldumpStatus,

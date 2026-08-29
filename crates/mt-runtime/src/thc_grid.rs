@@ -1,7 +1,7 @@
 //! Representation-neutral parent grid, candidates, engines, and q-record context.
 
 use muffintin_auxiliary_ir::{
-    CompiledAuxiliaryBasis, InterpolationRegion, PairColumnLayout, PairVertex, ProductPartition,
+    AuxiliaryPartition, CompiledAuxiliaryBasis, InterpolationRegion, PairColumnLayout, PairVertex,
     TransferQ,
 };
 use muffintin_core::{Bohr, ExponentialMesh};
@@ -112,7 +112,7 @@ pub enum ThcGridError {
 /// and provenance so a later permutation cannot keep the original $\zeta$ fits.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ThcParentGrid {
-    partition: ProductPartition,
+    partition: AuxiliaryPartition,
     provenance: Provenance,
     points: Vec<ThcPoint>,
     identity: ParentGridIdentity,
@@ -121,7 +121,7 @@ pub struct ThcParentGrid {
 impl ThcParentGrid {
     /// Construct after checking finite coordinates, site indices, and weights.
     pub fn new(
-        partition: ProductPartition,
+        partition: AuxiliaryPartition,
         provenance: Provenance,
         points: Vec<ThcPoint>,
     ) -> Result<Self, ThcGridError> {
@@ -154,7 +154,7 @@ impl ThcParentGrid {
     }
 
     /// Partition bound to this grid.
-    pub const fn partition(&self) -> &ProductPartition {
+    pub const fn partition(&self) -> &AuxiliaryPartition {
         &self.partition
     }
 
@@ -270,7 +270,7 @@ pub(crate) fn require_parent_grid_radials<'a>(
 }
 
 fn parent_grid_identity(
-    partition: &ProductPartition,
+    partition: &AuxiliaryPartition,
     provenance: &Provenance,
     points: &[ThcPoint],
 ) -> ParentGridIdentity {

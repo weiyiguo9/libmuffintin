@@ -1,6 +1,6 @@
 //! Retained auxiliary basis shared by mixed-product and interpolation-point paths.
 
-use crate::{ProductError, ProductPartition, ProductSource, TransferQ};
+use crate::{AuxiliaryIrError, AuxiliaryPartition, AuxiliarySource, TransferQ};
 use muffintin_basis::Provenance;
 use muffintin_core::{Bohr, ExponentialMesh, GVector, InverseBohr, VolumeBohr3};
 use std::cmp::Ordering;
@@ -204,7 +204,7 @@ impl AuxiliaryLayout {
 /// interstitial/uniform points.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CompiledAuxiliaryBasis {
-    pub partition: ProductPartition,
+    pub partition: AuxiliaryPartition,
     pub q: TransferQ,
     pub representation: AuxiliaryRepresentation,
     pub provenance: Provenance,
@@ -236,17 +236,17 @@ impl CompiledAuxiliaryBasis {
     }
 
     /// Require a mixed-product payload.
-    pub fn require_mixed_product(&self) -> Result<&MixedProductAuxiliary, ProductError> {
+    pub fn require_mixed_product(&self) -> Result<&MixedProductAuxiliary, AuxiliaryIrError> {
         self.mixed_product()
-            .ok_or(ProductError::ExpectedMixedProduct)
+            .ok_or(AuxiliaryIrError::ExpectedMixedProduct)
     }
 
     /// Require interpolation points.
     pub fn require_interpolation_points(
         &self,
-    ) -> Result<&[InterpolationAuxiliaryPoint], ProductError> {
+    ) -> Result<&[InterpolationAuxiliaryPoint], AuxiliaryIrError> {
         self.interpolation_points()
-            .ok_or(ProductError::ExpectedInterpolationPoints)
+            .ok_or(AuxiliaryIrError::ExpectedInterpolationPoints)
     }
 
     /// Global muffin-tin auxiliary dimension.
@@ -353,7 +353,7 @@ impl CompiledAuxiliaryBasis {
     }
 
     /// Reject inconsistent payloads.
-    pub fn validate(&self) -> Result<(), ProductError> {
+    pub fn validate(&self) -> Result<(), AuxiliaryIrError> {
         match &self.representation {
             AuxiliaryRepresentation::MixedProduct(payload) => self.validate_mixed_product(payload),
             AuxiliaryRepresentation::InterpolationPoints(payload) => {
@@ -366,13 +366,16 @@ impl CompiledAuxiliaryBasis {
     ///
     /// Interpolation-point auxiliaries check partition identity and transfer $q$
     /// only; they do not invent empty muffin-tin radial blocks.
-    pub fn validate_against_source(&self, source: &ProductSource) -> Result<(), ProductError> {
+    pub fn validate_against_source(
+        &self,
+        source: &AuxiliarySource,
+    ) -> Result<(), AuxiliaryIrError> {
         self.validate()?;
         if self.q != source.q {
-            return Err(ProductError::AuxiliarySupportTransferQ);
+            return Err(AuxiliaryIrError::AuxiliarySupportTransferQ);
         }
         if self.partition != source.partition {
-            return Err(ProductError::AuxiliarySiteCount {
+            return Err(AuxiliaryIrError::AuxiliarySiteCount {
                 expected: source.partition.site_count(),
                 actual: self.partition.site_count(),
             });
@@ -380,10 +383,10 @@ impl CompiledAuxiliaryBasis {
         match &self.representation {
             AuxiliaryRepresentation::MixedProduct(payload) => {
                 if payload.interstitial.q != source.q {
-                    return Err(ProductError::AuxiliarySupportTransferQ);
+                    return Err(AuxiliaryIrError::AuxiliarySupportTransferQ);
                 }
                 if payload.sites.len() != source.radials.len() {
-                    return Err(ProductError::AuxiliarySiteCount {
+                    return Err(AuxiliaryIrError::AuxiliarySiteCount {
                         expected: source.radials.len(),
                         actual: payload.sites.len(),
                     });
@@ -392,7 +395,7 @@ impl CompiledAuxiliaryBasis {
                     payload.sites.iter().zip(&source.radials).enumerate()
                 {
                     if block.mesh != radials.mesh {
-                        return Err(ProductError::AuxiliaryMeshMismatch { site });
+                        return Err(AuxiliaryIrError::AuxiliaryMeshMismatch { site });
                     }
                 }
             }
@@ -401,9 +404,12 @@ impl CompiledAuxiliaryBasis {
         Ok(())
     }
 
-    fn validate_mixed_product(&self, payload: &MixedProductAuxiliary) -> Result<(), ProductError> {
+    fn validate_mixed_product(
+        &self,
+        payload: &MixedProductAuxiliary,
+    ) -> Result<(), AuxiliaryIrError> {
         if payload.sites.len() != self.partition.site_count() {
-            return Err(ProductError::AuxiliarySiteCount {
+            return Err(AuxiliaryIrError::AuxiliarySiteCount {
                 expected: self.partition.site_count(),
                 actual: payload.sites.len(),
             });
@@ -412,13 +418,13 @@ impl CompiledAuxiliaryBasis {
         for (expected, block) in payload.sites.iter().enumerate() {
             let partition_index = self.partition.site(expected).map(|site| site.index);
             if block.site != expected || partition_index != Some(block.site) {
-                return Err(ProductError::AuxiliarySiteIdentity {
+                return Err(AuxiliaryIrError::AuxiliarySiteIdentity {
                     expected,
                     found: block.site,
                 });
             }
             if !seen_sites.insert(block.site) {
-                return Err(ProductError::AuxiliarySiteIdentity {
+                return Err(AuxiliaryIrError::AuxiliarySiteIdentity {
                     expected,
                     found: block.site,
                 });
@@ -427,7 +433,7 @@ impl CompiledAuxiliaryBasis {
             let mut seen_modes = BTreeSet::new();
             for mode in &block.modes {
                 if mode.radial.len() != mesh_len {
-                    return Err(ProductError::AuxiliaryModeLength {
+                    return Err(AuxiliaryIrError::AuxiliaryModeLength {
                         site: block.site,
                         l: mode.l,
                         n: mode.n,
@@ -436,7 +442,7 @@ impl CompiledAuxiliaryBasis {
                     });
                 }
                 if !seen_modes.insert((mode.l, mode.n)) {
-                    return Err(ProductError::DuplicateAuxiliaryMode {
+                    return Err(AuxiliaryIrError::DuplicateAuxiliaryMode {
                         site: block.site,
                         l: mode.l,
                         n: mode.n,
@@ -450,15 +456,15 @@ impl CompiledAuxiliaryBasis {
     fn validate_interpolation_points(
         &self,
         payload: &InterpolationPointAuxiliary,
-    ) -> Result<(), ProductError> {
+    ) -> Result<(), AuxiliaryIrError> {
         if payload.points.is_empty() {
-            return Err(ProductError::EmptyInterpolationPoints);
+            return Err(AuxiliaryIrError::EmptyInterpolationPoints);
         }
         let mut seen = BTreeSet::new();
         let mut any_positive = false;
         for (index, point) in payload.points.iter().enumerate() {
             if !seen.insert(point.id) {
-                return Err(ProductError::DuplicateInterpolationPoint(point.id));
+                return Err(AuxiliaryIrError::DuplicateInterpolationPoint(point.id));
             }
             if point
                 .coordinate
@@ -466,25 +472,25 @@ impl CompiledAuxiliaryBasis {
                 .any(|component| !component.get().is_finite())
                 || !point.weight.get().is_finite()
             {
-                return Err(ProductError::NonFiniteInterpolationPoint(index));
+                return Err(AuxiliaryIrError::NonFiniteInterpolationPoint(index));
             }
             if point.weight.get() < 0.0 {
-                return Err(ProductError::NegativeInterpolationWeight(index));
+                return Err(AuxiliaryIrError::NegativeInterpolationWeight(index));
             }
             if point.weight.get() > 0.0 {
                 any_positive = true;
             }
             if let InterpolationRegion::MuffinTin { site } = point.region {
                 if site >= self.partition.site_count() {
-                    return Err(ProductError::InterpolationPointSite { site });
+                    return Err(AuxiliaryIrError::InterpolationPointSite { site });
                 }
             }
         }
         if !any_positive {
-            return Err(ProductError::NoPositiveInterpolationWeight);
+            return Err(AuxiliaryIrError::NoPositiveInterpolationWeight);
         }
         if !interpolation_point_order(&payload.points) {
-            return Err(ProductError::InterpolationPointOrder);
+            return Err(AuxiliaryIrError::InterpolationPointOrder);
         }
         Ok(())
     }
@@ -544,25 +550,25 @@ fn interpolation_point_order(points: &[InterpolationAuxiliaryPoint]) -> bool {
 fn validate_interstitial(
     q: TransferQ,
     interstitial: &AuxiliaryInterstitialSupport,
-) -> Result<(), ProductError> {
+) -> Result<(), AuxiliaryIrError> {
     if interstitial.q != q {
-        return Err(ProductError::AuxiliarySupportTransferQ);
+        return Err(AuxiliaryIrError::AuxiliarySupportTransferQ);
     }
     let g_cut = interstitial.g_cut.get();
     if !g_cut.is_finite() || g_cut < 0.0 {
-        return Err(ProductError::AuxiliaryWaveCutoff { index: 0 });
+        return Err(AuxiliaryIrError::AuxiliaryWaveCutoff { index: 0 });
     }
     let cutoff_squared = g_cut * g_cut;
     let cutoff_tolerance = 64.0 * f64::EPSILON * cutoff_squared.max(1.0);
     let mut seen = BTreeSet::new();
     for (index, wave) in interstitial.waves.iter().enumerate() {
         if !seen.insert(wave.g.index) {
-            return Err(ProductError::DuplicateAuxiliaryWave {
+            return Err(AuxiliaryIrError::DuplicateAuxiliaryWave {
                 index: wave.g.index,
             });
         }
         if !wave_kinematics_match(q, wave) {
-            return Err(ProductError::AuxiliaryWaveKinematics { index });
+            return Err(AuxiliaryIrError::AuxiliaryWaveKinematics { index });
         }
         let qg_squared = wave
             .q_plus_g
@@ -570,11 +576,11 @@ fn validate_interstitial(
             .map(|component| component.get().powi(2))
             .sum::<f64>();
         if qg_squared > cutoff_squared + cutoff_tolerance {
-            return Err(ProductError::AuxiliaryWaveCutoff { index });
+            return Err(AuxiliaryIrError::AuxiliaryWaveCutoff { index });
         }
     }
     if !spex_g_order(&interstitial.waves) {
-        return Err(ProductError::AuxiliaryWaveOrder);
+        return Err(AuxiliaryIrError::AuxiliaryWaveOrder);
     }
     Ok(())
 }

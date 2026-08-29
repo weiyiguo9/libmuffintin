@@ -1,7 +1,8 @@
-# M-L7 Dy bcc producer-search manifest. Not a Snapshot V2 and not a material result.
+# Dy bcc producer-search manifest. Not a Snapshot V2 and not a material result.
+# head_sha values reference pre-scrub history.
 
 head_sha = "89ff8f8c80711eb6ded36efba688c8a7fd640bf9"
-lane = "ml7-dy"
+lane = "dy-bcc-material"
 status = "blocked"
 
 [search]
@@ -28,8 +29,8 @@ grid_budget_wsl = "wsl:<thc-experiment-root>/codes/libmuffintin/scratch/grid_bud
 grid_budget_note = "order-of-magnitude MT/FFT budgets for Sm/Dy fcc and bcc; not a DFT potential"
 
 [shared]
-helper = "crates/mt-runtime/tests/ml7_material_common.rs"
-consumed_by = "crates/mt-runtime/tests/ml7_dy_bcc.rs"
+helper = "crates/mt-runtime/tests/material_lane_common.rs"
+consumed_by = "crates/mt-runtime/tests/dy_bcc_material.rs"
 note = "shared helper included by path; load_spinor_snapshot_v2 for the missing-file error."
 reader = "crates/mt-io/src/spex_snapshot.rs"
 schema_name = "spex.snapshot_hdf"
@@ -41,4 +42,4 @@ missing_spex_or_fleur_snapshot_v2_importer = true
 fleur_converter_frozen = true
 spex_sm_artifacts_are_native_not_snapshot_v2 = true
 synthetic_hydrogen_or_atomic_only_dy_forbidden = true
-statement = """No honest libmuffintin-consumable Dy bcc Snapshot V2 exists. WSL <thc-experiment> produced only scalar-collinear fcc Sm SPEX dumps (spex.inp/spex.pot/thc_orbitals*.bin). FLEUR conversion is frozen. SPEX exchange_hdf is not a full-first-variation spinor consumer. Do not substitute synthetic atomic data for Dy material evidence."""
+statement = """No honest libmuffintin-consumable Dy bcc Snapshot V2 exists. The WSL experiment tree produced only scalar-collinear fcc Sm SPEX dumps (spex.inp/spex.pot/thc_orbitals*.bin). FLEUR conversion is frozen. SPEX exchange_hdf is not a full-first-variation spinor consumer. Do not substitute synthetic atomic data for Dy material evidence."""

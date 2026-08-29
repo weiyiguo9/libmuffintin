@@ -1,6 +1,6 @@
 //! THC construction and validation errors.
 
-use muffintin_auxiliary_ir::ProductError;
+use muffintin_auxiliary_ir::AuxiliaryIrError;
 use muffintin_core::LmError;
 use thiserror::Error;
 
@@ -8,7 +8,7 @@ use thiserror::Error;
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum ThcError {
     #[error(transparent)]
-    Product(#[from] ProductError),
+    Product(#[from] AuxiliaryIrError),
     #[error(transparent)]
     Harmonic(#[from] LmError),
     #[error("k-mesh divisions must be positive, got {0:?}")]

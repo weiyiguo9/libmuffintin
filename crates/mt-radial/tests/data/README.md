@@ -1,6 +1,6 @@
 # Future FLEUR radial golden fixture
 
-No FLEUR numbers are committed in M-B because no provenance-complete printout
+No FLEUR numbers are committed in the radial valence tests because no provenance-complete printout
 was supplied.  A future fixture belongs in this directory only together with:
 
 - the FLEUR version/commit and input file;
@@ -14,4 +14,4 @@ was supplied.  A future fixture belongs in this directory only together with:
 The eventual integration test must parse that fixture, run `RadialSolver`, and
 compare each printed quantity independently.  It must not copy undocumented
 values into Rust literals.  Until such a provenance bundle exists, the
-analytic hydrogenic, square-well, derivative, and LO tests are the M-B gates.
+analytic hydrogenic, square-well, derivative, and LO tests are the valence gates.

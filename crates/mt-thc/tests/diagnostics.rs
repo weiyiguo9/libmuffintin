@@ -1,6 +1,6 @@
-//! Error-contract regressions for the M-I public boundary.
+//! Error-contract regressions for the THC public boundary.
 
-use muffintin_auxiliary_ir::{InterpolationRegion, PairColumnLayout, ProductError, TransferQ};
+use muffintin_auxiliary_ir::{AuxiliaryIrError, InterpolationRegion, PairColumnLayout, TransferQ};
 use muffintin_core::InverseBohr;
 use muffintin_thc::{
     BlochOrbitals, CoulombGramSet, GridPath, InjectedCoulombGram, KMesh, L2Engine, PairBlock,
@@ -237,7 +237,7 @@ fn bloch_and_pair_block_overflow_do_not_fabricate_lengths() {
         .unwrap_err();
     assert!(matches!(
         columns,
-        ProductError::DimensionOverflow { ref dimensions } if dimensions == &[usize::MAX, 4, 4]
+        AuxiliaryIrError::DimensionOverflow { ref dimensions } if dimensions == &[usize::MAX, 4, 4]
     ));
 }
 
@@ -520,7 +520,7 @@ fn invalid_core_orbital_is_rejected() {
     .unwrap_err();
     assert!(matches!(
         error,
-        ThcError::Product(ProductError::InvalidCoreOrbital { index: 2, n_orb: 2 })
+        ThcError::Product(AuxiliaryIrError::InvalidCoreOrbital { index: 2, n_orb: 2 })
     ));
 }
 

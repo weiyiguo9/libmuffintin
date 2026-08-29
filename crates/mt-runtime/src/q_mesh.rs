@@ -1,6 +1,6 @@
 //! Shared canonical-$q$ fold and regular-mesh $k-q$ lookup.
 //!
-//! Scalar M-L1 and spinor M-L5b use the same primitive-cell fold, transfer
+//! Scalar and spinor product-input boundaries use the same primitive-cell fold, transfer
 //! wrap, and off-mesh rejection. This module owns those semantics; it does
 //! not forward a later Coulomb or MPB $q$.
 

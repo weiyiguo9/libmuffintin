@@ -2,9 +2,9 @@
 
 use crate::spinor_product::{SpinorBandWindow, SpinorProductInput};
 use muffintin_auxiliary_ir::{
-    CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracRadialId,
+    AuxiliaryPartition, CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracRadialId,
     DiracRawProductSpace, InterstitialPairSpec, OrbitalPair, PairColumnLayout, PairVertex,
-    ProductPartition, TransferQ,
+    TransferQ,
 };
 use muffintin_core::{InverseBohr, ReciprocalLattice, RelativisticChannel};
 use muffintin_envelope::site_translation_phase;
@@ -34,7 +34,7 @@ pub struct SpinorMpbSpec {
     pub product_g_max: InverseBohr,
     /// SPEX `TOL` applied with [`SPINOR_MPB_NSPIN`].
     pub overlap_tolerance: f64,
-    /// Nonempty selections `(k, left_band, right_band)` in the M-L5b window.
+    /// Nonempty selections `(k, left_band, right_band)` in the spinor product-input window.
     ///
     /// `left_band` is the orbital at the mapped $k-q$ side; `right_band` is
     /// the orbital at $k$. There is no collinear spin tag.
@@ -412,7 +412,7 @@ fn raw_mt_pairs(
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SpinorFrozenInputIdentity {
     q: TransferQ,
-    partition: ProductPartition,
+    partition: AuxiliaryPartition,
     pair_columns: PairColumnLayout,
     reciprocal: ReciprocalLattice,
     band_window: SpinorBandWindow,

@@ -1,4 +1,4 @@
-//! Public M-L5d spinor AllQL2 THC tests on frozen M-L5b product input.
+//! Public spinor AllQL2 THC tests on frozen spinor product input.
 
 use muffintin::{
     RankPolicy, SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, SnapshotDftPhysics,

@@ -1,8 +1,7 @@
 //! Scalar CoQui-native Cholesky adapter: q0 + finite-q hydrogen oracles.
 //!
-//! Live CoQui contract: `chol_reader_t.hpp` / GF2 `build_int` at
-//! `<coqui-inspect-checkout>` `wg-dev` @
-//! `a19774d03fb979bd852fae4f7f95c045a4cbca78`. This is not MLDUMP.
+//! Live CoQui contract: CoQui `chol_reader_t.hpp` / GF2 `build_int`
+//! (branch `wg-dev` @ `a19774d03fb979bd852fae4f7f95c045a4cbca78`). This is not MLDUMP.
 
 use std::path::PathBuf;
 

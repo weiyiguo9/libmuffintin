@@ -1,10 +1,12 @@
-//! Scalar sampled-$\zeta$ Coulomb bridge from M-L3 THC and optional M-L2 pairs.
+//! Scalar sampled-$\zeta$ Coulomb bridge from scalar THC and optional mixed-product pairs.
 
 use crate::scalar_mpb::ScalarMpbResult;
 use crate::scalar_product::{ScalarProductInput, ScalarQSliceError, require_scalar_q_slice};
 use crate::scalar_thc::ScalarThcResult;
 use crate::thc_grid::{ThcParentGrid, ThcQRecord, ThcRegion, records_match_parent_grid};
-use muffintin_auxiliary_ir::{OrbitalPair, PairColumnLayout, PairVertex, ProductSource, TransferQ};
+use muffintin_auxiliary_ir::{
+    AuxiliarySource, OrbitalPair, PairColumnLayout, PairVertex, TransferQ,
+};
 use muffintin_core::{ExponentialMesh, VolumeBohr3};
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, InterpolationProjection,
@@ -17,7 +19,7 @@ use thiserror::Error;
 /// Absolute/relative discrepancy floor for the quadratic $c^\dagger V c$ diagnostic.
 pub const SCALAR_COULOMB_EXACTNESS_FLOOR: f64 = 1.0e-12;
 
-/// Explicit Coulomb request and interpolation projection for one M-L4 run.
+/// Explicit Coulomb request and interpolation projection for one scalar sampled-$\zeta$ Coulomb run.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarCoulombSpec {
     /// Existing Weinert assembly request (direct cell, `LEXP`, reciprocal).
@@ -26,12 +28,12 @@ pub struct ScalarCoulombSpec {
     pub projection: InterpolationProjection,
 }
 
-/// One matched M-L2 vertex to compare against the THC pair at the same $q$.
+/// One matched mixed-product vertex to compare against the THC pair at the same $q$.
 #[derive(Clone, Copy, Debug)]
 pub struct ScalarCoulombPairMatch<'a> {
     /// Production $q$-index in the ordered slice / [`ScalarThcResult::records`].
     pub q_index: usize,
-    /// Matching M-L2 mixed-product result at that transfer.
+    /// Matching mixed-product result at that transfer.
     pub mpb: &'a ScalarMpbResult,
     /// Index into [`ScalarMpbResult::vertices`].
     pub mpb_vertex: usize,
@@ -44,9 +46,9 @@ pub struct ScalarCoulombQRecord {
     pub q: TransferQ,
     pub spin: u8,
     pub layout: PairColumnLayout,
-    /// Interpolation-point auxiliary copied from the matching M-L3 record.
+    /// Interpolation-point auxiliary copied from the matching scalar-THC record.
     pub auxiliary: muffintin_auxiliary_ir::CompiledAuxiliaryBasis,
-    /// Semantic pair vertices in [`PairColumnLayout`] order, copied from M-L3.
+    /// Semantic pair vertices in [`PairColumnLayout`] order, copied from scalar THC.
     pub vertices: Vec<PairVertex>,
     /// Parent-grid sampled $\zeta$ used to assemble this operator.
     pub sampled: SampledAuxiliaryFunctions,
@@ -81,7 +83,7 @@ pub struct ScalarCoulombPairDiagnostic {
     pub quadratic_discrepancy: ScalarCoulombDiscrepancy,
 }
 
-/// Scalar M-L4 sampled-$\zeta$ Coulomb result.
+/// Scalar sampled-$\zeta$ Coulomb result.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarCoulombResult {
     pub spin: u8,
@@ -99,7 +101,7 @@ pub enum ScalarCoulombError {
     #[error(transparent)]
     Coulomb(#[from] CoulombError),
     #[error(transparent)]
-    Product(#[from] muffintin_auxiliary_ir::ProductError),
+    Product(#[from] muffintin_auxiliary_ir::AuxiliaryIrError),
     #[error("scalar Coulomb q-slice must be nonempty")]
     EmptySlice,
     #[error("scalar Coulomb q-slice has {actual} bundles, expected {expected} k-mesh transfers")]
@@ -139,7 +141,7 @@ pub enum ScalarCoulombError {
     #[error("scalar Coulomb comparison q-index {0} is outside the THC q-slice")]
     ComparisonQIndex(usize),
     #[error(
-        "scalar Coulomb comparison vertex {index} is outside M-L2 vertices at q-index {q_index}"
+        "scalar Coulomb comparison vertex {index} is outside mixed-product vertices at q-index {q_index}"
     )]
     ComparisonVertex { q_index: usize, index: usize },
     #[error(
@@ -162,7 +164,7 @@ impl From<CoulombBridgeError> for ScalarCoulombError {
     }
 }
 
-/// Assemble sampled-$\zeta$ $V^q$ on the M-L3 parent grid for a complete $q$ slice.
+/// Assemble sampled-$\zeta$ $V^q$ on the scalar-THC parent grid for a complete $q$ slice.
 ///
 /// [`CoulombRequest`] must carry the frozen [`ScalarProductInput::reciprocal`].
 /// Each THC record's $\zeta$ is collocated on the full parent grid in original
@@ -230,7 +232,7 @@ pub fn build_scalar_coulomb(
     })
 }
 
-fn site_meshes(source: &ProductSource) -> Vec<ExponentialMesh> {
+fn site_meshes(source: &AuxiliarySource) -> Vec<ExponentialMesh> {
     source
         .radials
         .iter()

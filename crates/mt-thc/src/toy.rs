@@ -8,7 +8,7 @@ use crate::ThcError;
 use crate::gram::InjectedCoulombGram;
 use crate::kmesh::KMesh;
 use crate::pair::{BlochOrbitals, PairBlock};
-use muffintin_auxiliary_ir::{InterpolationRegion, PairColumnLayout, ProductPartition};
+use muffintin_auxiliary_ir::{AuxiliaryPartition, InterpolationRegion, PairColumnLayout};
 use muffintin_core::{Bohr, InterstitialGeometry, Sphere, VolumeBohr3, complex_spherical_harmonic};
 use num_complex::Complex64;
 use std::f64::consts::PI;
@@ -268,8 +268,8 @@ pub fn mt_bloch_orbitals(
 }
 
 /// Product partition of the MT-like toy.
-pub fn mt_partition() -> ProductPartition {
-    ProductPartition::from_interstitial(
+pub fn mt_partition() -> AuxiliaryPartition {
+    AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
             VolumeBohr3(MT_LATTICE.powi(3)),
             vec![Sphere {
@@ -691,8 +691,8 @@ pub fn lapw_kmesh() -> KMesh {
 }
 
 /// Product partition of the synthetic LAPW toy.
-pub fn lapw_partition() -> ProductPartition {
-    ProductPartition::from_interstitial(
+pub fn lapw_partition() -> AuxiliaryPartition {
+    AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
             VolumeBohr3(LAPW_LATTICE.powi(3)),
             ATOM_POS

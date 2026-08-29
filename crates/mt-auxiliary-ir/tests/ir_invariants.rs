@@ -1,8 +1,9 @@
 //! Product-space IR invariants independent of mixed-product `TOL`.
 
 use muffintin_auxiliary_ir::{
-    PairColumnLayout, ProductError, ProductPartition, ProductRadial, ProductSource, RadialSamples,
-    RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet, TransferQ,
+    AuxiliaryIrError, AuxiliaryPartition, AuxiliarySource, PairColumnLayout, ProductRadial,
+    RadialSamples, RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet,
+    TransferQ,
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{
@@ -28,7 +29,7 @@ fn q_gamma() -> TransferQ {
 #[test]
 fn partition_follows_interstitial_spheres() {
     let interstitial = geometry();
-    let partition = ProductPartition::from_interstitial(interstitial.clone());
+    let partition = AuxiliaryPartition::from_interstitial(interstitial.clone());
     assert_eq!(partition.site_count(), 1);
     assert_eq!(
         partition.sites()[0].position,
@@ -55,9 +56,9 @@ fn transfer_q_records_explicit_umklapp() {
 
 #[test]
 fn product_source_requires_matching_radial_site_count() {
-    let partition = ProductPartition::from_interstitial(geometry());
+    let partition = AuxiliaryPartition::from_interstitial(geometry());
     let q = q_gamma();
-    let error = ProductSource::new(
+    let error = AuxiliarySource::new(
         partition,
         Vec::new(),
         q,
@@ -67,7 +68,7 @@ fn product_source_requires_matching_radial_site_count() {
     .unwrap_err();
     assert!(matches!(
         error,
-        muffintin_auxiliary_ir::ProductError::SiteCount {
+        muffintin_auxiliary_ir::AuxiliaryIrError::SiteCount {
             expected: 1,
             actual: 0
         }
@@ -79,8 +80,8 @@ fn product_source_does_not_carry_compiled_basis_fields() {
     let mesh = ExponentialMesh::new(Bohr(1.0e-4), 0.2, 16).unwrap();
     let n = mesh.len();
     let q = q_gamma();
-    let source = ProductSource::new(
-        ProductPartition::from_interstitial(geometry()),
+    let source = AuxiliarySource::new(
+        AuxiliaryPartition::from_interstitial(geometry()),
         vec![SiteRadialSet {
             mesh,
             valence: vec![ProductRadial {
@@ -122,7 +123,7 @@ fn raw_pair_support_rejects_duplicate_g_labels() {
     .unwrap_err();
     assert!(matches!(
         error,
-        ProductError::DuplicatePairComponent { index } if index == [1, 0, 0]
+        AuxiliaryIrError::DuplicatePairComponent { index } if index == [1, 0, 0]
     ));
 }
 
@@ -163,8 +164,8 @@ fn product_source_rejects_pair_support_at_a_different_q() {
     let q = q_gamma();
     let other =
         TransferQ::from_cartesian([InverseBohr(0.2), InverseBohr(0.0), InverseBohr(0.0)]).unwrap();
-    let error = ProductSource::new(
-        ProductPartition::from_interstitial(geometry()),
+    let error = AuxiliarySource::new(
+        AuxiliaryPartition::from_interstitial(geometry()),
         vec![SiteRadialSet {
             mesh,
             valence: vec![ProductRadial {
@@ -183,7 +184,7 @@ fn product_source_rejects_pair_support_at_a_different_q() {
         Provenance::default(),
     )
     .unwrap_err();
-    assert!(matches!(error, ProductError::PairSupportTransferQ));
+    assert!(matches!(error, AuxiliaryIrError::PairSupportTransferQ));
 }
 
 #[test]
@@ -196,7 +197,7 @@ fn interpolation_points_are_not_empty_mixed_product_payloads() {
     use muffintin_core::{Bohr, VolumeBohr3};
     use num_complex::Complex64;
 
-    let partition = ProductPartition::from_interstitial(geometry());
+    let partition = AuxiliaryPartition::from_interstitial(geometry());
     let q = q_gamma();
     let points = vec![
         InterpolationAuxiliaryPoint {
@@ -285,7 +286,7 @@ fn interpolation_points_are_not_empty_mixed_product_payloads() {
     };
     assert!(matches!(
         mixed.require_interpolation_points(),
-        Err(ProductError::ExpectedInterpolationPoints)
+        Err(AuxiliaryIrError::ExpectedInterpolationPoints)
     ));
 }
 
@@ -297,7 +298,7 @@ fn interpolation_points_reject_negative_and_all_zero_weights() {
     };
     use muffintin_core::{Bohr, VolumeBohr3};
 
-    let partition = ProductPartition::from_interstitial(geometry());
+    let partition = AuxiliaryPartition::from_interstitial(geometry());
     let q = q_gamma();
     let negative = CompiledAuxiliaryBasis {
         partition: partition.clone(),
@@ -314,7 +315,7 @@ fn interpolation_points_reject_negative_and_all_zero_weights() {
     };
     assert!(matches!(
         negative.validate(),
-        Err(ProductError::NegativeInterpolationWeight(0))
+        Err(AuxiliaryIrError::NegativeInterpolationWeight(0))
     ));
     let zeros = CompiledAuxiliaryBasis {
         partition,
@@ -331,6 +332,6 @@ fn interpolation_points_reject_negative_and_all_zero_weights() {
     };
     assert!(matches!(
         zeros.validate(),
-        Err(ProductError::NoPositiveInterpolationWeight)
+        Err(AuxiliaryIrError::NoPositiveInterpolationWeight)
     ));
 }

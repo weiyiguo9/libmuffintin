@@ -33,7 +33,7 @@ pub struct ScalarThcSpec {
     pub engine: ThcEngine,
 }
 
-/// Scalar AllQL2 result carrying the M-L4 interpolation-point seam.
+/// Scalar AllQL2 result carrying the sampled-$\zeta$ Coulomb interpolation-point seam.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarThcResult {
     pub grid: ThcParentGrid,
@@ -106,7 +106,7 @@ impl From<ThcGridError> for ScalarThcError {
 /// Build AllQL2 interpolation points, $\zeta$, and pair vertices on a parent grid.
 ///
 /// `inputs` is the complete k-mesh $q$ slice in production $q$-index order:
-/// `inputs[iq]` is the M-L1 bundle whose canonical $q$ is the $iq$-th mesh
+/// `inputs[iq]` is the scalar product-input bundle whose canonical $q$ is the $iq$-th mesh
 /// point. Muffin-tin $P$ and $Q$ are reconstructed Bloch samples converted to
 /// the cell-periodic representation by $\exp(-i k\cdot r)$ at the Cartesian
 /// point, using the stored plane-wave Cartesian $k$. Pair density is
@@ -148,7 +148,7 @@ pub fn build_scalar_thc(
         spec.candidates.as_fit_indices(),
         Provenance {
             recipe: Some("scalar-thc-allq-l2".to_owned()),
-            reference: Some("snapshot-dft-frozen-scalar-ml3".to_owned()),
+            reference: Some("snapshot-dft-frozen-scalar-thc".to_owned()),
         },
     )?;
     let layout = first.pair_columns;

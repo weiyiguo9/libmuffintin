@@ -1,4 +1,4 @@
-//! Public M-L2 scalar mixed-product bridge on frozen M-L1 product input.
+//! Public scalar mixed-product bridge on frozen scalar product input.
 
 use std::collections::BTreeMap;
 
@@ -358,7 +358,7 @@ fn q0_scalar_mpb_bridge_emits_raw_retained_and_real_vertex() {
 }
 
 #[test]
-fn finite_q_scalar_mpb_uses_ml1_canonical_q_and_wraps() {
+fn finite_q_scalar_mpb_uses_canonical_q_and_wraps() {
     let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [1.5, 0.0, 0.0])

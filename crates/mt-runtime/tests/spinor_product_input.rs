@@ -1,4 +1,4 @@
-//! Public M-L5b frozen full-first-variation spinor product-input tests.
+//! Public frozen full-first-variation spinor product-input tests.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::PI;
@@ -289,7 +289,7 @@ fn q0_signed_kappa_lo_row_maps_to_dirac_radial_and_samples() {
 
     assert_eq!(
         input.source.provenance.reference.as_deref(),
-        Some("snapshot-dft-frozen-spinor-ml5b")
+        Some("snapshot-dft-frozen-spinor-product-input")
     );
     assert!(input.source.radials[0].cores.is_empty());
     assert_eq!(input.orbitals.band_window.start, 0);

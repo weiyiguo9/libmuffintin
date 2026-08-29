@@ -2431,7 +2431,7 @@ pub enum SnapshotDftError {
     #[error("collinear product input needs equal up/down band counts, got {up} and {down}")]
     CollinearBandCount { up: usize, down: usize },
     #[error(transparent)]
-    Product(#[from] muffintin_auxiliary_ir::ProductError),
+    Product(#[from] muffintin_auxiliary_ir::AuxiliaryIrError),
     #[error("second variation requires a nonmagnetic scalar snapshot and potential")]
     SecondVariationRequiresNonmagneticScalar,
     #[error(

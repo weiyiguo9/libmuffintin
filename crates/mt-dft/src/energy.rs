@@ -23,7 +23,7 @@ impl OccupationEnergy {
     }
 }
 
-/// Terms in the M-Kb full-potential total-energy expression.
+/// Terms in the full-potential total-energy expression.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScfEnergy {
     pub band: Hartree,

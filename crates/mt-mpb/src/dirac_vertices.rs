@@ -95,7 +95,7 @@ impl<'a> DiracPairVertexAccumulator<'a> {
 /// Accumulator that finishes a Dirac muffin-tin plus interstitial expansion
 /// into a generic checked [`PairVertex`].
 ///
-/// Muffin-tin PP/QQ terms reuse the M-L5a primitive, including the site phase
+/// Muffin-tin PP/QQ terms reuse the Dirac mixed-product primitive, including the site phase
 /// $\exp(+i q\cdot R_a)$ once. Interstitial terms reuse the shared raw-support
 /// $\Theta_I$ helper. Construction accepts only [`OrbitalPair::Bloch`].
 #[derive(Debug)]
@@ -215,7 +215,7 @@ pub fn require_matching_dirac_context(
     }
     if payload.sites.len() != source.radials.len() {
         return Err(MpbError::Product(
-            muffintin_auxiliary_ir::ProductError::AuxiliarySiteCount {
+            muffintin_auxiliary_ir::AuxiliaryIrError::AuxiliarySiteCount {
                 expected: source.radials.len(),
                 actual: payload.sites.len(),
             },
@@ -224,7 +224,7 @@ pub fn require_matching_dirac_context(
     for (site, (block, radials)) in payload.sites.iter().zip(&source.radials).enumerate() {
         if block.mesh != radials.mesh {
             return Err(MpbError::Product(
-                muffintin_auxiliary_ir::ProductError::AuxiliaryMeshMismatch { site },
+                muffintin_auxiliary_ir::AuxiliaryIrError::AuxiliaryMeshMismatch { site },
             ));
         }
     }

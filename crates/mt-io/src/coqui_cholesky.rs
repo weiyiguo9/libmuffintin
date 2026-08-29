@@ -1,7 +1,7 @@
 //! CoQui-native single-file Cholesky ERI HDF5.
 //!
 //! This module is **not** MLDUMP. The on-disk tree matches live CoQui
-//! `chol_reader_t` (`<coqui-inspect-checkout>`, branch `wg-dev` @
+//! `chol_reader_t` (branch `wg-dev` @
 //! `a19774d03fb979bd852fae4f7f95c045a4cbca78`) `add_meta_data` and single-file
 //! `write_Vq`: group `/Interaction`, scalar `i32` members
 //! `Np,nspin,nspin_in_basis,nkpts,nbnd,nbnd_aux=0`, scalar `f64` `tol`,

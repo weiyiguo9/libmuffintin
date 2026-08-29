@@ -2,11 +2,10 @@
 #![allow(dead_code)]
 
 use muffintin_auxiliary_ir::{
-    AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationAuxiliaryPoint,
-    InterpolationPointAuxiliary, InterpolationRegion, OrbitalPair, PairOrbital, PairVertex,
-    ProductOrbitalKind, ProductPartition, ProductRadial, ProductRadialId, ProductSource,
-    RadialSamples, RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet,
-    TransferQ,
+    AuxiliaryPartition, AuxiliaryRepresentation, AuxiliarySource, CompiledAuxiliaryBasis,
+    InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion, OrbitalPair,
+    PairOrbital, PairVertex, ProductOrbitalKind, ProductRadial, ProductRadialId, RadialSamples,
+    RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet, TransferQ,
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{
@@ -45,8 +44,8 @@ pub fn samples(kind: u8) -> RadialSamples {
     RadialSamples { large, small: None }
 }
 
-pub fn partition() -> ProductPartition {
-    ProductPartition::from_interstitial(
+pub fn partition() -> AuxiliaryPartition {
+    AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
             VolumeBohr3(LATTICE.powi(3)),
             vec![Sphere {
@@ -102,9 +101,9 @@ pub fn pair_support(q: TransferQ, lattice: &ReciprocalLattice) -> RawInterstitia
     .unwrap()
 }
 
-pub fn product_source(q: TransferQ) -> ProductSource {
+pub fn product_source(q: TransferQ) -> AuxiliarySource {
     let lattice = cubic_lattice();
-    ProductSource::new(
+    AuxiliarySource::new(
         partition(),
         vec![SiteRadialSet {
             mesh: mesh(),
@@ -131,7 +130,7 @@ pub fn product_source(q: TransferQ) -> ProductSource {
     .unwrap()
 }
 
-pub fn mixed_product_auxiliary(q: TransferQ) -> (ProductSource, CompiledAuxiliaryBasis) {
+pub fn mixed_product_auxiliary(q: TransferQ) -> (AuxiliarySource, CompiledAuxiliaryBasis) {
     let source = product_source(q);
     let lattice = cubic_lattice();
     let (_raw, auxiliary) =
@@ -180,7 +179,7 @@ pub fn interpolation_auxiliary(q: TransferQ) -> CompiledAuxiliaryBasis {
         }),
         provenance: Provenance {
             recipe: Some("coulomb-interpolation-fixture".to_owned()),
-            reference: Some("M-J interpolation charge expansion".to_owned()),
+            reference: Some("interpolation charge expansion".to_owned()),
         },
     };
     auxiliary.validate().unwrap();

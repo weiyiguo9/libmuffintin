@@ -1,4 +1,4 @@
-//! M-L7 Dy bcc catalogue and producer-blocker checks.
+//! Dy bcc catalogue and producer-blocker checks.
 //!
 //! These tests do **not** run a Dy material MPB/THC/`c^\dagger V c` lane.
 //! No honest libmuffintin-consumable Dy bcc Snapshot V2 was found. They only

@@ -1,4 +1,4 @@
-//! Public M-L5c selected-band spinor mixed-product bridge.
+//! Public selected-band spinor mixed-product bridge.
 
 use std::collections::BTreeMap;
 

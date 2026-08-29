@@ -1,4 +1,4 @@
-//! Runtime materialization of spinor MLDUMP v1 from frozen M-L5b–L5d objects.
+//! Runtime materialization of spinor MLDUMP v1 from frozen spinor product-input, mixed-product, THC, and Coulomb objects.
 
 use std::path::Path;
 
@@ -464,7 +464,7 @@ fn write_products(
         .provenance
         .reference
         .as_deref()
-        .unwrap_or("snapshot-dft-frozen-spinor-ml5b");
+        .unwrap_or("snapshot-dft-frozen-spinor-product-input");
     stream.begin_products(&SpinorProductsBeginV1 {
         n_k: first.orbitals.k_fractional.len(),
         n_orb: first.orbitals.band_window.count,

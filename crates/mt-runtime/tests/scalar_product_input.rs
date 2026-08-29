@@ -1,4 +1,4 @@
-//! Public M-L1 scalar product-input tests on a frozen snapshot solve.
+//! Public scalar product-input tests on a frozen snapshot solve.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -270,7 +270,7 @@ fn q0_frozen_scalar_product_input_emits_neutral_source_and_orbitals() {
     );
     assert_eq!(
         input.source.provenance.reference.as_deref(),
-        Some("snapshot-dft-frozen-scalar-ml1")
+        Some("snapshot-dft-frozen-scalar-product-input")
     );
 
     assert_eq!(input.k_minus_q.len(), 1);

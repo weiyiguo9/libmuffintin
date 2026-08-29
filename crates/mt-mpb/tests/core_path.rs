@@ -1,10 +1,10 @@
 //! SPEX-convention mixed-product core path without a live SPEX dump.
 
 use muffintin_auxiliary_ir::{
-    AuxiliaryRegion, CompiledAuxiliaryBasis, InterstitialPairSpec, MixedProductAuxiliary,
-    MtPairSpec, OrbitalPair, PairVertexSpec, ProductError, ProductOrbitalKind, ProductPartition,
-    ProductRadial, ProductRadialId, ProductSource, RadialSamples, RawInterstitialPairComponent,
-    RawInterstitialPairSupport, SiteRadialSet, TransferQ,
+    AuxiliaryIrError, AuxiliaryPartition, AuxiliaryRegion, AuxiliarySource, CompiledAuxiliaryBasis,
+    InterstitialPairSpec, MixedProductAuxiliary, MtPairSpec, OrbitalPair, PairVertexSpec,
+    ProductOrbitalKind, ProductRadial, ProductRadialId, RadialSamples,
+    RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet, TransferQ,
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{
@@ -46,8 +46,8 @@ fn samples(kind: u8) -> RadialSamples {
     RadialSamples { large, small: None }
 }
 
-fn partition() -> ProductPartition {
-    ProductPartition::from_interstitial(
+fn partition() -> AuxiliaryPartition {
+    AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
             VolumeBohr3(512.0),
             vec![Sphere {
@@ -115,7 +115,7 @@ fn source_with_support(
     include_p: bool,
     q: TransferQ,
     support: RawInterstitialPairSupport,
-) -> ProductSource {
+) -> AuxiliarySource {
     let mut valence = vec![
         ProductRadial {
             l: 0,
@@ -147,7 +147,7 @@ fn source_with_support(
             samples: samples(2),
         });
     }
-    ProductSource::new(
+    AuxiliarySource::new(
         partition(),
         vec![SiteRadialSet {
             mesh: mesh(),
@@ -161,7 +161,7 @@ fn source_with_support(
     .unwrap()
 }
 
-fn source_vv_cv(include_core: bool, include_p: bool) -> ProductSource {
+fn source_vv_cv(include_core: bool, include_p: bool) -> AuxiliarySource {
     let q = TransferQ::from_cartesian([InverseBohr(0.0); 3]).unwrap();
     let lattice = cubic_lattice();
     source_with_support(
@@ -535,7 +535,7 @@ fn interstitial_pair_vertex_matches_independent_theta_i_oracle_including_umklapp
     assert!(expected.iter().any(|value| value.norm() > 1.0e-8));
     let wrap = lattice.enumerate(InverseBohr(1.0)).unwrap()[1];
     let folded = TransferQ::fold_by_reciprocal_vector(source.q.cartesian, wrap).unwrap();
-    let folded_source = ProductSource::new(
+    let folded_source = AuxiliarySource::new(
         source.partition.clone(),
         source.radials.clone(),
         folded,
@@ -597,7 +597,7 @@ fn muffin_tin_pair_vertex_carries_site_phase() {
     assert!(sss.abs() > 0.2);
     let q = TransferQ::from_cartesian([InverseBohr(0.3), InverseBohr(-0.1), InverseBohr(0.05)])
         .unwrap();
-    let phased_source = ProductSource::new(
+    let phased_source = AuxiliarySource::new(
         source.partition.clone(),
         source.radials.clone(),
         q,
@@ -656,7 +656,7 @@ fn pair_vertex_rejects_mismatched_transfer_q() {
         spex_mixed_product_basis(&source, 0, InverseBohr(0.5), &lattice).unwrap();
     let q =
         TransferQ::from_cartesian([InverseBohr(0.2), InverseBohr(0.0), InverseBohr(0.0)]).unwrap();
-    let other = ProductSource::new(
+    let other = AuxiliarySource::new(
         source.partition.clone(),
         source.radials.clone(),
         q,
@@ -685,8 +685,8 @@ fn pair_vertex_rejects_same_sites_with_different_cell_volume() {
     let lattice = cubic_lattice();
     let (raw, auxiliary) =
         spex_mixed_product_basis(&source, 0, InverseBohr(0.8), &lattice).unwrap();
-    let volume_source = ProductSource::new(
-        ProductPartition::from_interstitial(
+    let volume_source = AuxiliarySource::new(
+        AuxiliaryPartition::from_interstitial(
             InterstitialGeometry::new(
                 VolumeBohr3(1024.0),
                 vec![Sphere {
@@ -744,7 +744,7 @@ fn pair_vertex_rejects_permuted_or_relabelled_raw_pair_support() {
     assert!(matches!(
         pair_vertex(&source, &raw, &auxiliary_perm, spec),
         Err(muffintin_mpb::MpbError::Product(
-            ProductError::AuxiliaryWaveOrder
+            AuxiliaryIrError::AuxiliaryWaveOrder
         ))
     ));
 }
@@ -770,7 +770,7 @@ fn pair_vertex_rejects_mismatched_mesh_and_mode_length() {
     assert!(matches!(
         pair_vertex(&source, &raw, &auxiliary, spec),
         Err(muffintin_mpb::MpbError::Product(
-            ProductError::AuxiliaryModeLength { .. }
+            AuxiliaryIrError::AuxiliaryModeLength { .. }
         ))
     ));
 }

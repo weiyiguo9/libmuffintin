@@ -1,7 +1,7 @@
 //! Frozen scalar LAPW product input for one requested transfer $q$.
 
 use muffintin_auxiliary_ir::{
-    PairColumnLayout, ProductPartition, ProductRadial, ProductSource, RadialSamples,
+    AuxiliaryPartition, AuxiliarySource, PairColumnLayout, ProductRadial, RadialSamples,
     RawInterstitialPairSupport, SiteRadialSet, TransferQ,
 };
 use muffintin_core::ReciprocalLattice;
@@ -45,7 +45,7 @@ pub struct ScalarKMinusQ {
 
 /// Common leading band window retained for pair columns.
 ///
-/// M-L1 keeps the lowest `count` eigenpairs starting at `start` (always 0).
+/// The scalar product-input window keeps the lowest `count` eigenpairs starting at `start` (always 0).
 /// Per-$k$ available counts remain on [`ScalarSpinChannel::available_bands`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ScalarBandWindow {
@@ -71,7 +71,7 @@ pub struct ScalarSpinChannel {
 /// Minimal real scalar Bloch data retained for later pair/THC stages.
 ///
 /// Orbital coefficients and the per-$k$ [`CompiledBasis`] live here, not on
-/// [`ProductSource`].
+/// [`AuxiliarySource`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarFrozenOrbitals {
     pub k_fractional: Vec<[f64; 3]>,
@@ -81,7 +81,7 @@ pub struct ScalarFrozenOrbitals {
 
 /// Frozen scalar LAPW solve plus representation-neutral product input at one $q$.
 ///
-/// `source` is the method-neutral [`ProductSource`]. Valence radials use
+/// `source` is the method-neutral [`AuxiliarySource`]. Valence radials use
 /// [`SCALAR_RADIAL_U`], [`SCALAR_RADIAL_UDOT`], then local orbitals from
 /// [`SCALAR_RADIAL_LO0`]. Pair columns use [`PairColumnLayout`] indexing
 /// $k\cdot N_{\mathrm{orb}}^2+i\cdot N_{\mathrm{orb}}+j$. Cores are empty.
@@ -89,7 +89,7 @@ pub struct ScalarFrozenOrbitals {
 /// $G_{\mathrm{wrap}}$; it is not inferred from a later Coulomb request.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarProductInput {
-    pub source: ProductSource,
+    pub source: AuxiliarySource,
     pub orbitals: ScalarFrozenOrbitals,
     pub k_minus_q: Vec<ScalarKMinusQ>,
     pub pair_columns: PairColumnLayout,
@@ -222,14 +222,14 @@ fn emit_scalar_product_input(
 
     let interstitial_pair_support =
         raw_pair_support(q, *physics.reciprocal(), &channels, &k_minus_q)?;
-    let source = ProductSource::new(
-        ProductPartition::from_interstitial(physics.geometry().clone()),
+    let source = AuxiliarySource::new(
+        AuxiliaryPartition::from_interstitial(physics.geometry().clone()),
         radials.ok_or(SnapshotDftError::EmptyKPointSet)?,
         q,
         interstitial_pair_support,
         Provenance {
             recipe: None,
-            reference: Some("snapshot-dft-frozen-scalar-ml1".to_owned()),
+            reference: Some("snapshot-dft-frozen-scalar-product-input".to_owned()),
         },
     )?;
     Ok(ScalarProductInput {

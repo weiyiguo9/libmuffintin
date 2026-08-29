@@ -167,7 +167,7 @@ fn sample_fields() -> SpexFrozenFieldsV1 {
 
 fn matching_recipe() -> SpexMaterialBasisRecipeV1 {
     SpexMaterialBasisRecipeV1 {
-        producer: "libmuffintin-ml7-recipe".to_owned(),
+        producer: "libmuffintin-material-recipe".to_owned(),
         recipe_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             .to_owned(),
         channels: vec![SpexMaterialChannelV1 {
@@ -258,7 +258,7 @@ fn artifact_recipe(fields: &SpexFrozenFieldsV1) -> SpexMaterialBasisRecipeV1 {
         }
     }
     SpexMaterialBasisRecipeV1 {
-        producer: "libmuffintin-ml7-sm-recipe".to_owned(),
+        producer: "libmuffintin-sm-material-recipe".to_owned(),
         recipe_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
             .to_owned(),
         channels,
@@ -281,17 +281,17 @@ fn v0_coeff(fields: &SpexFrozenFieldsV1, g: [i32; 3]) -> muffintin_io::Complex64
     }
 }
 
-/// Live SPEX snapshot at `/tmp/ml7-spex-artifact/snapshot.h5`.
+/// Live SPEX snapshot at `/tmp/spex-sm-artifact/snapshot.h5`.
 ///
 /// Ordinary workspace tests skip this. Run:
 /// `cargo test -p libmuffintin-io --test spex_snapshot_v1 consume_wsl_b45d9b9_snapshot_h5 -- --ignored --exact --nocapture`
-#[ignore = "requires local SPEX artifact /tmp/ml7-spex-artifact/snapshot.h5; run with --ignored"]
+#[ignore = "requires local SPEX artifact /tmp/spex-sm-artifact/snapshot.h5; run with --ignored"]
 #[test]
 fn consume_wsl_b45d9b9_snapshot_h5() {
-    let path = std::path::Path::new("/tmp/ml7-spex-artifact/snapshot.h5");
+    let path = std::path::Path::new("/tmp/spex-sm-artifact/snapshot.h5");
     assert!(
         path.is_file(),
-        "authorized artifact missing at /tmp/ml7-spex-artifact/snapshot.h5"
+        "authorized artifact missing at /tmp/spex-sm-artifact/snapshot.h5"
     );
     let fields =
         read_spex_snapshot_hdf(path).expect("frozen reader must accept b45d9b9 snapshot.h5");
@@ -315,14 +315,14 @@ fn consume_wsl_b45d9b9_snapshot_h5() {
     }
 }
 
-/// Live SPEX snapshot at `/tmp/ml7-spex-artifact/snapshot.h5`.
+/// Live SPEX snapshot at `/tmp/spex-sm-artifact/snapshot.h5`.
 ///
 /// Ordinary workspace tests skip this. Run:
 /// `cargo test -p libmuffintin-io --test spex_snapshot_v1 materialize_symmetrizes_live_ulp_and_rejects_large_hermitian_error -- --ignored --exact --nocapture`
-#[ignore = "requires local SPEX artifact /tmp/ml7-spex-artifact/snapshot.h5; run with --ignored"]
+#[ignore = "requires local SPEX artifact /tmp/spex-sm-artifact/snapshot.h5; run with --ignored"]
 #[test]
 fn materialize_symmetrizes_live_ulp_and_rejects_large_hermitian_error() {
-    let path = std::path::Path::new("/tmp/ml7-spex-artifact/snapshot.h5");
+    let path = std::path::Path::new("/tmp/spex-sm-artifact/snapshot.h5");
     assert!(path.is_file(), "authorized artifact missing");
     let fields = read_spex_snapshot_hdf(path).unwrap();
     let g = [-13, -7, -7];

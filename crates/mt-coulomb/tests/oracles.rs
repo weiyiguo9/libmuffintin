@@ -4,8 +4,9 @@
 mod common;
 
 use muffintin_auxiliary_ir::{
-    AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryRepresentation,
-    CompiledAuxiliaryBasis, MixedProductAuxiliary, ProductPartition, SiteAuxiliaryBlock, TransferQ,
+    AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryPartition,
+    AuxiliaryRepresentation, CompiledAuxiliaryBasis, MixedProductAuxiliary, SiteAuxiliaryBlock,
+    TransferQ,
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{
@@ -22,8 +23,8 @@ use std::f64::consts::PI;
 
 const RECONSTRUCTION: f64 = 1.0e-8;
 
-fn empty_partition() -> ProductPartition {
-    ProductPartition::from_interstitial(
+fn empty_partition() -> AuxiliaryPartition {
+    AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(VolumeBohr3(common::LATTICE.powi(3)), Vec::new()).unwrap(),
     )
 }

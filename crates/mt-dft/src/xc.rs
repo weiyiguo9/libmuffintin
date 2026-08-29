@@ -8,7 +8,7 @@ const CLDA: f64 = -0.738_558_766_382_022_3;
 const CS: f64 = 0.161_620_459_673_995_5;
 const GRADIENT_THRESHOLD: f64 = 1.0e-10;
 
-/// Minimal exchange-correlation choices frozen for M-Kb.
+/// Minimal exchange-correlation choices frozen for the full-potential energy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum XcFunctional {
     /// SPEX `xlda + cpw92`.

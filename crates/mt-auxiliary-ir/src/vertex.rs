@@ -1,6 +1,8 @@
 //! Pair vertices onto a compiled auxiliary basis.
 
-use crate::{AuxiliaryLayout, CompiledAuxiliaryBasis, ProductError, ProductRadialId, TransferQ};
+use crate::{
+    AuxiliaryIrError, AuxiliaryLayout, CompiledAuxiliaryBasis, ProductRadialId, TransferQ,
+};
 use muffintin_basis::Provenance;
 use muffintin_core::GVector;
 use num_complex::Complex64;
@@ -132,9 +134,9 @@ impl PairVertex {
         pair: OrbitalPair,
         coefficients: Vec<Complex64>,
         provenance: Provenance,
-    ) -> Result<Self, ProductError> {
+    ) -> Result<Self, AuxiliaryIrError> {
         if coefficients.len() != layout.dimension() {
-            return Err(ProductError::PairVertexDimension {
+            return Err(AuxiliaryIrError::PairVertexDimension {
                 actual: coefficients.len(),
                 mt: layout.mt_dimension(),
                 interstitial: layout.interstitial_dimension(),
@@ -153,7 +155,7 @@ impl PairVertex {
         auxiliary: &CompiledAuxiliaryBasis,
         pair: OrbitalPair,
         coefficients: Vec<Complex64>,
-    ) -> Result<Self, ProductError> {
+    ) -> Result<Self, AuxiliaryIrError> {
         Self::new(
             auxiliary.layout(),
             pair,

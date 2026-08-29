@@ -31,13 +31,13 @@ pub use dirac::{
     DiracRawRadialProduct, DiracSiteRadialSet,
 };
 pub use pair_layout::PairColumnLayout;
-pub use partition::{PartitionSite, ProductPartition};
+pub use partition::{AuxiliaryPartition, PartitionSite};
 pub use raw::{
     ChannelSpectrum, CoupledChannel, PairChannel, RawInterstitialPairComponent,
     RawInterstitialPairSupport, RawProductSpace, RawRadialProduct, sort_raw_pair_components,
 };
 pub use source::{
-    ProductOrbitalKind, ProductRadial, ProductRadialId, ProductSource, RadialSamples,
+    AuxiliarySource, ProductOrbitalKind, ProductRadial, ProductRadialId, RadialSamples,
     SiteRadialSet, TransferQ,
 };
 pub use vertex::{
@@ -50,7 +50,7 @@ use thiserror::Error;
 
 /// Product-space construction or validation error.
 #[derive(Clone, Debug, Error, PartialEq)]
-pub enum ProductError {
+pub enum AuxiliaryIrError {
     #[error("expected {expected} product sites, got {actual}")]
     SiteCount { expected: usize, actual: usize },
     #[error("site {site} radial mesh has {actual} samples, expected {expected}")]

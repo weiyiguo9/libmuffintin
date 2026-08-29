@@ -1,6 +1,6 @@
-//! Shared M-L7 material harness.
+//! Shared Sm/Dy material harness.
 //!
-//! Dy and Sm lanes include this file with `#[path = "ml7_material_common.rs"]`.
+//! Dy and Sm lanes include this file with `#[path = "material_lane_common.rs"]`.
 //! Do not copy it. SPEX HDF is frozen fields only; Snapshot V2 comes from
 //! `materialize_snapshot_v2` plus a caller-owned signed-kappa recipe.
 
@@ -19,9 +19,9 @@ use muffintin_io::{
 };
 use muffintin_thc::RankPolicy;
 
-/// Provenance for one honest Snapshot V2 consumed by an M-L7 lane.
+/// Provenance for one honest Snapshot V2 consumed by a material lane.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Ml7Provenance {
+pub struct MaterialProvenance {
     pub snapshot_path: PathBuf,
     pub snapshot_sha256: String,
     pub producer: String,
@@ -29,16 +29,16 @@ pub struct Ml7Provenance {
 
 /// Frozen full-first-variation material fixture.
 #[allow(missing_debug_implementations)]
-pub struct Ml7MaterialFixture {
+pub struct MaterialFixture {
     pub snapshot: SnapshotV2,
     pub config: ScfConfig,
     pub physics: SnapshotDftPhysics,
-    pub provenance: Ml7Provenance,
+    pub provenance: MaterialProvenance,
 }
 
 /// Shared harness error.
 #[derive(Debug)]
-pub enum Ml7CommonError {
+pub enum MaterialLaneError {
     Io(std::io::Error),
     Snapshot(muffintin_io::IoError),
     SnapshotDft(SnapshotDftError),
@@ -47,30 +47,30 @@ pub enum Ml7CommonError {
     Relativity,
 }
 
-impl From<std::io::Error> for Ml7CommonError {
+impl From<std::io::Error> for MaterialLaneError {
     fn from(error: std::io::Error) -> Self {
         Self::Io(error)
     }
 }
 
-impl From<muffintin_io::IoError> for Ml7CommonError {
+impl From<muffintin_io::IoError> for MaterialLaneError {
     fn from(error: muffintin_io::IoError) -> Self {
         Self::Snapshot(error)
     }
 }
 
-impl From<SnapshotDftError> for Ml7CommonError {
+impl From<SnapshotDftError> for MaterialLaneError {
     fn from(error: SnapshotDftError) -> Self {
         Self::SnapshotDft(error)
     }
 }
 
 /// Reject scalar Koelling–Harmon and SOC second variation.
-pub fn require_spinor_first_variation(config: &ScfConfig) -> Result<(), Ml7CommonError> {
+pub fn require_spinor_first_variation(config: &ScfConfig) -> Result<(), MaterialLaneError> {
     match config.relativity {
         ScfRelativity::SpinorFirstVariation => Ok(()),
         ScfRelativity::Scalar | ScfRelativity::SocSecondVariation { .. } => {
-            Err(Ml7CommonError::Relativity)
+            Err(MaterialLaneError::Relativity)
         }
     }
 }
@@ -81,18 +81,18 @@ pub fn require_spinor_first_variation(config: &ScfConfig) -> Result<(), Ml7Commo
 pub fn load_spinor_snapshot_v2(
     path: &Path,
     config: ScfConfig,
-    provenance: Ml7Provenance,
-) -> Result<Ml7MaterialFixture, Ml7CommonError> {
+    provenance: MaterialProvenance,
+) -> Result<MaterialFixture, MaterialLaneError> {
     require_spinor_first_variation(&config)?;
     if !path.is_file() {
-        return Err(Ml7CommonError::MissingSnapshot(path.to_path_buf()));
+        return Err(MaterialLaneError::MissingSnapshot(path.to_path_buf()));
     }
     let text = std::fs::read_to_string(path)?;
     let SnapshotFile::V2(snapshot) = snapshot_file_from_toml(&text)? else {
-        return Err(Ml7CommonError::NotV2);
+        return Err(MaterialLaneError::NotV2);
     };
     let physics = SnapshotDftPhysics::new(&snapshot)?;
-    Ok(Ml7MaterialFixture {
+    Ok(MaterialFixture {
         snapshot,
         config,
         physics,
@@ -105,17 +105,17 @@ pub fn load_spex_material(
     spex_path: &Path,
     recipe: &SpexMaterialBasisRecipeV1,
     config: ScfConfig,
-    provenance: Ml7Provenance,
-) -> Result<Ml7MaterialFixture, Ml7CommonError> {
+    provenance: MaterialProvenance,
+) -> Result<MaterialFixture, MaterialLaneError> {
     require_spinor_first_variation(&config)?;
     if !spex_path.is_file() {
-        return Err(Ml7CommonError::MissingSnapshot(spex_path.to_path_buf()));
+        return Err(MaterialLaneError::MissingSnapshot(spex_path.to_path_buf()));
     }
     let fields = read_spex_snapshot_hdf(spex_path)?;
     let materialized = materialize_snapshot_v2(&fields, recipe)?;
     let physics =
         SnapshotDftPhysics::new_spex_material(&materialized.snapshot, recipe, &config.basis)?;
-    Ok(Ml7MaterialFixture {
+    Ok(MaterialFixture {
         snapshot: materialized.snapshot,
         config,
         physics,
@@ -128,7 +128,7 @@ pub fn load_spex_material(
 /// `q_index i` uses `k_fractional[i]` so `require_spinor_q_slice` holds.
 /// Finite-q wrap lives on [`muffintin::SpinorKMinusQ`], not `TransferQ::umklapp`.
 pub fn ordered_q_slice(
-    fixture: &Ml7MaterialFixture,
+    fixture: &MaterialFixture,
 ) -> Result<Vec<SpinorProductInput>, SnapshotDftError> {
     let seed = fixture
         .physics
@@ -218,8 +218,8 @@ mod tests {
 
     #[test]
     fn load_rejects_missing_snapshot() {
-        let path = Path::new("/no/such/ml7-sm-snapshot.toml");
-        let provenance = Ml7Provenance {
+        let path = Path::new("/no/such/sm-fcc-snapshot.toml");
+        let provenance = MaterialProvenance {
             snapshot_path: path.to_path_buf(),
             snapshot_sha256: String::new(),
             producer: "absent".to_owned(),
@@ -229,7 +229,7 @@ mod tests {
             dummy_config(ScfRelativity::SpinorFirstVariation),
             provenance,
         ) {
-            Err(Ml7CommonError::MissingSnapshot(missing)) => assert_eq!(missing, path),
+            Err(MaterialLaneError::MissingSnapshot(missing)) => assert_eq!(missing, path),
             Err(_) => panic!("expected missing snapshot"),
             Ok(_) => panic!("missing snapshot path must not load"),
         }
@@ -237,14 +237,14 @@ mod tests {
 
     #[test]
     fn load_rejects_scalar_relativity_before_io() {
-        let path = Path::new("/no/such/ml7-sm-snapshot.toml");
-        let provenance = Ml7Provenance {
+        let path = Path::new("/no/such/sm-fcc-snapshot.toml");
+        let provenance = MaterialProvenance {
             snapshot_path: path.to_path_buf(),
             snapshot_sha256: String::new(),
             producer: "absent".to_owned(),
         };
         match load_spinor_snapshot_v2(path, dummy_config(ScfRelativity::Scalar), provenance) {
-            Err(Ml7CommonError::Relativity) => {}
+            Err(MaterialLaneError::Relativity) => {}
             Err(_) => panic!("expected relativity reject"),
             Ok(_) => panic!("scalar relativity must not load"),
         }

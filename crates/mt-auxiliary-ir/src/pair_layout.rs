@@ -1,6 +1,6 @@
 //! Neutral $(k,i,j)$ pair-column flattening used before THC selection.
 
-use crate::ProductError;
+use crate::AuxiliaryIrError;
 
 /// Stable $(k,i,j)$ flattening of pair columns.
 ///
@@ -25,7 +25,7 @@ impl PairColumnLayout {
     }
 
     /// Number of pair columns per q, $N_k N_{\mathrm{orb}}^2$.
-    pub fn n_columns(&self) -> Result<usize, ProductError> {
+    pub fn n_columns(&self) -> Result<usize, AuxiliaryIrError> {
         checked_layout_len(&[self.n_k, self.n_orb, self.n_orb])
     }
 
@@ -57,10 +57,10 @@ impl PairColumnLayout {
     }
 
     /// Reject a core index that cannot appear in any pair column.
-    pub fn require_core_orbital(&self) -> Result<(), ProductError> {
+    pub fn require_core_orbital(&self) -> Result<(), AuxiliaryIrError> {
         if let Some(core) = self.core_orbital {
             if core >= self.n_orb {
-                return Err(ProductError::InvalidCoreOrbital {
+                return Err(AuxiliaryIrError::InvalidCoreOrbital {
                     index: core,
                     n_orb: self.n_orb,
                 });
@@ -70,10 +70,10 @@ impl PairColumnLayout {
     }
 }
 
-fn checked_layout_len(dimensions: &[usize]) -> Result<usize, ProductError> {
+fn checked_layout_len(dimensions: &[usize]) -> Result<usize, AuxiliaryIrError> {
     dimensions.iter().try_fold(1_usize, |acc, &dim| {
         acc.checked_mul(dim)
-            .ok_or_else(|| ProductError::DimensionOverflow {
+            .ok_or_else(|| AuxiliaryIrError::DimensionOverflow {
                 dimensions: dimensions.to_vec(),
             })
     })
@@ -82,7 +82,7 @@ fn checked_layout_len(dimensions: &[usize]) -> Result<usize, ProductError> {
 #[cfg(test)]
 mod tests {
     use super::PairColumnLayout;
-    use crate::ProductError;
+    use crate::AuxiliaryIrError;
 
     #[test]
     fn encode_is_k_major_then_i_then_j() {
@@ -101,7 +101,7 @@ mod tests {
             .unwrap_err();
         assert!(matches!(
             error,
-            ProductError::DimensionOverflow { ref dimensions } if dimensions == &[usize::MAX, 4, 4]
+            AuxiliaryIrError::DimensionOverflow { ref dimensions } if dimensions == &[usize::MAX, 4, 4]
         ));
     }
 
@@ -110,7 +110,7 @@ mod tests {
         let layout = PairColumnLayout::new(1, 2, Some(2));
         assert!(matches!(
             layout.require_core_orbital(),
-            Err(ProductError::InvalidCoreOrbital { index: 2, n_orb: 2 })
+            Err(AuxiliaryIrError::InvalidCoreOrbital { index: 2, n_orb: 2 })
         ));
         let ok = PairColumnLayout::new(1, 2, Some(1));
         ok.require_core_orbital().unwrap();

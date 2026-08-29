@@ -327,7 +327,7 @@ fn write_spinor_fixture(path: &std::path::Path) -> Result<(), IoError> {
         n_k: 2,
         n_orb: 2,
         provenance_recipe: "spinor-product-test",
-        provenance_reference: "m-l6c1-neutral-fixture",
+        provenance_reference: "spinor-mldump-neutral-fixture",
         site_indices: &site_indices,
         site_positions: &site_positions,
         site_radii: &site_radii,

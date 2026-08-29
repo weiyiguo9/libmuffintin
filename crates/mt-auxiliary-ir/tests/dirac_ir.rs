@@ -1,9 +1,9 @@
 //! Parallel Dirac product-IR invariants.
 
 use muffintin_auxiliary_ir::{
-    CoupledChannel, DiracChargeSector, DiracPairChannel, DiracProductError, DiracProductSource,
-    DiracRadial, DiracRadialId, DiracRadialSamples, DiracRawProductSpace, DiracRawRadialProduct,
-    DiracSiteRadialSet, ProductOrbitalKind, ProductPartition, RawInterstitialPairSupport,
+    AuxiliaryPartition, CoupledChannel, DiracChargeSector, DiracPairChannel, DiracProductError,
+    DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples, DiracRawProductSpace,
+    DiracRawRadialProduct, DiracSiteRadialSet, ProductOrbitalKind, RawInterstitialPairSupport,
     TransferQ,
 };
 use muffintin_basis::Provenance;
@@ -15,8 +15,8 @@ fn mesh() -> ExponentialMesh {
     ExponentialMesh::new(Bohr(1.0e-4), 0.15, 24).unwrap()
 }
 
-fn partition() -> ProductPartition {
-    ProductPartition::from_interstitial(
+fn partition() -> AuxiliaryPartition {
+    AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
             VolumeBohr3(512.0),
             vec![Sphere {

@@ -1448,7 +1448,7 @@ mod tests {
     fn hydrogenic_ground_state_energy_meets_milestone_tolerance() {
         // The SPEX regular-origin start retains only the leading power.  A
         // sufficiently small r0 makes the omitted Coulomb series term much
-        // smaller than the M-B energy tolerance.
+        // smaller than the radial energy tolerance.
         let mesh = mesh(1.0e-12, 40.0, 0.001);
         let potential: Vec<f64> = mesh.radii().iter().map(|r| -1.0 / r.get()).collect();
         let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();

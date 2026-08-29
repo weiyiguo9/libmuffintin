@@ -1,4 +1,4 @@
-//! Spinor sampled-$\zeta$ Coulomb bridge from M-L5d THC and optional M-L5c pairs.
+//! Spinor sampled-$\zeta$ Coulomb bridge from spinor THC and optional mixed-product pairs.
 
 use crate::scalar_coulomb::{
     CoulombBridgeError, bind_interpolation_request, quadratic_discrepancy, require_thc_q_record,
@@ -21,7 +21,7 @@ use thiserror::Error;
 /// Absolute/relative discrepancy floor for the quadratic $c^\dagger V c$ diagnostic.
 pub const SPINOR_COULOMB_EXACTNESS_FLOOR: f64 = 1.0e-12;
 
-/// Explicit Coulomb request and interpolation projection for one M-L5d run.
+/// Explicit Coulomb request and interpolation projection for one spinor sampled-$\zeta$ Coulomb run.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpinorCoulombSpec {
     /// Existing Weinert assembly request (direct cell, `LEXP`, reciprocal).
@@ -30,12 +30,12 @@ pub struct SpinorCoulombSpec {
     pub projection: InterpolationProjection,
 }
 
-/// One matched M-L5c vertex to compare against the THC pair at the same $q$.
+/// One matched spinor mixed-product vertex to compare against the THC pair at the same $q$.
 #[derive(Clone, Copy, Debug)]
 pub struct SpinorCoulombPairMatch<'a> {
     /// Production $q$-index in the ordered slice / [`SpinorThcResult::records`].
     pub q_index: usize,
-    /// Matching M-L5c mixed-product result at that transfer.
+    /// Matching spinor mixed-product result at that transfer.
     pub mpb: &'a SpinorMpbResult,
     /// Index into [`SpinorMpbResult::vertices`].
     pub mpb_vertex: usize,
@@ -47,9 +47,9 @@ pub struct SpinorCoulombQRecord {
     pub q_index: usize,
     pub q: TransferQ,
     pub layout: PairColumnLayout,
-    /// Interpolation-point auxiliary copied from the matching M-L5d record.
+    /// Interpolation-point auxiliary copied from the matching spinor-THC record.
     pub auxiliary: muffintin_auxiliary_ir::CompiledAuxiliaryBasis,
-    /// Semantic pair vertices in [`PairColumnLayout`] order, copied from M-L5d.
+    /// Semantic pair vertices in [`PairColumnLayout`] order, copied from spinor THC.
     pub vertices: Vec<PairVertex>,
     /// Parent-grid sampled $\zeta$ used to assemble this operator.
     pub sampled: SampledAuxiliaryFunctions,
@@ -83,7 +83,7 @@ pub struct SpinorCoulombPairDiagnostic {
     pub quadratic_discrepancy: SpinorCoulombDiscrepancy,
 }
 
-/// Spinor M-L5d sampled-$\zeta$ Coulomb result.
+/// Spinor sampled-$\zeta$ Coulomb result.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpinorCoulombResult {
     pub(crate) records: Vec<SpinorCoulombQRecord>,
@@ -110,7 +110,7 @@ pub enum SpinorCoulombError {
     #[error(transparent)]
     Coulomb(#[from] CoulombError),
     #[error(transparent)]
-    Product(#[from] muffintin_auxiliary_ir::ProductError),
+    Product(#[from] muffintin_auxiliary_ir::AuxiliaryIrError),
     #[error("spinor Coulomb q-slice must be nonempty")]
     EmptySlice,
     #[error("spinor Coulomb q-slice has {actual} bundles, expected {expected} k-mesh transfers")]
@@ -168,7 +168,7 @@ pub enum SpinorCoulombError {
     #[error("spinor Coulomb comparison q-index {0} is outside the THC q-slice")]
     ComparisonQIndex(usize),
     #[error(
-        "spinor Coulomb comparison vertex {index} is outside M-L5c vertices at q-index {q_index}"
+        "spinor Coulomb comparison vertex {index} is outside mixed-product vertices at q-index {q_index}"
     )]
     ComparisonVertex { q_index: usize, index: usize },
     #[error(
@@ -198,7 +198,7 @@ impl From<CoulombBridgeError> for SpinorCoulombError {
 /// in original order, including zero-weight rows. Interpolation *nodes* are not
 /// the $\zeta$ grid. Gamma retains the finite body plus
 /// [`muffintin_coulomb::GammaHead`] metadata; the singular head is not inserted.
-/// Matched M-L5c/M-L5d pairs compare $c^\dagger V c$ only.
+/// Matched mixed-product/THC pairs compare $c^\dagger V c$ only.
 /// Each match must originate from `inputs[q_index]`: the sealed frozen-input
 /// identity is required, then the public reciprocal lattice and pair-column
 /// layout, before mixed-product Coulomb assembly.

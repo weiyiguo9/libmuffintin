@@ -210,7 +210,7 @@ fn require_dirac_auxiliary(
     }
     if payload.sites.len() != source.radials.len() {
         return Err(MpbError::Product(
-            muffintin_auxiliary_ir::ProductError::AuxiliarySiteCount {
+            muffintin_auxiliary_ir::AuxiliaryIrError::AuxiliarySiteCount {
                 expected: source.radials.len(),
                 actual: payload.sites.len(),
             },
@@ -219,7 +219,7 @@ fn require_dirac_auxiliary(
     for (site, (block, radials)) in payload.sites.iter().zip(&source.radials).enumerate() {
         if block.mesh != radials.mesh {
             return Err(MpbError::Product(
-                muffintin_auxiliary_ir::ProductError::AuxiliaryMeshMismatch { site },
+                muffintin_auxiliary_ir::AuxiliaryIrError::AuxiliaryMeshMismatch { site },
             ));
         }
     }

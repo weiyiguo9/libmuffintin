@@ -78,7 +78,7 @@ impl CoulombOperator {
         self.layout.dimension()
     }
 
-    /// Muffin-tin block length in the M-H / M-I flatten.
+    /// Muffin-tin block length in the mixed-product / interpolation-point flatten.
     pub const fn mt_dimension(&self) -> usize {
         self.layout.mt_dimension()
     }

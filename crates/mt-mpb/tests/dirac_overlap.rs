@@ -1,10 +1,10 @@
 //! Dirac PP/QQ union overlap spectra, retained cutoff, and Bloch $\Theta_I$.
 
 use muffintin_auxiliary_ir::{
-    AuxiliaryRegion, ChannelSpectrum, CompiledAuxiliaryBasis, DiracChargeSector,
-    DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples, DiracSiteRadialSet,
-    InterstitialPairSpec, MixedProductAuxiliary, OrbitalPair, ProductOrbitalKind, ProductPartition,
-    RawInterstitialPairComponent, RawInterstitialPairSupport, TransferQ,
+    AuxiliaryPartition, AuxiliaryRegion, ChannelSpectrum, CompiledAuxiliaryBasis,
+    DiracChargeSector, DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples,
+    DiracSiteRadialSet, InterstitialPairSpec, MixedProductAuxiliary, OrbitalPair,
+    ProductOrbitalKind, RawInterstitialPairComponent, RawInterstitialPairSupport, TransferQ,
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{
@@ -28,8 +28,8 @@ fn mesh() -> ExponentialMesh {
     ExponentialMesh::new(Bohr(first), increment, number).unwrap()
 }
 
-fn partition() -> ProductPartition {
-    ProductPartition::from_interstitial(
+fn partition() -> AuxiliaryPartition {
+    AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
             VolumeBohr3(512.0),
             vec![Sphere {

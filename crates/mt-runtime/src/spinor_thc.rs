@@ -171,7 +171,7 @@ pub fn build_spinor_thc(
         spec.candidates.as_fit_indices(),
         Provenance {
             recipe: Some("spinor-thc-allq-l2".to_owned()),
-            reference: Some("snapshot-dft-frozen-spinor-ml5d".to_owned()),
+            reference: Some("snapshot-dft-frozen-spinor-thc".to_owned()),
         },
     )?;
     let layout = first.pair_columns;

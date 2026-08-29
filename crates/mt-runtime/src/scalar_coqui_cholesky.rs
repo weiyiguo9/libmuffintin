@@ -2,9 +2,8 @@
 //!
 //! This is **not** MLDUMP and does not claim q-dependent THC compatibility with
 //! CoQui. Live reader contract: CoQui `chol_reader_t.hpp` and GF2
-//! `build_int` (`(pr|qs)=\sum_Q L_{Qpr}\mathrm{conj}(L_{Qsq})`) at
-//! `<coqui-inspect-checkout>` `wg-dev` @
-//! `a19774d03fb979bd852fae4f7f95c045a4cbca78`.
+//! `build_int` (`(pr|qs)=\sum_Q L_{Qpr}\mathrm{conj}(L_{Qsq})`)
+//! (branch `wg-dev` @ `a19774d03fb979bd852fae4f7f95c045a4cbca78`).
 
 use std::path::Path;
 

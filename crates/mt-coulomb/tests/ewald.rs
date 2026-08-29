@@ -3,8 +3,8 @@
 mod common;
 
 use muffintin_auxiliary_ir::{
-    AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationAuxiliaryPoint,
-    InterpolationPointAuxiliary, InterpolationRegion, ProductPartition,
+    AuxiliaryPartition, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
+    InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
@@ -23,7 +23,7 @@ const WEINERT_VS_EWALD_TOLERANCE: f64 = 1.0e-6;
 fn two_site_unit_charges(q: muffintin_auxiliary_ir::TransferQ) -> CompiledAuxiliaryBasis {
     let r1 = [Bohr(2.0), Bohr(2.0), Bohr(2.0)];
     let r2 = [Bohr(6.0), Bohr(2.0), Bohr(2.0)];
-    let partition = ProductPartition::from_interstitial(
+    let partition = AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
             VolumeBohr3(common::LATTICE.powi(3)),
             vec![
@@ -62,7 +62,7 @@ fn two_site_unit_charges(q: muffintin_auxiliary_ir::TransferQ) -> CompiledAuxili
         }),
         provenance: Provenance {
             recipe: Some("two-site-unit-charges".to_owned()),
-            reference: Some("M-J Ewald oracle".to_owned()),
+            reference: Some("Ewald oracle".to_owned()),
         },
     };
     auxiliary.validate().unwrap();

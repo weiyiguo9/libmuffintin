@@ -1,4 +1,4 @@
-//! Public M-L4 scalar sampled-ζ Coulomb tests on frozen M-L1/M-L2/M-L3 output.
+//! Public scalar sampled-ζ Coulomb tests on frozen product-input, mixed-product, and THC output.
 
 use std::collections::BTreeMap;
 use std::f64::consts::PI;

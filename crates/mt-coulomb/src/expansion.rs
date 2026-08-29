@@ -278,7 +278,7 @@ pub(crate) fn mixed_product_densities(
             }
             AuxiliaryRegion::InterpolationPoint { .. } => {
                 return Err(CoulombError::Product(
-                    muffintin_auxiliary_ir::ProductError::ExpectedMixedProduct,
+                    muffintin_auxiliary_ir::AuxiliaryIrError::ExpectedMixedProduct,
                 ));
             }
         }

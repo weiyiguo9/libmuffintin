@@ -3,9 +3,9 @@
 use crate::overlap::{lowdin_modes, overlap_spectrum, product_channel_functions};
 use crate::{MpbError, auxiliary_interstitial_support};
 use muffintin_auxiliary_ir::{
-    AuxiliaryRepresentation, CompiledAuxiliaryBasis, CoupledChannel, CutoffKind, CutoffRecord,
-    MixedProductAuxiliary, PairChannel, ProductOrbitalKind, ProductRadial, ProductRadialId,
-    ProductSource, RawProductSpace, RawRadialProduct, SiteAuxiliaryBlock, SiteRadialSet,
+    AuxiliaryRepresentation, AuxiliarySource, CompiledAuxiliaryBasis, CoupledChannel, CutoffKind,
+    CutoffRecord, MixedProductAuxiliary, PairChannel, ProductOrbitalKind, ProductRadial,
+    ProductRadialId, RawProductSpace, RawRadialProduct, SiteAuxiliaryBlock, SiteRadialSet,
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{InverseBohr, ReciprocalLattice};
@@ -25,11 +25,11 @@ fn spex_provenance(cutoff: Option<&CutoffRecord>) -> Provenance {
 
 /// Untruncated SPEX mixed product basis: full spectra and MPB auxiliary PW.
 ///
-/// Raw interstitial orbital-pair support is copied from [`ProductSource`].
+/// Raw interstitial orbital-pair support is copied from [`AuxiliarySource`].
 /// The auxiliary $|q+G|$ set is built separately from `lattice`, canonical
 /// `q`, and `product_g_max`. `TOL` is not applied.
 pub fn spex_mixed_product_basis(
-    source: &ProductSource,
+    source: &AuxiliarySource,
     product_l_max: u32,
     product_g_max: InverseBohr,
     lattice: &ReciprocalLattice,
@@ -46,7 +46,7 @@ pub fn spex_mixed_product_basis(
 /// `product_g_max`, independently of raw pair support.
 pub fn apply_overlap_cutoff(
     raw: &RawProductSpace,
-    source: &ProductSource,
+    source: &AuxiliarySource,
     tolerance: f64,
     nspin_factor: f64,
     lattice: &ReciprocalLattice,
@@ -73,7 +73,7 @@ pub fn apply_overlap_cutoff(
 }
 
 pub(crate) fn require_matching_source_and_raw(
-    source: &ProductSource,
+    source: &AuxiliarySource,
     raw: &RawProductSpace,
 ) -> Result<(), MpbError> {
     source.validate()?;
@@ -94,7 +94,7 @@ pub(crate) fn require_matching_source_and_raw(
 }
 
 pub(crate) fn require_matching_context(
-    source: &ProductSource,
+    source: &AuxiliarySource,
     raw: &RawProductSpace,
     auxiliary: &CompiledAuxiliaryBasis,
 ) -> Result<(), MpbError> {
@@ -111,7 +111,7 @@ pub(crate) fn require_matching_context(
 }
 
 fn untruncated_product_space(
-    source: &ProductSource,
+    source: &AuxiliarySource,
     product_l_max: u32,
 ) -> Result<RawProductSpace, MpbError> {
     source.validate()?;
@@ -159,7 +159,7 @@ fn untruncated_product_space(
 }
 
 fn enumerate_site_channel(
-    source: &ProductSource,
+    source: &AuxiliarySource,
     site: usize,
     radials: &SiteRadialSet,
     l: u32,
@@ -225,7 +225,7 @@ fn allowed_coupling(l: u32, l1: u32, l2: u32) -> bool {
 }
 
 fn pair_product(
-    source: &ProductSource,
+    source: &AuxiliarySource,
     site: usize,
     radials: &SiteRadialSet,
     coupled_l: u32,
@@ -294,7 +294,7 @@ fn one_particle_norm(radials: &SiteRadialSet, radial: &ProductRadial) -> Result<
 
 fn retained_auxiliary(
     raw: &RawProductSpace,
-    source: &ProductSource,
+    source: &AuxiliarySource,
     cutoff: Option<CutoffRecord>,
     lattice: &ReciprocalLattice,
     product_g_max: InverseBohr,

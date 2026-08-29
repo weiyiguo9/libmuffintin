@@ -1,4 +1,4 @@
-//! M-L7 Sm fcc catalogue and bounded SPEX-snapshot lane.
+//! Sm fcc catalogue and bounded SPEX-snapshot lane.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -29,8 +29,8 @@ use muffintin_lapw::Provenance;
 use muffintin_mpb::DEFAULT_TOLERANCE;
 use muffintin_thc::RankPolicy;
 
-#[path = "ml7_material_common.rs"]
-mod ml7_material_common;
+#[path = "material_lane_common.rs"]
+mod material_lane_common;
 
 #[path = "thc_fixture_common.rs"]
 mod thc_fixture_common;
@@ -135,7 +135,7 @@ fn sm_built_in_recipe_keeps_5p12_as_lo_and_does_not_invent_hdlo() {
     );
 }
 
-const ARTIFACT: &str = "/tmp/ml7-spex-artifact/snapshot.h5";
+const ARTIFACT: &str = "/tmp/spex-sm-artifact/snapshot.h5";
 const ARTIFACT_SHA256: &str = "9f060f742e9078ec3dc8ee24d8945d38ec74a729e5dee85acfbffd345e132a59";
 
 fn bounded_parent_grid(input: &muffintin::SpinorProductInput) -> ThcParentGrid {
@@ -237,11 +237,11 @@ fn sm_runtime_channels(recipe: &SpexMaterialBasisRecipeV1) -> Vec<ScfChannelReci
     channels
 }
 
-/// Bounded Sm fcc SPEX snapshot lane at `/tmp/ml7-spex-artifact/snapshot.h5`.
+/// Bounded Sm fcc SPEX snapshot lane at `/tmp/spex-sm-artifact/snapshot.h5`.
 ///
 /// Ordinary workspace tests skip this. Run:
-/// `cargo test -p libmuffintin-runtime --test ml7_sm_fcc consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane -- --ignored --exact --nocapture`
-#[ignore = "requires local SPEX artifact /tmp/ml7-spex-artifact/snapshot.h5; run with --ignored"]
+/// `cargo test -p libmuffintin-runtime --test sm_fcc_material consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane -- --ignored --exact --nocapture`
+#[ignore = "requires local SPEX artifact /tmp/spex-sm-artifact/snapshot.h5; run with --ignored"]
 #[test]
 fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
     let path = Path::new(ARTIFACT);
@@ -289,7 +289,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
         }
     }
     let recipe = SpexMaterialBasisRecipeV1 {
-        producer: "libmuffintin-ml7-sm-recipe".to_owned(),
+        producer: "libmuffintin-sm-material-recipe".to_owned(),
         recipe_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
             .to_owned(),
         channels: recipe_channels,
@@ -349,17 +349,17 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
     let physics =
         SnapshotDftPhysics::new_spex_material(&materialized.snapshot, &recipe, &config.basis)
             .expect("typed SPEX recipe must bind to the target Dirac basis");
-    let fixture = ml7_material_common::Ml7MaterialFixture {
+    let fixture = material_lane_common::MaterialFixture {
         snapshot: materialized.snapshot,
         config,
         physics,
-        provenance: ml7_material_common::Ml7Provenance {
+        provenance: material_lane_common::MaterialProvenance {
             snapshot_path: path.to_path_buf(),
             snapshot_sha256: ARTIFACT_SHA256.to_owned(),
             producer: "b45d9b9e1505d25236c3e78674418b011a471666".to_owned(),
         },
     };
-    let inputs = ml7_material_common::ordered_q_slice(&fixture)
+    let inputs = material_lane_common::ordered_q_slice(&fixture)
         .expect("bound SPEX material must execute the target Dirac product route");
     assert_eq!(inputs.len(), 1);
     assert!(inputs[0].source.radials[0].valence.iter().all(|radial| {
@@ -378,7 +378,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
         "target solve must produce physical Dirac P/Q samples"
     );
     let grid = bounded_parent_grid(&inputs[0]);
-    let (qrcp, chol) = ml7_material_common::compare_qrcp_cholesky(
+    let (qrcp, chol) = material_lane_common::compare_qrcp_cholesky(
         &inputs,
         &grid,
         RankPolicy::Exact { n_mu: 1 },
@@ -421,7 +421,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
     .expect("bounded spinor Coulomb");
     assert_eq!(coulomb.records().len(), inputs.len());
     let header = header_from_inputs(&inputs, &fixture);
-    let dump = std::env::temp_dir().join("ml7-sm-b45d9b9-spinor.mldump.h5");
+    let dump = std::env::temp_dir().join("sm-fcc-b45d9b9-spinor.mldump.h5");
     write_spinor_mldump(
         &dump,
         &header,
@@ -450,7 +450,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
     );
     assert!(matches!(roundtrip.payload, MldumpPayloadV1::Spinor(_)));
     eprintln!(
-        "ML7 Sm bounded lane wall={:?} parent={} qrcp_rank={} chol_rank={} n_q={}",
+        "Sm bounded lane wall={:?} parent={} qrcp_rank={} chol_rank={} n_q={}",
         started.elapsed(),
         qrcp.grid.points().len(),
         qrcp.effective_rank,
@@ -461,7 +461,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
 
 fn header_from_inputs(
     inputs: &[muffintin::SpinorProductInput],
-    fixture: &ml7_material_common::Ml7MaterialFixture,
+    fixture: &material_lane_common::MaterialFixture,
 ) -> MldumpHeaderV1 {
     let first = &inputs[0];
     let n_k = first.orbitals.k_fractional.len();
@@ -495,7 +495,7 @@ fn header_from_inputs(
     .unwrap();
     MldumpHeaderV1::new(
         MldumpMetaV1 {
-            producer_name: "libmuffintin-ml7-sm".to_owned(),
+            producer_name: "libmuffintin-sm-material".to_owned(),
             producer_version: "0.1.0".to_owned(),
             source_revision: "b45d9b9e1505d25236c3e78674418b011a471666".to_owned(),
             feature_representation: MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION.to_owned(),

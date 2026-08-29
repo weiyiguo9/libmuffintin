@@ -4,8 +4,8 @@ use crate::MpbError;
 use crate::construct::require_matching_context;
 use crate::interstitial::add_raw_support_theta_i;
 use muffintin_auxiliary_ir::{
-    CompiledAuxiliaryBasis, InterstitialPairSpec, MtPairSpec, OrbitalPair, PairVertex,
-    PairVertexSpec, ProductOrbitalKind, ProductRadial, ProductRadialId, ProductSource,
+    AuxiliarySource, CompiledAuxiliaryBasis, InterstitialPairSpec, MtPairSpec, OrbitalPair,
+    PairVertex, PairVertexSpec, ProductOrbitalKind, ProductRadial, ProductRadialId,
     RawProductSpace,
 };
 use muffintin_core::gaunt;
@@ -22,7 +22,7 @@ use num_complex::Complex64;
 /// for a band-orbital sum. It is not a Coulomb kernel.
 #[derive(Debug)]
 pub struct PairVertexAccumulator<'a> {
-    source: &'a ProductSource,
+    source: &'a AuxiliarySource,
     raw: &'a RawProductSpace,
     auxiliary: &'a CompiledAuxiliaryBasis,
     pair: OrbitalPair,
@@ -32,7 +32,7 @@ pub struct PairVertexAccumulator<'a> {
 impl<'a> PairVertexAccumulator<'a> {
     /// Start an empty vertex on a matching source / raw / auxiliary context.
     pub fn new(
-        source: &'a ProductSource,
+        source: &'a AuxiliarySource,
         raw: &'a RawProductSpace,
         auxiliary: &'a CompiledAuxiliaryBasis,
         pair: OrbitalPair,
@@ -101,7 +101,7 @@ impl<'a> PairVertexAccumulator<'a> {
 /// function. The interstitial G label must exist on the raw pair support.
 /// Missing spec arms stay zero. This is not a Coulomb kernel.
 pub fn pair_vertex(
-    source: &ProductSource,
+    source: &AuxiliarySource,
     raw: &RawProductSpace,
     auxiliary: &CompiledAuxiliaryBasis,
     spec: PairVertexSpec,
@@ -118,7 +118,7 @@ pub fn pair_vertex(
 }
 
 fn add_muffin_tin(
-    source: &ProductSource,
+    source: &AuxiliarySource,
     raw: &RawProductSpace,
     auxiliary: &CompiledAuxiliaryBasis,
     spec: MtPairSpec,

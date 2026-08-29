@@ -23,8 +23,8 @@
 //! convention.
 
 use crate::{
-    AuxiliaryLayout, ChannelSpectrum, CompiledAuxiliaryBasis, CoupledChannel, ProductError,
-    ProductOrbitalKind, ProductPartition, RawInterstitialPairSupport, TransferQ,
+    AuxiliaryIrError, AuxiliaryLayout, AuxiliaryPartition, ChannelSpectrum, CompiledAuxiliaryBasis,
+    CoupledChannel, ProductOrbitalKind, RawInterstitialPairSupport, TransferQ,
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{ExponentialMesh, Kappa, RelativisticChannel, TwiceMu};
@@ -98,7 +98,7 @@ pub struct DiracSiteRadialSet {
 /// Method-neutral Dirac product input. It does not own a compiled LAPW basis.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DiracProductSource {
-    pub partition: ProductPartition,
+    pub partition: AuxiliaryPartition,
     pub radials: Vec<DiracSiteRadialSet>,
     pub q: TransferQ,
     pub interstitial_pair_support: RawInterstitialPairSupport,
@@ -108,7 +108,7 @@ pub struct DiracProductSource {
 impl DiracProductSource {
     /// Construct after checking sites, meshes, required $P$/$Q$, and pair support.
     pub fn new(
-        partition: ProductPartition,
+        partition: AuxiliaryPartition,
         radials: Vec<DiracSiteRadialSet>,
         q: TransferQ,
         interstitial_pair_support: RawInterstitialPairSupport,
@@ -231,7 +231,7 @@ pub struct DiracRawRadialProduct {
 /// unmerged in `radial_products`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DiracRawProductSpace {
-    pub partition: ProductPartition,
+    pub partition: AuxiliaryPartition,
     pub q: TransferQ,
     pub radial_products: Vec<DiracRawRadialProduct>,
     pub channels: Vec<CoupledChannel>,
@@ -243,7 +243,7 @@ pub struct DiracRawProductSpace {
 impl DiracRawProductSpace {
     /// Construct after rejecting internally inconsistent pair support and channels.
     pub fn new(
-        partition: ProductPartition,
+        partition: AuxiliaryPartition,
         q: TransferQ,
         radial_products: Vec<DiracRawRadialProduct>,
         channels: Vec<CoupledChannel>,
@@ -558,5 +558,5 @@ pub enum DiracProductError {
     #[error("Dirac pair vertex has {actual} coefficients, expected {expected}")]
     VertexDimension { actual: usize, expected: usize },
     #[error(transparent)]
-    Product(#[from] ProductError),
+    Product(#[from] AuxiliaryIrError),
 }

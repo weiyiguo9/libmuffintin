@@ -1,6 +1,6 @@
 //! Untruncated muffin-tin products, coupled channels, and raw pair support.
 
-use crate::{ProductError, ProductPartition, ProductRadialId, ProductSource, TransferQ};
+use crate::{AuxiliaryIrError, AuxiliaryPartition, AuxiliarySource, ProductRadialId, TransferQ};
 use muffintin_basis::Provenance;
 use muffintin_core::{GVector, InverseBohr, ReciprocalLattice};
 use std::collections::{BTreeMap, BTreeSet};
@@ -79,14 +79,14 @@ impl RawInterstitialPairSupport {
     pub fn from_components(
         q: TransferQ,
         components: Vec<RawInterstitialPairComponent>,
-    ) -> Result<Self, ProductError> {
+    ) -> Result<Self, AuxiliaryIrError> {
         let support = Self { q, components };
         support.validate()?;
         Ok(support)
     }
 
     /// Same labels at a different transfer q, preserving order.
-    pub fn with_q(&self, q: TransferQ) -> Result<Self, ProductError> {
+    pub fn with_q(&self, q: TransferQ) -> Result<Self, AuxiliaryIrError> {
         Self::from_components(q, self.components.clone())
     }
 
@@ -98,7 +98,7 @@ impl RawInterstitialPairSupport {
         q: TransferQ,
         reciprocal: ReciprocalLattice,
         indices: impl IntoIterator<Item = [i32; 3]>,
-    ) -> Result<Self, ProductError> {
+    ) -> Result<Self, AuxiliaryIrError> {
         let mut unique = BTreeMap::new();
         for index in indices {
             unique
@@ -121,7 +121,7 @@ impl RawInterstitialPairSupport {
     }
 
     /// Check uniqueness, finite Cartesian labels, and a matching q.
-    pub fn validate(&self) -> Result<(), ProductError> {
+    pub fn validate(&self) -> Result<(), AuxiliaryIrError> {
         let mut seen = BTreeSet::new();
         for component in &self.components {
             if component
@@ -131,10 +131,10 @@ impl RawInterstitialPairSupport {
                 .any(|value| !value.get().is_finite())
                 || !component.g_relative.norm.get().is_finite()
             {
-                return Err(ProductError::NonFinitePairComponent);
+                return Err(AuxiliaryIrError::NonFinitePairComponent);
             }
             if !seen.insert(component.g_relative.index) {
-                return Err(ProductError::DuplicatePairComponent {
+                return Err(AuxiliaryIrError::DuplicatePairComponent {
                     index: component.g_relative.index,
                 });
             }
@@ -175,7 +175,7 @@ fn g_vector(reciprocal: ReciprocalLattice, index: [i32; 3]) -> GVector {
 /// support. It is not the MPB auxiliary $|q+G|$ plane-wave set.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RawProductSpace {
-    pub partition: ProductPartition,
+    pub partition: AuxiliaryPartition,
     pub q: TransferQ,
     pub radial_products: Vec<RawRadialProduct>,
     pub channels: Vec<CoupledChannel>,
@@ -198,15 +198,15 @@ impl RawProductSpace {
     }
 
     /// Reject duplicate spectra/channels and an internally inconsistent pair support.
-    pub fn validate_internal(&self) -> Result<(), ProductError> {
+    pub fn validate_internal(&self) -> Result<(), AuxiliaryIrError> {
         self.interstitial_pair_support.validate()?;
         if self.interstitial_pair_support.q != self.q {
-            return Err(ProductError::PairSupportTransferQ);
+            return Err(AuxiliaryIrError::PairSupportTransferQ);
         }
         let mut spectra = BTreeSet::new();
         for spectrum in &self.overlap_spectra {
             if !spectra.insert((spectrum.site, spectrum.l)) {
-                return Err(ProductError::DuplicateChannelSpectrum {
+                return Err(AuxiliaryIrError::DuplicateChannelSpectrum {
                     site: spectrum.site,
                     l: spectrum.l,
                 });
@@ -215,7 +215,7 @@ impl RawProductSpace {
         let mut channels = BTreeSet::new();
         for channel in &self.channels {
             if !channels.insert((channel.site, channel.l, channel.m, channel.radial_index)) {
-                return Err(ProductError::DuplicateCoupledChannel {
+                return Err(AuxiliaryIrError::DuplicateCoupledChannel {
                     site: channel.site,
                     l: channel.l,
                     m: channel.m,
@@ -227,16 +227,19 @@ impl RawProductSpace {
     }
 
     /// Exact partition, q, and raw pair-support identity with a product source.
-    pub fn validate_against_source(&self, source: &ProductSource) -> Result<(), ProductError> {
+    pub fn validate_against_source(
+        &self,
+        source: &AuxiliarySource,
+    ) -> Result<(), AuxiliaryIrError> {
         self.validate_internal()?;
         if self.q != source.q
             || self.interstitial_pair_support.q != source.q
             || source.interstitial_pair_support.q != source.q
         {
-            return Err(ProductError::PairSupportTransferQ);
+            return Err(AuxiliaryIrError::PairSupportTransferQ);
         }
         if self.interstitial_pair_support != source.interstitial_pair_support {
-            return Err(ProductError::InterstitialPairSupportMismatch);
+            return Err(AuxiliaryIrError::InterstitialPairSupportMismatch);
         }
         Ok(())
     }

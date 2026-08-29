@@ -1,6 +1,6 @@
 //! Coulomb construction, assembly, and context errors.
 
-use muffintin_auxiliary_ir::ProductError;
+use muffintin_auxiliary_ir::AuxiliaryIrError;
 use muffintin_core::{LatticeError, LmError, MeshError, StepFunctionError};
 use muffintin_grid::GridError;
 use thiserror::Error;
@@ -9,7 +9,7 @@ use thiserror::Error;
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum CoulombError {
     #[error(transparent)]
-    Product(#[from] ProductError),
+    Product(#[from] AuxiliaryIrError),
     #[error(transparent)]
     Lattice(#[from] LatticeError),
     #[error(transparent)]

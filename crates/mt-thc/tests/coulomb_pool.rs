@@ -1,6 +1,8 @@
 //! Injected Coulomb Gram contract and allq_coulomb_pool rerank.
 
-use muffintin_auxiliary_ir::{InterpolationRegion, PairColumnLayout, ProductPartition, TransferQ};
+use muffintin_auxiliary_ir::{
+    AuxiliaryPartition, InterpolationRegion, PairColumnLayout, TransferQ,
+};
 use muffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
 use muffintin_thc::{
     BlochOrbitals, CoulombGramSet, GridPath, HEADLINE_SEED, InjectedCoulombGram, KMesh, L2Engine,
@@ -12,8 +14,8 @@ fn tiny_mesh() -> KMesh {
     KMesh::gamma_centred([2, 1, 1], 6.0).unwrap()
 }
 
-fn tiny_partition() -> ProductPartition {
-    ProductPartition::from_interstitial(
+fn tiny_partition() -> AuxiliaryPartition {
+    AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
             VolumeBohr3(216.0),
             vec![Sphere {

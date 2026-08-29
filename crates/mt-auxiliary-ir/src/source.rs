@@ -1,6 +1,6 @@
 //! One-particle product input: partition, radials, transfer q, and pair support.
 
-use crate::{ProductError, ProductPartition, RawInterstitialPairSupport};
+use crate::{AuxiliaryIrError, AuxiliaryPartition, RawInterstitialPairSupport};
 use muffintin_basis::Provenance;
 use muffintin_core::{ExponentialMesh, GVector, InverseBohr};
 use muffintin_radial::RadialComponents;
@@ -39,12 +39,12 @@ pub struct TransferQ {
 
 impl TransferQ {
     /// Unwrapped Cartesian q with a zero Umklapp vector.
-    pub fn from_cartesian(cartesian: [InverseBohr; 3]) -> Result<Self, ProductError> {
+    pub fn from_cartesian(cartesian: [InverseBohr; 3]) -> Result<Self, AuxiliaryIrError> {
         if cartesian
             .iter()
             .any(|component| !component.get().is_finite())
         {
-            return Err(ProductError::NonFiniteTransferQ);
+            return Err(AuxiliaryIrError::NonFiniteTransferQ);
         }
         Ok(Self {
             cartesian,
@@ -60,13 +60,13 @@ impl TransferQ {
     pub fn fold_by_reciprocal_vector(
         input: [InverseBohr; 3],
         umklapp: GVector,
-    ) -> Result<Self, ProductError> {
+    ) -> Result<Self, AuxiliaryIrError> {
         if input
             .iter()
             .chain(umklapp.cartesian.iter())
             .any(|component| !component.get().is_finite())
         {
-            return Err(ProductError::NonFiniteTransferQ);
+            return Err(AuxiliaryIrError::NonFiniteTransferQ);
         }
         let cartesian = std::array::from_fn(|axis| {
             InverseBohr(input[axis].get() - umklapp.cartesian[axis].get())
@@ -123,29 +123,29 @@ pub struct SiteRadialSet {
 /// Minimal product-construction input.
 ///
 /// This does not own a one-particle [`muffintin_basis::CompiledBasis`].
-/// Cell volume comes from [`ProductPartition::interstitial`].
+/// Cell volume comes from [`AuxiliaryPartition::interstitial`].
 /// `interstitial_pair_support` is the finite raw orbital-pair reciprocal
 /// support supplied by the one-particle/pair capability, before MPB
 /// auxiliary $g_{\mathrm{cut}}$.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ProductSource {
-    pub partition: ProductPartition,
+pub struct AuxiliarySource {
+    pub partition: AuxiliaryPartition,
     pub radials: Vec<SiteRadialSet>,
     pub q: TransferQ,
     pub interstitial_pair_support: RawInterstitialPairSupport,
     pub provenance: Provenance,
 }
 
-impl ProductSource {
+impl AuxiliarySource {
     /// Construct after checking site counts, mesh lengths, finite samples,
     /// and raw pair-support identity.
     pub fn new(
-        partition: ProductPartition,
+        partition: AuxiliaryPartition,
         radials: Vec<SiteRadialSet>,
         q: TransferQ,
         interstitial_pair_support: RawInterstitialPairSupport,
         provenance: Provenance,
-    ) -> Result<Self, ProductError> {
+    ) -> Result<Self, AuxiliaryIrError> {
         let source = Self {
             partition,
             radials,
@@ -158,16 +158,16 @@ impl ProductSource {
     }
 
     /// Check site counts, mesh lengths, finite samples, and pair support.
-    pub fn validate(&self) -> Result<(), ProductError> {
+    pub fn validate(&self) -> Result<(), AuxiliaryIrError> {
         if self.radials.len() != self.partition.site_count() {
-            return Err(ProductError::SiteCount {
+            return Err(AuxiliaryIrError::SiteCount {
                 expected: self.partition.site_count(),
                 actual: self.radials.len(),
             });
         }
         self.interstitial_pair_support.validate()?;
         if self.interstitial_pair_support.q != self.q {
-            return Err(ProductError::PairSupportTransferQ);
+            return Err(AuxiliaryIrError::PairSupportTransferQ);
         }
         for (site, radials) in self.radials.iter().enumerate() {
             let expected = radials.mesh.len();
@@ -177,7 +177,7 @@ impl ProductSource {
             ] {
                 for function in functions {
                     if function.samples.large.len() != expected {
-                        return Err(ProductError::MeshLength {
+                        return Err(AuxiliaryIrError::MeshLength {
                             site,
                             expected,
                             actual: function.samples.large.len(),
@@ -185,7 +185,7 @@ impl ProductSource {
                     }
                     if let Some(small) = &function.samples.small {
                         if small.len() != expected {
-                            return Err(ProductError::MeshLength {
+                            return Err(AuxiliaryIrError::MeshLength {
                                 site,
                                 expected,
                                 actual: small.len(),
@@ -203,7 +203,7 @@ impl ProductSource {
                             .as_ref()
                             .is_some_and(|small| small.iter().any(|value| !value.is_finite()));
                     if nonfinite {
-                        return Err(ProductError::NonFiniteRadial {
+                        return Err(AuxiliaryIrError::NonFiniteRadial {
                             site,
                             kind,
                             l: function.l,

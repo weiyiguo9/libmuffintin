@@ -13,8 +13,8 @@ use crate::select::{
 };
 use crate::toy::ToyGrid;
 use muffintin_auxiliary_ir::{
-    AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationPointAuxiliary, OrbitalPair,
-    PairColumnLayout, PairVertex, ProductPartition, TransferQ,
+    AuxiliaryPartition, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
+    InterpolationPointAuxiliary, OrbitalPair, PairColumnLayout, PairVertex, TransferQ,
 };
 use muffintin_basis::Provenance;
 
@@ -52,7 +52,7 @@ pub fn run_thc(
     orbitals: &BlochOrbitals,
     grid: &ToyGrid,
     mesh: &KMesh,
-    partition: &ProductPartition,
+    partition: &AuxiliaryPartition,
     request: &SelectionRequest,
     grams: Option<&CoulombGramSet>,
     core_orbital: Option<usize>,
@@ -138,7 +138,7 @@ pub fn compare_strategies(
     orbitals: &BlochOrbitals,
     grid: &ToyGrid,
     mesh: &KMesh,
-    partition: &ProductPartition,
+    partition: &AuxiliaryPartition,
     n_mu: usize,
     seed: u64,
     engine: crate::select::L2Engine,
@@ -204,7 +204,7 @@ pub fn fit_allq_l2_pair_blocks(
     points: &[[f64; 3]],
     weights: &[f64],
     regions: &[muffintin_auxiliary_ir::InterpolationRegion],
-    partition: ProductPartition,
+    partition: AuxiliaryPartition,
     transfers: &[TransferQ],
     rank: RankPolicy,
     engine: L2Engine,
@@ -411,7 +411,7 @@ fn candidate_weights(weights: &[f64], candidates: &[usize]) -> Vec<f64> {
 /// `provenance` is stored on the compiled auxiliary and later copied onto
 /// Bloch pair vertices by [`bloch_pair_vertices`].
 pub fn interpolation_auxiliary(
-    partition: ProductPartition,
+    partition: AuxiliaryPartition,
     q: TransferQ,
     points: Vec<muffintin_auxiliary_ir::InterpolationAuxiliaryPoint>,
     provenance: Provenance,
@@ -446,14 +446,14 @@ pub fn bloch_pair_vertices(
     }
     if q != auxiliary.q {
         return Err(ThcError::Product(
-            muffintin_auxiliary_ir::ProductError::AuxiliarySupportTransferQ,
+            muffintin_auxiliary_ir::AuxiliaryIrError::AuxiliarySupportTransferQ,
         ));
     }
     let mt = auxiliary.mt_dimension();
     let interstitial = auxiliary.interstitial_dimension();
     if mt + interstitial != n_mu {
         return Err(ThcError::Product(
-            muffintin_auxiliary_ir::ProductError::PairVertexDimension {
+            muffintin_auxiliary_ir::AuxiliaryIrError::PairVertexDimension {
                 actual: n_mu,
                 mt,
                 interstitial,

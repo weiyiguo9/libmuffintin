@@ -4,7 +4,7 @@
 //! function, and $|q+G|$ interstitial auxiliary support follow `mixedbasis.f`.
 //! `TOL` is constructor policy recorded on the retained auxiliary basis, not
 //! on [`muffintin_auxiliary_ir::RawProductSpace`]. Raw interstitial orbital-pair
-//! reciprocal support is supplied by [`muffintin_auxiliary_ir::ProductSource`]
+//! reciprocal support is supplied by [`muffintin_auxiliary_ir::AuxiliarySource`]
 //! and is not the MPB auxiliary plane-wave set. Dirac PP/QQ muffin-tin products,
 //! checked vertices, overlap cutoff of the ordered PP/QQ union, and Bloch
 //! pair vertices are a parallel path over
@@ -33,7 +33,7 @@ pub use interstitial::auxiliary_interstitial_support;
 pub use vertices::{PairVertexAccumulator, pair_vertex};
 
 use muffintin_auxiliary_ir::{
-    DiracChargeSector, DiracProductError, DiracRadialId, ProductError, ProductRadialId,
+    AuxiliaryIrError, DiracChargeSector, DiracProductError, DiracRadialId, ProductRadialId,
 };
 use muffintin_core::{LatticeError, MeshError, StepFunctionError};
 use muffintin_operators::OperatorError;
@@ -46,7 +46,7 @@ pub const DEFAULT_TOLERANCE: f64 = 1.0e-4;
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum MpbError {
     #[error(transparent)]
-    Product(#[from] ProductError),
+    Product(#[from] AuxiliaryIrError),
     #[error(transparent)]
     Dirac(#[from] DiracProductError),
     #[error(transparent)]
