@@ -4,11 +4,8 @@
 
 use std::collections::BTreeMap;
 
-use muffintin::{
-    RankPolicy, SpinorCoulombSpec, SpinorProductInput, SpinorThcSpec, ThcCandidates, ThcEngine,
-    ThcParentGrid, ThcPoint, ThcRegion,
-};
-use muffintin_core::{Bohr, Hartree, InverseBohr};
+use muffintin::{RankPolicy, SpinorCoulombSpec, SpinorThcSpec, ThcCandidates, ThcEngine};
+use muffintin_core::{Hartree, InverseBohr};
 use muffintin_coulomb::{CoulombRequest, InterpolationProjection};
 use muffintin_dft::{
     LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
@@ -24,7 +21,11 @@ use muffintin_io::{
     RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
-use muffintin_lapw::Provenance;
+
+#[path = "thc_fixture_common.rs"]
+mod thc_fixture_common;
+
+pub use thc_fixture_common::spinor_parent_grid as parent_grid;
 
 pub const LATTICE: f64 = 8.0;
 
@@ -178,73 +179,6 @@ pub fn spinor_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
             states: Vec::new(),
         }],
     }
-}
-
-fn on_shell(origin: [Bohr; 3], radius: f64, direction: [f64; 3]) -> [Bohr; 3] {
-    let norm = direction
-        .iter()
-        .map(|component| component * component)
-        .sum::<f64>()
-        .sqrt();
-    [
-        Bohr(origin[0].get() + radius * direction[0] / norm),
-        Bohr(origin[1].get() + radius * direction[1] / norm),
-        Bohr(origin[2].get() + radius * direction[2] / norm),
-    ]
-}
-
-pub fn parent_grid(input: &SpinorProductInput) -> ThcParentGrid {
-    let origin = input.source.partition.sites()[0].position;
-    let mesh = &input.source.radials[0].mesh;
-    let mid = mesh.radii().len() / 2;
-    let r_mid = mesh.radii()[mid].get();
-    let r0 = mesh.radii()[0].get();
-    ThcParentGrid::new(
-        input.source.partition.clone(),
-        Provenance::default(),
-        vec![
-            ThcPoint {
-                coordinate: on_shell(origin, r0, [0.4, -0.3, 0.2]),
-                weight: 0.35,
-                region: ThcRegion::MuffinTin {
-                    site: 0,
-                    radial_index: 0,
-                },
-            },
-            ThcPoint {
-                coordinate: on_shell(origin, r_mid, [1.0, 0.0, 0.0]),
-                weight: 0.0,
-                region: ThcRegion::MuffinTin {
-                    site: 0,
-                    radial_index: mid,
-                },
-            },
-            ThcPoint {
-                coordinate: on_shell(origin, r_mid, [0.0, 1.0, 0.0]),
-                weight: 0.45,
-                region: ThcRegion::MuffinTin {
-                    site: 0,
-                    radial_index: mid,
-                },
-            },
-            ThcPoint {
-                coordinate: [Bohr(0.2), Bohr(0.2), Bohr(0.2)],
-                weight: 0.8,
-                region: ThcRegion::Interstitial,
-            },
-            ThcPoint {
-                coordinate: [Bohr(5.0), Bohr(4.0), Bohr(4.0)],
-                weight: 0.15,
-                region: ThcRegion::Interstitial,
-            },
-            ThcPoint {
-                coordinate: [Bohr(2.0), Bohr(6.5), Bohr(4.0)],
-                weight: 0.25,
-                region: ThcRegion::Interstitial,
-            },
-        ],
-    )
-    .unwrap()
 }
 
 pub fn thc_spec() -> SpinorThcSpec {

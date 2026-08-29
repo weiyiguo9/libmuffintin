@@ -281,6 +281,11 @@ fn v0_coeff(fields: &SpexFrozenFieldsV1, g: [i32; 3]) -> muffintin_io::Complex64
     }
 }
 
+/// Live SPEX snapshot at `/tmp/ml7-spex-artifact/snapshot.h5`.
+///
+/// Ordinary workspace tests skip this. Run:
+/// `cargo test -p libmuffintin-io --test spex_snapshot_v1 consume_wsl_b45d9b9_snapshot_h5 -- --ignored --exact --nocapture`
+#[ignore = "requires local SPEX artifact /tmp/ml7-spex-artifact/snapshot.h5; run with --ignored"]
 #[test]
 fn consume_wsl_b45d9b9_snapshot_h5() {
     let path = std::path::Path::new("/tmp/ml7-spex-artifact/snapshot.h5");
@@ -310,6 +315,11 @@ fn consume_wsl_b45d9b9_snapshot_h5() {
     }
 }
 
+/// Live SPEX snapshot at `/tmp/ml7-spex-artifact/snapshot.h5`.
+///
+/// Ordinary workspace tests skip this. Run:
+/// `cargo test -p libmuffintin-io --test spex_snapshot_v1 materialize_symmetrizes_live_ulp_and_rejects_large_hermitian_error -- --ignored --exact --nocapture`
+#[ignore = "requires local SPEX artifact /tmp/ml7-spex-artifact/snapshot.h5; run with --ignored"]
 #[test]
 fn materialize_symmetrizes_live_ulp_and_rejects_large_hermitian_error() {
     let path = std::path::Path::new("/tmp/ml7-spex-artifact/snapshot.h5");

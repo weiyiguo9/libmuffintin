@@ -9,15 +9,9 @@
 use std::collections::BTreeMap;
 
 use muffintin::{ChannelIdentity, ChannelTreatment, RecipeSite, compile_channel_recipe};
-use muffintin_core::Hartree;
 use muffintin_dft::{
-    AtomicChannelTreatment, AtomicNumber, NoncollinearXcRoute, RelativisticOrbital, ScfBasis,
-    ScfConfig, ScfConvergence, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations,
-    ScfRelativity, XcFunctional, fleur_default_atomic_configuration,
+    AtomicChannelTreatment, AtomicNumber, RelativisticOrbital, fleur_default_atomic_configuration,
 };
-
-#[path = "ml7_material_common.rs"]
-mod ml7_material_common;
 
 const DY_Z: u8 = 66;
 
@@ -115,64 +109,4 @@ fn dy_built_in_recipe_keeps_5p12_as_lo_and_does_not_invent_hdlo() {
             .any(|record| record.treatment == ChannelTreatment::Hdlo),
         "FLEUR default.econfig does not encode HDLO; the built-in recipe must not invent one"
     );
-}
-
-fn spinor_config() -> ScfConfig {
-    ScfConfig {
-        electron_count: f64::from(DY_Z),
-        k_mesh: ScfKMesh {
-            divisions: [1, 1, 1],
-            shift: [0.0; 3],
-        },
-        basis: ScfBasis {
-            plane_wave_cutoff: 1.0,
-            l_max: 3,
-            channels: Vec::new(),
-            resolved_channels: Vec::new(),
-        },
-        occupations: ScfOccupations::FermiDirac {
-            temperature: Hartree(0.02),
-        },
-        exchange_correlation: ScfExchangeCorrelation {
-            functional: XcFunctional::LdaPw92,
-            noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
-        },
-        mixing: ScfMixing::Linear { alpha: 1.0 },
-        relativity: ScfRelativity::SpinorFirstVariation,
-        convergence: ScfConvergence {
-            energy_tolerance: Hartree(1.0),
-            density_tolerance: 1.0,
-            max_iterations: 1,
-        },
-        core_sites: Vec::new(),
-    }
-}
-
-#[test]
-fn dy_bcc_material_snapshot_is_absent() {
-    // Consume the p6 helper load path. A later material lane would then call
-    // ordered_q_slice, compare_qrcp_cholesky, MPB/THC c†Vc, and MLDUMP.
-    // That Snapshot V2 does not exist: WSL <thc-experiment> has only scalar-collinear
-    // Sm FCC SPEX dumps, the FLEUR converter is frozen, and there is no
-    // SPEX→Snapshot V2 importer. Do not substitute synthetic atomic data.
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ml7-dy/absent.toml");
-    assert!(
-        !path.exists()
-            && !std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../ml7-dy")
-                .exists(),
-        "ml7-dy prefixed snapshot paths must stay absent until a real producer exists"
-    );
-    let provenance = ml7_material_common::Ml7Provenance {
-        snapshot_path: path.clone(),
-        snapshot_sha256: String::new(),
-        producer: "absent".to_owned(),
-    };
-    match ml7_material_common::load_spinor_snapshot_v2(&path, spinor_config(), provenance) {
-        Err(ml7_material_common::Ml7CommonError::MissingSnapshot(missing)) => {
-            assert_eq!(missing, path);
-        }
-        Err(_) => panic!("expected missing Snapshot V2 from shared helper"),
-        Ok(_) => panic!("absent ml7-dy snapshot must not load"),
-    }
 }

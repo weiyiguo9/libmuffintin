@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 
 use muffintin::{
     RankPolicy, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarProductInput, ScalarThcError,
-    ScalarThcSpec, SnapshotDftPhysics, ThcCandidates, ThcEngine, ThcParentGrid, ThcPoint,
-    ThcRegion, build_scalar_thc,
+    ScalarThcSpec, SnapshotDftPhysics, ThcCandidates, ThcEngine, ThcParentGrid, ThcRegion,
+    build_scalar_thc,
 };
 use muffintin_auxiliary_ir::{ProductOrbitalKind, ProductPartition, ProductRadialId, TransferQ};
 use muffintin_core::{
@@ -29,6 +29,11 @@ use muffintin_lapw::{CompiledBasis, Provenance};
 use muffintin_operators::CompiledSiteProjection;
 use muffintin_thc::{GridPath, L2Engine, SelectorStrategy, ThcError};
 use num_complex::Complex64;
+
+#[path = "thc_fixture_common.rs"]
+mod thc_fixture_common;
+
+use thc_fixture_common::{on_shell, scalar_parent_grid as parent_grid};
 
 fn hydrogen_snapshot() -> SnapshotV2 {
     let point_count = 61;
@@ -167,73 +172,6 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
             states: Vec::new(),
         }],
     }
-}
-
-fn on_shell(origin: [Bohr; 3], radius: f64, direction: [f64; 3]) -> [Bohr; 3] {
-    let norm = direction
-        .iter()
-        .map(|component| component * component)
-        .sum::<f64>()
-        .sqrt();
-    [
-        Bohr(origin[0].get() + radius * direction[0] / norm),
-        Bohr(origin[1].get() + radius * direction[1] / norm),
-        Bohr(origin[2].get() + radius * direction[2] / norm),
-    ]
-}
-
-fn parent_grid(input: &ScalarProductInput) -> ThcParentGrid {
-    let origin = input.source.partition.sites()[0].position;
-    let mesh = &input.source.radials[0].mesh;
-    let mid = mesh.radii().len() / 2;
-    let r_mid = mesh.radii()[mid].get();
-    let r0 = mesh.radii()[0].get();
-    ThcParentGrid::new(
-        input.source.partition.clone(),
-        Provenance::default(),
-        vec![
-            ThcPoint {
-                coordinate: on_shell(origin, r0, [0.4, -0.3, 0.2]),
-                weight: 0.35,
-                region: ThcRegion::MuffinTin {
-                    site: 0,
-                    radial_index: 0,
-                },
-            },
-            ThcPoint {
-                coordinate: on_shell(origin, r_mid, [1.0, 0.0, 0.0]),
-                weight: 0.0,
-                region: ThcRegion::MuffinTin {
-                    site: 0,
-                    radial_index: mid,
-                },
-            },
-            ThcPoint {
-                coordinate: on_shell(origin, r_mid, [0.0, 1.0, 0.0]),
-                weight: 0.45,
-                region: ThcRegion::MuffinTin {
-                    site: 0,
-                    radial_index: mid,
-                },
-            },
-            ThcPoint {
-                coordinate: [Bohr(0.2), Bohr(0.2), Bohr(0.2)],
-                weight: 0.8,
-                region: ThcRegion::Interstitial,
-            },
-            ThcPoint {
-                coordinate: [Bohr(5.0), Bohr(4.0), Bohr(4.0)],
-                weight: 0.15,
-                region: ThcRegion::Interstitial,
-            },
-            ThcPoint {
-                coordinate: [Bohr(2.0), Bohr(6.5), Bohr(4.0)],
-                weight: 0.25,
-                region: ThcRegion::Interstitial,
-            },
-        ],
-    )
-    .unwrap()
 }
 
 fn spec_all(n_mu: usize) -> ScalarThcSpec {

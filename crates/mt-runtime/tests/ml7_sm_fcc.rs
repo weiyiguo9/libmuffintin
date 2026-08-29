@@ -32,6 +32,11 @@ use muffintin_thc::RankPolicy;
 #[path = "ml7_material_common.rs"]
 mod ml7_material_common;
 
+#[path = "thc_fixture_common.rs"]
+mod thc_fixture_common;
+
+use thc_fixture_common::on_shell;
+
 const SM_Z: u8 = 62;
 
 fn sm_number() -> AtomicNumber {
@@ -133,15 +138,6 @@ fn sm_built_in_recipe_keeps_5p12_as_lo_and_does_not_invent_hdlo() {
 const ARTIFACT: &str = "/tmp/ml7-spex-artifact/snapshot.h5";
 const ARTIFACT_SHA256: &str = "9f060f742e9078ec3dc8ee24d8945d38ec74a729e5dee85acfbffd345e132a59";
 
-fn on_shell(origin: [Bohr; 3], radius: f64, direction: [f64; 3]) -> [Bohr; 3] {
-    let norm = direction
-        .iter()
-        .map(|value| value * value)
-        .sum::<f64>()
-        .sqrt();
-    std::array::from_fn(|axis| Bohr(origin[axis].get() + radius * direction[axis] / norm))
-}
-
 fn bounded_parent_grid(input: &muffintin::SpinorProductInput) -> ThcParentGrid {
     let origin = input.source.partition.sites()[0].position;
     let mesh = &input.source.radials[0].mesh;
@@ -241,6 +237,11 @@ fn sm_runtime_channels(recipe: &SpexMaterialBasisRecipeV1) -> Vec<ScfChannelReci
     channels
 }
 
+/// Bounded Sm fcc SPEX snapshot lane at `/tmp/ml7-spex-artifact/snapshot.h5`.
+///
+/// Ordinary workspace tests skip this. Run:
+/// `cargo test -p libmuffintin-runtime --test ml7_sm_fcc consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane -- --ignored --exact --nocapture`
+#[ignore = "requires local SPEX artifact /tmp/ml7-spex-artifact/snapshot.h5; run with --ignored"]
 #[test]
 fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
     let path = Path::new(ARTIFACT);
