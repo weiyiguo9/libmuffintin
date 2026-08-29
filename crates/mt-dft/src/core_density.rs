@@ -216,15 +216,15 @@ pub fn build_regional_core_contribution(
         .to_vec();
     magnetization_z_muffin_tins[site_index] =
         replace_monopole(template_charge, &mt_magnetization_z)?;
-    let zero_mode_adjustment = close_pseudocharge_zero_mode(
+    let zero_mode_adjustment = close_finite_layout_zero_mode(
         geometry,
         layout,
-        PseudochargeComponent {
+        FiniteLayoutClosureComponent {
             muffin_tins: &charge_muffin_tins,
             requested_integral: requested_charge,
             fourier: &mut fourier_charge,
         },
-        PseudochargeComponent {
+        FiniteLayoutClosureComponent {
             muffin_tins: &magnetization_z_muffin_tins,
             requested_integral: requested_magnetization_z,
             fourier: &mut fourier_magnetization_z,
@@ -299,17 +299,17 @@ pub fn build_regional_core_contribution(
     })
 }
 
-struct PseudochargeComponent<'a> {
-    muffin_tins: &'a [MuffinTinField],
-    requested_integral: f64,
-    fourier: &'a mut [Complex64],
+pub(crate) struct FiniteLayoutClosureComponent<'a> {
+    pub(crate) muffin_tins: &'a [MuffinTinField],
+    pub(crate) requested_integral: f64,
+    pub(crate) fourier: &'a mut [Complex64],
 }
 
-fn close_pseudocharge_zero_mode(
+pub(crate) fn close_finite_layout_zero_mode(
     geometry: &InterstitialGeometry,
     layout: &muffintin_core::FourierLayout,
-    charge: PseudochargeComponent<'_>,
-    magnetization_z: PseudochargeComponent<'_>,
+    charge: FiniteLayoutClosureComponent<'_>,
+    magnetization_z: FiniteLayoutClosureComponent<'_>,
 ) -> Result<PseudochargeZeroModeAdjustment, CoreDensityError> {
     let zero = layout
         .index([0, 0, 0])

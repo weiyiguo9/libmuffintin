@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod atomic_configuration;
+mod atomic_superposition;
 mod core_density;
 mod core_potential;
 mod density;
@@ -25,6 +26,10 @@ mod xc_field;
 pub use atomic_configuration::{
     AtomicChannelTreatment, AtomicElectronicConfiguration, AtomicNumber, AtomicOccupation,
     RelativisticOrbital, fleur_default_atomic_configuration,
+};
+pub use atomic_superposition::{
+    AtomicSuperpositionChargeClosure, AtomicSuperpositionDensity, AtomicSuperpositionError,
+    AtomicSuperpositionSite, AtomicSuperpositionSpec, build_atomic_superposition_density,
 };
 pub use core_density::{
     BuiltRegionalCoreContribution, CoreDensityDiagnostics, CoreDensityError,
