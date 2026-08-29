@@ -7,6 +7,8 @@ pub enum IoError {
     Decode(#[from] toml::de::Error),
     #[error("could not encode TOML: {0}")]
     Encode(#[from] toml::ser::Error),
+    #[error(transparent)]
+    Hdf5(#[from] hdf5_metno::Error),
     #[error("expected format {expected:?}, found {found:?}")]
     InvalidFormat {
         expected: &'static str,
@@ -22,7 +24,7 @@ pub enum IoError {
     Validation(#[from] ValidationError),
 }
 
-/// A structurally valid TOML document that violates the format contract.
+/// A structurally valid artifact that violates the format contract.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum ValidationError {
     #[error("{path} must not be empty")]

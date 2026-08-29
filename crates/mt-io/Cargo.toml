@@ -1,6 +1,6 @@
 [package]
 name = "libmuffintin-io"
-description = "Versioned text snapshots and independent grid artifacts for libmuffintin"
+description = "Versioned text snapshots, grid artifacts, and MLDUMP HDF5 interchange for libmuffintin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,6 +11,7 @@ rust-version.workspace = true
 name = "muffintin_io"
 
 [dependencies]
+hdf5-metno = "=0.12.3"
 libmuffintin-grid = { path = "../mt-grid" }
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror.workspace = true

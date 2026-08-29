@@ -20,6 +20,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Install libhdf5
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libhdf5-dev
       - name: Formatting
         run: cargo fmt --all --check
       - name: Clippy

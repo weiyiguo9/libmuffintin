@@ -26,8 +26,10 @@ The current M-A through M-Kc implementation candidate provides:
   elements for complex or real harmonics, plus a parallel typed spinor path
   that keeps the large-large and small-small radial/angular factors separate;
 - `libmuffintin-io`: independently versioned, human-diffable TOML formats for physical
-  snapshots and materialized grid artifacts. The FLEUR converter remains
-  frozen;
+  snapshots and materialized grid artifacts, plus MLDUMP v1, a
+  libmuffintin-owned inspectable HDF5 schema (`schema_name=libmuffintin.mldump`)
+  for later runtime materialization. MLDUMP is not CoQui-native or SPEX-native.
+  The FLEUR converter remains frozen;
 - `libmuffintin-tensor` M-Fb: backend-neutral `einsum` layer for dense complex tensors.
   The default backend is RSTSR 0.7.10 linked with TBLIS. tenferro-rs is the
   optional second engine behind the same subscripts. LAPW eigenvectors use
@@ -126,4 +128,4 @@ in the numbered derivation notes; the FlapwMBPT reference is the
 
 ## Scope boundary
 
-The M-Kb DFT contract and M-Kc orbital-configuration V2 extension are closed across the library, ordered TOML workflow, single executable, and versioned snapshot/restart boundary, but they are not yet cross-code accepted or production validated. M-L1 is the scalar frozen-snapshot product-input boundary, M-L2 is the scalar mixed-product/selected-vertex bridge, M-L3 is the scalar AllQL2 interpolation-point/$\zeta$ seam, M-L4 is the sampled-$\zeta$ Coulomb bridge, M-L5a is the parallel Dirac PP/QQ IR and MPB primitive, M-L5b is the frozen full-first-variation spinor product-input boundary, M-L5c is the selected-band spinor mixed-product bridge, and M-L5d is the spinor all-$q$ THC plus sampled-$\zeta$ Coulomb bridge; they are not SPEX/material acceptance and do not complete M-L. Snapshot V2 carries $n,m_x,m_y,m_z$ and $V_0,B_x,B_y,B_z$ for frozen noncollinear input and restart; Snapshot V1 remains readable through exact scalar or up/down normalization. Focused and one-site end-to-end gates do not replace the planned Si/SrVO3 scalar, Pt/Au second-variation SOC, collinear and noncollinear magnetic, and cross-code tetrahedron-DOS fixtures. The older Cu frozen-potential one-meV gate and producer-specific FLEUR conversion also remain outside the current acceptance evidence, so a `v0.1` release tag is not claimed.
+The M-Kb DFT contract and M-Kc orbital-configuration V2 extension are closed across the library, ordered TOML workflow, single executable, and versioned snapshot/restart boundary, but they are not yet cross-code accepted or production validated. M-L1 is the scalar frozen-snapshot product-input boundary, M-L2 is the scalar mixed-product/selected-vertex bridge, M-L3 is the scalar AllQL2 interpolation-point/$\zeta$ seam, M-L4 is the sampled-$\zeta$ Coulomb bridge, M-L5a is the parallel Dirac PP/QQ IR and MPB primitive, M-L5b is the frozen full-first-variation spinor product-input boundary, M-L5c is the selected-band spinor mixed-product bridge, M-L5d is the spinor all-$q$ THC plus sampled-$\zeta$ Coulomb bridge, and M-L6a is the versioned MLDUMP v1 HDF5 header/geometry/mesh interchange; they are not SPEX/material acceptance and do not complete M-L. Snapshot V2 carries $n,m_x,m_y,m_z$ and $V_0,B_x,B_y,B_z$ for frozen noncollinear input and restart; Snapshot V1 remains readable through exact scalar or up/down normalization. Focused and one-site end-to-end gates do not replace the planned Si/SrVO3 scalar, Pt/Au second-variation SOC, collinear and noncollinear magnetic, and cross-code tetrahedron-DOS fixtures. The older Cu frozen-potential one-meV gate and producer-specific FLEUR conversion also remain outside the current acceptance evidence, so a `v0.1` release tag is not claimed.

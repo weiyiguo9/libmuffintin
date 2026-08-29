@@ -3,10 +3,12 @@
 //! [`SnapshotFile`] dispatches legacy scalar/collinear [`SnapshotV1`] and
 //! noncollinear Pauli-field [`SnapshotV2`] files. [`GridArtifactV1`] is
 //! deliberately a separate format for materialized integration grids and is
-//! never embedded in a snapshot.
+//! never embedded in a snapshot. [`MldumpV1`] is the libmuffintin-owned
+//! MLDUMP v1 HDF5 schema; it is not CoQui-native or SPEX-native.
 
 mod error;
 mod grid;
+mod mldump;
 mod snapshot;
 mod snapshot_v2;
 mod units;
@@ -15,6 +17,13 @@ pub use error::{IoError, ValidationError};
 pub use grid::{
     GRID_ARTIFACT_FORMAT, GRID_ARTIFACT_VERSION, GridArtifactV1, grid_artifact_from_toml,
     grid_artifact_to_toml,
+};
+pub use mldump::{
+    MLDUMP_SCHEMA_NAME, MLDUMP_SCHEMA_VERSION, MLDUMP_STATUS_ABSENT_NOT_COMPUTED,
+    MLDUMP_STATUS_PRESENT, MLDUMP_UNIT_ENERGY, MLDUMP_UNIT_G_UMKLAPP, MLDUMP_UNIT_INVERSE_LENGTH,
+    MLDUMP_UNIT_K_Q, MLDUMP_UNIT_LENGTH, MLDUMP_UNIT_VOLUME, MldumpGeometryV1, MldumpKMinusQV1,
+    MldumpKPointV1, MldumpMeshV1, MldumpMetaV1, MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1,
+    MldumpStatus, MldumpStatusesV1, MldumpV1, read_mldump_v1, write_mldump_v1,
 };
 pub use snapshot::{
     AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, ExponentialMeshSpecV1,
