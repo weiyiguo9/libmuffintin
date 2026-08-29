@@ -1,6 +1,7 @@
 //! Periodic neutral-free-atom superposition on an exact regional layout.
 
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 use std::f64::consts::PI;
 
 use muffintin_core::{
@@ -152,7 +153,7 @@ pub fn build_atomic_superposition_density(
 
     let mut atoms = BTreeMap::new();
     for site in &spec.sites {
-        if !atoms.contains_key(&site.atomic_number) {
+        if let Entry::Vacant(entry) = atoms.entry(site.atomic_number) {
             let state =
                 run_free_atom_lda(site.atomic_number, &spec.free_atom_scf).map_err(|source| {
                     AtomicSuperpositionError::FreeAtom {
@@ -160,7 +161,7 @@ pub fn build_atomic_superposition_density(
                         source,
                     }
                 })?;
-            atoms.insert(site.atomic_number, state);
+            entry.insert(state);
         }
     }
     for (site_index, site) in spec.sites.iter().enumerate() {
