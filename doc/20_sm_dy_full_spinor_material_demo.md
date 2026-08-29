@@ -45,8 +45,8 @@ binds the caller-owned $(n,l,\kappa)$, treatment, derivative order,
 and energy to the exact runtime `ScfBasis` request and resolved
 energy, then solves target Dirac $P,Q$ from the imported $V_0$
 monopole. A recipe/runtime mismatch is
-`SnapshotDftError::SpexMaterialChannelMismatch`; no SPEX $P,Q$ or
-signed $\kappa$ is claimed.
+`SnapshotDftError::SpexMaterialChannelMismatch`, and the route never
+claims SPEX $P,Q$ or a SPEX signed $\kappa$.
 
 ## 3. Status
 
@@ -59,9 +59,10 @@ signed $\kappa$ recipe for the $5s$ LO and $5p_{1/2}$ rLO, caps the
 target plane-wave cutoff at $0.5\,a_0^{-1}$, and runs one complete
 one-point $q$ slice through bounded spinor MPB, THC with both full
 column-pivoted QR and full pivoted Cholesky at exact rank one, sampled
-spinor Coulomb, and a spinor MLDUMP roundtrip. This is bounded Sm
-material evidence, not convergence, production validation, or a
-cross-code spinor-consumer result.
+spinor Coulomb, and a spinor MLDUMP roundtrip. This is material
+evidence for Sm within those bounds; it establishes neither
+convergence nor production validation, and no cross-code spinor
+consumer has read the output.
 
 The Dy bcc lane is blocked: no honest Dy bcc DFT snapshot, `spex.pot`,
 FLEUR `cdn/pot`, or Snapshot V2 exists, and synthetic atomic data

@@ -164,7 +164,7 @@ When `/orbitals` is `present`:
 window `band_window_count`. Stored eigenvalues and eigenvector columns
 use `band_window_count`, not `available_bands`. Cartesian $k$ and
 $q=k+G$ are stored explicitly so compiled plane-wave rows can be
-reconstructed; norms are not a substitute. Local-orbital tables identify
+reconstructed; storing only norms would not allow that. Local-orbital tables identify
 every non-PW basis row. Per $k$ PW and basis counts may differ.
 
 When `/products` is `present`, static partition/radials are stored once
@@ -194,8 +194,8 @@ and positional $q$ records bind by mesh $q$ index:
     raw_relative_g            i32 [n_raw,3] axes=["raw_g","reciprocal_axis"]
 ```
 
-Site indices, positions, radii, and mesh identity bind to `/geometry`.
-They are not a second geometry. `/mesh` remains the owner of input and
+Site indices, positions, radii, and mesh identity bind to `/geometry`
+rather than forming a second geometry. `/mesh` remains the owner of input and
 canonical $q$ and of the per $k$ wrap map. Each product $q$ record binds
 by positional $q$ index: `global_transfer` equals mesh
 `q_global_umklapp`, and `transfer_cartesian` equals the mesh canonical
@@ -297,7 +297,7 @@ When `/thc` is `present`, the parent grid is stored once:
     vertex_coefficients       f64 [vertex,aux,re_im] axes=["vertex","aux","re_im"]
 ```
 
-`pivots` is QRCP/Cholesky ranking. `points` is the same selected
+`pivots` is the QRCP/Cholesky ranking. `points` is the same selected
 parent-index set in canonical auxiliary/layout order. The two arrays are
 distinct fields and must not be compared as vectors; both are unique, in
 parent bounds, and every selected index references a strictly positive

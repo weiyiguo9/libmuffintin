@@ -170,14 +170,14 @@ nearly equal $10^{-14}$ numbers.
 
 ## 7. Public surface
 
-- `evaluate_pair_block` / `pair_density_oracle` — pair matrices for each $q$
-- `L2Engine` / `RankPolicy` — structured sketch, full QRCP, or full pivoted
+- `evaluate_pair_block` / `pair_density_oracle`: pair matrices for each $q$
+- `L2Engine` / `RankPolicy`: structured sketch, full QRCP, or full pivoted
   Cholesky with exact-rank or relative-residual termination
 - `select_points` / `run_thc` / `compare_strategies`
-- `fit_per_q` — $\zeta$ and weighted L2 / injected-Coulomb residuals for each $q$
-- `interpolation_auxiliary` / `bloch_pair_vertices` — product IR
-- `InjectedCoulombGram` — explicit Coulomb data contract
-- `toy::compare_candidate_eri_action` — candidate-oracle ERI/action vs a
+- `fit_per_q`: $\zeta$ and weighted L2 / injected-Coulomb residuals for each $q$
+- `interpolation_auxiliary` / `bloch_pair_vertices`: product IR
+- `InjectedCoulombGram`: explicit Coulomb data contract
+- `toy::compare_candidate_eri_action`: candidate-oracle ERI/action vs a
   reference-grid pair Fourier/Gram
 
 Run the slow source-equivalent gate with:

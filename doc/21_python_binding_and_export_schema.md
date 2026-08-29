@@ -19,7 +19,7 @@ Python mirror of the Rust object model.
 
 The laboratory itself is a separate backend-neutral package, `pymuffintin`
 (basis/auxiliary/mbpt/optimize/diagnostics modules). This repository
-ships only the `libmuffintin` Python package, that is the binding.
+ships only the binding, the `libmuffintin` Python package.
 `libmuffintin` is the default `pymuffintin` backend and a regular
 dependency: it holds the stable reference kernels. It stays behind
 provider protocols (orbitals, local products, Coulomb) and is imported
@@ -136,7 +136,8 @@ Constraints:
 
 ## 5. Entry points
 
-About fifteen functions and methods, scalar lane first:
+The surface is about fifteen functions and methods, scalar lane
+first:
 
 ```python
 import libmuffintin as mt
