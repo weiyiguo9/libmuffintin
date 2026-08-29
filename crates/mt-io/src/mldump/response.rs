@@ -5,9 +5,9 @@ use std::collections::BTreeSet;
 use hdf5_metno::Group;
 
 use super::scalar_orbitals::ScalarOrbitalsV1;
-use super::scalar_products::{
-    MLDUMP_PAIR_ORDER_K_LEFT_RIGHT, ScalarProductQRecordRefV1, ScalarProductsV1,
-};
+use super::scalar_products::{MLDUMP_PAIR_ORDER_K_LEFT_RIGHT, ScalarProductsV1};
+use super::spinor_orbitals::SpinorOrbitalsV1;
+use super::spinor_products::SpinorProductsV1;
 use super::{
     GROUP_COULOMB, GROUP_THC, MldumpHeaderV1, MldumpStatus, PREFIX_GAMMA, PREFIX_PARENT_GRID,
     PREFIX_Q, approx_eq, collect_padded_groups, complex_len, create_padded_group,
@@ -44,6 +44,15 @@ const RESIDUAL_LABELS: [&str; 2] = ["frobenius", "column_max"];
 pub struct ScalarMldumpV1 {
     pub orbitals: ScalarOrbitalsV1,
     pub products: ScalarProductsV1,
+    pub thc: MldumpThcV1,
+    pub coulomb: MldumpCoulombV1,
+}
+
+/// Owned spinor payload: orbitals, products, THC, and Coulomb. MPB is not a field.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpinorMldumpV1 {
+    pub orbitals: SpinorOrbitalsV1,
+    pub products: SpinorProductsV1,
     pub thc: MldumpThcV1,
     pub coulomb: MldumpCoulombV1,
 }
@@ -279,8 +288,9 @@ impl OrbitalAlignmentSummary {
             n_k: orbitals
                 .spins
                 .first()
-                .map(|spin| spin.k_points.len())
-                .unwrap_or(0),
+                .expect("scalar orbitals spin_count is 2")
+                .k_points
+                .len(),
             band_window_count: orbitals.band_window_count,
         }
     }
@@ -294,14 +304,6 @@ impl ProductAlignmentSummary {
             pair_order: MLDUMP_PAIR_ORDER_K_LEFT_RIGHT,
             q_records: Vec::new(),
         }
-    }
-
-    pub(crate) fn push_q(&mut self, record: &ScalarProductQRecordRefV1<'_>) {
-        self.push_q_binding(
-            record.q_index,
-            record.transfer_cartesian,
-            record.global_transfer,
-        );
     }
 
     pub(crate) fn push_q_binding(

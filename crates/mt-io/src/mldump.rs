@@ -17,8 +17,8 @@ use crate::error::{IoError, ValidationError, finite, nonempty, positive};
 mod response;
 mod scalar_orbitals;
 mod scalar_products;
+mod session;
 mod spinor_orbitals;
-mod spinor_payload;
 mod spinor_products;
 
 pub use response::{
@@ -28,7 +28,7 @@ pub use response::{
     MldumpCoulombGammaV1, MldumpCoulombQRecordRefV1, MldumpCoulombQRecordV1, MldumpCoulombV1,
     MldumpThcBeginV1, MldumpThcParentGridRefV1, MldumpThcParentGridV1, MldumpThcQRecordRefV1,
     MldumpThcQRecordV1, MldumpThcResidualV1, MldumpThcSelectionRefV1, MldumpThcSelectionV1,
-    MldumpThcV1, MldumpThcVertexTableRefV1, MldumpThcVertexV1, ScalarMldumpV1,
+    MldumpThcV1, MldumpThcVertexTableRefV1, MldumpThcVertexV1, ScalarMldumpV1, SpinorMldumpV1,
 };
 pub use scalar_orbitals::{
     MLDUMP_OCCUPATIONS_NOT_EXPORTED, MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON,
@@ -41,13 +41,13 @@ pub use scalar_products::{
     MLDUMP_RADIAL_KIND_VALENCE, ScalarProductQRecordRefV1, ScalarProductQRecordV1,
     ScalarProductSiteRefV1, ScalarProductSiteV1, ScalarProductsBeginV1, ScalarProductsV1,
 };
+pub use session::{ScalarMldumpStreamV1, SpinorMldumpStreamV1};
 pub use spinor_orbitals::{
     MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION, SpinorLocalOrbitalRowV1,
     SpinorLocalOrbitalTableRefV1, SpinorOrbitalKRecordV1, SpinorOrbitalKRefV1,
     SpinorOrbitalsBeginV1, SpinorOrbitalsV1, SpinorPauliRowMapRefV1, SpinorPauliRowMapV1,
     SpinorProjectionCoordV1, SpinorSiteMatchRefV1, SpinorSiteMatchV1,
 };
-pub use spinor_payload::{SpinorMldumpStreamV1, SpinorMldumpV1};
 pub use spinor_products::{
     SpinorProductQRecordRefV1, SpinorProductQRecordV1, SpinorProductSiteRefV1, SpinorProductSiteV1,
     SpinorProductsBeginV1, SpinorProductsV1,
@@ -316,34 +316,6 @@ pub struct MldumpWriterV1 {
     header: MldumpHeaderV1,
 }
 
-/// Streaming scalar payload session. Large records are written immediately;
-/// only small counters, $q$ bindings, pair-layout counts, and provenance
-/// strings are retained. Vertex tables are not kept after each $q$ write.
-#[derive(Debug)]
-pub struct ScalarMldumpStreamV1 {
-    file: File,
-    header: MldumpHeaderV1,
-    phase: ScalarStreamPhase,
-    orbital_summary: Option<response::OrbitalAlignmentSummary>,
-    product_summary: Option<response::ProductAlignmentSummary>,
-    thc_summary: Option<response::ThcAlignmentSummary>,
-    coulomb_summary: Option<response::CoulombAlignmentSummary>,
-    orbitals_band_window: usize,
-    orbitals_spin_count: usize,
-    products_n_site: usize,
-    thc_n_parent: usize,
-    thc_effective_rank: usize,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ScalarStreamPhase {
-    Start,
-    Orbitals { next_spin: usize, next_k: usize },
-    Products { next_site: usize, next_q: usize },
-    Thc { next_q: usize },
-    Coulomb { next_q: usize },
-}
-
 impl MldumpHeaderV1 {
     /// Construct a v1 header. Reserved payload groups are created absent by [`MldumpWriterV1::create`].
     pub fn new(meta: MldumpMetaV1, geometry: MldumpGeometryV1, mesh: MldumpMeshV1) -> Self {
@@ -562,20 +534,7 @@ impl MldumpWriterV1 {
     /// Start a streaming scalar session. All four sections must then be written
     /// record-wise before [`ScalarMldumpStreamV1::finish`].
     pub fn begin_scalar(self) -> Result<ScalarMldumpStreamV1, IoError> {
-        Ok(ScalarMldumpStreamV1 {
-            file: self.file,
-            header: self.header,
-            phase: ScalarStreamPhase::Start,
-            orbital_summary: None,
-            product_summary: None,
-            thc_summary: None,
-            coulomb_summary: None,
-            orbitals_band_window: 0,
-            orbitals_spin_count: 0,
-            products_n_site: 0,
-            thc_n_parent: 0,
-            thc_effective_rank: 0,
-        })
+        Ok(ScalarMldumpStreamV1::new(self.file, self.header))
     }
 
     /// Close a header-only writer. Reserved payload groups stay
@@ -589,409 +548,6 @@ impl MldumpWriterV1 {
     pub fn begin_spinor(self) -> Result<SpinorMldumpStreamV1, IoError> {
         Ok(SpinorMldumpStreamV1::new(self.file, self.header))
     }
-}
-
-impl ScalarMldumpStreamV1 {
-    /// Open `/orbitals` and write shared attributes. Spin/$k$ records follow.
-    pub fn begin_orbitals(&mut self, begin: &ScalarOrbitalsBeginV1) -> Result<(), IoError> {
-        self.require_idle("begin_orbitals")?;
-        if self.orbital_summary.is_some() {
-            return Err(section_already_written("/orbitals"));
-        }
-        scalar_orbitals::begin_scalar_orbitals(&self.file, begin)?;
-        self.orbitals_band_window = begin.band_window_count;
-        self.orbitals_spin_count = begin.spin_count;
-        self.orbital_summary = Some(response::OrbitalAlignmentSummary::new(
-            begin.spin_count,
-            self.header.mesh.k_points.len(),
-            begin.band_window_count,
-        ));
-        self.phase = ScalarStreamPhase::Orbitals {
-            next_spin: 0,
-            next_k: 0,
-        };
-        Ok(())
-    }
-
-    /// Write one spin/$k$ orbital record immediately.
-    pub fn write_orbital_k(
-        &mut self,
-        spin: usize,
-        record: &ScalarOrbitalKRefV1<'_>,
-    ) -> Result<(), IoError> {
-        let (next_spin, next_k) = match self.phase {
-            ScalarStreamPhase::Orbitals { next_spin, next_k } => (next_spin, next_k),
-            _ => {
-                return Err(stream_phase_error(
-                    "write_orbital_k",
-                    "orbitals section in progress",
-                ));
-            }
-        };
-        require_record_capacity("orbitals.record", next_spin, self.orbitals_spin_count)?;
-        require_record_capacity("orbitals.record", next_k, self.header.mesh.k_points.len())?;
-        if spin != next_spin || record.k_index != next_k {
-            return Err(ValidationError::InvalidValue {
-                path: "orbitals.record".to_owned(),
-                expected: format!("spin={next_spin} k={next_k}"),
-                actual: format!("spin={spin} k={}", record.k_index),
-            }
-            .into());
-        }
-        scalar_orbitals::write_scalar_orbital_k(
-            &self.file,
-            &self.header,
-            spin,
-            self.orbitals_band_window,
-            record,
-        )?;
-        let n_k = self.header.mesh.k_points.len();
-        let (next_spin, next_k) = if next_k + 1 == n_k {
-            (next_spin + 1, 0)
-        } else {
-            (next_spin, next_k + 1)
-        };
-        self.phase = ScalarStreamPhase::Orbitals { next_spin, next_k };
-        Ok(())
-    }
-
-    /// Close `/orbitals` after every spin/$k$ record has been written.
-    pub fn finish_orbitals(&mut self) -> Result<(), IoError> {
-        let ScalarStreamPhase::Orbitals { next_spin, next_k } = self.phase else {
-            return Err(stream_phase_error(
-                "finish_orbitals",
-                "orbitals section in progress",
-            ));
-        };
-        if next_spin != self.orbitals_spin_count || next_k != 0 {
-            return Err(ValidationError::InvalidValue {
-                path: "orbitals".to_owned(),
-                expected: format!(
-                    "{} spins × {} k records",
-                    self.orbitals_spin_count,
-                    self.header.mesh.k_points.len()
-                ),
-                actual: format!("next spin={next_spin} k={next_k}"),
-            }
-            .into());
-        }
-        self.phase = ScalarStreamPhase::Start;
-        Ok(())
-    }
-
-    /// Open `/products` and write shared partition binding.
-    pub fn begin_products(&mut self, begin: &ScalarProductsBeginV1<'_>) -> Result<(), IoError> {
-        self.require_idle("begin_products")?;
-        if self.product_summary.is_some() {
-            return Err(section_already_written("/products"));
-        }
-        scalar_products::begin_scalar_products(&self.file, &self.header, begin)?;
-        self.products_n_site = self.header.geometry.sites.len();
-        self.product_summary = Some(response::ProductAlignmentSummary::new(
-            begin.n_k,
-            begin.n_orb,
-        ));
-        self.phase = ScalarStreamPhase::Products {
-            next_site: 0,
-            next_q: 0,
-        };
-        Ok(())
-    }
-
-    /// Write one site radial record immediately.
-    pub fn write_product_site(
-        &mut self,
-        record: &ScalarProductSiteRefV1<'_>,
-    ) -> Result<(), IoError> {
-        let next_site = match self.phase {
-            ScalarStreamPhase::Products {
-                next_site,
-                next_q: 0,
-            } => next_site,
-            _ => {
-                return Err(stream_phase_error(
-                    "write_product_site",
-                    "product sites before q records",
-                ));
-            }
-        };
-        require_record_capacity("products.sites", next_site, self.products_n_site)?;
-        if record.site_index != next_site {
-            return Err(ValidationError::InvalidValue {
-                path: "products.sites".to_owned(),
-                expected: next_site.to_string(),
-                actual: record.site_index.to_string(),
-            }
-            .into());
-        }
-        scalar_products::write_scalar_product_site(&self.file, &self.header, next_site, record)?;
-        self.phase = ScalarStreamPhase::Products {
-            next_site: next_site + 1,
-            next_q: 0,
-        };
-        Ok(())
-    }
-
-    /// Write one positional product $q$ record immediately.
-    pub fn write_product_q(
-        &mut self,
-        record: &ScalarProductQRecordRefV1<'_>,
-    ) -> Result<(), IoError> {
-        let (next_site, next_q) = match self.phase {
-            ScalarStreamPhase::Products { next_site, next_q } => (next_site, next_q),
-            _ => {
-                return Err(stream_phase_error(
-                    "write_product_q",
-                    "products section in progress",
-                ));
-            }
-        };
-        if next_site != self.products_n_site {
-            return Err(ValidationError::InvalidValue {
-                path: "products.q_records".to_owned(),
-                expected: format!("{} site records first", self.products_n_site),
-                actual: format!("{next_site} sites written"),
-            }
-            .into());
-        }
-        require_record_capacity(
-            "products.q_records",
-            next_q,
-            self.header.mesh.q_entries.len(),
-        )?;
-        if record.q_index != next_q {
-            return Err(ValidationError::InvalidValue {
-                path: "products.q_records".to_owned(),
-                expected: next_q.to_string(),
-                actual: record.q_index.to_string(),
-            }
-            .into());
-        }
-        scalar_products::write_scalar_product_q(&self.file, next_q, record)?;
-        if let Some(summary) = self.product_summary.as_mut() {
-            summary.push_q(record);
-        }
-        self.phase = ScalarStreamPhase::Products {
-            next_site,
-            next_q: next_q + 1,
-        };
-        Ok(())
-    }
-
-    /// Close `/products` after every site and $q$ record has been written.
-    pub fn finish_products(&mut self) -> Result<(), IoError> {
-        let ScalarStreamPhase::Products { next_site, next_q } = self.phase else {
-            return Err(stream_phase_error(
-                "finish_products",
-                "products section in progress",
-            ));
-        };
-        let n_q = self.header.mesh.q_entries.len();
-        if next_site != self.products_n_site || next_q != n_q {
-            return Err(ValidationError::InvalidValue {
-                path: "products".to_owned(),
-                expected: format!("{} sites and {n_q} q records", self.products_n_site),
-                actual: format!("sites={next_site} q={next_q}"),
-            }
-            .into());
-        }
-        self.phase = ScalarStreamPhase::Start;
-        Ok(())
-    }
-
-    /// Open `/thc` and write the shared parent grid and selection.
-    pub fn begin_thc(&mut self, begin: &MldumpThcBeginV1<'_>) -> Result<(), IoError> {
-        self.require_idle("begin_thc")?;
-        if self.thc_summary.is_some() {
-            return Err(section_already_written("/thc"));
-        }
-        if self.product_summary.is_none() {
-            return Err(ValidationError::InvalidValue {
-                path: "/thc".to_owned(),
-                expected: "products section written before thc".to_owned(),
-                actual: "products summary missing".to_owned(),
-            }
-            .into());
-        }
-        response::begin_mldump_thc(
-            &self.file,
-            &self.header,
-            begin,
-            MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON,
-        )?;
-        self.thc_n_parent = begin.parent_grid.n_points;
-        self.thc_effective_rank = begin.effective_rank;
-        self.thc_summary = Some(response::ThcAlignmentSummary::new());
-        self.phase = ScalarStreamPhase::Thc { next_q: 0 };
-        Ok(())
-    }
-
-    /// Write one THC $q$ record immediately.
-    pub fn write_thc_q(&mut self, record: &MldumpThcQRecordRefV1<'_>) -> Result<(), IoError> {
-        let next_q = match self.phase {
-            ScalarStreamPhase::Thc { next_q } => next_q,
-            _ => return Err(stream_phase_error("write_thc_q", "thc section in progress")),
-        };
-        require_record_capacity("thc.q_records", next_q, self.header.mesh.q_entries.len())?;
-        if record.q_index != next_q {
-            return Err(ValidationError::InvalidValue {
-                path: "thc.q_records".to_owned(),
-                expected: next_q.to_string(),
-                actual: record.q_index.to_string(),
-            }
-            .into());
-        }
-        let (n_k, n_orb) = match self.product_summary.as_ref() {
-            Some(products) => (products.n_k, products.n_orb),
-            None => {
-                return Err(ValidationError::InvalidValue {
-                    path: "thc.q_records".to_owned(),
-                    expected: "products section written before thc".to_owned(),
-                    actual: "products summary missing".to_owned(),
-                }
-                .into());
-            }
-        };
-        response::write_mldump_thc_q(
-            &self.file,
-            next_q,
-            self.thc_n_parent,
-            self.thc_effective_rank,
-            n_k,
-            n_orb,
-            record,
-        )?;
-        if let Some(summary) = self.thc_summary.as_mut() {
-            summary.push_q(record);
-        }
-        self.phase = ScalarStreamPhase::Thc { next_q: next_q + 1 };
-        Ok(())
-    }
-
-    /// Close `/thc` after every mesh $q$ record has been written.
-    pub fn finish_thc(&mut self) -> Result<(), IoError> {
-        let ScalarStreamPhase::Thc { next_q } = self.phase else {
-            return Err(stream_phase_error("finish_thc", "thc section in progress"));
-        };
-        let n_q = self.header.mesh.q_entries.len();
-        if next_q != n_q {
-            return Err(ValidationError::InvalidValue {
-                path: "thc".to_owned(),
-                expected: format!("{n_q} q records"),
-                actual: next_q.to_string(),
-            }
-            .into());
-        }
-        self.phase = ScalarStreamPhase::Start;
-        Ok(())
-    }
-
-    /// Open `/coulomb` and write request/projection attributes.
-    pub fn begin_coulomb(&mut self, begin: &MldumpCoulombBeginV1) -> Result<(), IoError> {
-        self.require_idle("begin_coulomb")?;
-        if self.coulomb_summary.is_some() {
-            return Err(section_already_written("/coulomb"));
-        }
-        response::begin_mldump_coulomb(
-            &self.file,
-            begin,
-            MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON,
-        )?;
-        self.coulomb_summary = Some(response::CoulombAlignmentSummary::new());
-        self.phase = ScalarStreamPhase::Coulomb { next_q: 0 };
-        Ok(())
-    }
-
-    /// Write one Coulomb $q$ record immediately.
-    pub fn write_coulomb_q(
-        &mut self,
-        record: &MldumpCoulombQRecordRefV1<'_>,
-    ) -> Result<(), IoError> {
-        let next_q = match self.phase {
-            ScalarStreamPhase::Coulomb { next_q } => next_q,
-            _ => {
-                return Err(stream_phase_error(
-                    "write_coulomb_q",
-                    "coulomb section in progress",
-                ));
-            }
-        };
-        require_record_capacity(
-            "coulomb.q_records",
-            next_q,
-            self.header.mesh.q_entries.len(),
-        )?;
-        if record.q_index != next_q {
-            return Err(ValidationError::InvalidValue {
-                path: "coulomb.q_records".to_owned(),
-                expected: next_q.to_string(),
-                actual: record.q_index.to_string(),
-            }
-            .into());
-        }
-        response::write_mldump_coulomb_q(&self.file, next_q, record)?;
-        if let Some(summary) = self.coulomb_summary.as_mut() {
-            summary.push_q(record);
-        }
-        self.phase = ScalarStreamPhase::Coulomb { next_q: next_q + 1 };
-        Ok(())
-    }
-
-    /// Close `/coulomb` after every mesh $q$ record has been written.
-    pub fn finish_coulomb(&mut self) -> Result<(), IoError> {
-        let ScalarStreamPhase::Coulomb { next_q } = self.phase else {
-            return Err(stream_phase_error(
-                "finish_coulomb",
-                "coulomb section in progress",
-            ));
-        };
-        let n_q = self.header.mesh.q_entries.len();
-        if next_q != n_q {
-            return Err(ValidationError::InvalidValue {
-                path: "coulomb".to_owned(),
-                expected: format!("{n_q} q records"),
-                actual: next_q.to_string(),
-            }
-            .into());
-        }
-        self.phase = ScalarStreamPhase::Start;
-        Ok(())
-    }
-
-    /// Finish the populated scalar file after all four sections.
-    pub fn finish(self) -> Result<(), IoError> {
-        if self.phase != ScalarStreamPhase::Start {
-            return Err(stream_phase_error("finish", "no section left open"));
-        }
-        match (
-            self.orbital_summary.as_ref(),
-            self.product_summary.as_ref(),
-            self.thc_summary.as_ref(),
-            self.coulomb_summary.as_ref(),
-        ) {
-            (Some(orbitals), Some(products), Some(thc), Some(coulomb)) => {
-                response::validate_scalar_alignment(&self.header, orbitals, products, thc, coulomb)
-            }
-            _ => Err(ValidationError::InvalidValue {
-                path: "scalar".to_owned(),
-                expected: "alignment summaries for all four written sections".to_owned(),
-                actual: "missing retained summary".to_owned(),
-            }
-            .into()),
-        }
-    }
-
-    fn require_idle(&self, method: &str) -> Result<(), IoError> {
-        if self.phase == ScalarStreamPhase::Start {
-            Ok(())
-        } else {
-            Err(stream_phase_error(method, "no section currently open"))
-        }
-    }
-}
-
-pub(crate) fn stream_phase_error(method: &str, expected: &str) -> IoError {
-    stream_state_error("scalar", method, expected)
 }
 
 pub(crate) fn stream_state_error(path: &str, method: &str, expected: &str) -> IoError {
@@ -1344,6 +900,62 @@ pub(crate) fn require_absent_payload(
 pub(crate) fn approx_eq(left: f64, right: f64) -> bool {
     let scale = left.abs().max(right.abs()).max(1.0);
     (left - right).abs() <= FRACTIONAL_EQ_TOLERANCE * scale
+}
+
+/// Shared $k+\mathbf G\cdot\mathbf b=q$ identity for scalar and spinor plane-wave tables.
+pub(crate) fn validate_plane_wave_identity(
+    reciprocal: &[[f64; 3]; 3],
+    n_plane_waves: usize,
+    plane_wave_g: &[i32],
+    plane_wave_k_cartesian: &[f64],
+    plane_wave_q_cartesian: &[f64],
+    path: &str,
+) -> Result<(), IoError> {
+    for pw in 0..n_plane_waves {
+        let g = [
+            plane_wave_g[pw * 3],
+            plane_wave_g[pw * 3 + 1],
+            plane_wave_g[pw * 3 + 2],
+        ];
+        let reconstructed: [f64; 3] = std::array::from_fn(|axis| {
+            plane_wave_k_cartesian[pw * 3 + axis]
+                + f64::from(g[0]) * reciprocal[0][axis]
+                + f64::from(g[1]) * reciprocal[1][axis]
+                + f64::from(g[2]) * reciprocal[2][axis]
+        });
+        for (axis, (stored, expected)) in plane_wave_q_cartesian[pw * 3..pw * 3 + 3]
+            .iter()
+            .zip(reconstructed)
+            .enumerate()
+        {
+            if !approx_eq(*stored, expected) {
+                return Err(ValidationError::InvalidValue {
+                    path: format!("{path}.plane_wave_q_cartesian[{pw}][{axis}]"),
+                    expected: format!("k + G·b = {expected}"),
+                    actual: stored.to_string(),
+                }
+                .into());
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn dataset_leading_len(
+    dataset: &Dataset,
+    path: impl Into<String>,
+    expected_shape: &str,
+) -> Result<usize, IoError> {
+    dataset
+        .shape()
+        .first()
+        .copied()
+        .ok_or_else(|| ValidationError::InvalidValue {
+            path: path.into(),
+            expected: expected_shape.to_owned(),
+            actual: "scalar".to_owned(),
+        })
+        .map_err(IoError::from)
 }
 
 /// Convert a fractional reciprocal coordinate with the stored reciprocal basis.

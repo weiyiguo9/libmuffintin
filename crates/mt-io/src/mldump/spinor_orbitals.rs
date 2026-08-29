@@ -6,13 +6,13 @@ use hdf5_metno::Group;
 
 use super::scalar_orbitals::MLDUMP_OCCUPATIONS_NOT_EXPORTED;
 use super::{
-    GROUP_ORBITALS, MldumpHeaderV1, PREFIX_BASIS, PREFIX_K, PREFIX_SITE, approx_eq,
-    collect_padded_groups, create_padded_group, i32_triples_to_owned, padded_child,
-    read_f64_dataset, read_i32_dataset, read_i64_attr, read_i64_dataset, read_usize_attr,
-    reopen_present_group, require_dataset_names, require_exact_members, require_finite_f64s,
-    require_flat_len, require_group_names, require_len, require_nonnegative_index,
-    require_status_present, require_str_attr, triples_to_owned, usize_as_i64, write_f64_dataset,
-    write_i32_dataset, write_i64_attr, write_i64_dataset, write_str_attr,
+    GROUP_ORBITALS, MldumpHeaderV1, PREFIX_BASIS, PREFIX_K, PREFIX_SITE, collect_padded_groups,
+    create_padded_group, dataset_leading_len, i32_triples_to_owned, padded_child, read_f64_dataset,
+    read_i32_dataset, read_i64_attr, read_i64_dataset, read_usize_attr, reopen_present_group,
+    require_dataset_names, require_exact_members, require_finite_f64s, require_flat_len,
+    require_group_names, require_len, require_nonnegative_index, require_status_present,
+    require_str_attr, triples_to_owned, usize_as_i64, validate_plane_wave_identity,
+    write_f64_dataset, write_i32_dataset, write_i64_attr, write_i64_dataset, write_str_attr,
 };
 use crate::error::{IoError, ValidationError};
 
@@ -325,7 +325,14 @@ fn validate_k_record(
         &format!("{path}.plane_wave_q_cartesian"),
         record.plane_wave_q_cartesian,
     )?;
-    validate_plane_wave_identity(header, record, &path)?;
+    validate_plane_wave_identity(
+        &header.geometry.reciprocal_basis_inv_bohr,
+        record.n_plane_waves,
+        record.plane_wave_g,
+        record.plane_wave_k_cartesian,
+        record.plane_wave_q_cartesian,
+        &path,
+    )?;
     validate_pauli_rows(record, &path)?;
     validate_local_orbitals(header.geometry.sites.len(), record, &path)?;
     require_len(
@@ -342,42 +349,6 @@ fn validate_k_record(
             &record.local_orbitals,
             &path,
         )?;
-    }
-    Ok(())
-}
-
-fn validate_plane_wave_identity(
-    header: &MldumpHeaderV1,
-    record: &SpinorOrbitalKRefV1<'_>,
-    path: &str,
-) -> Result<(), IoError> {
-    let reciprocal = header.geometry.reciprocal_basis_inv_bohr;
-    for pw in 0..record.n_plane_waves {
-        let g = [
-            record.plane_wave_g[pw * 3],
-            record.plane_wave_g[pw * 3 + 1],
-            record.plane_wave_g[pw * 3 + 2],
-        ];
-        let reconstructed: [f64; 3] = std::array::from_fn(|axis| {
-            record.plane_wave_k_cartesian[pw * 3 + axis]
-                + f64::from(g[0]) * reciprocal[0][axis]
-                + f64::from(g[1]) * reciprocal[1][axis]
-                + f64::from(g[2]) * reciprocal[2][axis]
-        });
-        for (axis, (stored, expected)) in record.plane_wave_q_cartesian[pw * 3..pw * 3 + 3]
-            .iter()
-            .zip(reconstructed)
-            .enumerate()
-        {
-            if !approx_eq(*stored, expected) {
-                return Err(ValidationError::InvalidValue {
-                    path: format!("{path}.plane_wave_q_cartesian[{pw}][{axis}]"),
-                    expected: format!("k + G·b = {expected}"),
-                    actual: stored.to_string(),
-                }
-                .into());
-            }
-        }
     }
     Ok(())
 }
@@ -888,12 +859,12 @@ fn validate_orbitals_owned(
         let lo_row: Vec<i64> = record
             .local_orbitals
             .iter()
-            .map(|row| i64::try_from(row.row_index).unwrap_or(i64::MIN))
+            .map(|row| i64::try_from(row.row_index).expect("index fits i64"))
             .collect();
         let lo_site: Vec<i64> = record
             .local_orbitals
             .iter()
-            .map(|row| i64::try_from(row.site).unwrap_or(i64::MIN))
+            .map(|row| i64::try_from(row.site).expect("index fits i64"))
             .collect();
         let lo_kappa: Vec<i64> = record
             .local_orbitals
@@ -908,12 +879,12 @@ fn validate_orbitals_owned(
         let lo_ord: Vec<i64> = record
             .local_orbitals
             .iter()
-            .map(|row| i64::try_from(row.ordinal).unwrap_or(i64::MIN))
+            .map(|row| i64::try_from(row.ordinal).expect("index fits i64"))
             .collect();
         let lo_n: Vec<i64> = record
             .local_orbitals
             .iter()
-            .map(|row| i64::try_from(row.radial_n).unwrap_or(i64::MIN))
+            .map(|row| i64::try_from(row.radial_n).expect("index fits i64"))
             .collect();
         let site_tables = record
             .site_matches
@@ -924,10 +895,10 @@ fn validate_orbitals_owned(
                 let mut twice_mu = Vec::with_capacity(site.coordinates.len());
                 let mut radial_n = Vec::with_capacity(site.coordinates.len());
                 for coord in &site.coordinates {
-                    coordinate.push(i64::try_from(coord.coordinate).unwrap_or(i64::MIN));
+                    coordinate.push(i64::try_from(coord.coordinate).expect("index fits i64"));
                     signed_kappa.push(coord.signed_kappa);
                     twice_mu.push(coord.twice_mu);
-                    radial_n.push(i64::try_from(coord.radial_n).unwrap_or(i64::MIN));
+                    radial_n.push(i64::try_from(coord.radial_n).expect("index fits i64"));
                 }
                 (site, coordinate, signed_kappa, twice_mu, radial_n)
             })
@@ -1204,16 +1175,11 @@ fn read_k_group(
     require_dataset_names(group, &["eigenvalues", "eigenvectors"])?;
     require_group_names(group, &[PREFIX_BASIS])?;
     let basis = group.group(PREFIX_BASIS)?;
-    let n_plane_waves = basis
-        .dataset("plane_wave_g")?
-        .shape()
-        .first()
-        .copied()
-        .ok_or_else(|| ValidationError::InvalidValue {
-            path: format!("{}/basis/plane_wave_g/shape", group.name()),
-            expected: "[n_plane_wave, 3]".to_owned(),
-            actual: "scalar".to_owned(),
-        })?;
+    let n_plane_waves = dataset_leading_len(
+        &basis.dataset("plane_wave_g")?,
+        format!("{}/basis/plane_wave_g/shape", group.name()),
+        "[n_plane_wave, 3]",
+    )?;
     require_dataset_names(
         &basis,
         &[
@@ -1277,12 +1243,11 @@ fn read_k_group(
             &["pauli_row"],
         )?,
     };
-    let n_lo = basis
-        .dataset("local_orbital_row_index")?
-        .shape()
-        .first()
-        .copied()
-        .unwrap_or(0);
+    let n_lo = dataset_leading_len(
+        &basis.dataset("local_orbital_row_index")?,
+        format!("{}/local_orbital_row_index/shape", basis.name()),
+        "[n_local_orbital]",
+    )?;
     let lo_row = read_i64_dataset(
         &basis,
         "local_orbital_row_index",
@@ -1388,8 +1353,11 @@ fn read_site_match(
         }
         .into());
     }
-    let coord_ds = group.dataset("projection_coordinate")?;
-    let n_projection = coord_ds.shape().first().copied().unwrap_or(0);
+    let n_projection = dataset_leading_len(
+        &group.dataset("projection_coordinate")?,
+        format!("{}/projection_coordinate/shape", group.name()),
+        "[n_projection]",
+    )?;
     let coordinate = read_i64_dataset(
         group,
         "projection_coordinate",

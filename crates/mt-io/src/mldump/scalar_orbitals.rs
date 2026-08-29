@@ -3,14 +3,14 @@
 use hdf5_metno::Group;
 
 use super::{
-    GROUP_ORBITALS, MldumpHeaderV1, PREFIX_BASIS, PREFIX_K, PREFIX_SITE, PREFIX_SPIN, approx_eq,
-    collect_padded_groups, create_padded_group, i32_triples_to_owned, padded_child,
-    read_f64_dataset, read_i32_dataset, read_i64_attr, read_i64_dataset, read_usize_attr,
-    reopen_present_group, require_dataset_names, require_exact_members, require_finite_f64s,
-    require_flat_len, require_group_names, require_len, require_nonnegative_index,
-    require_status_present, require_str_array_attr, require_str_attr, triples_to_owned,
-    usize_as_i64, write_f64_dataset, write_i32_dataset, write_i64_attr, write_i64_dataset,
-    write_str_array_attr, write_str_attr,
+    GROUP_ORBITALS, MldumpHeaderV1, PREFIX_BASIS, PREFIX_K, PREFIX_SITE, PREFIX_SPIN,
+    collect_padded_groups, create_padded_group, dataset_leading_len, i32_triples_to_owned,
+    padded_child, read_f64_dataset, read_i32_dataset, read_i64_attr, read_i64_dataset,
+    read_usize_attr, reopen_present_group, require_dataset_names, require_exact_members,
+    require_finite_f64s, require_flat_len, require_group_names, require_len,
+    require_nonnegative_index, require_status_present, require_str_array_attr, require_str_attr,
+    triples_to_owned, usize_as_i64, validate_plane_wave_identity, write_f64_dataset,
+    write_i32_dataset, write_i64_attr, write_i64_dataset, write_str_array_attr, write_str_attr,
 };
 use crate::error::{IoError, ValidationError};
 
@@ -245,12 +245,14 @@ pub(crate) fn read_scalar_orbitals(
             band_window_count,
         )?);
     }
-    Ok(ScalarOrbitalsV1 {
+    let orbitals = ScalarOrbitalsV1 {
         spin_count,
         band_window_start,
         band_window_count,
         spins,
-    })
+    };
+    validate_orbitals_owned(header, &orbitals)?;
+    Ok(orbitals)
 }
 
 fn validate_orbitals_begin(begin: &ScalarOrbitalsBeginV1) -> Result<(), IoError> {
@@ -328,7 +330,14 @@ fn validate_k_record(
         &format!("{path}.plane_wave_q_cartesian"),
         record.plane_wave_q_cartesian,
     )?;
-    validate_plane_wave_identity(header, record, &path)?;
+    validate_plane_wave_identity(
+        &header.geometry.reciprocal_basis_inv_bohr,
+        record.n_plane_waves,
+        record.plane_wave_g,
+        record.plane_wave_k_cartesian,
+        record.plane_wave_q_cartesian,
+        &path,
+    )?;
     require_len(
         &format!("{path}.site_matches"),
         n_sites,
@@ -338,42 +347,6 @@ fn validate_k_record(
         validate_site_match(record.n_plane_waves, site, matching, &path)?;
     }
     validate_local_orbitals(record, &path)?;
-    Ok(())
-}
-
-fn validate_plane_wave_identity(
-    header: &MldumpHeaderV1,
-    record: &ScalarOrbitalKRefV1<'_>,
-    path: &str,
-) -> Result<(), IoError> {
-    let reciprocal = header.geometry.reciprocal_basis_inv_bohr;
-    for pw in 0..record.n_plane_waves {
-        let g = [
-            record.plane_wave_g[pw * 3],
-            record.plane_wave_g[pw * 3 + 1],
-            record.plane_wave_g[pw * 3 + 2],
-        ];
-        let reconstructed: [f64; 3] = std::array::from_fn(|axis| {
-            record.plane_wave_k_cartesian[pw * 3 + axis]
-                + f64::from(g[0]) * reciprocal[0][axis]
-                + f64::from(g[1]) * reciprocal[1][axis]
-                + f64::from(g[2]) * reciprocal[2][axis]
-        });
-        for (axis, (stored, expected)) in record.plane_wave_q_cartesian[pw * 3..pw * 3 + 3]
-            .iter()
-            .zip(reconstructed)
-            .enumerate()
-        {
-            if !approx_eq(*stored, expected) {
-                return Err(ValidationError::InvalidValue {
-                    path: format!("{path}.plane_wave_q_cartesian[{pw}][{axis}]"),
-                    expected: format!("k + G·b = {expected}"),
-                    actual: stored.to_string(),
-                }
-                .into());
-            }
-        }
-    }
     Ok(())
 }
 
@@ -411,12 +384,11 @@ fn validate_site_match(
         let l = matching.lm_l[lm];
         let m = matching.lm_m[lm];
         if l < 0 || m < -l || m > l {
-            return Err(ValidationError::InvalidLm {
-                path: format!("{path}.site_matches[{site}].lm[{lm}]"),
-                l: u32::try_from(l).unwrap_or(0),
-                m,
-            }
-            .into());
+            return Err(invalid_lm(
+                format!("{path}.site_matches[{site}].lm[{lm}]"),
+                i64::from(l),
+                i64::from(m),
+            ));
         }
     }
     require_flat_len(
@@ -479,12 +451,7 @@ fn validate_local_orbitals(record: &ScalarOrbitalKRefV1<'_>, path: &str) -> Resu
         let l = table.l[lo];
         let m = table.m[lo];
         if l < 0 || m < -l || m > l {
-            return Err(ValidationError::InvalidLm {
-                path: format!("{path}.local_orbitals[{lo}]"),
-                l: u32::try_from(l).unwrap_or(0),
-                m: i32::try_from(m).unwrap_or(0),
-            }
-            .into());
+            return Err(invalid_lm(format!("{path}.local_orbitals[{lo}]"), l, m));
         }
         let ordinal = require_nonnegative_index(
             &format!("{path}.local_orbitals.ordinal[{lo}]"),
@@ -505,6 +472,121 @@ fn validate_local_orbitals(record: &ScalarOrbitalKRefV1<'_>, path: &str) -> Resu
         require_nonnegative_index(&format!("{path}.local_orbitals.site[{lo}]"), table.site[lo])?;
     }
     Ok(())
+}
+
+fn invalid_lm(path: String, l: i64, m: i64) -> IoError {
+    match (u32::try_from(l), i32::try_from(m)) {
+        (Ok(l), Ok(m)) => ValidationError::InvalidLm { path, l, m }.into(),
+        _ => ValidationError::InvalidValue {
+            path,
+            expected: "l >= 0 and |m| <= l".to_owned(),
+            actual: format!("l={l} m={m}"),
+        }
+        .into(),
+    }
+}
+
+fn validate_orbitals_owned(
+    header: &MldumpHeaderV1,
+    orbitals: &ScalarOrbitalsV1,
+) -> Result<(), IoError> {
+    validate_orbitals_begin(&ScalarOrbitalsBeginV1 {
+        spin_count: orbitals.spin_count,
+        band_window_start: orbitals.band_window_start,
+        band_window_count: orbitals.band_window_count,
+    })?;
+    require_len("orbitals.spins", orbitals.spin_count, orbitals.spins.len())?;
+    let n_sites = header.geometry.sites.len();
+    for (spin, channel) in orbitals.spins.iter().enumerate() {
+        require_len(
+            &format!("orbitals.spins[{spin}].k_points"),
+            header.mesh.k_points.len(),
+            channel.k_points.len(),
+        )?;
+        for (k, record) in channel.k_points.iter().enumerate() {
+            let g = flatten_i32_triples(&record.plane_wave_g);
+            let k_cart = flatten_f64_triples(&record.plane_wave_k_cartesian);
+            let q_cart = flatten_f64_triples(&record.plane_wave_q_cartesian);
+            let lo_row = record
+                .local_orbitals
+                .iter()
+                .map(|row| i64::try_from(row.row_index).expect("index fits i64"))
+                .collect::<Vec<_>>();
+            let lo_site = record
+                .local_orbitals
+                .iter()
+                .map(|row| i64::try_from(row.site).expect("index fits i64"))
+                .collect::<Vec<_>>();
+            let lo_l = record
+                .local_orbitals
+                .iter()
+                .map(|row| row.l)
+                .collect::<Vec<_>>();
+            let lo_m = record
+                .local_orbitals
+                .iter()
+                .map(|row| row.m)
+                .collect::<Vec<_>>();
+            let lo_ord = record
+                .local_orbitals
+                .iter()
+                .map(|row| i64::try_from(row.ordinal).expect("index fits i64"))
+                .collect::<Vec<_>>();
+            let lo_n = record
+                .local_orbitals
+                .iter()
+                .map(|row| i64::try_from(row.radial_n).expect("index fits i64"))
+                .collect::<Vec<_>>();
+            let matches = record
+                .site_matches
+                .iter()
+                .map(|matching| ScalarApwSiteMatchRefV1 {
+                    site_index: matching.site_index,
+                    n_lm: matching.lm_l.len(),
+                    lm_l: &matching.lm_l,
+                    lm_m: &matching.lm_m,
+                    matching_coefficients: &matching.matching_coefficients,
+                })
+                .collect::<Vec<_>>();
+            validate_k_record(
+                header,
+                n_sites,
+                orbitals.band_window_count,
+                spin,
+                k,
+                &ScalarOrbitalKRefV1 {
+                    k_index: record.k_index,
+                    available_bands: record.available_bands,
+                    basis_dimension: record.basis_dimension,
+                    eigenvalues: &record.eigenvalues,
+                    eigenvectors: &record.eigenvectors,
+                    n_plane_waves: record.plane_wave_g.len(),
+                    plane_wave_g: &g,
+                    plane_wave_k_cartesian: &k_cart,
+                    plane_wave_q_cartesian: &q_cart,
+                    site_matches: &matches,
+                    local_orbitals: ScalarLocalOrbitalTableRefV1 {
+                        n_local_orbitals: record.local_orbitals.len(),
+                        row_index: &lo_row,
+                        site: &lo_site,
+                        l: &lo_l,
+                        m: &lo_m,
+                        ordinal: &lo_ord,
+                        radial_n: &lo_n,
+                    },
+                },
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn flatten_i32_triples(values: &[[i32; 3]]) -> Vec<i32> {
+    values.iter().flat_map(|g| g.iter().copied()).collect()
+}
+
+fn flatten_f64_triples(values: &[[f64; 3]]) -> Vec<f64> {
+    values.iter().flat_map(|v| v.iter().copied()).collect()
 }
 
 fn require_exported_eigendata(
@@ -733,16 +815,11 @@ fn read_k_group(
         basis_dimension,
     )?;
     let basis = group.group(PREFIX_BASIS)?;
-    let n_pw = basis
-        .dataset("plane_wave_g")?
-        .shape()
-        .first()
-        .copied()
-        .ok_or_else(|| ValidationError::InvalidValue {
-            path: format!("{}/basis/plane_wave_g/shape", group.name()),
-            expected: "[n_plane_wave, 3]".to_owned(),
-            actual: "scalar".to_owned(),
-        })?;
+    let n_pw = dataset_leading_len(
+        &basis.dataset("plane_wave_g")?,
+        format!("{}/basis/plane_wave_g/shape", group.name()),
+        "[n_plane_wave, 3]",
+    )?;
     require_dataset_names(
         &basis,
         &[
@@ -787,32 +864,6 @@ fn read_k_group(
         n_pw,
         &format!("{}/basis/plane_wave_q_cartesian", group.name()),
     )?;
-    let reciprocal = header.geometry.reciprocal_basis_inv_bohr;
-    for (pw, g) in plane_wave_g.iter().enumerate() {
-        let reconstructed: [f64; 3] = std::array::from_fn(|axis| {
-            plane_wave_k_cartesian[pw][axis]
-                + f64::from(g[0]) * reciprocal[0][axis]
-                + f64::from(g[1]) * reciprocal[1][axis]
-                + f64::from(g[2]) * reciprocal[2][axis]
-        });
-        for (axis, (stored, expected)) in plane_wave_q_cartesian[pw]
-            .iter()
-            .zip(reconstructed)
-            .enumerate()
-        {
-            if !approx_eq(*stored, expected) {
-                return Err(ValidationError::InvalidValue {
-                    path: format!(
-                        "{}/basis/plane_wave_q_cartesian[{pw}][{axis}]",
-                        group.name()
-                    ),
-                    expected: format!("k + G·b = {expected}"),
-                    actual: stored.to_string(),
-                }
-                .into());
-            }
-        }
-    }
     let n_sites = header.geometry.sites.len();
     let site_groups = collect_padded_groups(&basis, PREFIX_SITE)?;
     require_len(
@@ -843,20 +894,11 @@ fn read_k_group(
     for (site, site_group) in site_groups.iter().enumerate() {
         site_matches.push(read_site_match(site_group, n_pw, site)?);
     }
-    let n_lo = basis
-        .dataset("local_orbital_row_index")?
-        .shape()
-        .first()
-        .copied()
-        .unwrap_or(0);
-    if n_lo + n_pw != basis_dimension {
-        return Err(ValidationError::InvalidValue {
-            path: format!("{}/@basis_dimension", group.name()),
-            expected: format!("n_plane_waves + n_lo = {}", n_pw + n_lo),
-            actual: basis_dimension.to_string(),
-        }
-        .into());
-    }
+    let n_lo = dataset_leading_len(
+        &basis.dataset("local_orbital_row_index")?,
+        format!("{}/basis/local_orbital_row_index/shape", group.name()),
+        "[n_local_orbital]",
+    )?;
     let row_index = read_i64_dataset(
         &basis,
         "local_orbital_row_index",
@@ -874,43 +916,14 @@ fn read_k_group(
         &["local_orbital"],
     )?;
     let mut local_orbitals = Vec::with_capacity(n_lo);
-    let mut seen = vec![false; n_lo];
     for lo in 0..n_lo {
-        let row = require_nonnegative_index("local_orbital_row_index", row_index[lo])?;
-        if row < n_pw || row >= basis_dimension {
-            return Err(ValidationError::InvalidValue {
-                path: format!("{}/basis/local_orbital_row_index[{lo}]", group.name()),
-                expected: format!("in [{n_pw}, {basis_dimension})"),
-                actual: row.to_string(),
-            }
-            .into());
-        }
-        let slot = row - n_pw;
-        if seen[slot] {
-            return Err(ValidationError::Duplicate {
-                path: format!("{}/basis/local_orbital_row_index", group.name()),
-                key: row.to_string(),
-            }
-            .into());
-        }
-        seen[slot] = true;
-        let ordinal = require_nonnegative_index("local_orbital_ordinal", ordinal[lo])?;
-        let radial = require_nonnegative_index("local_orbital_radial_n", radial_n[lo])?;
-        if radial != 2 + ordinal {
-            return Err(ValidationError::InvalidValue {
-                path: format!("{}/basis/local_orbital_radial_n[{lo}]", group.name()),
-                expected: format!("2 + ordinal = {}", 2 + ordinal),
-                actual: radial.to_string(),
-            }
-            .into());
-        }
         local_orbitals.push(ScalarLocalOrbitalRowV1 {
-            row_index: row,
+            row_index: require_nonnegative_index("local_orbital_row_index", row_index[lo])?,
             site: require_nonnegative_index("local_orbital_site", site[lo])?,
             l: l[lo],
             m: m[lo],
-            ordinal,
-            radial_n: radial,
+            ordinal: require_nonnegative_index("local_orbital_ordinal", ordinal[lo])?,
+            radial_n: require_nonnegative_index("local_orbital_radial_n", radial_n[lo])?,
         });
     }
     Ok(ScalarOrbitalKRecordV1 {

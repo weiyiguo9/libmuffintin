@@ -10,6 +10,7 @@ mod channel_token;
 mod error;
 mod input;
 mod mldump_header;
+mod mldump_write;
 mod q_mesh;
 mod runner;
 mod scalar_coqui_cholesky;

@@ -514,12 +514,7 @@ fn validate_products_owned(
         products.q_records.len(),
     )?;
     for (site, record) in products.sites.iter().enumerate() {
-        let n_radial_samples = header
-            .geometry
-            .sites
-            .get(record.site_index)
-            .map(|geometry| geometry.radial_mesh.point_count)
-            .unwrap_or(0);
+        let n_radial_samples = header.geometry.sites[site].radial_mesh.point_count;
         validate_site_ref(
             header,
             site,
