@@ -5,7 +5,8 @@
 //! deliberately a separate format for materialized integration grids and is
 //! never embedded in a snapshot. [`MldumpFileV1`] is the libmuffintin-owned
 //! MLDUMP v1 HDF5 schema; it is not CoQui-native or SPEX-native. Populated
-//! scalar files are written through [`ScalarMldumpStreamV1`].
+//! files are written through [`ScalarMldumpStreamV1`] or
+//! [`SpinorMldumpStreamV1`].
 
 mod error;
 mod grid;
@@ -23,22 +24,28 @@ pub use mldump::{
     ComplexF64V1, MLDUMP_CORE_EMPTY_NOT_FITTED, MLDUMP_INTERSTITIAL_SENTINEL,
     MLDUMP_OCCUPATIONS_NOT_EXPORTED, MLDUMP_PAIR_ORDER_K_LEFT_RIGHT,
     MLDUMP_PARENT_REGION_INTERSTITIAL, MLDUMP_PARENT_REGION_MUFFIN_TIN, MLDUMP_RADIAL_KIND_CORE,
-    MLDUMP_RADIAL_KIND_VALENCE, MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON, MLDUMP_SCHEMA_NAME,
-    MLDUMP_SCHEMA_VERSION, MLDUMP_STATUS_ABSENT_NOT_COMPUTED, MLDUMP_STATUS_PRESENT,
-    MLDUMP_THC_ENGINE_PIVOTED_CHOLESKY, MLDUMP_THC_ENGINE_QRCP, MLDUMP_THC_STRATEGY_ALL_QL2,
-    MLDUMP_UNIT_ENERGY, MLDUMP_UNIT_G_UMKLAPP, MLDUMP_UNIT_INVERSE_LENGTH, MLDUMP_UNIT_K_Q,
-    MLDUMP_UNIT_LENGTH, MLDUMP_UNIT_VOLUME, MldumpExchangeStatusesV1, MldumpFileV1,
+    MLDUMP_RADIAL_KIND_VALENCE, MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON,
+    MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION, MLDUMP_SCHEMA_NAME, MLDUMP_SCHEMA_VERSION,
+    MLDUMP_STATUS_ABSENT_NOT_COMPUTED, MLDUMP_STATUS_PRESENT, MLDUMP_THC_ENGINE_PIVOTED_CHOLESKY,
+    MLDUMP_THC_ENGINE_QRCP, MLDUMP_THC_STRATEGY_ALL_QL2, MLDUMP_UNIT_ENERGY, MLDUMP_UNIT_G_UMKLAPP,
+    MLDUMP_UNIT_INVERSE_LENGTH, MLDUMP_UNIT_K_Q, MLDUMP_UNIT_LENGTH, MLDUMP_UNIT_VOLUME,
+    MldumpCoulombBeginV1, MldumpCoulombGammaRefV1, MldumpCoulombGammaV1, MldumpCoulombQRecordRefV1,
+    MldumpCoulombQRecordV1, MldumpCoulombV1, MldumpExchangeStatusesV1, MldumpFileV1,
     MldumpGeometryV1, MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1,
-    MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1, MldumpStatus, MldumpWriterV1,
-    ScalarApwSiteMatchRefV1, ScalarApwSiteMatchV1, ScalarCoulombBeginV1, ScalarCoulombGammaRefV1,
-    ScalarCoulombGammaV1, ScalarCoulombQRecordRefV1, ScalarCoulombQRecordV1, ScalarCoulombV1,
-    ScalarLocalOrbitalRowV1, ScalarLocalOrbitalTableRefV1, ScalarMldumpStreamV1, ScalarMldumpV1,
-    ScalarOrbitalKRecordV1, ScalarOrbitalKRefV1, ScalarOrbitalSpinV1, ScalarOrbitalsBeginV1,
-    ScalarOrbitalsV1, ScalarProductQRecordRefV1, ScalarProductQRecordV1, ScalarProductSiteRefV1,
-    ScalarProductSiteV1, ScalarProductsBeginV1, ScalarProductsV1, ScalarThcBeginV1,
-    ScalarThcParentGridRefV1, ScalarThcParentGridV1, ScalarThcQRecordRefV1, ScalarThcQRecordV1,
-    ScalarThcResidualV1, ScalarThcSelectionRefV1, ScalarThcSelectionV1, ScalarThcV1,
-    ScalarThcVertexTableRefV1, ScalarThcVertexV1, read_mldump_v1,
+    MldumpPayloadV1, MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1, MldumpStatus,
+    MldumpThcBeginV1, MldumpThcParentGridRefV1, MldumpThcParentGridV1, MldumpThcQRecordRefV1,
+    MldumpThcQRecordV1, MldumpThcResidualV1, MldumpThcSelectionRefV1, MldumpThcSelectionV1,
+    MldumpThcV1, MldumpThcVertexTableRefV1, MldumpThcVertexV1, MldumpWriterV1,
+    ScalarApwSiteMatchRefV1, ScalarApwSiteMatchV1, ScalarLocalOrbitalRowV1,
+    ScalarLocalOrbitalTableRefV1, ScalarMldumpStreamV1, ScalarMldumpV1, ScalarOrbitalKRecordV1,
+    ScalarOrbitalKRefV1, ScalarOrbitalSpinV1, ScalarOrbitalsBeginV1, ScalarOrbitalsV1,
+    ScalarProductQRecordRefV1, ScalarProductQRecordV1, ScalarProductSiteRefV1, ScalarProductSiteV1,
+    ScalarProductsBeginV1, ScalarProductsV1, SpinorLocalOrbitalRowV1, SpinorLocalOrbitalTableRefV1,
+    SpinorMldumpStreamV1, SpinorMldumpV1, SpinorOrbitalKRecordV1, SpinorOrbitalKRefV1,
+    SpinorOrbitalsBeginV1, SpinorOrbitalsV1, SpinorPauliRowMapRefV1, SpinorPauliRowMapV1,
+    SpinorProductQRecordRefV1, SpinorProductQRecordV1, SpinorProductSiteRefV1, SpinorProductSiteV1,
+    SpinorProductsBeginV1, SpinorProductsV1, SpinorProjectionCoordV1, SpinorSiteMatchRefV1,
+    SpinorSiteMatchV1, read_mldump_v1,
 };
 pub use snapshot::{
     AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, ExponentialMeshSpecV1,

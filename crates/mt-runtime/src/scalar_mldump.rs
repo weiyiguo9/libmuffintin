@@ -9,11 +9,11 @@ use muffintin_io::{
     IoError, MLDUMP_INTERSTITIAL_SENTINEL, MLDUMP_PARENT_REGION_INTERSTITIAL,
     MLDUMP_PARENT_REGION_MUFFIN_TIN, MLDUMP_RADIAL_KIND_VALENCE,
     MLDUMP_THC_ENGINE_PIVOTED_CHOLESKY, MLDUMP_THC_ENGINE_QRCP, MLDUMP_THC_STRATEGY_ALL_QL2,
-    MldumpHeaderV1, MldumpWriterV1, ScalarApwSiteMatchRefV1, ScalarCoulombBeginV1,
-    ScalarCoulombGammaRefV1, ScalarCoulombQRecordRefV1, ScalarLocalOrbitalTableRefV1,
-    ScalarOrbitalKRefV1, ScalarOrbitalsBeginV1, ScalarProductQRecordRefV1, ScalarProductSiteRefV1,
-    ScalarProductsBeginV1, ScalarThcBeginV1, ScalarThcParentGridRefV1, ScalarThcQRecordRefV1,
-    ScalarThcSelectionRefV1, ScalarThcVertexTableRefV1, ValidationError,
+    MldumpCoulombBeginV1, MldumpCoulombGammaRefV1, MldumpCoulombQRecordRefV1, MldumpHeaderV1,
+    MldumpThcBeginV1, MldumpThcParentGridRefV1, MldumpThcQRecordRefV1, MldumpThcSelectionRefV1,
+    MldumpThcVertexTableRefV1, MldumpWriterV1, ScalarApwSiteMatchRefV1,
+    ScalarLocalOrbitalTableRefV1, ScalarOrbitalKRefV1, ScalarOrbitalsBeginV1,
+    ScalarProductQRecordRefV1, ScalarProductSiteRefV1, ScalarProductsBeginV1, ValidationError,
 };
 use muffintin_lapw::{CompiledBasis, Provenance};
 use muffintin_tensor::DenseEigenvectors;
@@ -508,8 +508,8 @@ fn write_thc(
         RankPolicy::Threshold { n_max, .. } => n_max,
     };
     let grid_provenance = provenance_key(thc.grid.provenance());
-    stream.begin_thc(&ScalarThcBeginV1 {
-        parent_grid: ScalarThcParentGridRefV1 {
+    stream.begin_thc(&MldumpThcBeginV1 {
+        parent_grid: MldumpThcParentGridRefV1 {
             n_points,
             coordinates: &coordinates,
             weights: &weights,
@@ -523,7 +523,7 @@ fn write_thc(
         requested_rank,
         effective_rank: thc.effective_rank,
         n_candidates,
-        selection: ScalarThcSelectionRefV1 {
+        selection: MldumpThcSelectionRefV1 {
             pivots: &pivots,
             points: &points,
         },
@@ -557,14 +557,14 @@ fn write_thc(
             coefficients.extend(flatten_complex(vertex.coefficients()));
         }
         let layout_provenance = provenance_key(&record.auxiliary.provenance);
-        stream.write_thc_q(&ScalarThcQRecordRefV1 {
+        stream.write_thc_q(&MldumpThcQRecordRefV1 {
             q_index: record.q_index,
             aux_dimension: record.fit.n_mu,
             layout_provenance: &layout_provenance,
             zeta: &zeta,
             residual_l2_all_frobenius: record.fit.l2_all.frobenius,
             residual_l2_all_column_max: record.fit.l2_all.column_max,
-            vertices: ScalarThcVertexTableRefV1 {
+            vertices: MldumpThcVertexTableRefV1 {
                 n_vertex,
                 column: &column,
                 k_left_right: &k_left_right,
@@ -580,7 +580,7 @@ fn write_coulomb(
     stream: &mut muffintin_io::ScalarMldumpStreamV1,
     coulomb: &ScalarCoulombResult,
 ) -> Result<(), ScalarMldumpError> {
-    stream.begin_coulomb(&ScalarCoulombBeginV1 {
+    stream.begin_coulomb(&MldumpCoulombBeginV1 {
         lexp: coulomb.context.request.lexp(),
         interpolation_l_max: coulomb.context.projection.l_max,
         interpolation_pw_cutoff: coulomb.context.projection.pw_cutoff.get(),
@@ -595,14 +595,14 @@ fn write_coulomb(
             )
         });
         let layout_provenance = provenance_key(&record.auxiliary.provenance);
-        stream.write_coulomb_q(&ScalarCoulombQRecordRefV1 {
+        stream.write_coulomb_q(&MldumpCoulombQRecordRefV1 {
             q_index: record.q_index,
             aux_dimension: record.operator.dimension(),
             layout_provenance: &layout_provenance,
             body: &body,
             gamma: gamma_scratch
                 .as_ref()
-                .map(|(subtracted, prefactor, coeffs)| ScalarCoulombGammaRefV1 {
+                .map(|(subtracted, prefactor, coeffs)| MldumpCoulombGammaRefV1 {
                     spherical_average_subtracted: *subtracted,
                     head_prefactor: *prefactor,
                     constant_coefficients: coeffs,

@@ -3,7 +3,7 @@
 //! This is a libmuffintin-owned, inspectable HDF5 schema. It is not
 //! CoQui-native or SPEX-native. Runtime, mixed-product, THC, and Coulomb
 //! types stay out of this crate; runtime materializes those objects through
-//! [`ScalarMldumpStreamV1`].
+//! [`ScalarMldumpStreamV1`] or [`SpinorMldumpStreamV1`].
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -14,10 +14,22 @@ use hdf5_metno::{Container, Dataset, File, Group, H5Type, Location};
 
 use crate::error::{IoError, ValidationError, finite, nonempty, positive};
 
+mod response;
 mod scalar_orbitals;
 mod scalar_products;
-mod scalar_response;
+mod spinor_orbitals;
+mod spinor_payload;
+mod spinor_products;
 
+pub use response::{
+    ComplexF64V1, MLDUMP_INTERSTITIAL_SENTINEL, MLDUMP_PARENT_REGION_INTERSTITIAL,
+    MLDUMP_PARENT_REGION_MUFFIN_TIN, MLDUMP_THC_ENGINE_PIVOTED_CHOLESKY, MLDUMP_THC_ENGINE_QRCP,
+    MLDUMP_THC_STRATEGY_ALL_QL2, MldumpCoulombBeginV1, MldumpCoulombGammaRefV1,
+    MldumpCoulombGammaV1, MldumpCoulombQRecordRefV1, MldumpCoulombQRecordV1, MldumpCoulombV1,
+    MldumpThcBeginV1, MldumpThcParentGridRefV1, MldumpThcParentGridV1, MldumpThcQRecordRefV1,
+    MldumpThcQRecordV1, MldumpThcResidualV1, MldumpThcSelectionRefV1, MldumpThcSelectionV1,
+    MldumpThcV1, MldumpThcVertexTableRefV1, MldumpThcVertexV1, ScalarMldumpV1,
+};
 pub use scalar_orbitals::{
     MLDUMP_OCCUPATIONS_NOT_EXPORTED, MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON,
     ScalarApwSiteMatchRefV1, ScalarApwSiteMatchV1, ScalarLocalOrbitalRowV1,
@@ -29,14 +41,16 @@ pub use scalar_products::{
     MLDUMP_RADIAL_KIND_VALENCE, ScalarProductQRecordRefV1, ScalarProductQRecordV1,
     ScalarProductSiteRefV1, ScalarProductSiteV1, ScalarProductsBeginV1, ScalarProductsV1,
 };
-pub use scalar_response::{
-    ComplexF64V1, MLDUMP_INTERSTITIAL_SENTINEL, MLDUMP_PARENT_REGION_INTERSTITIAL,
-    MLDUMP_PARENT_REGION_MUFFIN_TIN, MLDUMP_THC_ENGINE_PIVOTED_CHOLESKY, MLDUMP_THC_ENGINE_QRCP,
-    MLDUMP_THC_STRATEGY_ALL_QL2, ScalarCoulombBeginV1, ScalarCoulombGammaRefV1,
-    ScalarCoulombGammaV1, ScalarCoulombQRecordRefV1, ScalarCoulombQRecordV1, ScalarCoulombV1,
-    ScalarMldumpV1, ScalarThcBeginV1, ScalarThcParentGridRefV1, ScalarThcParentGridV1,
-    ScalarThcQRecordRefV1, ScalarThcQRecordV1, ScalarThcResidualV1, ScalarThcSelectionRefV1,
-    ScalarThcSelectionV1, ScalarThcV1, ScalarThcVertexTableRefV1, ScalarThcVertexV1,
+pub use spinor_orbitals::{
+    MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION, SpinorLocalOrbitalRowV1,
+    SpinorLocalOrbitalTableRefV1, SpinorOrbitalKRecordV1, SpinorOrbitalKRefV1,
+    SpinorOrbitalsBeginV1, SpinorOrbitalsV1, SpinorPauliRowMapRefV1, SpinorPauliRowMapV1,
+    SpinorProjectionCoordV1, SpinorSiteMatchRefV1, SpinorSiteMatchV1,
+};
+pub use spinor_payload::{SpinorMldumpStreamV1, SpinorMldumpV1};
+pub use spinor_products::{
+    SpinorProductQRecordRefV1, SpinorProductQRecordV1, SpinorProductSiteRefV1, SpinorProductSiteV1,
+    SpinorProductsBeginV1, SpinorProductsV1,
 };
 
 /// Stable schema name written on every MLDUMP file.
@@ -267,12 +281,31 @@ pub struct MldumpHeaderV1 {
     pub mesh: MldumpMeshV1,
 }
 
-/// Owned MLDUMP v1 file: header, optional scalar payload, and exchange statuses.
+/// Owned MLDUMP v1 file: header, representation payload, and exchange statuses.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MldumpFileV1 {
     pub header: MldumpHeaderV1,
-    pub scalar: Option<ScalarMldumpV1>,
+    pub payload: MldumpPayloadV1,
     pub exchange: MldumpExchangeStatusesV1,
+}
+
+/// Representation-discriminated MLDUMP v1 payload.
+///
+/// `/orbitals/@representation` is the authoritative branch tag. Header-only
+/// files have all four payload groups absent. Scalar files have all four
+/// groups present: companion `/products`,`/thc`,`/coulomb` representation
+/// attrs are either all absent (published B1/B2) or all
+/// `scalar_koelling_harmon`. Spinor files require those three attrs present
+/// and equal to `spinor_full_first_variation`. The writer still emits all
+/// four tags.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MldumpPayloadV1 {
+    /// All of `/orbitals`, `/products`, `/thc`, and `/coulomb` are absent.
+    HeaderOnly,
+    /// Scalar Koelling–Harmon payload.
+    Scalar(ScalarMldumpV1),
+    /// Full first-variation spinor payload.
+    Spinor(SpinorMldumpV1),
 }
 
 /// Stateful writer for a v1 file. Header-only files call [`Self::finish`].
@@ -291,10 +324,10 @@ pub struct ScalarMldumpStreamV1 {
     file: File,
     header: MldumpHeaderV1,
     phase: ScalarStreamPhase,
-    orbital_summary: Option<scalar_response::OrbitalAlignmentSummary>,
-    product_summary: Option<scalar_response::ProductAlignmentSummary>,
-    thc_summary: Option<scalar_response::ThcAlignmentSummary>,
-    coulomb_summary: Option<scalar_response::CoulombAlignmentSummary>,
+    orbital_summary: Option<response::OrbitalAlignmentSummary>,
+    product_summary: Option<response::ProductAlignmentSummary>,
+    thc_summary: Option<response::ThcAlignmentSummary>,
+    coulomb_summary: Option<response::CoulombAlignmentSummary>,
     orbitals_band_window: usize,
     orbitals_spin_count: usize,
     products_n_site: usize,
@@ -545,10 +578,16 @@ impl MldumpWriterV1 {
         })
     }
 
-    /// Close a header-only writer. Reserved scalar groups stay
+    /// Close a header-only writer. Reserved payload groups stay
     /// `absent_not_computed`.
     pub fn finish(self) -> Result<(), IoError> {
         Ok(())
+    }
+
+    /// Start a streaming spinor session. All four sections must then be written
+    /// record-wise before [`SpinorMldumpStreamV1::finish`].
+    pub fn begin_spinor(self) -> Result<SpinorMldumpStreamV1, IoError> {
+        Ok(SpinorMldumpStreamV1::new(self.file, self.header))
     }
 }
 
@@ -562,7 +601,7 @@ impl ScalarMldumpStreamV1 {
         scalar_orbitals::begin_scalar_orbitals(&self.file, begin)?;
         self.orbitals_band_window = begin.band_window_count;
         self.orbitals_spin_count = begin.spin_count;
-        self.orbital_summary = Some(scalar_response::OrbitalAlignmentSummary::new(
+        self.orbital_summary = Some(response::OrbitalAlignmentSummary::new(
             begin.spin_count,
             self.header.mesh.k_points.len(),
             begin.band_window_count,
@@ -648,7 +687,7 @@ impl ScalarMldumpStreamV1 {
         }
         scalar_products::begin_scalar_products(&self.file, &self.header, begin)?;
         self.products_n_site = self.header.geometry.sites.len();
-        self.product_summary = Some(scalar_response::ProductAlignmentSummary::new(
+        self.product_summary = Some(response::ProductAlignmentSummary::new(
             begin.n_k,
             begin.n_orb,
         ));
@@ -761,7 +800,7 @@ impl ScalarMldumpStreamV1 {
     }
 
     /// Open `/thc` and write the shared parent grid and selection.
-    pub fn begin_thc(&mut self, begin: &ScalarThcBeginV1<'_>) -> Result<(), IoError> {
+    pub fn begin_thc(&mut self, begin: &MldumpThcBeginV1<'_>) -> Result<(), IoError> {
         self.require_idle("begin_thc")?;
         if self.thc_summary.is_some() {
             return Err(section_already_written("/thc"));
@@ -774,16 +813,21 @@ impl ScalarMldumpStreamV1 {
             }
             .into());
         }
-        scalar_response::begin_scalar_thc(&self.file, &self.header, begin)?;
+        response::begin_mldump_thc(
+            &self.file,
+            &self.header,
+            begin,
+            MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON,
+        )?;
         self.thc_n_parent = begin.parent_grid.n_points;
         self.thc_effective_rank = begin.effective_rank;
-        self.thc_summary = Some(scalar_response::ThcAlignmentSummary::new());
+        self.thc_summary = Some(response::ThcAlignmentSummary::new());
         self.phase = ScalarStreamPhase::Thc { next_q: 0 };
         Ok(())
     }
 
     /// Write one THC $q$ record immediately.
-    pub fn write_thc_q(&mut self, record: &ScalarThcQRecordRefV1<'_>) -> Result<(), IoError> {
+    pub fn write_thc_q(&mut self, record: &MldumpThcQRecordRefV1<'_>) -> Result<(), IoError> {
         let next_q = match self.phase {
             ScalarStreamPhase::Thc { next_q } => next_q,
             _ => return Err(stream_phase_error("write_thc_q", "thc section in progress")),
@@ -808,7 +852,7 @@ impl ScalarMldumpStreamV1 {
                 .into());
             }
         };
-        scalar_response::write_scalar_thc_q(
+        response::write_mldump_thc_q(
             &self.file,
             next_q,
             self.thc_n_parent,
@@ -843,13 +887,17 @@ impl ScalarMldumpStreamV1 {
     }
 
     /// Open `/coulomb` and write request/projection attributes.
-    pub fn begin_coulomb(&mut self, begin: &ScalarCoulombBeginV1) -> Result<(), IoError> {
+    pub fn begin_coulomb(&mut self, begin: &MldumpCoulombBeginV1) -> Result<(), IoError> {
         self.require_idle("begin_coulomb")?;
         if self.coulomb_summary.is_some() {
             return Err(section_already_written("/coulomb"));
         }
-        scalar_response::begin_scalar_coulomb(&self.file, begin)?;
-        self.coulomb_summary = Some(scalar_response::CoulombAlignmentSummary::new());
+        response::begin_mldump_coulomb(
+            &self.file,
+            begin,
+            MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON,
+        )?;
+        self.coulomb_summary = Some(response::CoulombAlignmentSummary::new());
         self.phase = ScalarStreamPhase::Coulomb { next_q: 0 };
         Ok(())
     }
@@ -857,7 +905,7 @@ impl ScalarMldumpStreamV1 {
     /// Write one Coulomb $q$ record immediately.
     pub fn write_coulomb_q(
         &mut self,
-        record: &ScalarCoulombQRecordRefV1<'_>,
+        record: &MldumpCoulombQRecordRefV1<'_>,
     ) -> Result<(), IoError> {
         let next_q = match self.phase {
             ScalarStreamPhase::Coulomb { next_q } => next_q,
@@ -881,7 +929,7 @@ impl ScalarMldumpStreamV1 {
             }
             .into());
         }
-        scalar_response::write_scalar_coulomb_q(&self.file, next_q, record)?;
+        response::write_mldump_coulomb_q(&self.file, next_q, record)?;
         if let Some(summary) = self.coulomb_summary.as_mut() {
             summary.push_q(record);
         }
@@ -922,13 +970,7 @@ impl ScalarMldumpStreamV1 {
             self.coulomb_summary.as_ref(),
         ) {
             (Some(orbitals), Some(products), Some(thc), Some(coulomb)) => {
-                scalar_response::validate_scalar_alignment(
-                    &self.header,
-                    orbitals,
-                    products,
-                    thc,
-                    coulomb,
-                )
+                response::validate_scalar_alignment(&self.header, orbitals, products, thc, coulomb)
             }
             _ => Err(ValidationError::InvalidValue {
                 path: "scalar".to_owned(),
@@ -948,16 +990,24 @@ impl ScalarMldumpStreamV1 {
     }
 }
 
-fn stream_phase_error(method: &str, expected: &str) -> IoError {
+pub(crate) fn stream_phase_error(method: &str, expected: &str) -> IoError {
+    stream_state_error("scalar", method, expected)
+}
+
+pub(crate) fn stream_state_error(path: &str, method: &str, expected: &str) -> IoError {
     ValidationError::InvalidValue {
-        path: "scalar".to_owned(),
+        path: path.to_owned(),
         expected: expected.to_owned(),
         actual: format!("{method} in unexpected session state"),
     }
     .into()
 }
 
-fn require_record_capacity(path: &str, next: usize, expected: usize) -> Result<(), IoError> {
+pub(crate) fn require_record_capacity(
+    path: &str,
+    next: usize,
+    expected: usize,
+) -> Result<(), IoError> {
     if next < expected {
         Ok(())
     } else {
@@ -970,7 +1020,7 @@ fn require_record_capacity(path: &str, next: usize, expected: usize) -> Result<(
     }
 }
 
-fn section_already_written(path: &str) -> IoError {
+pub(crate) fn section_already_written(path: &str) -> IoError {
     ValidationError::InvalidValue {
         path: path.to_owned(),
         expected: "section written at most once".to_owned(),
@@ -1025,38 +1075,18 @@ pub fn read_mldump_v1(path: impl AsRef<Path>) -> Result<MldumpFileV1, IoError> {
         .into_iter()
         .filter(|status| *status == MldumpStatus::Present)
         .count();
-    let scalar = match n_present {
+    let payload = match n_present {
         0 => {
             require_absent_status_and_payload(&file, GROUP_ORBITALS, orbitals_status)?;
             require_absent_status_and_payload(&file, GROUP_PRODUCTS, products_status)?;
             require_absent_status_and_payload(&file, GROUP_THC, thc_status)?;
             require_absent_status_and_payload(&file, GROUP_COULOMB, coulomb_status)?;
-            None
+            MldumpPayloadV1::HeaderOnly
         }
-        4 => {
-            let scalar = ScalarMldumpV1 {
-                orbitals: scalar_orbitals::read_scalar_orbitals(&file, &header)?,
-                products: scalar_products::read_scalar_products(&file, &header)?,
-                thc: scalar_response::read_scalar_thc(&file, &header)?,
-                coulomb: scalar_response::read_scalar_coulomb(&file, &header)?,
-            };
-            scalar_response::validate_owned_thc_vertex_identity(
-                scalar.products.n_k,
-                scalar.products.n_orb,
-                &scalar.thc,
-            )?;
-            scalar_response::validate_scalar_alignment(
-                &header,
-                &scalar_response::OrbitalAlignmentSummary::from_owned(&scalar.orbitals),
-                &scalar_response::ProductAlignmentSummary::from_owned(&scalar.products),
-                &scalar_response::ThcAlignmentSummary::from_owned(&scalar.thc),
-                &scalar_response::CoulombAlignmentSummary::from_owned(&scalar.coulomb),
-            )?;
-            Some(scalar)
-        }
+        4 => read_present_payload(&file, &header)?,
         _ => {
             return Err(ValidationError::InvalidValue {
-                path: "scalar".to_owned(),
+                path: "payload".to_owned(),
                 expected: "all four of /orbitals,/products,/thc,/coulomb present or all absent_not_computed"
                     .to_owned(),
                 actual: scalar_section_names(
@@ -1072,9 +1102,181 @@ pub fn read_mldump_v1(path: impl AsRef<Path>) -> Result<MldumpFileV1, IoError> {
 
     Ok(MldumpFileV1 {
         header,
-        scalar,
+        payload,
         exchange,
     })
+}
+
+fn read_present_payload(file: &File, header: &MldumpHeaderV1) -> Result<MldumpPayloadV1, IoError> {
+    let orbitals_group = file.group(GROUP_ORBITALS)?;
+    let products_group = file.group(GROUP_PRODUCTS)?;
+    let thc_group = file.group(GROUP_THC)?;
+    let coulomb_group = file.group(GROUP_COULOMB)?;
+    let representation = read_str_attr(&orbitals_group, "representation")?;
+    match representation.as_str() {
+        MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON => {
+            require_scalar_companion_representation(
+                &products_group,
+                &thc_group,
+                &coulomb_group,
+            )?;
+            let scalar = ScalarMldumpV1 {
+                orbitals: scalar_orbitals::read_scalar_orbitals(file, header)?,
+                products: scalar_products::read_scalar_products(file, header)?,
+                thc: response::read_mldump_thc(file, header, &representation)?,
+                coulomb: response::read_mldump_coulomb(file, header, &representation)?,
+            };
+            response::validate_owned_thc_vertex_identity(
+                scalar.products.n_k,
+                scalar.products.n_orb,
+                &scalar.thc,
+            )?;
+            response::validate_scalar_alignment(
+                header,
+                &response::OrbitalAlignmentSummary::from_owned(&scalar.orbitals),
+                &response::ProductAlignmentSummary::from_owned(&scalar.products),
+                &response::ThcAlignmentSummary::from_owned(&scalar.thc),
+                &response::CoulombAlignmentSummary::from_owned(&scalar.coulomb),
+            )?;
+            Ok(MldumpPayloadV1::Scalar(scalar))
+        }
+        MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION => {
+            require_spinor_companion_representation(
+                &products_group,
+                &thc_group,
+                &coulomb_group,
+            )?;
+            let spinor = SpinorMldumpV1 {
+                orbitals: spinor_orbitals::read_spinor_orbitals(file, header)?,
+                products: spinor_products::read_spinor_products(file, header)?,
+                thc: response::read_mldump_thc(file, header, &representation)?,
+                coulomb: response::read_mldump_coulomb(file, header, &representation)?,
+            };
+            response::validate_owned_thc_vertex_identity(
+                spinor.products.n_k,
+                spinor.products.n_orb,
+                &spinor.thc,
+            )?;
+            response::validate_payload_alignment(
+                header,
+                spinor.orbitals.band_window_count,
+                &response::ProductAlignmentSummary::from_q_bindings(
+                    spinor.products.n_k,
+                    spinor.products.n_orb,
+                    spinor
+                        .products
+                        .q_records
+                        .iter()
+                        .map(|record| response::ProductQAlignment {
+                            q_index: record.q_index,
+                            transfer_cartesian: record.transfer_cartesian,
+                            global_transfer: record.global_transfer,
+                        })
+                        .collect(),
+                ),
+                &response::ThcAlignmentSummary::from_owned(&spinor.thc),
+                &response::CoulombAlignmentSummary::from_owned(&spinor.coulomb),
+            )?;
+            Ok(MldumpPayloadV1::Spinor(spinor))
+        }
+        other => Err(ValidationError::InvalidValue {
+            path: "/orbitals/@representation".to_owned(),
+            expected: format!(
+                "{MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON} or {MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION}"
+            ),
+            actual: other.to_owned(),
+        }
+        .into()),
+    }
+}
+
+fn require_scalar_companion_representation(
+    products: &Group,
+    thc: &Group,
+    coulomb: &Group,
+) -> Result<(), IoError> {
+    let products_tag = read_optional_str_attr(products, "representation")?;
+    let thc_tag = read_optional_str_attr(thc, "representation")?;
+    let coulomb_tag = read_optional_str_attr(coulomb, "representation")?;
+    let companions = [
+        ("/products/@representation", products_tag.as_deref()),
+        ("/thc/@representation", thc_tag.as_deref()),
+        ("/coulomb/@representation", coulomb_tag.as_deref()),
+    ];
+    let present = companions.iter().filter(|(_, tag)| tag.is_some()).count();
+    if present == 0 {
+        return Ok(());
+    }
+    if present == 3 {
+        for (path, tag) in companions {
+            match tag {
+                Some(MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON) => {}
+                Some(actual) => {
+                    return Err(ValidationError::InvalidValue {
+                        path: path.to_owned(),
+                        expected: MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON.to_owned(),
+                        actual: actual.to_owned(),
+                    }
+                    .into());
+                }
+                None => {
+                    return Err(scalar_companion_mixture_error(&companions));
+                }
+            }
+        }
+        return Ok(());
+    }
+    Err(scalar_companion_mixture_error(&companions))
+}
+
+fn scalar_companion_mixture_error(companions: &[(&str, Option<&str>); 3]) -> IoError {
+    let (path, _) = companions
+        .iter()
+        .find(|(_, tag)| tag.is_none())
+        .copied()
+        .unwrap_or(companions[0]);
+    ValidationError::InvalidValue {
+        path: path.to_owned(),
+        expected: format!(
+            "all three companion representation attrs absent (published B1/B2) or all present as {MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON}"
+        ),
+        actual: format!(
+            "products={} thc={} coulomb={}",
+            companions[0].1.unwrap_or("absent"),
+            companions[1].1.unwrap_or("absent"),
+            companions[2].1.unwrap_or("absent"),
+        ),
+    }
+    .into()
+}
+
+fn require_spinor_companion_representation(
+    products: &Group,
+    thc: &Group,
+    coulomb: &Group,
+) -> Result<(), IoError> {
+    for group in [products, thc, coulomb] {
+        match read_optional_str_attr(group, "representation")? {
+            Some(actual) if actual == MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION => {}
+            Some(actual) => {
+                return Err(ValidationError::InvalidValue {
+                    path: format!("{}/@representation", group.name()),
+                    expected: MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION.to_owned(),
+                    actual,
+                }
+                .into());
+            }
+            None => {
+                return Err(ValidationError::InvalidValue {
+                    path: format!("{}/@representation", group.name()),
+                    expected: MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION.to_owned(),
+                    actual: "absent".to_owned(),
+                }
+                .into());
+            }
+        }
+    }
+    Ok(())
 }
 
 fn scalar_section_names(orbitals: bool, products: bool, thc: bool, coulomb: bool) -> String {
@@ -1188,6 +1390,16 @@ pub(crate) fn write_str_attr(object: &Location, name: &str, value: &str) -> Resu
 pub(crate) fn read_str_attr(object: &Location, name: &str) -> Result<String, IoError> {
     let value: VarLenUnicode = object.attr(name)?.read_scalar()?;
     Ok(value.as_str().to_owned())
+}
+
+pub(crate) fn read_optional_str_attr(
+    object: &Location,
+    name: &str,
+) -> Result<Option<String>, IoError> {
+    if !object.attr_names()?.iter().any(|attr| attr == name) {
+        return Ok(None);
+    }
+    Ok(Some(read_str_attr(object, name)?))
 }
 
 pub(crate) fn write_status(group: &Group, status: MldumpStatus) -> Result<(), IoError> {
@@ -1995,6 +2207,23 @@ pub(crate) fn require_str_attr(group: &Group, name: &str, expected: &str) -> Res
             actual,
         }
         .into())
+    }
+}
+
+pub(crate) fn require_str_attr_if_present(
+    group: &Group,
+    name: &str,
+    expected: &str,
+) -> Result<(), IoError> {
+    match read_optional_str_attr(group, name)? {
+        None => Ok(()),
+        Some(actual) if actual == expected => Ok(()),
+        Some(actual) => Err(ValidationError::InvalidValue {
+            path: format!("{}/@{name}", group.name()),
+            expected: expected.to_owned(),
+            actual,
+        }
+        .into()),
     }
 }
 

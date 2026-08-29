@@ -10,14 +10,14 @@ use muffintin_io::{
     MLDUMP_OCCUPATIONS_NOT_EXPORTED, MLDUMP_PAIR_ORDER_K_LEFT_RIGHT,
     MLDUMP_PARENT_REGION_INTERSTITIAL, MLDUMP_PARENT_REGION_MUFFIN_TIN,
     MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON, MLDUMP_STATUS_ABSENT_NOT_COMPUTED,
-    MLDUMP_STATUS_PRESENT, MLDUMP_THC_ENGINE_QRCP, MLDUMP_THC_STRATEGY_ALL_QL2, MldumpGeometryV1,
-    MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1, MldumpQEntryV1,
-    MldumpRadialMeshV1, MldumpSiteV1, MldumpWriterV1, ScalarApwSiteMatchRefV1,
-    ScalarCoulombBeginV1, ScalarCoulombGammaRefV1, ScalarCoulombQRecordRefV1,
-    ScalarLocalOrbitalTableRefV1, ScalarMldumpStreamV1, ScalarOrbitalKRefV1, ScalarOrbitalsBeginV1,
-    ScalarProductQRecordRefV1, ScalarProductSiteRefV1, ScalarProductsBeginV1, ScalarThcBeginV1,
-    ScalarThcParentGridRefV1, ScalarThcQRecordRefV1, ScalarThcSelectionRefV1,
-    ScalarThcVertexTableRefV1, ValidationError, read_mldump_v1,
+    MLDUMP_STATUS_PRESENT, MLDUMP_THC_ENGINE_QRCP, MLDUMP_THC_STRATEGY_ALL_QL2,
+    MldumpCoulombBeginV1, MldumpCoulombGammaRefV1, MldumpCoulombQRecordRefV1, MldumpGeometryV1,
+    MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1, MldumpPayloadV1,
+    MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1, MldumpThcBeginV1, MldumpThcParentGridRefV1,
+    MldumpThcQRecordRefV1, MldumpThcSelectionRefV1, MldumpThcVertexTableRefV1, MldumpWriterV1,
+    ScalarApwSiteMatchRefV1, ScalarLocalOrbitalTableRefV1, ScalarMldumpStreamV1,
+    ScalarOrbitalKRefV1, ScalarOrbitalsBeginV1, ScalarProductQRecordRefV1, ScalarProductSiteRefV1,
+    ScalarProductsBeginV1, ValidationError, read_mldump_v1,
 };
 
 fn fixture_path(name: &str) -> PathBuf {
@@ -372,28 +372,28 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
         },
     ];
     let thc_qs = [
-        ScalarThcQRecordRefV1 {
+        MldumpThcQRecordRefV1 {
             q_index: 0,
             aux_dimension: 2,
             layout_provenance: "aux-layout-q0",
             zeta: &zeta0,
             residual_l2_all_frobenius: 1.0e-8,
             residual_l2_all_column_max: 2.0e-8,
-            vertices: ScalarThcVertexTableRefV1 {
+            vertices: MldumpThcVertexTableRefV1 {
                 n_vertex: 2,
                 column: &vertex_col,
                 k_left_right: &vertex_klr,
                 coefficients: &vertex_c0,
             },
         },
-        ScalarThcQRecordRefV1 {
+        MldumpThcQRecordRefV1 {
             q_index: 1,
             aux_dimension: 2,
             layout_provenance: "aux-layout-q1",
             zeta: &zeta1,
             residual_l2_all_frobenius: 3.0e-8,
             residual_l2_all_column_max: 4.0e-8,
-            vertices: ScalarThcVertexTableRefV1 {
+            vertices: MldumpThcVertexTableRefV1 {
                 n_vertex: 2,
                 column: &vertex_col,
                 k_left_right: &vertex_klr,
@@ -402,18 +402,18 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
         },
     ];
     let coulomb_qs = [
-        ScalarCoulombQRecordRefV1 {
+        MldumpCoulombQRecordRefV1 {
             q_index: 0,
             aux_dimension: 2,
             layout_provenance: "aux-layout-q0",
             body: &body0,
-            gamma: Some(ScalarCoulombGammaRefV1 {
+            gamma: Some(MldumpCoulombGammaRefV1 {
                 spherical_average_subtracted: true,
                 head_prefactor: 4.0 * PI,
                 constant_coefficients: &gamma_c,
             }),
         },
-        ScalarCoulombQRecordRefV1 {
+        MldumpCoulombQRecordRefV1 {
             q_index: 1,
             aux_dimension: 2,
             layout_provenance: "aux-layout-q1",
@@ -440,8 +440,8 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
             },
             &product_sites,
             &product_qs,
-            &ScalarThcBeginV1 {
-                parent_grid: ScalarThcParentGridRefV1 {
+            &MldumpThcBeginV1 {
+                parent_grid: MldumpThcParentGridRefV1 {
                     n_points: 4,
                     coordinates: &parent_xyz,
                     weights: &parent_w,
@@ -455,13 +455,13 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
                 requested_rank: 2,
                 effective_rank: 2,
                 n_candidates: 3,
-                selection: ScalarThcSelectionRefV1 {
+                selection: MldumpThcSelectionRefV1 {
                     pivots: &pivots,
                     points: &points,
                 },
             },
             &thc_qs,
-            &ScalarCoulombBeginV1 {
+            &MldumpCoulombBeginV1 {
                 lexp: 4,
                 interpolation_l_max: 2,
                 interpolation_pw_cutoff: 2.0,
@@ -473,7 +473,9 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
 
     let read = read_mldump_v1(&path).unwrap();
     assert_eq!(read.header, header);
-    let scalar = read.scalar.expect("scalar payload");
+    let muffintin_io::MldumpPayloadV1::Scalar(scalar) = read.payload else {
+        panic!("expected scalar payload, got {:?}", read.payload);
+    };
     assert_eq!(scalar.orbitals.spin_count, 2);
     assert_eq!(scalar.orbitals.band_window_start, 0);
     assert_eq!(scalar.orbitals.band_window_count, 2);
@@ -600,6 +602,20 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
         representation.as_str(),
         MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON
     );
+    for group in ["products", "thc", "coulomb"] {
+        let tag: VarLenUnicode = file
+            .group(group)
+            .unwrap()
+            .attr("representation")
+            .unwrap()
+            .read_scalar()
+            .unwrap();
+        assert_eq!(
+            tag.as_str(),
+            MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON,
+            "{group}"
+        );
+    }
     let occupations: VarLenUnicode = file
         .group("orbitals")
         .unwrap()
@@ -769,28 +785,28 @@ fn mldump_scalar_v1_rejects_aux_vertex_shape_before_thc_write() {
     let bad_coefficients = fill_complex(3, 0.0);
     let good_q1_coeff = fill_complex(2, 0.0);
     let bad_qs = [
-        ScalarThcQRecordRefV1 {
+        MldumpThcQRecordRefV1 {
             q_index: 0,
             aux_dimension: 2,
             layout_provenance: "aux-layout-q0",
             zeta: &zeta,
             residual_l2_all_frobenius: 0.0,
             residual_l2_all_column_max: 0.0,
-            vertices: ScalarThcVertexTableRefV1 {
+            vertices: MldumpThcVertexTableRefV1 {
                 n_vertex: 1,
                 column: &vertex_col,
                 k_left_right: &vertex_klr,
                 coefficients: &bad_coefficients,
             },
         },
-        ScalarThcQRecordRefV1 {
+        MldumpThcQRecordRefV1 {
             q_index: 1,
             aux_dimension: 2,
             layout_provenance: "aux-layout-q1",
             zeta: &zeta,
             residual_l2_all_frobenius: 0.0,
             residual_l2_all_column_max: 0.0,
-            vertices: ScalarThcVertexTableRefV1 {
+            vertices: MldumpThcVertexTableRefV1 {
                 n_vertex: 1,
                 column: &vertex_col,
                 k_left_right: &vertex_klr,
@@ -804,8 +820,8 @@ fn mldump_scalar_v1_rejects_aux_vertex_shape_before_thc_write() {
         .unwrap();
     write_neutral_products(&mut stream).unwrap();
     stream
-        .begin_thc(&ScalarThcBeginV1 {
-            parent_grid: ScalarThcParentGridRefV1 {
+        .begin_thc(&MldumpThcBeginV1 {
+            parent_grid: MldumpThcParentGridRefV1 {
                 n_points: 4,
                 coordinates: &parent_xyz,
                 weights: &parent_w,
@@ -819,7 +835,7 @@ fn mldump_scalar_v1_rejects_aux_vertex_shape_before_thc_write() {
             requested_rank: 2,
             effective_rank: 2,
             n_candidates: 3,
-            selection: ScalarThcSelectionRefV1 {
+            selection: MldumpThcSelectionRefV1 {
                 pivots: &pivots,
                 points: &points,
             },
@@ -1071,10 +1087,10 @@ fn write_populated_scalar(
     products: &ScalarProductsBeginV1<'_>,
     sites: &[ScalarProductSiteRefV1<'_>],
     product_qs: &[ScalarProductQRecordRefV1<'_>],
-    thc: &ScalarThcBeginV1<'_>,
-    thc_qs: &[ScalarThcQRecordRefV1<'_>],
-    coulomb: &ScalarCoulombBeginV1,
-    coulomb_qs: &[ScalarCoulombQRecordRefV1<'_>],
+    thc: &MldumpThcBeginV1<'_>,
+    thc_qs: &[MldumpThcQRecordRefV1<'_>],
+    coulomb: &MldumpCoulombBeginV1,
+    coulomb_qs: &[MldumpCoulombQRecordRefV1<'_>],
 ) -> Result<(), IoError> {
     let mut stream = MldumpWriterV1::create(path, header)?.begin_scalar()?;
     stream.begin_orbitals(&ScalarOrbitalsBeginV1 {
@@ -1206,28 +1222,28 @@ fn write_complete_scalar(
         },
     ];
     let thc_qs = [
-        ScalarThcQRecordRefV1 {
+        MldumpThcQRecordRefV1 {
             q_index: 0,
             aux_dimension: 2,
             layout_provenance: "aux-layout-q0",
             zeta: &zeta0,
             residual_l2_all_frobenius: 1.0e-8,
             residual_l2_all_column_max: 2.0e-8,
-            vertices: ScalarThcVertexTableRefV1 {
+            vertices: MldumpThcVertexTableRefV1 {
                 n_vertex: 2,
                 column: vertex_col[0],
                 k_left_right: vertex_klr[0],
                 coefficients: &vertex_c0,
             },
         },
-        ScalarThcQRecordRefV1 {
+        MldumpThcQRecordRefV1 {
             q_index: 1,
             aux_dimension: 2,
             layout_provenance: "aux-layout-q1",
             zeta: &zeta1,
             residual_l2_all_frobenius: 3.0e-8,
             residual_l2_all_column_max: 4.0e-8,
-            vertices: ScalarThcVertexTableRefV1 {
+            vertices: MldumpThcVertexTableRefV1 {
                 n_vertex: 2,
                 column: vertex_col[1],
                 k_left_right: vertex_klr[1],
@@ -1236,18 +1252,18 @@ fn write_complete_scalar(
         },
     ];
     let coulomb_qs = [
-        ScalarCoulombQRecordRefV1 {
+        MldumpCoulombQRecordRefV1 {
             q_index: 0,
             aux_dimension: 2,
             layout_provenance: "aux-layout-q0",
             body: &body0,
-            gamma: Some(ScalarCoulombGammaRefV1 {
+            gamma: Some(MldumpCoulombGammaRefV1 {
                 spherical_average_subtracted: true,
                 head_prefactor: 4.0 * PI,
                 constant_coefficients: &gamma_c,
             }),
         },
-        ScalarCoulombQRecordRefV1 {
+        MldumpCoulombQRecordRefV1 {
             q_index: 1,
             aux_dimension: 2,
             layout_provenance: "aux-layout-q1",
@@ -1272,8 +1288,8 @@ fn write_complete_scalar(
         },
         &product_sites,
         &product_qs,
-        &ScalarThcBeginV1 {
-            parent_grid: ScalarThcParentGridRefV1 {
+        &MldumpThcBeginV1 {
+            parent_grid: MldumpThcParentGridRefV1 {
                 n_points: 4,
                 coordinates: &parent_xyz,
                 weights: parent_w,
@@ -1287,16 +1303,91 @@ fn write_complete_scalar(
             requested_rank: 2,
             effective_rank: 2,
             n_candidates: 3,
-            selection: ScalarThcSelectionRefV1 { pivots, points },
+            selection: MldumpThcSelectionRefV1 { pivots, points },
         },
         &thc_qs,
-        &ScalarCoulombBeginV1 {
+        &MldumpCoulombBeginV1 {
             lexp: 4,
             interpolation_l_max: 2,
             interpolation_pw_cutoff: 2.0,
         },
         &coulomb_qs,
     )
+}
+
+fn write_default_complete_scalar(path: &std::path::Path) {
+    let vertex_col = [0_i64, 3];
+    let vertex_klr = [0_i64, 0, 0, 0, 1, 1];
+    let parent_w = [0.1, 0.0, 0.2, 0.3];
+    let pivots = [2_i64, 0];
+    let points = [0_i64, 2];
+    write_complete_scalar(
+        path,
+        [&vertex_col, &vertex_col],
+        [&vertex_klr, &vertex_klr],
+        &parent_w,
+        &pivots,
+        &points,
+    )
+    .unwrap();
+}
+
+#[test]
+fn mldump_scalar_v1_reads_published_b1_b2_tagless_companion_representation() {
+    let path = fixture_path("libmuffintin-mldump-scalar-v1-tagless-companions.h5");
+    write_default_complete_scalar(&path);
+    let tagged = read_mldump_v1(&path).unwrap();
+    let MldumpPayloadV1::Scalar(tagged_scalar) = tagged.payload else {
+        panic!("expected scalar payload, got {:?}", tagged.payload);
+    };
+    {
+        let file = File::open_rw(&path).unwrap();
+        for group in ["products", "thc", "coulomb"] {
+            file.group(group)
+                .unwrap()
+                .delete_attr("representation")
+                .unwrap();
+        }
+    }
+    let tagless = read_mldump_v1(&path).unwrap();
+    let MldumpPayloadV1::Scalar(tagless_scalar) = tagless.payload else {
+        panic!("expected scalar payload, got {:?}", tagless.payload);
+    };
+    assert_eq!(tagless_scalar, tagged_scalar);
+}
+
+#[test]
+fn mldump_scalar_v1_rejects_mixed_companion_representation() {
+    let path = fixture_path("libmuffintin-mldump-scalar-v1-mixed-companions.h5");
+    write_default_complete_scalar(&path);
+    {
+        let file = File::open_rw(&path).unwrap();
+        file.group("products")
+            .unwrap()
+            .delete_attr("representation")
+            .unwrap();
+    }
+    match read_mldump_v1(&path) {
+        Err(IoError::Validation(ValidationError::InvalidValue {
+            path,
+            expected,
+            actual,
+        })) => {
+            assert_eq!(path, "/products/@representation");
+            assert!(
+                expected.contains("absent")
+                    && expected.contains(MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON),
+                "expected={expected}"
+            );
+            assert!(
+                actual.contains("products=absent")
+                    && actual.contains("thc=scalar_koelling_harmon")
+                    && actual.contains("coulomb=scalar_koelling_harmon"),
+                "actual={actual}"
+            );
+        }
+        other => panic!("expected mixed-tag InvalidValue, got {other:?}"),
+    }
 }
 
 #[test]
@@ -1418,8 +1509,8 @@ fn mldump_scalar_v1_rejects_bad_parent_selection() {
             .unwrap();
         write_neutral_products(&mut stream).unwrap();
         let error = stream
-            .begin_thc(&ScalarThcBeginV1 {
-                parent_grid: ScalarThcParentGridRefV1 {
+            .begin_thc(&MldumpThcBeginV1 {
+                parent_grid: MldumpThcParentGridRefV1 {
                     n_points: 4,
                     coordinates: &parent_xyz,
                     weights: &case.weights,
@@ -1433,7 +1524,7 @@ fn mldump_scalar_v1_rejects_bad_parent_selection() {
                 requested_rank: 2,
                 effective_rank: 2,
                 n_candidates: 3,
-                selection: ScalarThcSelectionRefV1 {
+                selection: MldumpThcSelectionRefV1 {
                     pivots: &case.pivots,
                     points: &case.points,
                 },
@@ -1551,8 +1642,8 @@ fn mldump_scalar_v1_rejects_pivot_point_set_mismatch() {
         .unwrap();
     write_neutral_products(&mut stream).unwrap();
     let error = stream
-        .begin_thc(&ScalarThcBeginV1 {
-            parent_grid: ScalarThcParentGridRefV1 {
+        .begin_thc(&MldumpThcBeginV1 {
+            parent_grid: MldumpThcParentGridRefV1 {
                 n_points: 4,
                 coordinates: &parent_xyz,
                 weights: &parent_w,
@@ -1566,7 +1657,7 @@ fn mldump_scalar_v1_rejects_pivot_point_set_mismatch() {
             requested_rank: 2,
             effective_rank: 2,
             n_candidates: 3,
-            selection: ScalarThcSelectionRefV1 {
+            selection: MldumpThcSelectionRefV1 {
                 pivots: &pivots,
                 points: &points,
             },

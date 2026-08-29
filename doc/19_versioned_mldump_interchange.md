@@ -5,8 +5,9 @@ for later runtime materialization. It is not CoQui-native and not
 SPEX-native. `libmuffintin-io` owns the typed DTOs, schema constants, and
 the reader/writer. Runtime, mixed-product, THC, and Coulomb types stay out
 of `libmuffintin-io`. This stage serializes the accepted header plus an
-optional representation-neutral scalar payload written from borrowed
-slices. Runtime materialization of live objects is a later stage.
+optional representation-neutral scalar or spinor payload written from
+borrowed slices. Runtime materialization of live objects is a later
+stage. This development-stage spinor extension stays schema version 1.
 
 ## 1. Identity and ownership
 
@@ -19,9 +20,9 @@ Indices are zero-based. Floating-point payloads are IEEE-754 `f64`; integer
 indices/counts use `i64`, and reciprocal labels use `i32`. Complex arrays use a final length-2 axis with index $0$
 the real part and index $1$ the imaginary part. Header-only files record
 that convention on `/meta` without writing a complex dataset. Scalar
-payload files store eigenvectors, matching coefficients, $\zeta$,
-semantic vertex coefficients, and the finite Coulomb body as `f64`
-with a final `re_im` axis.
+and spinor payload files store eigenvectors, matching coefficients,
+$\zeta$, semantic vertex coefficients, and the finite Coulomb body as
+`f64` with a final `re_im` axis.
 
 The crate does not accept serde/TOML blobs renamed `.h5`. The file must be a
 real HDF5 container whose groups, datasets, and attributes are independently
@@ -110,12 +111,22 @@ Root attributes: `schema_name`, `schema_version`.
   /total                      status=absent_not_computed
 ```
 
-Header-only files keep every scalar group `absent_not_computed` with no
-child member. A populated scalar file writes all four of
-`/orbitals`, `/products`, `/thc`, and `/coulomb` as `present`. Mixed
-presence is a typed validation error. `/mpb` remains absent in both
-cases. Ragged records use only zero-padded integer names
-`spin_%06d`, `k_%06d`, `site_%06d`, `q_%06d`.
+Header-only files keep every payload group `absent_not_computed` with no
+child member. A populated scalar or spinor file writes all four of
+`/orbitals`, `/products`, `/thc`, and `/coulomb` as `present`.
+`/orbitals/@representation` is the authoritative branch discriminator
+(`scalar_koelling_harmon` or `spinor_full_first_variation`). The current
+writer still emits the same tag on `/products`, `/thc`, and `/coulomb`.
+Scalar readback accepts those three companion attrs only when they are
+all absent (published B1/B2 scalar trees) or all present and equal to
+`scalar_koelling_harmon`. Spinor readback requires all three present and
+equal to `spinor_full_first_variation`; there is no tagless spinor path.
+`/meta/@feature_representation` is provenance only. Mixed presence,
+absent/present mixture of companion tags, or mixed tag values is a typed
+validation error. Schema version stays 1. `/mpb` remains absent. Ragged
+records use only zero-padded integer names `spin_%06d`, `k_%06d`,
+`site_%06d`, `q_%06d`. Scalar files keep `spin_%06d` groups; spinor
+orbitals have no spin groups.
 
 When `/orbitals` is `present`:
 
@@ -158,6 +169,7 @@ and positional $q$ records bind by mesh $q$ index:
 
 ```text
 /products                     status=present
+  @representation             "scalar_koelling_harmon"
   @n_k @n_orb
   @pair_order                 "k,left_at_k_minus_q,right_at_k"
   @core_status                "empty_not_fitted_diagnostic_only"
@@ -192,10 +204,76 @@ never enter fitting. Radial ID tables (`kind`,`l`,`n`,`spin`) have equal
 length, unique $(kind,l,n,spin)$ within a site, valence kind only, and
 spin $0$ or $1$.
 
+When `/orbitals` is spinor `present`:
+
+```text
+/orbitals                     status=present
+  @representation             "spinor_full_first_variation"
+  @band_window_start          i64 0
+  @band_window_count          i64
+  @occupations_status         "not_exported_not_available"
+  /k_%06d
+    @k @available_bands @basis_dimension
+    eigenvalues               f64 [band_window_count] axes=["band"]
+    eigenvectors              f64 [basis_row,band_window_count,re_im]
+                              axes=["basis_row","band","re_im"]
+    /basis
+      plane_wave_g            i32 [plane_wave,3]
+      plane_wave_k_cartesian  f64 [plane_wave,3]
+      plane_wave_q_cartesian  f64 [plane_wave,3]
+      pauli_row_index         i64 [pauli_row]
+      pauli_component         i64 [pauli_row]
+      pauli_plane_wave_index  i64 [pauli_row]
+      local_orbital_*         i64 [local_orbital]
+                              (row_index, site, signed_kappa, twice_mu, ordinal, radial_n)
+      /site_%06d
+        projection_*          i64 [projection_coordinate]
+                              (coordinate, signed_kappa, twice_mu, radial_n)
+        matching_coefficients f64 [plane_wave,pauli_component,projection_coordinate,re_im]
+          axes=["plane_wave","pauli_component","projection_coordinate","re_im"]
+```
+
+There is no collinear spin field and no `spin_%06d` group. Shared spatial
+$G$ labels are stored once. Pauli rows satisfy
+$\mathrm{row}=\mathrm{pauli\_component}\,N_G+\mathrm{plane\_wave\_index}$
+with $\mathrm{pauli\_component}\in\{0,1\}$. Local-orbital tables identify
+confined LO/RLO eigenbasis rows only; APW $P$ and $\dot P$ are matching
+columns on those plane-wave rows, flattened onto the projection-coordinate
+axis so the matching dataset stays rank 4. The projection table is a
+strict APW prefix of the live channel order, each
+$(\kappa,2\mu,n=0)$ then $(\kappa,2\mu,n=1)$, followed by the LO/RLO
+tail whose ordered $(site,\kappa,2\mu,n)$ identities match that site's
+local-row table. The matching third axis is that APW prefix length.
+Signed $\kappa$ is nonzero; $2\mu$ belongs to $j=|\kappa|-1/2$.
+Eigenvectors remain C-order
+$[\mathrm{basis\_row},\mathrm{band},\mathrm{re\_im}]$ with width equal to
+the common window; `available_bands` may be larger.
+
+When `/products` is spinor `present`:
+
+```text
+/products                     status=present
+  @representation             "spinor_full_first_variation"
+  @n_k @n_orb
+  @pair_order                 "k,left_at_k_minus_q,right_at_k"
+  @core_status                "empty_not_fitted_diagnostic_only"
+  ... partition datasets as in the scalar tree ...
+  /site_%06d
+    kind, signed_kappa, n     i64 [radial] axes=["radial"]
+    p, q                      f64 [radial,n_r] axes=["radial","radial_sample"]
+  /q_%06d                     same transfer/global/raw-G schema as scalar
+```
+
+Dirac radial identity is $(kind,\kappa,n)$ with no $\mu$ and no fake
+scalar $l$/spin fields. Physical $P$ and $Q$ are both required.
+$n=0$ is $(P,Q)$, $n=1$ is $(\dot P,\dot Q)$, and $n\ge 2$ is LO/RLO.
+Cores remain empty/diagnostic-only.
+
 When `/thc` is `present`, the parent grid is stored once:
 
 ```text
 /thc                          status=present
+  @representation             "scalar_koelling_harmon" | "spinor_full_first_variation"
   @strategy                   "AllQL2"
   @engine                     "full_column_pivoted_qr" | "full_pivoted_cholesky"
   @requested_rank @effective_rank @n_candidates
@@ -234,6 +312,7 @@ When `/coulomb` is `present`:
 
 ```text
 /coulomb                      status=present
+  @representation             "scalar_koelling_harmon" | "spinor_full_first_variation"
   @lexp @interpolation_l_max @interpolation_pw_cutoff
   /q_%06d
     @q_index @aux_dimension @layout_provenance
@@ -282,52 +361,56 @@ runtime mesh types.
 A complex array with logical shape $(d_0,\ldots,d_N)$ is stored as
 `f64` with shape $(d_0,\ldots,d_N,2)$ and a final axis named `re_im`.
 Index $0$ is $\mathrm{Re}$ and index $1$ is $\mathrm{Im}$. Header-only
-files contain no such dataset. Scalar payload files store eigenvectors,
-APW matching coefficients, $\zeta$, semantic vertex coefficients, and
-the finite Coulomb body in that encoding. The Gamma singular head is
-never inserted into $V$.
+files contain no such dataset. Scalar and spinor payload files store
+eigenvectors, APW matching coefficients, $\zeta$, semantic vertex
+coefficients, and the finite Coulomb body in that encoding. The Gamma
+singular head is never inserted into $V$.
 
 ## 6. Public API
 
 `MldumpWriterV1::create(path, &MldumpHeaderV1)` writes the accepted
 header and reserved absent groups. Header-only files call
 `MldumpWriterV1::finish`. Populated scalar files continue with
-`begin_scalar()` into [`ScalarMldumpStreamV1`]. Each of `/orbitals`,
-`/products`, `/thc`, and `/coulomb` is opened with a `begin_*` method,
-written as ordered per-$(spin,k)$, per-site, or per-$q$ records, and
-closed with `finish_*`. Products must be written before THC. Large arrays
-are written immediately. An extra site, $k$, or $q$ record is a typed
-validation error before any further HDF5 child is created. Semantic THC
-vertex `column` identity is checked $q$-locally against the product
-$n_k$/$n_{\mathrm{orb}}$ pair layout while the borrowed $q$ record is
-alive; the session retains only small counters, $q$ bindings, auxiliary
-dimension/provenance, and pair-layout counts, not vertex tables.
-`ScalarMldumpStreamV1::finish` requires all four sections and runs the
-shared cross-section alignment validator. Mixed partial sections and
-cross-section mismatches are typed validation errors. A failed or
-interrupted write may leave an incomplete file. `/mpb` stays
-`absent_not_computed`. `/exchange` stays present with three absent
-children and no `total_relation`.
+`begin_scalar()` into [`ScalarMldumpStreamV1`]. Populated spinor files
+continue with `begin_spinor()` into [`SpinorMldumpStreamV1`]. Each of
+`/orbitals`, `/products`, `/thc`, and `/coulomb` is opened with a
+`begin_*` method, written as ordered per-$(spin,k)$ or per-$k$, per-site,
+or per-$q$ records, and closed with `finish_*`. Products must be written
+before THC. Large arrays are written immediately. An extra site, $k$, or
+$q$ record is a typed validation error before any further HDF5 child is
+created. Semantic THC vertex `column` identity is checked $q$-locally
+against the product $n_k$/$n_{\mathrm{orb}}$ pair layout while the
+borrowed $q$ record is alive; the session retains only small counters,
+$q$ bindings, auxiliary dimension/provenance, and pair-layout counts, not
+vertex tables. Stream `finish` requires all four sections and runs the
+shared cross-section alignment validator. Mixed partial sections, mixed
+representation tags, and cross-section mismatches are typed validation
+errors. A failed or interrupted write may leave an incomplete file.
+`/mpb` stays `absent_not_computed`. `/exchange` stays present with three
+absent children and no `total_relation`.
 
-Runtime `write_scalar_mldump` preflights the caller-owned header against
-the frozen $q$ slice, THC, the sealed Coulomb request/projection, and
-`ScalarCoulombSpec` before creating the HDF5 file, then streams one $k$
-eigenvector/APW record, one $q$ $\zeta$/vertex record, or one $q$
-$V$/Gamma record of conversion scratch at a time.
-
-`read_mldump_v1(path)` returns `MldumpFileV1 { header, scalar, exchange }`.
-All four scalar groups absent yields `scalar=None`. All four present and
-internally aligned yields `Some(ScalarMldumpV1)`. Mixed presence, a
-cross-section mismatch, or a local payload violation is rejected and
-never returns `ScalarMldumpV1`. Exchange valence/core/total remain
-absent in this stage.
+`read_mldump_v1(path)` returns
+`MldumpFileV1 { header, payload, exchange }` with
+`payload: MldumpPayloadV1`. All four groups absent yields
+`HeaderOnly`. All four present with `/orbitals/@representation =
+scalar_koelling_harmon` yields `Scalar(ScalarMldumpV1)`, including
+published B1/B2 files whose `/products`,`/thc`,`/coulomb`
+representation attrs are all absent. All four present with
+`spinor_full_first_variation` on orbitals and the three companion groups
+yields `Spinor(SpinorMldumpV1)`. Mixed presence, mixed or partial
+companion tags, a cross-section mismatch, or a local payload
+violation is rejected. There is no public `scalar: Option<_>` field.
+Exchange valence/core/total remain absent in this stage.
 Borrowed writer DTOs are public concrete structs with slice references
 and explicit shapes, including `ScalarOrbitalsBeginV1`,
-`ScalarProductsBeginV1`, `ScalarThcBeginV1`, `ScalarCoulombBeginV1`, and
-the per-record refs. Owned reader DTOs use `Vec`/`String` records with
-declared dimensions. There is no public `ScalarMpb*` type or writer
-method. Aggregate whole-section writer methods are not part of this
-API.
+`SpinorOrbitalsBeginV1`, `ScalarProductsBeginV1`,
+`SpinorProductsBeginV1`, `MldumpThcBeginV1`, `MldumpCoulombBeginV1`, and
+the per-record refs. Neutral `MldumpThc*` / `MldumpCoulomb*` DTOs are
+shared across representations. There are no public `ScalarThc*` or
+`ScalarCoulomb*` aliases.
+Owned reader DTOs use `Vec`/`String` records with declared dimensions.
+There is no public `ScalarMpb*` type or writer method. Aggregate
+whole-section writer methods are not part of this API.
 
 Validation is the trust boundary: schema name/version, exact numeric
 HDF5 dtypes including attributes, finite numbers, nonnegative full-BZ

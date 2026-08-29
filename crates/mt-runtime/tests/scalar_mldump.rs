@@ -13,7 +13,8 @@ use muffintin_coulomb::{AuxiliaryKind, InterpolationProjection, assemble_point_c
 use muffintin_io::{
     MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON, MLDUMP_STATUS_ABSENT_NOT_COMPUTED,
     MLDUMP_THC_ENGINE_QRCP, MldumpGeometryV1, MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1,
-    MldumpMeshV1, MldumpMetaV1, MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1, read_mldump_v1,
+    MldumpMeshV1, MldumpMetaV1, MldumpPayloadV1, MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1,
+    read_mldump_v1,
 };
 use num_complex::Complex64;
 
@@ -171,7 +172,9 @@ fn write_scalar_mldump_roundtrip_matches_runtime_quadratic() {
     write_scalar_mldump(&path, &header, &inputs, &thc, &coulomb, &spec).unwrap();
     let read = read_mldump_v1(&path).unwrap();
     assert_eq!(read.header.mesh.q_entries[1].global_umklapp, [1, 0, 0]);
-    let scalar = read.scalar.expect("scalar payload");
+    let MldumpPayloadV1::Scalar(scalar) = read.payload else {
+        panic!("expected scalar payload, got {:?}", read.payload);
+    };
     assert!(scalar.thc.parent_grid.weights.contains(&0.0));
     assert_eq!(scalar.thc.engine, MLDUMP_THC_ENGINE_QRCP);
     let pivot_set = scalar

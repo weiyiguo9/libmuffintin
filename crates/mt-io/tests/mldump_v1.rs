@@ -10,8 +10,8 @@ use muffintin_io::{
     MLDUMP_STATUS_PRESENT, MLDUMP_UNIT_ENERGY, MLDUMP_UNIT_G_UMKLAPP, MLDUMP_UNIT_INVERSE_LENGTH,
     MLDUMP_UNIT_K_Q, MLDUMP_UNIT_LENGTH, MLDUMP_UNIT_VOLUME, MldumpExchangeStatusesV1,
     MldumpGeometryV1, MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1,
-    MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1, MldumpWriterV1, ValidationError,
-    read_mldump_v1,
+    MldumpPayloadV1, MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1, MldumpWriterV1,
+    ValidationError, read_mldump_v1,
 };
 
 fn fixture_path(name: &str) -> PathBuf {
@@ -152,7 +152,7 @@ fn mldump_v1_roundtrip_has_inspectable_hdf5_structure() {
     write_header(&path, &original);
     let read = read_mldump_v1(&path).unwrap();
     assert_eq!(read.header, original);
-    assert!(read.scalar.is_none());
+    assert_eq!(read.payload, MldumpPayloadV1::HeaderOnly);
     assert_eq!(
         read.exchange,
         MldumpExchangeStatusesV1::absent_not_computed()

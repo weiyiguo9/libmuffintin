@@ -1,33 +1,28 @@
-//! Scalar product-function payload for MLDUMP v1.
+//! Full first-variation spinor product-function payload for MLDUMP v1.
 
 use std::collections::BTreeSet;
 
 use hdf5_metno::Group;
 
-use super::scalar_orbitals::MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON;
+use super::scalar_products::{
+    MLDUMP_CORE_EMPTY_NOT_FITTED, MLDUMP_PAIR_ORDER_K_LEFT_RIGHT, MLDUMP_RADIAL_KIND_CORE,
+    MLDUMP_RADIAL_KIND_VALENCE,
+};
+use super::spinor_orbitals::MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION;
 use super::{
-    GROUP_PRODUCTS, MldumpHeaderV1, MldumpStatus, PREFIX_Q, PREFIX_SITE, approx_eq,
-    collect_padded_groups, create_padded_group, i32_triples_to_owned, padded_child, read_f64_attr,
-    read_f64_dataset, read_i32_dataset, read_i64_dataset, read_str_attr, read_usize_attr,
-    reopen_present_group, require_dataset_names, require_exact_members, require_finite_f64s,
-    require_flat_len, require_len, require_nonnegative_index, require_status_present,
-    require_str_attr, require_str_attr_if_present, triples_to_owned, usize_as_i64, write_f64_attr,
-    write_f64_dataset, write_i32_dataset, write_i64_attr, write_i64_dataset, write_str_attr,
+    GROUP_PRODUCTS, MldumpHeaderV1, PREFIX_Q, PREFIX_SITE, approx_eq, collect_padded_groups,
+    create_padded_group, i32_triples_to_owned, padded_child, read_f64_attr, read_f64_dataset,
+    read_i32_dataset, read_i64_dataset, read_str_attr, read_usize_attr, reopen_present_group,
+    require_dataset_names, require_exact_members, require_finite_f64s, require_flat_len,
+    require_len, require_nonnegative_index, require_status_present, require_str_attr,
+    triples_to_owned, usize_as_i64, write_f64_attr, write_f64_dataset, write_i32_dataset,
+    write_i64_attr, write_i64_dataset, write_str_attr,
 };
 use crate::error::{IoError, ValidationError, nonempty};
 
-/// Pair-column flattening written on `/products`.
-pub const MLDUMP_PAIR_ORDER_K_LEFT_RIGHT: &str = "k,left_at_k_minus_q,right_at_k";
-/// Cores never enter the scalar fitting path in v1.
-pub const MLDUMP_CORE_EMPTY_NOT_FITTED: &str = "empty_not_fitted_diagnostic_only";
-/// Valence radial factor.
-pub const MLDUMP_RADIAL_KIND_VALENCE: i64 = 0;
-/// Core radial factor. Must not appear in a v1 scalar dump.
-pub const MLDUMP_RADIAL_KIND_CORE: i64 = 1;
-
-/// Shared `/products` attributes and geometry binding for a streaming session.
+/// Shared `/products` attributes and geometry binding for a spinor session.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarProductsBeginV1<'a> {
+pub struct SpinorProductsBeginV1<'a> {
     pub n_k: usize,
     pub n_orb: usize,
     pub provenance_recipe: &'a str,
@@ -38,23 +33,22 @@ pub struct ScalarProductsBeginV1<'a> {
     pub interstitial_volume_bohr3: f64,
 }
 
-/// One site's valence radial factors on the `/geometry` mesh.
+/// One site's valence Dirac radial factors on the `/geometry` mesh.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarProductSiteRefV1<'a> {
+pub struct SpinorProductSiteRefV1<'a> {
     pub site_index: usize,
     pub n_radial: usize,
     pub n_radial_samples: usize,
     pub kind: &'a [i64],
-    pub l: &'a [i64],
+    pub signed_kappa: &'a [i64],
     pub n: &'a [i64],
-    pub spin: &'a [i64],
-    pub large: &'a [f64],
-    pub small: Option<&'a [f64]>,
+    pub p: &'a [f64],
+    pub q: &'a [f64],
 }
 
 /// Positional $q$ record bound by mesh $q$ index.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarProductQRecordRefV1<'a> {
+pub struct SpinorProductQRecordRefV1<'a> {
     pub q_index: usize,
     pub transfer_cartesian: [f64; 3],
     pub global_transfer: [i32; 3],
@@ -63,9 +57,9 @@ pub struct ScalarProductQRecordRefV1<'a> {
     pub provenance: &'a str,
 }
 
-/// Owned product section.
+/// Owned spinor product section.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScalarProductsV1 {
+pub struct SpinorProductsV1 {
     pub n_k: usize,
     pub n_orb: usize,
     pub provenance_recipe: String,
@@ -74,25 +68,24 @@ pub struct ScalarProductsV1 {
     pub site_positions: Vec<[f64; 3]>,
     pub site_radii: Vec<f64>,
     pub interstitial_volume_bohr3: f64,
-    pub sites: Vec<ScalarProductSiteV1>,
-    pub q_records: Vec<ScalarProductQRecordV1>,
+    pub sites: Vec<SpinorProductSiteV1>,
+    pub q_records: Vec<SpinorProductQRecordV1>,
 }
 
-/// Owned site radial set.
+/// Owned site Dirac radial set.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScalarProductSiteV1 {
+pub struct SpinorProductSiteV1 {
     pub site_index: usize,
     pub kind: Vec<i64>,
-    pub l: Vec<i64>,
+    pub signed_kappa: Vec<i64>,
     pub n: Vec<i64>,
-    pub spin: Vec<i64>,
-    pub large: Vec<f64>,
-    pub small: Option<Vec<f64>>,
+    pub p: Vec<f64>,
+    pub q: Vec<f64>,
 }
 
 /// Owned raw pair-G record at one mesh $q$.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScalarProductQRecordV1 {
+pub struct SpinorProductQRecordV1 {
     pub q_index: usize,
     pub transfer_cartesian: [f64; 3],
     pub global_transfer: [i32; 3],
@@ -100,10 +93,10 @@ pub struct ScalarProductQRecordV1 {
     pub provenance: String,
 }
 
-pub(crate) fn begin_scalar_products(
+pub(crate) fn begin_spinor_products(
     file: &Group,
     header: &MldumpHeaderV1,
-    products: &ScalarProductsBeginV1<'_>,
+    products: &SpinorProductsBeginV1<'_>,
 ) -> Result<(), IoError> {
     validate_products_begin(header, products)?;
     let n_site = header.geometry.sites.len();
@@ -111,7 +104,7 @@ pub(crate) fn begin_scalar_products(
     write_str_attr(
         &group,
         "representation",
-        MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON,
+        MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION,
     )?;
     write_i64_attr(&group, "n_k", usize_as_i64("/products/@n_k", products.n_k)?)?;
     write_i64_attr(
@@ -157,37 +150,37 @@ pub(crate) fn begin_scalar_products(
     Ok(())
 }
 
-pub(crate) fn write_scalar_product_site(
+pub(crate) fn write_spinor_product_site(
     file: &Group,
     header: &MldumpHeaderV1,
     site: usize,
-    record: &ScalarProductSiteRefV1<'_>,
+    record: &SpinorProductSiteRefV1<'_>,
 ) -> Result<(), IoError> {
     validate_site_ref(header, site, record)?;
     let group = file.group(GROUP_PRODUCTS)?;
     write_site_group(&group, header, record)
 }
 
-pub(crate) fn write_scalar_product_q(
+pub(crate) fn write_spinor_product_q(
     file: &Group,
     q: usize,
-    record: &ScalarProductQRecordRefV1<'_>,
+    record: &SpinorProductQRecordRefV1<'_>,
 ) -> Result<(), IoError> {
     validate_q_ref(q, record)?;
     let group = file.group(GROUP_PRODUCTS)?;
     write_q_group(&group, record)
 }
 
-pub(crate) fn read_scalar_products(
+pub(crate) fn read_spinor_products(
     file: &Group,
     header: &MldumpHeaderV1,
-) -> Result<ScalarProductsV1, IoError> {
+) -> Result<SpinorProductsV1, IoError> {
     let group = file.group(GROUP_PRODUCTS)?;
     require_status_present(&group)?;
-    require_str_attr_if_present(
+    require_str_attr(
         &group,
         "representation",
-        MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON,
+        MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION,
     )?;
     require_str_attr(&group, "pair_order", MLDUMP_PAIR_ORDER_K_LEFT_RIGHT)?;
     require_str_attr(&group, "core_status", MLDUMP_CORE_EMPTY_NOT_FITTED)?;
@@ -255,7 +248,7 @@ pub(crate) fn read_scalar_products(
     for (q, q_group) in q_groups.iter().enumerate() {
         q_records.push(read_q_group(q_group, q)?);
     }
-    let products = ScalarProductsV1 {
+    let products = SpinorProductsV1 {
         n_k,
         n_orb,
         provenance_recipe: read_str_attr(&group, "provenance_recipe")?,
@@ -273,7 +266,7 @@ pub(crate) fn read_scalar_products(
 
 fn validate_products_begin(
     header: &MldumpHeaderV1,
-    products: &ScalarProductsBeginV1<'_>,
+    products: &SpinorProductsBeginV1<'_>,
 ) -> Result<(), IoError> {
     nonempty("products.provenance_recipe", products.provenance_recipe)?;
     nonempty(
@@ -381,7 +374,7 @@ fn bind_partition(
 fn validate_site_ref(
     header: &MldumpHeaderV1,
     site: usize,
-    record: &ScalarProductSiteRefV1<'_>,
+    record: &SpinorProductSiteRefV1<'_>,
 ) -> Result<(), IoError> {
     if record.site_index != site {
         return Err(ValidationError::InvalidValue {
@@ -405,9 +398,8 @@ fn validate_site_ref(
     }
     for (name, values) in [
         ("kind", record.kind),
-        ("l", record.l),
+        ("signed_kappa", record.signed_kappa),
         ("n", record.n),
-        ("spin", record.spin),
     ] {
         require_len(
             &format!("products.sites[{site}].{name}"),
@@ -416,19 +408,17 @@ fn validate_site_ref(
         )?;
     }
     require_flat_len(
-        &format!("products.sites[{site}].large"),
+        &format!("products.sites[{site}].p"),
         &[record.n_radial, record.n_radial_samples],
-        record.large.len(),
+        record.p.len(),
     )?;
-    require_finite_f64s(&format!("products.sites[{site}].large"), record.large)?;
-    if let Some(small) = record.small {
-        require_flat_len(
-            &format!("products.sites[{site}].small"),
-            &[record.n_radial, record.n_radial_samples],
-            small.len(),
-        )?;
-        require_finite_f64s(&format!("products.sites[{site}].small"), small)?;
-    }
+    require_flat_len(
+        &format!("products.sites[{site}].q"),
+        &[record.n_radial, record.n_radial_samples],
+        record.q.len(),
+    )?;
+    require_finite_f64s(&format!("products.sites[{site}].p"), record.p)?;
+    require_finite_f64s(&format!("products.sites[{site}].q"), record.q)?;
     let mut ids = BTreeSet::new();
     for radial in 0..record.n_radial {
         if record.kind[radial] == MLDUMP_RADIAL_KIND_CORE {
@@ -447,11 +437,11 @@ fn validate_site_ref(
             }
             .into());
         }
-        if record.l[radial] < 0 {
+        if record.signed_kappa[radial] == 0 {
             return Err(ValidationError::InvalidValue {
-                path: format!("products.sites[{site}].l[{radial}]"),
-                expected: "nonnegative l".to_owned(),
-                actual: record.l[radial].to_string(),
+                path: format!("products.sites[{site}].signed_kappa[{radial}]"),
+                expected: "nonzero signed kappa".to_owned(),
+                actual: "0".to_owned(),
             }
             .into());
         }
@@ -459,24 +449,15 @@ fn validate_site_ref(
             &format!("products.sites[{site}].n[{radial}]"),
             record.n[radial],
         )?;
-        if record.spin[radial] != 0 && record.spin[radial] != 1 {
-            return Err(ValidationError::InvalidValue {
-                path: format!("products.sites[{site}].spin[{radial}]"),
-                expected: "0 or 1".to_owned(),
-                actual: record.spin[radial].to_string(),
-            }
-            .into());
-        }
         let id = (
             record.kind[radial],
-            record.l[radial],
+            record.signed_kappa[radial],
             record.n[radial],
-            record.spin[radial],
         );
         if !ids.insert(id) {
             return Err(ValidationError::Duplicate {
                 path: format!("products.sites[{site}].radial_id"),
-                key: format!("kind={} l={} n={} spin={}", id.0, id.1, id.2, id.3),
+                key: format!("kind={} kappa={} n={}", id.0, id.1, id.2),
             }
             .into());
         }
@@ -486,7 +467,7 @@ fn validate_site_ref(
 
 fn validate_products_owned(
     header: &MldumpHeaderV1,
-    products: &ScalarProductsV1,
+    products: &SpinorProductsV1,
 ) -> Result<(), IoError> {
     let mut site_indices = Vec::with_capacity(products.site_indices.len());
     for (index, site) in products.site_indices.iter().enumerate() {
@@ -511,7 +492,7 @@ fn validate_products_owned(
     }
     validate_products_begin(
         header,
-        &ScalarProductsBeginV1 {
+        &SpinorProductsBeginV1 {
             n_k: products.n_k,
             n_orb: products.n_orb,
             provenance_recipe: &products.provenance_recipe,
@@ -542,23 +523,22 @@ fn validate_products_owned(
         validate_site_ref(
             header,
             site,
-            &ScalarProductSiteRefV1 {
+            &SpinorProductSiteRefV1 {
                 site_index: record.site_index,
                 n_radial: record.kind.len(),
                 n_radial_samples,
                 kind: &record.kind,
-                l: &record.l,
+                signed_kappa: &record.signed_kappa,
                 n: &record.n,
-                spin: &record.spin,
-                large: &record.large,
-                small: record.small.as_deref(),
+                p: &record.p,
+                q: &record.q,
             },
         )?;
     }
     for (q, (record, g)) in products.q_records.iter().zip(raw_g.iter()).enumerate() {
         validate_q_ref(
             q,
-            &ScalarProductQRecordRefV1 {
+            &SpinorProductQRecordRefV1 {
                 q_index: record.q_index,
                 transfer_cartesian: record.transfer_cartesian,
                 global_transfer: record.global_transfer,
@@ -571,7 +551,7 @@ fn validate_products_owned(
     Ok(())
 }
 
-fn validate_q_ref(q: usize, record: &ScalarProductQRecordRefV1<'_>) -> Result<(), IoError> {
+fn validate_q_ref(q: usize, record: &SpinorProductQRecordRefV1<'_>) -> Result<(), IoError> {
     if record.q_index != q {
         return Err(ValidationError::InvalidValue {
             path: format!("products.q_records[{q}].q_index"),
@@ -599,7 +579,7 @@ fn validate_q_ref(q: usize, record: &ScalarProductQRecordRefV1<'_>) -> Result<()
 fn write_site_group(
     parent: &Group,
     header: &MldumpHeaderV1,
-    record: &ScalarProductSiteRefV1<'_>,
+    record: &SpinorProductSiteRefV1<'_>,
 ) -> Result<(), IoError> {
     let group = create_padded_group(parent, PREFIX_SITE, record.site_index)?;
     let mesh = header.geometry.sites[record.site_index].radial_mesh;
@@ -612,36 +592,32 @@ fn write_site_group(
         usize_as_i64("mesh_point_count", mesh.point_count)?,
     )?;
     write_i64_dataset(&group, "kind", &[record.n_radial], record.kind, &["radial"])?;
-    write_i64_dataset(&group, "l", &[record.n_radial], record.l, &["radial"])?;
+    write_i64_dataset(
+        &group,
+        "signed_kappa",
+        &[record.n_radial],
+        record.signed_kappa,
+        &["radial"],
+    )?;
     write_i64_dataset(&group, "n", &[record.n_radial], record.n, &["radial"])?;
-    write_i64_dataset(&group, "spin", &[record.n_radial], record.spin, &["radial"])?;
     write_f64_dataset(
         &group,
-        "large",
+        "p",
         &[record.n_radial, record.n_radial_samples],
-        record.large,
+        record.p,
         &["radial", "radial_sample"],
     )?;
-    if let Some(small) = record.small {
-        write_str_attr(&group, "small_status", MldumpStatus::Present.as_str())?;
-        write_f64_dataset(
-            &group,
-            "small",
-            &[record.n_radial, record.n_radial_samples],
-            small,
-            &["radial", "radial_sample"],
-        )?;
-    } else {
-        write_str_attr(
-            &group,
-            "small_status",
-            MldumpStatus::AbsentNotComputed.as_str(),
-        )?;
-    }
+    write_f64_dataset(
+        &group,
+        "q",
+        &[record.n_radial, record.n_radial_samples],
+        record.q,
+        &["radial", "radial_sample"],
+    )?;
     Ok(())
 }
 
-fn write_q_group(parent: &Group, record: &ScalarProductQRecordRefV1<'_>) -> Result<(), IoError> {
+fn write_q_group(parent: &Group, record: &SpinorProductQRecordRefV1<'_>) -> Result<(), IoError> {
     let group = create_padded_group(parent, PREFIX_Q, record.q_index)?;
     write_i64_attr(&group, "q_index", usize_as_i64("q_index", record.q_index)?)?;
     write_str_attr(&group, "provenance", record.provenance)?;
@@ -673,7 +649,7 @@ fn read_site_group(
     group: &Group,
     header: &MldumpHeaderV1,
     site: usize,
-) -> Result<ScalarProductSiteV1, IoError> {
+) -> Result<SpinorProductSiteV1, IoError> {
     let stored = read_usize_attr(group, "site", &format!("{}/@site", group.name()))?;
     if stored != site {
         return Err(ValidationError::InvalidValue {
@@ -709,7 +685,6 @@ fn read_site_group(
         }
         .into());
     }
-    let small_status = read_str_attr(group, "small_status")?;
     let n_radial = group
         .dataset("kind")?
         .shape()
@@ -720,52 +695,23 @@ fn read_site_group(
             expected: "[radial]".to_owned(),
             actual: "scalar".to_owned(),
         })?;
-    let mut datasets = vec!["kind", "l", "n", "spin", "large"];
-    let small = if small_status == MldumpStatus::Present.as_str() {
-        datasets.push("small");
-        Some(read_f64_dataset(
-            group,
-            "small",
-            &[n_radial, count],
-            &["radial", "radial_sample"],
-        )?)
-    } else if small_status == MldumpStatus::AbsentNotComputed.as_str() {
-        None
-    } else {
-        return Err(ValidationError::InvalidValue {
-            path: format!("{}/@small_status", group.name()),
-            expected: "present or absent_not_computed".to_owned(),
-            actual: small_status,
-        }
-        .into());
-    };
-    require_dataset_names(group, datasets.as_slice())?;
+    require_dataset_names(group, &["kind", "signed_kappa", "n", "p", "q"])?;
     let kind = read_i64_dataset(group, "kind", &[n_radial], &["radial"])?;
-    if kind.contains(&MLDUMP_RADIAL_KIND_CORE) {
-        return Err(ValidationError::InvalidValue {
-            path: format!("{}/kind", group.name()),
-            expected: MLDUMP_CORE_EMPTY_NOT_FITTED.to_owned(),
-            actual: "core radial present".to_owned(),
-        }
-        .into());
-    }
-    Ok(ScalarProductSiteV1 {
+    let signed_kappa = read_i64_dataset(group, "signed_kappa", &[n_radial], &["radial"])?;
+    let n = read_i64_dataset(group, "n", &[n_radial], &["radial"])?;
+    let p = read_f64_dataset(group, "p", &[n_radial, count], &["radial", "radial_sample"])?;
+    let q = read_f64_dataset(group, "q", &[n_radial, count], &["radial", "radial_sample"])?;
+    Ok(SpinorProductSiteV1 {
         site_index: site,
         kind,
-        l: read_i64_dataset(group, "l", &[n_radial], &["radial"])?,
-        n: read_i64_dataset(group, "n", &[n_radial], &["radial"])?,
-        spin: read_i64_dataset(group, "spin", &[n_radial], &["radial"])?,
-        large: read_f64_dataset(
-            group,
-            "large",
-            &[n_radial, count],
-            &["radial", "radial_sample"],
-        )?,
-        small,
+        signed_kappa,
+        n,
+        p,
+        q,
     })
 }
 
-fn read_q_group(group: &Group, q: usize) -> Result<ScalarProductQRecordV1, IoError> {
+fn read_q_group(group: &Group, q: usize) -> Result<SpinorProductQRecordV1, IoError> {
     let stored = read_usize_attr(group, "q_index", &format!("{}/@q_index", group.name()))?;
     if stored != q {
         return Err(ValidationError::InvalidValue {
@@ -791,7 +737,7 @@ fn read_q_group(group: &Group, q: usize) -> Result<ScalarProductQRecordV1, IoErr
             expected: "[n_raw, 3]".to_owned(),
             actual: "scalar".to_owned(),
         })?;
-    Ok(ScalarProductQRecordV1 {
+    Ok(SpinorProductQRecordV1 {
         q_index: q,
         transfer_cartesian: [transfer[0], transfer[1], transfer[2]],
         global_transfer: [global[0], global[1], global[2]],

@@ -1,4 +1,4 @@
-//! Scalar THC interpolation and finite Coulomb body payload for MLDUMP v1.
+//! Representation-neutral THC interpolation and finite Coulomb body payload.
 
 use std::collections::BTreeSet;
 
@@ -15,8 +15,9 @@ use super::{
     read_i64_dataset, read_str_attr, read_usize_attr, reopen_present_group, require_dataset_names,
     require_exact_members, require_finite_f64s, require_flat_len, require_group_names, require_len,
     require_no_payload, require_nonnegative_index, require_status_present, require_str_array_attr,
-    require_str_attr, usize_as_i64, write_absent_group, write_f64_attr, write_f64_dataset,
-    write_i64_attr, write_i64_dataset, write_status, write_str_array_attr, write_str_attr,
+    require_str_attr, require_str_attr_if_present, usize_as_i64, write_absent_group,
+    write_f64_attr, write_f64_dataset, write_i64_attr, write_i64_dataset, write_status,
+    write_str_array_attr, write_str_attr,
 };
 use crate::error::{IoError, ValidationError, nonempty};
 
@@ -43,25 +44,25 @@ const RESIDUAL_LABELS: [&str; 2] = ["frobenius", "column_max"];
 pub struct ScalarMldumpV1 {
     pub orbitals: ScalarOrbitalsV1,
     pub products: ScalarProductsV1,
-    pub thc: ScalarThcV1,
-    pub coulomb: ScalarCoulombV1,
+    pub thc: MldumpThcV1,
+    pub coulomb: MldumpCoulombV1,
 }
 
 /// Shared `/thc` parent grid, engine, and selection for a streaming session.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarThcBeginV1<'a> {
-    pub parent_grid: ScalarThcParentGridRefV1<'a>,
+pub struct MldumpThcBeginV1<'a> {
+    pub parent_grid: MldumpThcParentGridRefV1<'a>,
     pub strategy: &'a str,
     pub engine: &'a str,
     pub requested_rank: usize,
     pub effective_rank: usize,
     pub n_candidates: usize,
-    pub selection: ScalarThcSelectionRefV1<'a>,
+    pub selection: MldumpThcSelectionRefV1<'a>,
 }
 
 /// Shared parent grid stored once, including zero-weight rows.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarThcParentGridRefV1<'a> {
+pub struct MldumpThcParentGridRefV1<'a> {
     pub n_points: usize,
     pub coordinates: &'a [f64],
     pub weights: &'a [f64],
@@ -73,26 +74,26 @@ pub struct ScalarThcParentGridRefV1<'a> {
 
 /// Distinct QRCP/Cholesky pivot order and sorted auxiliary-layout points.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarThcSelectionRefV1<'a> {
+pub struct MldumpThcSelectionRefV1<'a> {
     pub pivots: &'a [i64],
     pub points: &'a [i64],
 }
 
 /// One positional $q$ interpolation record.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarThcQRecordRefV1<'a> {
+pub struct MldumpThcQRecordRefV1<'a> {
     pub q_index: usize,
     pub aux_dimension: usize,
     pub layout_provenance: &'a str,
     pub zeta: &'a [f64],
     pub residual_l2_all_frobenius: f64,
     pub residual_l2_all_column_max: f64,
-    pub vertices: ScalarThcVertexTableRefV1<'a>,
+    pub vertices: MldumpThcVertexTableRefV1<'a>,
 }
 
 /// Semantic vertex tables in pair-column layout order.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarThcVertexTableRefV1<'a> {
+pub struct MldumpThcVertexTableRefV1<'a> {
     pub n_vertex: usize,
     pub column: &'a [i64],
     pub k_left_right: &'a [i64],
@@ -101,20 +102,20 @@ pub struct ScalarThcVertexTableRefV1<'a> {
 
 /// Owned THC section.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScalarThcV1 {
-    pub parent_grid: ScalarThcParentGridV1,
+pub struct MldumpThcV1 {
+    pub parent_grid: MldumpThcParentGridV1,
     pub strategy: String,
     pub engine: String,
     pub requested_rank: usize,
     pub effective_rank: usize,
     pub n_candidates: usize,
-    pub selection: ScalarThcSelectionV1,
-    pub q_records: Vec<ScalarThcQRecordV1>,
+    pub selection: MldumpThcSelectionV1,
+    pub q_records: Vec<MldumpThcQRecordV1>,
 }
 
 /// Owned parent grid.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScalarThcParentGridV1 {
+pub struct MldumpThcParentGridV1 {
     pub coordinates: Vec<[f64; 3]>,
     pub weights: Vec<f64>,
     pub region_kind: Vec<i64>,
@@ -125,32 +126,32 @@ pub struct ScalarThcParentGridV1 {
 
 /// Owned selection: `pivots` is engine rank order; `points` is layout order.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScalarThcSelectionV1 {
+pub struct MldumpThcSelectionV1 {
     pub pivots: Vec<i64>,
     pub points: Vec<i64>,
 }
 
 /// Owned per-$q$ $\zeta$, residuals, and vertices.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScalarThcQRecordV1 {
+pub struct MldumpThcQRecordV1 {
     pub q_index: usize,
     pub aux_dimension: usize,
     pub layout_provenance: String,
     pub zeta: Vec<f64>,
-    pub residual: ScalarThcResidualV1,
-    pub vertices: Vec<ScalarThcVertexV1>,
+    pub residual: MldumpThcResidualV1,
+    pub vertices: Vec<MldumpThcVertexV1>,
 }
 
 /// Weighted L2 residual pair.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarThcResidualV1 {
+pub struct MldumpThcResidualV1 {
     pub frobenius: f64,
     pub column_max: f64,
 }
 
 /// One semantic pair vertex.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScalarThcVertexV1 {
+pub struct MldumpThcVertexV1 {
     pub column: i64,
     pub k: i64,
     pub left: i64,
@@ -160,7 +161,7 @@ pub struct ScalarThcVertexV1 {
 
 /// Shared `/coulomb` request attributes for a streaming session.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarCoulombBeginV1 {
+pub struct MldumpCoulombBeginV1 {
     pub lexp: u32,
     pub interpolation_l_max: u32,
     pub interpolation_pw_cutoff: f64,
@@ -168,17 +169,17 @@ pub struct ScalarCoulombBeginV1 {
 
 /// Finite Hermitian body at one $q$, with optional Gamma metadata.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarCoulombQRecordRefV1<'a> {
+pub struct MldumpCoulombQRecordRefV1<'a> {
     pub q_index: usize,
     pub aux_dimension: usize,
     pub layout_provenance: &'a str,
     pub body: &'a [f64],
-    pub gamma: Option<ScalarCoulombGammaRefV1<'a>>,
+    pub gamma: Option<MldumpCoulombGammaRefV1<'a>>,
 }
 
 /// Finite Gamma-head metadata. The singular $4\pi/|q|^2$ head is never stored in $V$.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarCoulombGammaRefV1<'a> {
+pub struct MldumpCoulombGammaRefV1<'a> {
     pub spherical_average_subtracted: bool,
     pub head_prefactor: f64,
     pub constant_coefficients: &'a [f64],
@@ -186,26 +187,26 @@ pub struct ScalarCoulombGammaRefV1<'a> {
 
 /// Owned Coulomb section.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScalarCoulombV1 {
+pub struct MldumpCoulombV1 {
     pub lexp: u32,
     pub interpolation_l_max: u32,
     pub interpolation_pw_cutoff: f64,
-    pub q_records: Vec<ScalarCoulombQRecordV1>,
+    pub q_records: Vec<MldumpCoulombQRecordV1>,
 }
 
 /// Owned per-$q$ Coulomb body.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScalarCoulombQRecordV1 {
+pub struct MldumpCoulombQRecordV1 {
     pub q_index: usize,
     pub aux_dimension: usize,
     pub layout_provenance: String,
     pub body: Vec<f64>,
-    pub gamma: Option<ScalarCoulombGammaV1>,
+    pub gamma: Option<MldumpCoulombGammaV1>,
 }
 
 /// Owned finite Gamma-head metadata.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ScalarCoulombGammaV1 {
+pub struct MldumpCoulombGammaV1 {
     pub spherical_average_subtracted: bool,
     pub head_prefactor: f64,
     pub constant_coefficients: Vec<f64>,
@@ -296,19 +297,31 @@ impl ProductAlignmentSummary {
     }
 
     pub(crate) fn push_q(&mut self, record: &ScalarProductQRecordRefV1<'_>) {
+        self.push_q_binding(
+            record.q_index,
+            record.transfer_cartesian,
+            record.global_transfer,
+        );
+    }
+
+    pub(crate) fn push_q_binding(
+        &mut self,
+        q_index: usize,
+        transfer_cartesian: [f64; 3],
+        global_transfer: [i32; 3],
+    ) {
         self.q_records.push(ProductQAlignment {
-            q_index: record.q_index,
-            transfer_cartesian: record.transfer_cartesian,
-            global_transfer: record.global_transfer,
+            q_index,
+            transfer_cartesian,
+            global_transfer,
         });
     }
 
     pub(crate) fn from_owned(products: &ScalarProductsV1) -> Self {
-        Self {
-            n_k: products.n_k,
-            n_orb: products.n_orb,
-            pair_order: MLDUMP_PAIR_ORDER_K_LEFT_RIGHT,
-            q_records: products
+        Self::from_q_bindings(
+            products.n_k,
+            products.n_orb,
+            products
                 .q_records
                 .iter()
                 .map(|record| ProductQAlignment {
@@ -317,6 +330,19 @@ impl ProductAlignmentSummary {
                     global_transfer: record.global_transfer,
                 })
                 .collect(),
+        )
+    }
+
+    pub(crate) fn from_q_bindings(
+        n_k: usize,
+        n_orb: usize,
+        q_records: Vec<ProductQAlignment>,
+    ) -> Self {
+        Self {
+            n_k,
+            n_orb,
+            pair_order: MLDUMP_PAIR_ORDER_K_LEFT_RIGHT,
+            q_records,
         }
     }
 }
@@ -328,7 +354,7 @@ impl ThcAlignmentSummary {
         }
     }
 
-    pub(crate) fn push_q(&mut self, record: &ScalarThcQRecordRefV1<'_>) {
+    pub(crate) fn push_q(&mut self, record: &MldumpThcQRecordRefV1<'_>) {
         self.q_records.push(ThcQAlignment {
             q_index: record.q_index,
             aux_dimension: record.aux_dimension,
@@ -337,7 +363,7 @@ impl ThcAlignmentSummary {
         });
     }
 
-    pub(crate) fn from_owned(thc: &ScalarThcV1) -> Self {
+    pub(crate) fn from_owned(thc: &MldumpThcV1) -> Self {
         Self {
             q_records: thc
                 .q_records
@@ -360,7 +386,7 @@ impl CoulombAlignmentSummary {
         }
     }
 
-    pub(crate) fn push_q(&mut self, record: &ScalarCoulombQRecordRefV1<'_>) {
+    pub(crate) fn push_q(&mut self, record: &MldumpCoulombQRecordRefV1<'_>) {
         self.q_records.push(CoulombQAlignment {
             q_index: record.q_index,
             aux_dimension: record.aux_dimension,
@@ -369,7 +395,7 @@ impl CoulombAlignmentSummary {
         });
     }
 
-    pub(crate) fn from_owned(coulomb: &ScalarCoulombV1) -> Self {
+    pub(crate) fn from_owned(coulomb: &MldumpCoulombV1) -> Self {
         Self {
             q_records: coulomb
                 .q_records
@@ -385,13 +411,15 @@ impl CoulombAlignmentSummary {
     }
 }
 
-pub(crate) fn begin_scalar_thc(
+pub(crate) fn begin_mldump_thc(
     file: &Group,
     header: &MldumpHeaderV1,
-    thc: &ScalarThcBeginV1<'_>,
+    thc: &MldumpThcBeginV1<'_>,
+    representation: &str,
 ) -> Result<(), IoError> {
     validate_thc_begin(header, thc)?;
     let group = reopen_present_group(file, GROUP_THC)?;
+    write_str_attr(&group, "representation", representation)?;
     write_str_attr(&group, "strategy", thc.strategy)?;
     write_str_attr(&group, "engine", thc.engine)?;
     write_i64_attr(
@@ -427,26 +455,28 @@ pub(crate) fn begin_scalar_thc(
     Ok(())
 }
 
-pub(crate) fn write_scalar_thc_q(
+pub(crate) fn write_mldump_thc_q(
     file: &Group,
     q: usize,
     n_parent: usize,
     effective_rank: usize,
     n_k: usize,
     n_orb: usize,
-    record: &ScalarThcQRecordRefV1<'_>,
+    record: &MldumpThcQRecordRefV1<'_>,
 ) -> Result<(), IoError> {
     validate_thc_q_ref(q, n_parent, effective_rank, n_k, n_orb, record)?;
     let group = file.group(GROUP_THC)?;
     write_thc_q(&group, n_parent, record)
 }
 
-pub(crate) fn begin_scalar_coulomb(
+pub(crate) fn begin_mldump_coulomb(
     file: &Group,
-    coulomb: &ScalarCoulombBeginV1,
+    coulomb: &MldumpCoulombBeginV1,
+    representation: &str,
 ) -> Result<(), IoError> {
     validate_coulomb_begin(coulomb)?;
     let group = reopen_present_group(file, GROUP_COULOMB)?;
+    write_str_attr(&group, "representation", representation)?;
     write_i64_attr(&group, "lexp", i64::from(coulomb.lexp))?;
     write_i64_attr(
         &group,
@@ -461,10 +491,10 @@ pub(crate) fn begin_scalar_coulomb(
     Ok(())
 }
 
-pub(crate) fn write_scalar_coulomb_q(
+pub(crate) fn write_mldump_coulomb_q(
     file: &Group,
     q: usize,
-    record: &ScalarCoulombQRecordRefV1<'_>,
+    record: &MldumpCoulombQRecordRefV1<'_>,
 ) -> Result<(), IoError> {
     validate_coulomb_q_payload(
         q,
@@ -480,12 +510,14 @@ pub(crate) fn write_scalar_coulomb_q(
     write_coulomb_q(&group, record)
 }
 
-pub(crate) fn read_scalar_thc(
+pub(crate) fn read_mldump_thc(
     file: &Group,
     header: &MldumpHeaderV1,
-) -> Result<ScalarThcV1, IoError> {
+    representation: &str,
+) -> Result<MldumpThcV1, IoError> {
     let group = file.group(GROUP_THC)?;
     require_status_present(&group)?;
+    require_str_attr_if_present(&group, "representation", representation)?;
     require_str_attr(&group, "strategy", MLDUMP_THC_STRATEGY_ALL_QL2)?;
     let engine = read_str_attr(&group, "engine")?;
     require_known_engine("/thc/@engine", &engine)?;
@@ -522,26 +554,28 @@ pub(crate) fn read_scalar_thc(
             effective_rank,
         )?);
     }
-    let thc = ScalarThcV1 {
+    let thc = MldumpThcV1 {
         parent_grid,
         strategy: MLDUMP_THC_STRATEGY_ALL_QL2.to_owned(),
         engine,
         requested_rank,
         effective_rank,
         n_candidates,
-        selection: ScalarThcSelectionV1 { pivots, points },
+        selection: MldumpThcSelectionV1 { pivots, points },
         q_records,
     };
     validate_thc_owned(header, &thc)?;
     Ok(thc)
 }
 
-pub(crate) fn read_scalar_coulomb(
+pub(crate) fn read_mldump_coulomb(
     file: &Group,
     header: &MldumpHeaderV1,
-) -> Result<ScalarCoulombV1, IoError> {
+    representation: &str,
+) -> Result<MldumpCoulombV1, IoError> {
     let group = file.group(GROUP_COULOMB)?;
     require_status_present(&group)?;
+    require_str_attr_if_present(&group, "representation", representation)?;
     let lexp = require_u32_attr(&group, "lexp", "/coulomb/@lexp")?;
     let interpolation_l_max = require_u32_attr(
         &group,
@@ -563,7 +597,7 @@ pub(crate) fn read_scalar_coulomb(
     for (q, q_group) in q_groups.iter().enumerate() {
         q_records.push(read_coulomb_q(q_group, q)?);
     }
-    let coulomb = ScalarCoulombV1 {
+    let coulomb = MldumpCoulombV1 {
         lexp,
         interpolation_l_max,
         interpolation_pw_cutoff,
@@ -587,11 +621,22 @@ pub(crate) fn validate_scalar_alignment(
     coulomb: &CoulombAlignmentSummary,
 ) -> Result<(), IoError> {
     let n_k = header.mesh.k_points.len();
-    let n_q = header.mesh.q_entries.len();
     require_len("orbitals.spin_count", 2, orbitals.spin_count)?;
     require_len("orbitals.n_k", n_k, orbitals.n_k)?;
+    validate_payload_alignment(header, orbitals.band_window_count, products, thc, coulomb)
+}
+
+pub(crate) fn validate_payload_alignment(
+    header: &MldumpHeaderV1,
+    band_window_count: usize,
+    products: &ProductAlignmentSummary,
+    thc: &ThcAlignmentSummary,
+    coulomb: &CoulombAlignmentSummary,
+) -> Result<(), IoError> {
+    let n_k = header.mesh.k_points.len();
+    let n_q = header.mesh.q_entries.len();
     require_len("products.n_k", n_k, products.n_k)?;
-    require_len("products.n_orb", orbitals.band_window_count, products.n_orb)?;
+    require_len("products.n_orb", band_window_count, products.n_orb)?;
     if products.pair_order != MLDUMP_PAIR_ORDER_K_LEFT_RIGHT {
         return Err(ValidationError::InvalidValue {
             path: "products.pair_order".to_owned(),
@@ -696,7 +741,7 @@ pub(crate) fn validate_scalar_alignment(
     Ok(())
 }
 
-fn validate_thc_begin(header: &MldumpHeaderV1, thc: &ScalarThcBeginV1<'_>) -> Result<(), IoError> {
+fn validate_thc_begin(header: &MldumpHeaderV1, thc: &MldumpThcBeginV1<'_>) -> Result<(), IoError> {
     validate_thc_shared(
         header,
         ThcSharedView {
@@ -712,14 +757,14 @@ fn validate_thc_begin(header: &MldumpHeaderV1, thc: &ScalarThcBeginV1<'_>) -> Re
     )
 }
 
-fn validate_thc_owned(header: &MldumpHeaderV1, thc: &ScalarThcV1) -> Result<(), IoError> {
+fn validate_thc_owned(header: &MldumpHeaderV1, thc: &MldumpThcV1) -> Result<(), IoError> {
     let coordinates: Vec<f64> = thc
         .parent_grid
         .coordinates
         .iter()
         .flat_map(|point| point.iter().copied())
         .collect();
-    let parent = ScalarThcParentGridRefV1 {
+    let parent = MldumpThcParentGridRefV1 {
         n_points: thc.parent_grid.weights.len(),
         coordinates: &coordinates,
         weights: &thc.parent_grid.weights,
@@ -758,7 +803,7 @@ struct ThcSharedView<'a> {
     requested_rank: usize,
     effective_rank: usize,
     n_candidates: usize,
-    parent: &'a ScalarThcParentGridRefV1<'a>,
+    parent: &'a MldumpThcParentGridRefV1<'a>,
     pivots: &'a [i64],
     points: &'a [i64],
 }
@@ -800,7 +845,7 @@ fn validate_thc_shared(header: &MldumpHeaderV1, thc: ThcSharedView<'_>) -> Resul
 
 fn validate_parent_grid_ref(
     header: &MldumpHeaderV1,
-    grid: &ScalarThcParentGridRefV1<'_>,
+    grid: &MldumpThcParentGridRefV1<'_>,
 ) -> Result<(), IoError> {
     if grid.n_points == 0 {
         return Err(ValidationError::Empty {
@@ -908,7 +953,7 @@ fn validate_thc_q_ref(
     effective_rank: usize,
     n_k: usize,
     n_orb: usize,
-    record: &ScalarThcQRecordRefV1<'_>,
+    record: &MldumpThcQRecordRefV1<'_>,
 ) -> Result<(), IoError> {
     if record.q_index != q {
         return Err(ValidationError::InvalidValue {
@@ -984,7 +1029,7 @@ fn validate_thc_q_owned(
     q: usize,
     n_parent: usize,
     effective_rank: usize,
-    record: &ScalarThcQRecordV1,
+    record: &MldumpThcQRecordV1,
 ) -> Result<(), IoError> {
     if record.q_index != q {
         return Err(ValidationError::InvalidValue {
@@ -1043,7 +1088,7 @@ fn validate_thc_q_owned(
 pub(crate) fn validate_owned_thc_vertex_identity(
     n_k: usize,
     n_orb: usize,
-    thc: &ScalarThcV1,
+    thc: &MldumpThcV1,
 ) -> Result<(), IoError> {
     for (q, record) in thc.q_records.iter().enumerate() {
         for (vertex, item) in record.vertices.iter().enumerate() {
@@ -1127,7 +1172,7 @@ fn validate_one_thc_vertex(
     Ok(())
 }
 
-fn validate_coulomb_begin(coulomb: &ScalarCoulombBeginV1) -> Result<(), IoError> {
+fn validate_coulomb_begin(coulomb: &MldumpCoulombBeginV1) -> Result<(), IoError> {
     if coulomb.lexp > 12 {
         return Err(ValidationError::InvalidValue {
             path: "coulomb.lexp".to_owned(),
@@ -1141,7 +1186,7 @@ fn validate_coulomb_begin(coulomb: &ScalarCoulombBeginV1) -> Result<(), IoError>
 
 fn validate_coulomb_owned(
     header: &MldumpHeaderV1,
-    coulomb: &ScalarCoulombV1,
+    coulomb: &MldumpCoulombV1,
 ) -> Result<(), IoError> {
     if coulomb.lexp > 12 {
         return Err(ValidationError::InvalidValue {
@@ -1224,7 +1269,7 @@ fn validate_coulomb_q_payload(
     Ok(())
 }
 
-fn write_parent_grid(parent: &Group, grid: &ScalarThcParentGridRefV1<'_>) -> Result<(), IoError> {
+fn write_parent_grid(parent: &Group, grid: &MldumpThcParentGridRefV1<'_>) -> Result<(), IoError> {
     let group = parent.create_group(PREFIX_PARENT_GRID)?;
     write_str_attr(&group, "provenance", grid.provenance)?;
     write_f64_dataset(
@@ -1268,7 +1313,7 @@ fn write_parent_grid(parent: &Group, grid: &ScalarThcParentGridRefV1<'_>) -> Res
 fn write_thc_q(
     parent: &Group,
     n_parent: usize,
-    record: &ScalarThcQRecordRefV1<'_>,
+    record: &MldumpThcQRecordRefV1<'_>,
 ) -> Result<(), IoError> {
     let group = create_padded_group(parent, PREFIX_Q, record.q_index)?;
     write_i64_attr(&group, "q_index", usize_as_i64("q_index", record.q_index)?)?;
@@ -1321,7 +1366,7 @@ fn write_thc_q(
     Ok(())
 }
 
-fn write_coulomb_q(parent: &Group, record: &ScalarCoulombQRecordRefV1<'_>) -> Result<(), IoError> {
+fn write_coulomb_q(parent: &Group, record: &MldumpCoulombQRecordRefV1<'_>) -> Result<(), IoError> {
     let group = create_padded_group(parent, PREFIX_Q, record.q_index)?;
     write_i64_attr(&group, "q_index", usize_as_i64("q_index", record.q_index)?)?;
     write_i64_attr(
@@ -1359,7 +1404,7 @@ fn write_coulomb_q(parent: &Group, record: &ScalarCoulombQRecordRefV1<'_>) -> Re
     Ok(())
 }
 
-fn read_parent_grid(group: &Group) -> Result<ScalarThcParentGridV1, IoError> {
+fn read_parent_grid(group: &Group) -> Result<MldumpThcParentGridV1, IoError> {
     require_dataset_names(
         group,
         &[
@@ -1390,7 +1435,7 @@ fn read_parent_grid(group: &Group) -> Result<ScalarThcParentGridV1, IoError> {
         n_points,
         &format!("{}/coordinates", group.name()),
     )?;
-    Ok(ScalarThcParentGridV1 {
+    Ok(MldumpThcParentGridV1 {
         coordinates,
         weights: read_f64_dataset(group, "weights", &[n_points], &["parent_point"])?,
         region_kind: read_i64_dataset(group, "region_kind", &[n_points], &["parent_point"])?,
@@ -1405,7 +1450,7 @@ fn read_thc_q(
     q: usize,
     n_parent: usize,
     effective_rank: usize,
-) -> Result<ScalarThcQRecordV1, IoError> {
+) -> Result<MldumpThcQRecordV1, IoError> {
     let stored = read_usize_attr(group, "q_index", &format!("{}/@q_index", group.name()))?;
     if stored != q {
         return Err(ValidationError::InvalidValue {
@@ -1473,7 +1518,7 @@ fn read_thc_q(
     let mut vertices = Vec::with_capacity(n_vertex);
     for vertex in 0..n_vertex {
         let start = vertex * coeff_width;
-        vertices.push(ScalarThcVertexV1 {
+        vertices.push(MldumpThcVertexV1 {
             column: column[vertex],
             k: k_left_right[vertex * 3],
             left: k_left_right[vertex * 3 + 1],
@@ -1481,12 +1526,12 @@ fn read_thc_q(
             coefficients: coefficients[start..start + coeff_width].to_vec(),
         });
     }
-    Ok(ScalarThcQRecordV1 {
+    Ok(MldumpThcQRecordV1 {
         q_index: q,
         aux_dimension,
         layout_provenance: read_str_attr(group, "layout_provenance")?,
         zeta,
-        residual: ScalarThcResidualV1 {
+        residual: MldumpThcResidualV1 {
             frobenius: residual[0],
             column_max: residual[1],
         },
@@ -1494,7 +1539,7 @@ fn read_thc_q(
     })
 }
 
-fn read_coulomb_q(group: &Group, q: usize) -> Result<ScalarCoulombQRecordV1, IoError> {
+fn read_coulomb_q(group: &Group, q: usize) -> Result<MldumpCoulombQRecordV1, IoError> {
     let stored = read_usize_attr(group, "q_index", &format!("{}/@q_index", group.name()))?;
     if stored != q {
         return Err(ValidationError::InvalidValue {
@@ -1540,7 +1585,7 @@ fn read_coulomb_q(group: &Group, q: usize) -> Result<ScalarCoulombQRecordV1, IoE
                 }
                 .into());
             }
-            Some(ScalarCoulombGammaV1 {
+            Some(MldumpCoulombGammaV1 {
                 spherical_average_subtracted: subtracted == 1,
                 head_prefactor: read_f64_attr(
                     &gamma_group,
@@ -1556,7 +1601,7 @@ fn read_coulomb_q(group: &Group, q: usize) -> Result<ScalarCoulombQRecordV1, IoE
             })
         }
     };
-    Ok(ScalarCoulombQRecordV1 {
+    Ok(MldumpCoulombQRecordV1 {
         q_index: q,
         aux_dimension,
         layout_provenance: read_str_attr(group, "layout_provenance")?,
