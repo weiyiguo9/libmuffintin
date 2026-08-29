@@ -858,13 +858,65 @@ fn accumulate_spin(
 }
 
 fn site_accumulators(sites: &[ScalarSiteBasis]) -> Vec<BTreeMap<Lm, Vec<Complex64>>> {
-    sites.iter().map(|_| BTreeMap::new()).collect()
+    sites
+        .iter()
+        .map(|site| {
+            let l_max = site
+                .orbitals
+                .iter()
+                .flat_map(|left| {
+                    site.orbitals
+                        .iter()
+                        .map(move |right| left.angular().l + right.angular().l)
+                })
+                .max();
+            l_max.map_or_else(BTreeMap::new, |l_max| {
+                (0..=l_max)
+                    .flat_map(|l| {
+                        (-(l as i32)..=l as i32).map(move |m| {
+                            (
+                                Lm::new(l, m).expect("loop bounds validate magnetic channel"),
+                                vec![Complex64::new(0.0, 0.0); site.mesh.len()],
+                            )
+                        })
+                    })
+                    .collect()
+            })
+        })
+        .collect()
 }
 
 fn site_accumulators_spinor(
     sites: &[FullSpinorDensitySiteBasis],
 ) -> Vec<BTreeMap<Lm, Vec<Complex64>>> {
-    sites.iter().map(|_| BTreeMap::new()).collect()
+    sites
+        .iter()
+        .map(|site| {
+            let l_max = site
+                .orbitals
+                .iter()
+                .flat_map(|left| {
+                    site.orbitals.iter().map(move |right| {
+                        let left = left.channel().kappa();
+                        let right = right.channel().kappa();
+                        (left.large_l() + right.large_l()).max(left.small_l() + right.small_l())
+                    })
+                })
+                .max();
+            l_max.map_or_else(BTreeMap::new, |l_max| {
+                (0..=l_max)
+                    .flat_map(|l| {
+                        (-(l as i32)..=l as i32).map(move |m| {
+                            (
+                                Lm::new(l, m).expect("loop bounds validate magnetic channel"),
+                                vec![Complex64::new(0.0, 0.0); site.mesh.len()],
+                            )
+                        })
+                    })
+                    .collect()
+            })
+        })
+        .collect()
 }
 
 fn accumulate_sphere(
@@ -1301,6 +1353,98 @@ mod tests {
             density.charge().interstitial()
         );
         assert!((electron_count(&density).unwrap() - 1.0).abs() < 1.0e-14);
+    }
+
+    #[test]
+    fn collinear_valence_density_keeps_zero_orbital_pair_channels() {
+        let reciprocal = ReciprocalLattice::new([
+            [InverseBohr(1.0), InverseBohr(0.0), InverseBohr(0.0)],
+            [InverseBohr(0.0), InverseBohr(1.0), InverseBohr(0.0)],
+            [InverseBohr(0.0), InverseBohr(0.0), InverseBohr(1.0)],
+        ])
+        .unwrap();
+        let mesh = ExponentialMesh::new(Bohr(1.0e-3), 0.18, 12).unwrap();
+        let compiled = CompiledBasis {
+            layout: BasisLayout::new(0, vec![LocalOrbitalLayout::new(vec![1, 1])]),
+            plane_waves: Vec::new(),
+            site_augmentations: vec![Vec::new()],
+            site_geometry: vec![ApwSiteGeometry {
+                position: [Bohr(0.0); 3],
+                radius: mesh.last(),
+            }],
+            provenance: Provenance::default(),
+        };
+        let solution = GeneralizedEigensolution {
+            eigenvalues: vec![Hartree(0.0)],
+            eigenvectors: DenseEigenvectors::from_host_column_major(
+                4,
+                1,
+                vec![
+                    Complex64::new(1.0, 0.0),
+                    Complex64::new(0.0, 0.0),
+                    Complex64::new(0.0, 0.0),
+                    Complex64::new(0.0, 0.0),
+                ],
+            )
+            .unwrap(),
+            retained_dimension: 1,
+            filtered_dimension: 3,
+            residuals: Vec::new(),
+        };
+        let sites = [ScalarSiteBasis {
+            mesh: mesh.clone(),
+            orbitals: vec![
+                SphereOrbital::new(0, 0, vec![1.0; mesh.len()], None).unwrap(),
+                SphereOrbital::new(1, -1, vec![1.0; mesh.len()], None).unwrap(),
+                SphereOrbital::new(1, 0, vec![1.0; mesh.len()], None).unwrap(),
+                SphereOrbital::new(1, 1, vec![1.0; mesh.len()], None).unwrap(),
+            ],
+        }];
+        let density = synthesize_collinear_valence_density(
+            InterstitialGeometry::new(
+                VolumeBohr3((2.0 * PI).powi(3)),
+                vec![Sphere {
+                    center: [Bohr(0.0); 3],
+                    radius: mesh.last(),
+                }],
+            )
+            .unwrap(),
+            FourierLayout::new(reciprocal, reciprocal.enumerate(InverseBohr(0.0)).unwrap())
+                .unwrap(),
+            &sites,
+            &[CollinearKPoint {
+                weight: 1.0,
+                compiled: &compiled,
+                solutions: Collinear::new(&solution, &solution),
+                occupations: Collinear::new(&[1.0], &[0.0]),
+            }],
+        )
+        .unwrap();
+        let expected = (0..=2)
+            .flat_map(|l| {
+                (-(l as i32)..=l as i32).map(move |m| Lm::new(l, m).expect("test channel is valid"))
+            })
+            .collect::<Vec<_>>();
+
+        for component in std::iter::once(density.charge()).chain(density.magnetization()) {
+            let field = component.muffin_tins()[0].field();
+            assert_eq!(
+                field
+                    .channels()
+                    .map(|(channel, _)| channel)
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            for m in -2..=2 {
+                assert!(
+                    field
+                        .channel(2, m)
+                        .unwrap()
+                        .iter()
+                        .all(|&value| value == Complex64::new(0.0, 0.0))
+                );
+            }
+        }
     }
 
     #[test]
