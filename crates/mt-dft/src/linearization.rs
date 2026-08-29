@@ -2,8 +2,8 @@
 
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, InverseBohr, Kappa, KappaError};
 use muffintin_radial::{
-    CoreBracketSearch, CoreDiracSpec, CoreState, DiracError, EnergyBracket, RadialEquation,
-    RadialError, RadialSolver, isolate_core_dirac_bracket, solve_core_dirac,
+    CoreBracketSearch, CoreDiracSolution, CoreDiracSpec, CoreState, DiracError, EnergyBracket,
+    RadialEquation, RadialError, RadialSolver, isolate_core_dirac_bracket, solve_core_dirac,
 };
 use thiserror::Error;
 
@@ -124,6 +124,28 @@ pub fn generate_atomic_energy(
     potential: &[f64],
     request: AtomicEnergyRequest,
 ) -> Result<GeneratedLinearizationEnergy, LinearizationEnergyError> {
+    let solved = solve_atomic_bound_state(mesh, potential, request)?;
+    Ok(GeneratedLinearizationEnergy {
+        generator: LinearizationEnergyGenerator::Atomic,
+        seed: None,
+        energy: solved.solution.energy,
+        diagnostic: LinearizationEnergyDiagnostic::Atomic {
+            state: request.state,
+            bracket: solved.bracket,
+        },
+    })
+}
+
+pub(crate) struct SolvedAtomicBoundState {
+    pub(crate) solution: CoreDiracSolution,
+    pub(crate) bracket: EnergyBracket,
+}
+
+pub(crate) fn solve_atomic_bound_state(
+    mesh: &ExponentialMesh,
+    potential: &[f64],
+    request: AtomicEnergyRequest,
+) -> Result<SolvedAtomicBoundState, LinearizationEnergyError> {
     if !request.nuclear_charge.is_finite() || request.nuclear_charge <= 0.0 {
         return Err(LinearizationEnergyError::InvalidNuclearCharge(
             request.nuclear_charge,
@@ -161,15 +183,7 @@ pub fn generate_atomic_energy(
         state: request.state,
         source,
     })?;
-    Ok(GeneratedLinearizationEnergy {
-        generator: LinearizationEnergyGenerator::Atomic,
-        seed: None,
-        energy: solution.energy,
-        diagnostic: LinearizationEnergyDiagnostic::Atomic {
-            state: request.state,
-            bracket,
-        },
-    })
+    Ok(SolvedAtomicBoundState { solution, bracket })
 }
 
 /// Generate an Elk-style scalar band center from the current spherical potential.

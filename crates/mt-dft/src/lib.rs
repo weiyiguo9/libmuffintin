@@ -7,6 +7,7 @@ mod core_density;
 mod core_potential;
 mod density;
 mod energy;
+mod free_atom;
 mod hartree;
 mod linearization;
 mod mixing;
@@ -41,6 +42,9 @@ pub use density::{
     synthesize_full_spinor_valence_density,
 };
 pub use energy::{EnergyError, OccupationEnergy, ScfEnergy, assemble_scf_energy};
+pub use free_atom::{
+    FreeAtomOrbital, FreeAtomScfError, FreeAtomScfSpec, FreeAtomState, run_free_atom_lda,
+};
 pub use hartree::{
     ElectrostaticSpec, RegionalElectrostaticError, RegionalElectrostaticResult,
     evaluate_regional_electrostatics,
