@@ -66,7 +66,10 @@ pub use scalar_product::{
     ScalarKMinusQ, ScalarProductInput, ScalarSpinChannel,
 };
 pub use scalar_thc::{ScalarThcError, ScalarThcResult, ScalarThcSpec, build_scalar_thc};
-pub use snapshot_dft::{SnapshotDftError, SnapshotDftPhysics, snapshot_v2_from_state};
+pub use snapshot_dft::{
+    AtomicSnapshotError, AtomicSnapshotRequest, AtomicSnapshotResult, SnapshotDftError,
+    SnapshotDftPhysics, materialize_atomic_snapshot_v2, snapshot_v2_from_state,
+};
 pub use spinor_coulomb::{
     SPINOR_COULOMB_EXACTNESS_FLOOR, SpinorCoulombDiscrepancy, SpinorCoulombError,
     SpinorCoulombPairDiagnostic, SpinorCoulombPairMatch, SpinorCoulombQRecord, SpinorCoulombResult,

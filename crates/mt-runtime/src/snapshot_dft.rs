@@ -36,9 +36,9 @@ use muffintin_dft::{
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_io::{
     AngularBasisV1, Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2,
-    FourierCoefficientV2, InitialV2, InterstitialFieldV2, IoError, MuffinTinFieldV2, PotentialV2,
-    RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, SnapshotV2, SpexMaterialBasisRecipeV1,
-    SpexMaterialChannelKind, SphericalChannelV2,
+    FourierCoefficientV2, GeometryV2, InitialV2, InterstitialFieldV2, IoError, MuffinTinFieldV2,
+    PotentialV2, RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, SnapshotV2,
+    SpexMaterialBasisRecipeV1, SpexMaterialChannelKind, SphericalChannelV2,
 };
 use muffintin_lapw::{Collinear, GeneralizedEigensolution, InterstitialPotential, LapwError};
 use muffintin_operators::{
@@ -56,9 +56,14 @@ use muffintin_tensor::{DenseEigenvectors, TensorError};
 use num_complex::Complex64;
 use thiserror::Error;
 
+mod atomic_snapshot;
 mod basis_materialization;
 mod convert_v2;
 
+pub use atomic_snapshot::{
+    AtomicSnapshotError, AtomicSnapshotRequest, AtomicSnapshotResult,
+    materialize_atomic_snapshot_v2,
+};
 pub use convert_v2::snapshot_v2_from_state;
 use convert_v2::{convert_v2_site_bases, regional_density_from_v2, regional_potential_from_v2};
 
@@ -120,6 +125,22 @@ struct SnapshotSite {
     nonmagnetic_scalar: bool,
 }
 
+struct ConvertedSnapshotGeometry {
+    direct: [[Bohr; 3]; 3],
+    reciprocal: ReciprocalLattice,
+    geometry: InterstitialGeometry,
+    sites: Vec<SnapshotSite>,
+    nuclear_charges: Vec<f64>,
+}
+
+struct ProductionPotentialBuild {
+    potential: RegionalPotential,
+    electrostatic: RegionalElectrostaticResult,
+    exchange_correlation: RegionalXcResult,
+    core_spec: CorePotentialBuildSpec,
+    energy_terms: ScfEnergyTerms,
+}
+
 #[derive(Clone, Debug)]
 struct SnapshotSpin {
     equation: RadialEquationTagV1,
@@ -176,56 +197,7 @@ impl SnapshotDftPhysics {
     /// Convert a validated V2 snapshot into exact internal units and conventions.
     pub fn new(snapshot: &SnapshotV2) -> Result<Self, SnapshotDftError> {
         snapshot.validate()?;
-        let direct = snapshot
-            .geometry
-            .lattice
-            .vectors
-            .map(|vector| vector.map(Bohr));
-        let reciprocal = ReciprocalLattice::from_direct(direct)?;
-        let volume = determinant(snapshot.geometry.lattice.vectors);
-
-        let mut converted_sites = Vec::with_capacity(snapshot.geometry.sites.len());
-        for site in &snapshot.geometry.sites {
-            let position = fractional_to_cartesian(site.fractional_position, direct);
-            let (up, down, nonmagnetic_scalar) =
-                convert_v2_site_bases(&site.id, &snapshot.geometry.radial_basis)?;
-            if up.mesh != down.mesh {
-                return Err(SnapshotDftError::SpinMeshMismatch {
-                    site: site.id.clone(),
-                });
-            }
-            let radius = up.mesh.last();
-            let scale = site
-                .muffin_tin_radius
-                .abs()
-                .max(radius.get().abs())
-                .max(1.0);
-            if (site.muffin_tin_radius - radius.get()).abs() > SNAPSHOT_RADIUS_TOLERANCE * scale {
-                return Err(SnapshotDftError::MuffinTinMeshRadius {
-                    site: site.id.clone(),
-                    declared: site.muffin_tin_radius,
-                    mesh: radius.get(),
-                });
-            }
-            converted_sites.push(SnapshotSite {
-                id: site.id.clone(),
-                position,
-                radius,
-                up,
-                down,
-                nonmagnetic_scalar,
-            });
-        }
-        let geometry = InterstitialGeometry::new(
-            VolumeBohr3(volume),
-            converted_sites
-                .iter()
-                .map(|site| Sphere {
-                    center: site.position,
-                    radius: site.radius,
-                })
-                .collect::<Vec<_>>(),
-        )?;
+        let converted = convert_snapshot_geometry(&snapshot.geometry)?;
         let restart_density = match &snapshot.initial {
             InitialV2::FrozenPotential { .. } => None,
             InitialV2::Restart { density, .. } => Some(density),
@@ -235,26 +207,30 @@ impl SnapshotDftPhysics {
                 potential
             }
         };
-        let frozen_potential =
-            regional_potential_from_v2(potential, &geometry, &converted_sites, reciprocal)?;
+        let frozen_potential = regional_potential_from_v2(
+            potential,
+            &converted.geometry,
+            &converted.sites,
+            converted.reciprocal,
+        )?;
         let restart_density = restart_density
             .map(|density| {
-                regional_density_from_v2(density, &geometry, &converted_sites, reciprocal)
+                regional_density_from_v2(
+                    density,
+                    &converted.geometry,
+                    &converted.sites,
+                    converted.reciprocal,
+                )
             })
             .transpose()?;
         Ok(Self {
             snapshot_template: snapshot.clone(),
-            reciprocal,
-            geometry,
-            sites: converted_sites,
+            reciprocal: converted.reciprocal,
+            geometry: converted.geometry,
+            sites: converted.sites,
             frozen_potential,
             restart_density,
-            nuclear_charges: snapshot
-                .geometry
-                .sites
-                .iter()
-                .map(|site| f64::from(site.atomic_number))
-                .collect(),
+            nuclear_charges: converted.nuclear_charges,
             core_potentials: BTreeMap::new(),
             density_template: None,
             energy_terms: BTreeMap::new(),
@@ -984,27 +960,7 @@ impl SnapshotDftPhysics {
         fractional_k: [f64; 3],
         cutoff: f64,
     ) -> Result<PlaneWaveEnvelope, SnapshotDftError> {
-        if fractional_k.iter().any(|value| !value.is_finite()) {
-            return Err(SnapshotDftError::NonFiniteKPoint(fractional_k));
-        }
-        let k = fractional_to_reciprocal(fractional_k, self.reciprocal.basis());
-        let k_norm = squared_norm(k.map(InverseBohr::get)).sqrt();
-        let candidates = self.reciprocal.enumerate(InverseBohr(cutoff + k_norm))?;
-        let waves = candidates
-            .into_iter()
-            .filter(|g| {
-                let wave = std::array::from_fn(|axis| k[axis].get() + g.cartesian[axis].get());
-                squared_norm(wave) <= cutoff * cutoff * (1.0 + 64.0 * f64::EPSILON)
-            })
-            .map(|g| PlaneWave::new(k, g))
-            .collect::<Vec<_>>();
-        if waves.is_empty() {
-            return Err(SnapshotDftError::EmptyPlaneWaveBasis {
-                k: fractional_k,
-                cutoff,
-            });
-        }
-        Ok(PlaneWaveEnvelope::new(waves))
+        production_plane_wave_envelope(self.reciprocal, fractional_k, cutoff)
     }
 
     fn require_potential_site_count(
@@ -1309,15 +1265,7 @@ impl SnapshotDftPhysics {
                 }
             };
             for plane_waves in compiled {
-                for left in plane_waves {
-                    for right in plane_waves {
-                        indices.insert([
-                            right.g.index[0] - left.g.index[0],
-                            right.g.index[1] - left.g.index[1],
-                            right.g.index[2] - left.g.index[2],
-                        ]);
-                    }
-                }
+                insert_plane_wave_differences(&mut indices, plane_waves);
             }
         }
         let vectors = indices
@@ -1326,6 +1274,56 @@ impl SnapshotDftPhysics {
             .collect();
         Ok(FourierLayout::new(self.reciprocal, vectors)?)
     }
+}
+
+fn build_production_potential(
+    density: &RegionalDensity,
+    nuclear_charges: &[f64],
+    exchange_correlation: ScfExchangeCorrelation,
+) -> Result<ProductionPotentialBuild, SnapshotDftError> {
+    let electrostatic = evaluate_regional_electrostatics(
+        density.charge(),
+        &ElectrostaticSpec::new(
+            muffintin_coulomb::WeinertHartreeSpec::electronic(4)?,
+            nuclear_charges.to_vec(),
+        )?,
+    )?;
+    let output_l_max = std::iter::once(density.charge())
+        .chain(density.magnetization())
+        .flat_map(RegionalScalarField::muffin_tins)
+        .flat_map(|field| field.field().channels().map(|(channel, _)| channel.l))
+        .max()
+        .unwrap_or(0);
+    let xc_field_spec = xc_spec(
+        density,
+        output_l_max,
+        exchange_correlation.noncollinear_route,
+    );
+    let exchange_correlation_result =
+        evaluate_regional_xc(exchange_correlation.functional, density, xc_field_spec)?;
+    let mut scalar = electrostatic.potential.clone();
+    scalar.add_scaled(1.0, exchange_correlation_result.potential.scalar())?;
+    let potential = RegionalPotential::new(
+        scalar,
+        exchange_correlation_result.potential.magnetic().clone(),
+    )?;
+    Ok(ProductionPotentialBuild {
+        potential,
+        core_spec: CorePotentialBuildSpec {
+            continuation: CorePotentialContinuationSpec::default(),
+            xc_functional: exchange_correlation.functional,
+            xc_noncollinear_route: exchange_correlation.noncollinear_route,
+            xc_angular_point_count: xc_field_spec.angular_point_count,
+        },
+        energy_terms: ScfEnergyTerms {
+            madelung: electrostatic.madelung,
+            coulomb: electrostatic.coulomb,
+            exchange_correlation: exchange_correlation_result.exchange_correlation_energy,
+            exchange_correlation_potential: exchange_correlation_result.density_potential_integral,
+        },
+        electrostatic,
+        exchange_correlation: exchange_correlation_result,
+    })
 }
 
 impl ScfPhysics for SnapshotDftPhysics {
@@ -1415,53 +1413,19 @@ impl ScfPhysics for SnapshotDftPhysics {
         exchange_correlation: ScfExchangeCorrelation,
     ) -> Result<RegionalPotential, Self::Error> {
         self.density_template = Some(density.clone());
-        let electrostatic = evaluate_regional_electrostatics(
-            density.charge(),
-            &ElectrostaticSpec::new(
-                muffintin_coulomb::WeinertHartreeSpec::electronic(4)?,
-                self.nuclear_charges.clone(),
-            )?,
-        )?;
-        let output_l_max = std::iter::once(density.charge())
-            .chain(density.magnetization())
-            .flat_map(RegionalScalarField::muffin_tins)
-            .flat_map(|field| field.field().channels().map(|(channel, _)| channel.l))
-            .max()
-            .unwrap_or(0);
-        let xc_functional = exchange_correlation.functional;
-        let xc_field_spec = xc_spec(
-            density,
-            output_l_max,
-            exchange_correlation.noncollinear_route,
-        );
-        let xc = evaluate_regional_xc(xc_functional, density, xc_field_spec)?;
-        let mut scalar = electrostatic.potential.clone();
-        scalar.add_scaled(1.0, xc.potential.scalar())?;
-        let potential = RegionalPotential::new(scalar, xc.potential.magnetic().clone())?;
+        let built =
+            build_production_potential(density, &self.nuclear_charges, exchange_correlation)?;
         self.core_potentials.insert(
             iteration,
             CorePotentialContext {
-                electrostatic: electrostatic.clone(),
-                exchange_correlation: xc.clone(),
+                electrostatic: built.electrostatic.clone(),
+                exchange_correlation: built.exchange_correlation.clone(),
                 density: density.clone(),
-                spec: CorePotentialBuildSpec {
-                    continuation: CorePotentialContinuationSpec::default(),
-                    xc_functional,
-                    xc_noncollinear_route: exchange_correlation.noncollinear_route,
-                    xc_angular_point_count: xc_field_spec.angular_point_count,
-                },
+                spec: built.core_spec,
             },
         );
-        self.energy_terms.insert(
-            iteration,
-            ScfEnergyTerms {
-                madelung: electrostatic.madelung,
-                coulomb: electrostatic.coulomb,
-                exchange_correlation: xc.exchange_correlation_energy,
-                exchange_correlation_potential: xc.density_potential_integral,
-            },
-        );
-        Ok(potential)
+        self.energy_terms.insert(iteration, built.energy_terms);
+        Ok(built.potential)
     }
 
     fn solve_core(
@@ -2028,6 +1992,67 @@ pub(crate) fn regular_k_points(mesh: ScfKMesh) -> Result<Vec<[f64; 3]>, Snapshot
     Ok(points)
 }
 
+fn production_plane_wave_envelope(
+    reciprocal: ReciprocalLattice,
+    fractional_k: [f64; 3],
+    cutoff: f64,
+) -> Result<PlaneWaveEnvelope, SnapshotDftError> {
+    if fractional_k.iter().any(|value| !value.is_finite()) {
+        return Err(SnapshotDftError::NonFiniteKPoint(fractional_k));
+    }
+    let k = fractional_to_reciprocal(fractional_k, reciprocal.basis());
+    let k_norm = squared_norm(k.map(InverseBohr::get)).sqrt();
+    let candidates = reciprocal.enumerate(InverseBohr(cutoff + k_norm))?;
+    let waves = candidates
+        .into_iter()
+        .filter(|g| {
+            let wave = std::array::from_fn(|axis| k[axis].get() + g.cartesian[axis].get());
+            squared_norm(wave) <= cutoff * cutoff * (1.0 + 64.0 * f64::EPSILON)
+        })
+        .map(|g| PlaneWave::new(k, g))
+        .collect::<Vec<_>>();
+    if waves.is_empty() {
+        return Err(SnapshotDftError::EmptyPlaneWaveBasis {
+            k: fractional_k,
+            cutoff,
+        });
+    }
+    Ok(PlaneWaveEnvelope::new(waves))
+}
+
+fn production_density_layout(
+    reciprocal: ReciprocalLattice,
+    k_mesh: ScfKMesh,
+    cutoff: f64,
+) -> Result<FourierLayout, SnapshotDftError> {
+    let points = regular_k_points(k_mesh)?;
+    if points.is_empty() {
+        return Err(SnapshotDftError::EmptyKPointSet);
+    }
+    let mut indices = BTreeSet::new();
+    for point in points {
+        let envelope = production_plane_wave_envelope(reciprocal, point, cutoff)?;
+        insert_plane_wave_differences(&mut indices, envelope.waves());
+    }
+    let vectors = indices
+        .into_iter()
+        .map(|index| g_vector(reciprocal, index))
+        .collect();
+    Ok(FourierLayout::new(reciprocal, vectors)?)
+}
+
+fn insert_plane_wave_differences(indices: &mut BTreeSet<[i32; 3]>, waves: &[PlaneWave]) {
+    for left in waves {
+        for right in waves {
+            indices.insert([
+                right.g.index[0] - left.g.index[0],
+                right.g.index[1] - left.g.index[1],
+                right.g.index[2] - left.g.index[2],
+            ]);
+        }
+    }
+}
+
 fn xc_spec(
     density: &RegionalDensity,
     output_l_max: u32,
@@ -2050,6 +2075,66 @@ fn xc_spec(
         output_l_max,
         noncollinear_route,
     }
+}
+
+fn convert_snapshot_geometry(
+    snapshot: &GeometryV2,
+) -> Result<ConvertedSnapshotGeometry, SnapshotDftError> {
+    let direct = snapshot.lattice.vectors.map(|vector| vector.map(Bohr));
+    let reciprocal = ReciprocalLattice::from_direct(direct)?;
+    let mut sites = Vec::with_capacity(snapshot.sites.len());
+    for site in &snapshot.sites {
+        let position = fractional_to_cartesian(site.fractional_position, direct);
+        let (up, down, nonmagnetic_scalar) =
+            convert_v2_site_bases(&site.id, &snapshot.radial_basis)?;
+        if up.mesh != down.mesh {
+            return Err(SnapshotDftError::SpinMeshMismatch {
+                site: site.id.clone(),
+            });
+        }
+        let radius = up.mesh.last();
+        let scale = site
+            .muffin_tin_radius
+            .abs()
+            .max(radius.get().abs())
+            .max(1.0);
+        if (site.muffin_tin_radius - radius.get()).abs() > SNAPSHOT_RADIUS_TOLERANCE * scale {
+            return Err(SnapshotDftError::MuffinTinMeshRadius {
+                site: site.id.clone(),
+                declared: site.muffin_tin_radius,
+                mesh: radius.get(),
+            });
+        }
+        sites.push(SnapshotSite {
+            id: site.id.clone(),
+            position,
+            radius,
+            up,
+            down,
+            nonmagnetic_scalar,
+        });
+    }
+    let geometry = InterstitialGeometry::new(
+        VolumeBohr3(determinant(snapshot.lattice.vectors)),
+        sites
+            .iter()
+            .map(|site| Sphere {
+                center: site.position,
+                radius: site.radius,
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(ConvertedSnapshotGeometry {
+        direct,
+        reciprocal,
+        geometry,
+        sites,
+        nuclear_charges: snapshot
+            .sites
+            .iter()
+            .map(|site| f64::from(site.atomic_number))
+            .collect(),
+    })
 }
 
 fn determinant(matrix: [[f64; 3]; 3]) -> f64 {
@@ -2160,6 +2245,13 @@ pub enum SnapshotDftError {
     MissingV2FieldSite(String),
     #[error("cannot export {actual} muffin-tin fields against {expected} snapshot sites")]
     ExportSiteCount { expected: usize, actual: usize },
+    #[error("cannot export {from:?} spherical fields as {target:?} fields")]
+    UnsupportedAngularConversion {
+        from: HarmonicConvention,
+        target: HarmonicConvention,
+    },
+    #[error("real-tesseral channel l={l}, m={m} has no signed-m partner")]
+    UnpairedRealTesseralChannel { l: u32, m: i32 },
     #[error("site {site:?} has different up/down radial meshes")]
     SpinMeshMismatch { site: String },
     #[error("site {site:?} muffin-tin radius is {declared}, radial mesh ends at {mesh}")]
@@ -2388,5 +2480,7 @@ pub enum SnapshotDftError {
     MissingEnergyTerms(usize),
 }
 
+#[cfg(test)]
+mod atomic_snapshot_test;
 #[cfg(test)]
 mod tests;

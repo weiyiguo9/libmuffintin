@@ -21,6 +21,7 @@ libmuffintin-core = { path = "../mt-core" }
 libmuffintin-coulomb = { path = "../mt-coulomb" }
 libmuffintin-dft = { path = "../mt-dft" }
 libmuffintin-envelope = { path = "../mt-envelope" }
+libmuffintin-grid = { path = "../mt-grid" }
 libmuffintin-io = { path = "../mt-io" }
 libmuffintin-lapw = { path = "../mt-lapw" }
 libmuffintin-mpb = { path = "../mt-mpb" }
@@ -35,7 +36,6 @@ thiserror.workspace = true
 toml = "0.8.20"
 
 [dev-dependencies]
-libmuffintin-grid = { path = "../mt-grid" }
 libmuffintin-io = { path = "../mt-io" }
 libmuffintin-lapw = { path = "../mt-lapw" }
 libmuffintin-operators = { path = "../mt-operators" }

@@ -28,20 +28,52 @@ pub fn snapshot_v2_from_state(
         representation: FieldRepresentationV2::PeriodicExtension,
         angular_basis,
         basis_hints: density_hints,
-        n: regional_scalar_to_v2(state.density.charge(), &template.geometry.sites)?,
-        mx: regional_scalar_to_v2(&state.density.magnetization()[0], &template.geometry.sites)?,
-        my: regional_scalar_to_v2(&state.density.magnetization()[1], &template.geometry.sites)?,
-        mz: regional_scalar_to_v2(&state.density.magnetization()[2], &template.geometry.sites)?,
+        n: regional_scalar_to_v2(
+            state.density.charge(),
+            &template.geometry.sites,
+            angular_basis,
+        )?,
+        mx: regional_scalar_to_v2(
+            &state.density.magnetization()[0],
+            &template.geometry.sites,
+            angular_basis,
+        )?,
+        my: regional_scalar_to_v2(
+            &state.density.magnetization()[1],
+            &template.geometry.sites,
+            angular_basis,
+        )?,
+        mz: regional_scalar_to_v2(
+            &state.density.magnetization()[2],
+            &template.geometry.sites,
+            angular_basis,
+        )?,
     };
     let potential = PotentialV2 {
         unit: FieldUnitV2::Hartree,
         representation: FieldRepresentationV2::MaskedOperator,
         angular_basis,
         basis_hints: potential_hints,
-        v0: regional_scalar_to_v2(state.potential.scalar(), &template.geometry.sites)?,
-        bx: regional_scalar_to_v2(&state.potential.magnetic()[0], &template.geometry.sites)?,
-        by: regional_scalar_to_v2(&state.potential.magnetic()[1], &template.geometry.sites)?,
-        bz: regional_scalar_to_v2(&state.potential.magnetic()[2], &template.geometry.sites)?,
+        v0: regional_scalar_to_v2(
+            state.potential.scalar(),
+            &template.geometry.sites,
+            angular_basis,
+        )?,
+        bx: regional_scalar_to_v2(
+            &state.potential.magnetic()[0],
+            &template.geometry.sites,
+            angular_basis,
+        )?,
+        by: regional_scalar_to_v2(
+            &state.potential.magnetic()[1],
+            &template.geometry.sites,
+            angular_basis,
+        )?,
+        bz: regional_scalar_to_v2(
+            &state.potential.magnetic()[2],
+            &template.geometry.sites,
+            angular_basis,
+        )?,
     };
     let snapshot = SnapshotV2::new(
         template.meta.clone(),
@@ -225,9 +257,10 @@ fn regional_scalar_from_v2(
     )?)
 }
 
-fn regional_scalar_to_v2(
+pub(super) fn regional_scalar_to_v2(
     field: &RegionalScalarField,
     sites: &[muffintin_io::SiteV2],
+    angular_basis: AngularBasisV1,
 ) -> Result<RegionalFieldV2, SnapshotDftError> {
     if field.muffin_tins().len() != sites.len() {
         return Err(SnapshotDftError::ExportSiteCount {
@@ -238,27 +271,13 @@ fn regional_scalar_to_v2(
     let muffin_tins = sites
         .iter()
         .zip(field.muffin_tins())
-        .map(|(site, field)| MuffinTinFieldV2 {
-            site_id: site.id.clone(),
-            channels: field
-                .field()
-                .channels()
-                .map(|(channel, values)| {
-                    let scale = if (channel.l, channel.m) == (0, 0) {
-                        1.0 / (4.0 * PI).sqrt()
-                    } else {
-                        1.0
-                    };
-                    SphericalChannelV2 {
-                        l: channel.l,
-                        m: channel.m,
-                        real: values.iter().map(|value| scale * value.re).collect(),
-                        imaginary: values.iter().map(|value| scale * value.im).collect(),
-                    }
-                })
-                .collect(),
+        .map(|(site, field)| {
+            Ok(MuffinTinFieldV2 {
+                site_id: site.id.clone(),
+                channels: sphere_channels_to_v2(field.field(), angular_basis)?,
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, SnapshotDftError>>()?;
     let coefficients = field
         .interstitial()
         .field()
@@ -275,4 +294,79 @@ fn regional_scalar_to_v2(
         muffin_tins,
         interstitial: InterstitialFieldV2 { coefficients },
     })
+}
+
+fn sphere_channels_to_v2(
+    field: &SphereField,
+    angular_basis: AngularBasisV1,
+) -> Result<Vec<SphericalChannelV2>, SnapshotDftError> {
+    let target = match angular_basis {
+        AngularBasisV1::ComplexCondonShortley => HarmonicConvention::Complex,
+        AngularBasisV1::RealTesseralCondonShortley => HarmonicConvention::Real,
+    };
+    if field.convention() == target {
+        return Ok(field
+            .channels()
+            .map(|(channel, values)| channel_to_v2(channel.l, channel.m, values))
+            .collect());
+    }
+    if field.convention() == HarmonicConvention::Complex {
+        return Err(SnapshotDftError::UnsupportedAngularConversion {
+            from: HarmonicConvention::Complex,
+            target,
+        });
+    }
+
+    let by_channel = field
+        .channels()
+        .map(|(channel, values)| ((channel.l, channel.m), values))
+        .collect::<BTreeMap<_, _>>();
+    let l_max = by_channel.keys().map(|(l, _)| *l).max().unwrap_or(0);
+    let mut channels = Vec::with_capacity(by_channel.len());
+    for l in 0..=l_max {
+        if let Some(values) = by_channel.get(&(l, 0)) {
+            channels.push(channel_to_v2(l, 0, values));
+        }
+        for q in 1..=l {
+            let q = i32::try_from(q).expect("u32 angular momentum fits stored i32 m");
+            let Some(positive) = by_channel.get(&(l, q)) else {
+                if by_channel.contains_key(&(l, -q)) {
+                    return Err(SnapshotDftError::UnpairedRealTesseralChannel { l, m: -q });
+                }
+                continue;
+            };
+            let Some(negative) = by_channel.get(&(l, -q)) else {
+                return Err(SnapshotDftError::UnpairedRealTesseralChannel { l, m: q });
+            };
+            let phase = if q.unsigned_abs() % 2 == 0 { 1.0 } else { -1.0 };
+            let scale = 1.0 / 2.0_f64.sqrt();
+            let complex_positive = positive
+                .iter()
+                .zip(*negative)
+                .map(|(&cosine, &sine)| scale * (phase * cosine + Complex64::i() * sine))
+                .collect::<Vec<_>>();
+            let complex_negative = positive
+                .iter()
+                .zip(*negative)
+                .map(|(&cosine, &sine)| scale * (cosine - Complex64::i() * phase * sine))
+                .collect::<Vec<_>>();
+            channels.push(channel_to_v2(l, -q, &complex_negative));
+            channels.push(channel_to_v2(l, q, &complex_positive));
+        }
+    }
+    Ok(channels)
+}
+
+fn channel_to_v2(l: u32, m: i32, values: &[Complex64]) -> SphericalChannelV2 {
+    let scale = if (l, m) == (0, 0) {
+        1.0 / (4.0 * PI).sqrt()
+    } else {
+        1.0
+    };
+    SphericalChannelV2 {
+        l,
+        m,
+        real: values.iter().map(|value| scale * value.re).collect(),
+        imaginary: values.iter().map(|value| scale * value.im).collect(),
+    }
 }
