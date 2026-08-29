@@ -34,6 +34,13 @@ impl RegularSpectrum {
         Ok(spectrum)
     }
 
+    /// Number of k-points on the regular mesh, `divisions[0]*divisions[1]*divisions[2]`.
+    ///
+    /// [`Self::new`] already checked that this product fits in `usize`.
+    pub fn k_point_count(&self) -> usize {
+        self.divisions[0] * self.divisions[1] * self.divisions[2]
+    }
+
     fn validate(&self) -> Result<usize, TetrahedronError> {
         for (axis, &division) in self.divisions.iter().enumerate() {
             if division == 0 {
@@ -155,7 +162,7 @@ pub fn tetrahedron_dos_bins(
     spectrum: &RegularSpectrum,
     edges: &[Hartree],
 ) -> Result<TetrahedronDosBins, TetrahedronError> {
-    let k_point_count = spectrum.validate()?;
+    let k_point_count = spectrum.k_point_count();
     validate_edges(edges)?;
 
     let tetrahedron_sets = shortest_tetrahedron_sets(spectrum);

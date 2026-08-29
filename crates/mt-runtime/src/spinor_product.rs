@@ -358,9 +358,11 @@ pub(crate) fn require_spinor_q_slice(
         });
     }
     for (iq, input) in inputs.iter().enumerate() {
-        input
-            .validate()
-            .map_err(|_| SpinorQSliceError::IncompatibleInputs)?;
+        if iq > 0 {
+            input
+                .validate()
+                .map_err(|_| SpinorQSliceError::IncompatibleInputs)?;
+        }
         if input.orbitals != first.orbitals
             || input.pair_columns != first.pair_columns
             || input.source.partition != first.source.partition

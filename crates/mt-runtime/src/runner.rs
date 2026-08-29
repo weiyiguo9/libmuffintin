@@ -88,11 +88,9 @@ pub fn prepare_input_with_recipes(
     recipe_artifacts: &BTreeMap<PathBuf, ChannelRecipeArtifact>,
 ) -> Result<PreparedWorkflow, InputError> {
     input.validate()?;
-    let snapshot = match snapshot {
-        SnapshotFile::V1(snapshot) => snapshot.normalize_v2(),
-        SnapshotFile::V2(snapshot) => snapshot.validate().map(|()| snapshot),
-    }
-    .map_err(InputError::InvalidSnapshot)?;
+    let snapshot = snapshot
+        .into_v2_prevalidated()
+        .map_err(InputError::InvalidSnapshot)?;
 
     let mut tasks = Vec::with_capacity(input.workflow.tasks.len());
     for id in &input.workflow.tasks {

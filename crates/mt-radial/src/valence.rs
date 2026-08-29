@@ -793,13 +793,13 @@ impl<'a> RadialSolver<'a> {
             .p
             .last()
             .copied()
-            .unwrap_or(0.0);
+            .expect("homogeneous radial solution has nonempty P component");
         let fhi = self
             .integrate_homogeneous(angular_momentum, Hartree(hi))?
             .p
             .last()
             .copied()
-            .unwrap_or(0.0);
+            .expect("homogeneous radial solution has nonempty P component");
         if flo == 0.0 {
             return Ok(Hartree(lo));
         }
@@ -821,7 +821,7 @@ impl<'a> RadialSolver<'a> {
                 .p
                 .last()
                 .copied()
-                .unwrap_or(0.0);
+                .expect("homogeneous radial solution has nonempty P component");
             if fmid == 0.0 || 0.5 * (hi - lo) <= tolerance {
                 return Ok(Hartree(mid));
             }

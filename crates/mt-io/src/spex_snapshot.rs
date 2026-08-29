@@ -206,7 +206,7 @@ pub fn read_spex_snapshot_hdf(path: &Path) -> Result<SpexFrozenFieldsV1, IoError
         geometry,
         initial,
     };
-    snapshot.validate()?;
+    require_spherical_lm_pairs(&snapshot)?;
     Ok(SpexFrozenFieldsV1 {
         snapshot,
         source_revision,
@@ -222,7 +222,7 @@ pub fn read_spex_snapshot_hdf(path: &Path) -> Result<SpexFrozenFieldsV1, IoError
 
 /// Write SPEX-owned frozen fields. Does not write signed $\kappa$.
 pub fn write_spex_snapshot_hdf(path: &Path, file: &SpexFrozenFieldsV1) -> Result<(), IoError> {
-    file.snapshot.validate()?;
+    require_spherical_lm_pairs(&file.snapshot)?;
     if file.source_kind != SPEX_SNAPSHOT_HDF_SOURCE_KIND {
         return Err(ValidationError::InvalidValue {
             path: "/meta/@source_kind".to_owned(),
@@ -469,6 +469,57 @@ fn write_hashes(group: &Group, hashes: &[SpexSnapshotHashV1]) -> Result<(), IoEr
     write_str_vec(group, "sha256", &sha256, "hash")
 }
 
+/// Geometry, finite samples, unique G labels, and the rest of
+/// [`SnapshotV2::validate`] are enforced field-by-field during HDF5 ingest.
+/// Only m within [-l, l] and unique (l, m) pairs are checked here.
+fn require_spherical_lm_pairs(snapshot: &SnapshotV2) -> Result<(), IoError> {
+    match &snapshot.initial {
+        InitialV2::FrozenPotential { potential } => require_potential_lm(potential),
+        InitialV2::Restart { density, potential } => {
+            require_density_lm(density)?;
+            require_potential_lm(potential)
+        }
+    }
+}
+
+fn require_potential_lm(potential: &PotentialV2) -> Result<(), IoError> {
+    require_regional_lm("initial.potential.v0", &potential.v0)?;
+    require_regional_lm("initial.potential.bx", &potential.bx)?;
+    require_regional_lm("initial.potential.by", &potential.by)?;
+    require_regional_lm("initial.potential.bz", &potential.bz)
+}
+
+fn require_density_lm(density: &DensityV2) -> Result<(), IoError> {
+    require_regional_lm("initial.density.n", &density.n)?;
+    require_regional_lm("initial.density.mx", &density.mx)?;
+    require_regional_lm("initial.density.my", &density.my)?;
+    require_regional_lm("initial.density.mz", &density.mz)
+}
+
+fn require_regional_lm(path: &str, field: &RegionalFieldV2) -> Result<(), IoError> {
+    for (site_index, site) in field.muffin_tins.iter().enumerate() {
+        let mut seen = BTreeSet::new();
+        for (channel_index, channel) in site.channels.iter().enumerate() {
+            if channel.m.unsigned_abs() > channel.l {
+                return Err(ValidationError::InvalidLm {
+                    path: format!("{path}.muffin_tins[{site_index}].channels[{channel_index}]"),
+                    l: channel.l,
+                    m: channel.m,
+                }
+                .into());
+            }
+            if !seen.insert((channel.l, channel.m)) {
+                return Err(ValidationError::Duplicate {
+                    path: format!("{path}.muffin_tins[{site_index}].channels"),
+                    key: format!("({}, {})", channel.l, channel.m),
+                }
+                .into());
+            }
+        }
+    }
+    Ok(())
+}
+
 struct GeometryScratch {
     lattice: crate::snapshot::LatticeV1,
     sites: Vec<SiteV2>,
@@ -528,7 +579,8 @@ fn read_geometry(group: &Group) -> Result<GeometryScratch, IoError> {
         positive(format!("/geometry/muffin_tin_radii[{index}]"), radii[index])?;
         sites.push(SiteV2 {
             id: site_ids[index].clone(),
-            atomic_number: u16::try_from(atomic_number).unwrap_or(0),
+            atomic_number: u16::try_from(atomic_number)
+                .expect("atomic number was range-checked to 1..=103"),
             fractional_position: [
                 positions[index * 3],
                 positions[index * 3 + 1],
@@ -679,7 +731,7 @@ fn read_radial_basis(
                 .into());
             }
             linearization_energies.push(EnergyParameterV1 {
-                l: u32::try_from(l).unwrap_or(0),
+                l: u32::try_from(l).expect("linearization l was range-checked to be nonnegative"),
                 energy,
             });
         }
@@ -739,12 +791,16 @@ fn write_radial_basis(
             "mesh_consistency_tolerance",
             basis.mesh.consistency_tolerance,
         )?;
-        let lin_l = basis
-            .linearization
-            .linearization_energies
-            .iter()
-            .map(|parameter| i32::try_from(parameter.l).unwrap_or(-1))
-            .collect::<Vec<_>>();
+        let mut lin_l = Vec::with_capacity(basis.linearization.linearization_energies.len());
+        for parameter in &basis.linearization.linearization_energies {
+            lin_l.push(
+                i32::try_from(parameter.l).map_err(|_| ValidationError::InvalidValue {
+                    path: format!("{}/linearization_l", record.name()),
+                    expected: "l fits i32".to_owned(),
+                    actual: parameter.l.to_string(),
+                })?,
+            );
+        }
         let lin_e = basis
             .linearization
             .linearization_energies
@@ -803,29 +859,32 @@ fn read_orbitals(group: &Group) -> Result<Vec<SpexScalarLoV1>, IoError> {
             }
             .into());
         }
-        if l[index] < 0 {
+        if !(0..=i64::from(u32::MAX)).contains(&l[index]) {
             return Err(ValidationError::InvalidValue {
                 path: format!("{}/l", group.name()),
-                expected: "l>=0".to_owned(),
+                expected: "0..=u32::MAX".to_owned(),
                 actual: l[index].to_string(),
             }
             .into());
         }
         let n = match &principals {
             None => None,
-            Some(values) if values[index] < 1 => {
+            Some(values) if !(1..=i64::from(u32::MAX)).contains(&values[index]) => {
                 return Err(ValidationError::InvalidValue {
                     path: format!("{}/n", group.name()),
-                    expected: "n>=1 when pbas owns n".to_owned(),
+                    expected: "1..=u32::MAX when pbas owns n".to_owned(),
                     actual: values[index].to_string(),
                 }
                 .into());
             }
-            Some(values) => Some(u32::try_from(values[index]).unwrap_or(0)),
+            Some(values) => Some(
+                u32::try_from(values[index])
+                    .expect("principal n was range-checked to 1..=u32::MAX"),
+            ),
         };
         orbitals.push(SpexScalarLoV1 {
             kind: SpexScalarLoKind::Lo,
-            l: u32::try_from(l[index]).unwrap_or(0),
+            l: u32::try_from(l[index]).expect("orbital l was range-checked to 0..=u32::MAX"),
             energy: energy[index],
             n,
         });
@@ -1283,7 +1342,8 @@ fn read_regional(group: &Group, geometry: &GeometryV2) -> Result<RegionalFieldV2
                 imaginary.push(samples[base + 1]);
             }
             channels.push(SphericalChannelV2 {
-                l: u32::try_from(l[lm]).unwrap_or(0),
+                l: u32::try_from(l[lm])
+                    .expect("spherical-channel l was range-checked to be nonnegative"),
                 m: m[lm],
                 real,
                 imaginary,
@@ -1360,11 +1420,16 @@ fn write_regional(
             })?;
         let child = mt.create_group(&padded(PREFIX_SITE, index))?;
         write_spex_str_attr(&child, "site_id", &site.site_id)?;
-        let l = site
-            .channels
-            .iter()
-            .map(|channel| i32::try_from(channel.l).unwrap_or(-1))
-            .collect::<Vec<_>>();
+        let mut l = Vec::with_capacity(site.channels.len());
+        for channel in &site.channels {
+            l.push(
+                i32::try_from(channel.l).map_err(|_| ValidationError::InvalidValue {
+                    path: format!("{}/l", child.name()),
+                    expected: "l fits i32".to_owned(),
+                    actual: channel.l.to_string(),
+                })?,
+            );
+        }
         let m = site
             .channels
             .iter()

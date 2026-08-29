@@ -1,21 +1,20 @@
 //! Selected-band spinor mixed-product bridge from frozen [`SpinorProductInput`].
 
-use crate::spinor_product::{SpinorFrozenOrbitals, SpinorKMinusQ, SpinorProductInput};
+use crate::spinor_product::{SpinorBandWindow, SpinorProductInput};
 use muffintin_auxiliary_ir::{
-    CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracProductSource, DiracRadial,
-    DiracRadialId, DiracRawProductSpace, DiracSiteRadialSet, InterstitialPairSpec, OrbitalPair,
-    PairColumnLayout, PairVertex, ProductOrbitalKind, ProductPartition, RawInterstitialPairSupport,
-    TransferQ,
+    CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracRadialId,
+    DiracRawProductSpace, InterstitialPairSpec, OrbitalPair, PairColumnLayout, PairVertex,
+    ProductPartition, TransferQ,
 };
-use muffintin_core::{Bohr, GVector, InverseBohr, ReciprocalLattice, RelativisticChannel};
+use muffintin_core::{InverseBohr, ReciprocalLattice, RelativisticChannel};
 use muffintin_envelope::site_translation_phase;
-use muffintin_lapw::{Provenance, SpinorCompiledBasis};
+use muffintin_lapw::SpinorCompiledBasis;
 use muffintin_mpb::{
     DiracBlochVertexAccumulator, MpbError, apply_dirac_overlap_cutoff,
     untruncated_dirac_product_space,
 };
 use muffintin_operators::{CompiledSiteProjection, OperatorError};
-use muffintin_tensor::{DenseEigenvectors, MemoryLayout};
+use muffintin_tensor::DenseEigenvectors;
 use num_complex::Complex64;
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
@@ -73,8 +72,8 @@ pub struct SpinorMpbResult {
 }
 
 impl SpinorMpbResult {
-    pub(crate) const fn frozen_input_identity(&self) -> SpinorFrozenInputIdentity {
-        self.frozen_input
+    pub(crate) fn frozen_input_identity(&self) -> &SpinorFrozenInputIdentity {
+        &self.frozen_input
     }
 }
 
@@ -404,337 +403,40 @@ fn raw_mt_pairs(
     pairs
 }
 
-/// Runtime-private binding stamp of the frozen [`SpinorProductInput`] used to
-/// construct a [`SpinorMpbResult`].
+/// Runtime-private identifying fields of the frozen [`SpinorProductInput`]
+/// used to construct a [`SpinorMpbResult`].
 ///
-/// The mixer is the same splitmix-style 64-bit fold as the parent-grid
-/// construction fingerprint: ordered lengths, type tags, and `f64`/complex
-/// bit patterns. It is an internal binding stamp, not scientific provenance
-/// or a cryptographic digest. Distinct inputs can collide at a residual of
-/// one part in $2^{64}$ per comparison.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct SpinorFrozenInputIdentity(u64);
-
-const FROZEN_INPUT_IDENTITY_SEED: u64 = 0x5F10_1D00_0001_0001;
-
-pub(crate) fn spinor_frozen_input_identity(
-    input: &SpinorProductInput,
-) -> SpinorFrozenInputIdentity {
-    let mut fingerprint = Fingerprint::new();
-    fingerprint.mix_dirac_source(&input.source);
-    fingerprint.mix_orbitals(&input.orbitals);
-    fingerprint.mix_k_minus_q(&input.k_minus_q);
-    fingerprint.mix_pair_layout(input.pair_columns);
-    fingerprint.mix_reciprocal(&input.reciprocal);
-    fingerprint.finish()
+/// Compared by derived [`PartialEq`] on transfer q, product partition,
+/// pair-column layout, reciprocal lattice, band window, and per-k orbital
+/// counts. This is not a hash of eigenvector coefficients.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct SpinorFrozenInputIdentity {
+    q: TransferQ,
+    partition: ProductPartition,
+    pair_columns: PairColumnLayout,
+    reciprocal: ReciprocalLattice,
+    band_window: SpinorBandWindow,
+    available_bands: Vec<usize>,
 }
 
-struct Fingerprint {
-    hash: u64,
-}
-
-impl Fingerprint {
-    fn new() -> Self {
-        Self {
-            hash: mix(FROZEN_INPUT_IDENTITY_SEED, 1),
-        }
-    }
-
-    fn mix(&mut self, lane: u64) {
-        self.hash = mix(self.hash, lane);
-    }
-
-    fn mix_usize(&mut self, value: usize) {
-        self.mix(value as u64);
-    }
-
-    fn mix_i32(&mut self, value: i32) {
-        self.mix(u64::from(value as u32));
-    }
-
-    fn mix_i64(&mut self, value: i64) {
-        self.mix(value as u64);
-    }
-
-    fn mix_f64(&mut self, value: f64) {
-        self.mix(value.to_bits());
-    }
-
-    fn mix_complex(&mut self, value: Complex64) {
-        self.mix_f64(value.re);
-        self.mix_f64(value.im);
-    }
-
-    fn mix_opt_str(&mut self, value: Option<&str>) {
-        self.hash = mix_opt_str(self.hash, value);
-    }
-
-    fn mix_provenance(&mut self, provenance: &Provenance) {
-        self.mix_opt_str(provenance.recipe.as_deref());
-        self.mix_opt_str(provenance.reference.as_deref());
-    }
-
-    fn mix_bohr3(&mut self, value: [Bohr; 3]) {
-        for component in value {
-            self.mix_f64(component.get());
-        }
-    }
-
-    fn mix_inverse_bohr3(&mut self, value: [InverseBohr; 3]) {
-        for component in value {
-            self.mix_f64(component.get());
-        }
-    }
-
-    fn mix_gvector(&mut self, g: GVector) {
-        for index in g.index {
-            self.mix_i32(index);
-        }
-        self.mix_inverse_bohr3(g.cartesian);
-        self.mix_f64(g.norm.get());
-    }
-
-    fn mix_transfer_q(&mut self, q: TransferQ) {
-        self.mix(1);
-        self.mix_inverse_bohr3(q.cartesian);
-        self.mix_gvector(q.umklapp);
-    }
-
-    fn mix_kind(&mut self, kind: ProductOrbitalKind) {
-        match kind {
-            ProductOrbitalKind::Valence => self.mix(1),
-            ProductOrbitalKind::Core => self.mix(2),
-        }
-    }
-
-    fn mix_dirac_source(&mut self, source: &DiracProductSource) {
-        self.mix(1);
-        self.mix_partition(&source.partition);
-        self.mix_usize(source.radials.len());
-        for (site, radials) in source.radials.iter().enumerate() {
-            self.mix_site_radials(site, radials);
-        }
-        self.mix_transfer_q(source.q);
-        self.mix_pair_support(&source.interstitial_pair_support);
-        self.mix_provenance(&source.provenance);
-    }
-
-    fn mix_partition(&mut self, partition: &ProductPartition) {
-        self.mix_usize(partition.site_count());
-        for site in partition.sites() {
-            self.mix_usize(site.index);
-            self.mix_bohr3(site.position);
-            self.mix_f64(site.radius.get());
-        }
-        let interstitial = partition.interstitial();
-        self.mix_f64(interstitial.cell_volume().get());
-        self.mix_usize(interstitial.spheres().len());
-        for sphere in interstitial.spheres() {
-            self.mix_bohr3(sphere.center);
-            self.mix_f64(sphere.radius.get());
-        }
-        self.mix_provenance(partition.provenance());
-    }
-
-    fn mix_site_radials(&mut self, site: usize, radials: &DiracSiteRadialSet) {
-        self.mix_usize(site);
-        self.mix_f64(radials.mesh.first().get());
-        self.mix_f64(radials.mesh.increment());
-        self.mix_usize(radials.mesh.radii().len());
-        for radius in radials.mesh.radii() {
-            self.mix_f64(radius.get());
-        }
-        self.mix_usize(radials.mesh.weights().len());
-        for weight in radials.mesh.weights() {
-            self.mix_f64(*weight);
-        }
-        self.mix_usize(radials.valence.len());
-        for radial in &radials.valence {
-            self.mix_dirac_radial(site, ProductOrbitalKind::Valence, radial);
-        }
-        self.mix_usize(radials.cores.len());
-        for radial in &radials.cores {
-            self.mix_dirac_radial(site, ProductOrbitalKind::Core, radial);
-        }
-    }
-
-    fn mix_dirac_radial(&mut self, site: usize, kind: ProductOrbitalKind, radial: &DiracRadial) {
-        self.mix_usize(site);
-        self.mix_kind(kind);
-        self.mix_i32(radial.kappa.get());
-        self.mix_usize(radial.n);
-        self.mix_usize(radial.samples.large.len());
-        for sample in &radial.samples.large {
-            self.mix_f64(*sample);
-        }
-        self.mix_usize(radial.samples.small.len());
-        for sample in &radial.samples.small {
-            self.mix_f64(*sample);
-        }
-    }
-
-    fn mix_pair_support(&mut self, support: &RawInterstitialPairSupport) {
-        self.mix_transfer_q(support.q);
-        self.mix_usize(support.components.len());
-        for component in &support.components {
-            self.mix_gvector(component.g_relative);
-        }
-    }
-
-    fn mix_orbitals(&mut self, orbitals: &SpinorFrozenOrbitals) {
-        self.mix(2);
-        self.mix_usize(orbitals.k_fractional.len());
-        for k in &orbitals.k_fractional {
-            for component in k {
-                self.mix_f64(*component);
-            }
-        }
-        self.mix_usize(orbitals.available_bands.len());
-        for count in &orbitals.available_bands {
-            self.mix_usize(*count);
-        }
-        self.mix_usize(orbitals.band_window.start);
-        self.mix_usize(orbitals.band_window.count);
-        self.mix_usize(orbitals.energies.len());
-        for (k, energies) in orbitals.energies.iter().enumerate() {
-            self.mix_usize(k);
-            self.mix_usize(energies.len());
-            for energy in energies {
-                self.mix_f64(energy.get());
-            }
-        }
-        self.mix_usize(orbitals.bases.len());
-        for (k, basis) in orbitals.bases.iter().enumerate() {
-            self.mix_usize(k);
-            self.mix_compiled_basis(basis);
-        }
-        self.mix_usize(orbitals.eigenvectors.len());
-        for (k, eigenvectors) in orbitals.eigenvectors.iter().enumerate() {
-            self.mix_usize(k);
-            self.mix_eigenvectors(eigenvectors);
-        }
-    }
-
-    fn mix_compiled_basis(&mut self, basis: &SpinorCompiledBasis) {
-        self.mix_usize(basis.layout.spatial_plane_wave_count());
-        self.mix_usize(basis.layout.site_count());
-        for site in 0..basis.layout.site_count() {
-            let Some(layout) = basis.layout.site_layout(site) else {
-                self.mix(0);
-                continue;
-            };
-            self.mix(1);
-            self.mix_usize(site);
-            self.mix_usize(layout.counts_by_kappa().len());
-            for &(kappa, count) in layout.counts_by_kappa() {
-                self.mix_i32(kappa.get());
-                self.mix_usize(count);
-            }
-        }
-        self.mix_usize(basis.plane_waves.len());
-        for wave in &basis.plane_waves {
-            self.mix_inverse_bohr3(wave.k);
-            self.mix_gvector(wave.g);
-            self.mix_inverse_bohr3(wave.q);
-            self.mix_f64(wave.q_norm.get());
-        }
-        self.mix_usize(basis.site_augmentations.len());
-        for (site, waves) in basis.site_augmentations.iter().enumerate() {
-            self.mix_usize(site);
-            self.mix_usize(waves.len());
-            for (g, augmentation) in waves.iter().enumerate() {
-                self.mix_usize(g);
-                self.mix_usize(augmentation.channels.len());
-                for channel in &augmentation.channels {
-                    self.mix_channel(*channel);
-                }
-                for (spin, coefficients) in augmentation.coefficients.iter().enumerate() {
-                    self.mix_usize(spin);
-                    self.mix_usize(coefficients.len());
-                    for pair in coefficients {
-                        self.mix_complex(pair[0]);
-                        self.mix_complex(pair[1]);
-                    }
-                }
-            }
-        }
-        self.mix_usize(basis.site_geometry.len());
-        for geometry in &basis.site_geometry {
-            self.mix_bohr3(geometry.position);
-            self.mix_f64(geometry.radius.get());
-        }
-        self.mix_provenance(&basis.provenance);
-    }
-
-    fn mix_channel(&mut self, channel: RelativisticChannel) {
-        self.mix_i32(channel.kappa().get());
-        self.mix_i64(channel.twice_mu().get());
-    }
-
-    fn mix_eigenvectors(&mut self, eigenvectors: &DenseEigenvectors) {
-        self.mix_usize(eigenvectors.rows());
-        self.mix_usize(eigenvectors.columns());
-        match eigenvectors.layout() {
-            MemoryLayout::RowMajor => self.mix(1),
-            MemoryLayout::ColumnMajor => self.mix(2),
-            MemoryLayout::Strided => self.mix(3),
-        }
-        let values = eigenvectors.to_host_column_major();
-        self.mix_usize(values.len());
-        for value in values {
-            self.mix_complex(value);
-        }
-    }
-
-    fn mix_k_minus_q(&mut self, mapped: &[SpinorKMinusQ]) {
-        self.mix(3);
-        self.mix_usize(mapped.len());
-        for record in mapped {
-            self.mix_usize(record.k_index);
-            self.mix_usize(record.kq_index);
-            self.mix_gvector(record.umklapp);
-        }
-    }
-
-    fn mix_pair_layout(&mut self, layout: PairColumnLayout) {
-        self.mix(4);
-        self.mix_usize(layout.n_k);
-        self.mix_usize(layout.n_orb);
-        match layout.core_orbital {
-            None => self.mix(0),
-            Some(core) => {
-                self.mix(1);
-                self.mix_usize(core);
-            }
-        }
-    }
-
-    fn mix_reciprocal(&mut self, reciprocal: &ReciprocalLattice) {
-        self.mix(5);
-        for vector in reciprocal.basis() {
-            self.mix_inverse_bohr3(*vector);
-        }
-    }
-
-    fn finish(self) -> SpinorFrozenInputIdentity {
-        SpinorFrozenInputIdentity(self.hash)
+impl SpinorFrozenInputIdentity {
+    pub(crate) fn matches(&self, input: &SpinorProductInput) -> bool {
+        self.q == input.source.q
+            && self.partition == input.source.partition
+            && self.pair_columns == input.pair_columns
+            && self.reciprocal == input.reciprocal
+            && self.band_window == input.orbitals.band_window
+            && self.available_bands == input.orbitals.available_bands
     }
 }
 
-fn mix(hash: u64, lane: u64) -> u64 {
-    hash.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(lane)
-}
-
-fn mix_opt_str(hash: u64, value: Option<&str>) -> u64 {
-    match value {
-        None => mix(hash, 0),
-        Some(text) => {
-            let mut hash = mix(hash, 1);
-            hash = mix(hash, text.len() as u64);
-            for &byte in text.as_bytes() {
-                hash = mix(hash, u64::from(byte));
-            }
-            hash
-        }
+fn spinor_frozen_input_identity(input: &SpinorProductInput) -> SpinorFrozenInputIdentity {
+    SpinorFrozenInputIdentity {
+        q: input.source.q,
+        partition: input.source.partition.clone(),
+        pair_columns: input.pair_columns,
+        reciprocal: input.reciprocal,
+        band_window: input.orbitals.band_window,
+        available_bands: input.orbitals.available_bands.clone(),
     }
 }

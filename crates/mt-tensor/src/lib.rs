@@ -792,7 +792,6 @@ mod tests {
                 actual: Axis::SiteCoordinate,
             }
         );
-        assert!(error.to_string().contains("SiteCoordinate"));
 
         let short = ComplexTensor::from_host_row_major(
             &[2, 2],

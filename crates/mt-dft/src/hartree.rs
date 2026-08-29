@@ -22,10 +22,8 @@ const TOTAL_CHARGE_TOLERANCE: f64 = 1.0e-8;
 /// Full-potential electronic-Hartree and periodic-nuclear specification.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ElectrostaticSpec {
-    /// Weinert order and electronic constant-mode treatment.
-    pub weinert: WeinertHartreeSpec,
-    /// Positive nuclear charges in geometry site order.
-    pub nuclear_charges: Vec<f64>,
+    weinert: WeinertHartreeSpec,
+    nuclear_charges: Vec<f64>,
 }
 
 impl ElectrostaticSpec {
@@ -39,6 +37,16 @@ impl ElectrostaticSpec {
             weinert,
             nuclear_charges,
         })
+    }
+
+    /// Weinert order and electronic constant-mode treatment.
+    pub fn weinert(&self) -> WeinertHartreeSpec {
+        self.weinert
+    }
+
+    /// Positive nuclear charges in geometry site order.
+    pub fn nuclear_charges(&self) -> &[f64] {
+        &self.nuclear_charges
     }
 }
 
@@ -81,10 +89,9 @@ pub fn evaluate_regional_electrostatics(
     charge: &RegionalScalarField,
     spec: &ElectrostaticSpec,
 ) -> Result<RegionalElectrostaticResult, RegionalElectrostaticError> {
-    require_electronic_treatment(spec.weinert)?;
     let weinert_density = weinert_density(charge)?;
-    let raw_hartree = solve_weinert_hartree(&weinert_density, spec.weinert)?;
-    let raw_nuclear = solve_periodic_nuclear_potential(&weinert_density, &spec.nuclear_charges)?;
+    let raw_hartree = solve_weinert_hartree(&weinert_density, spec.weinert())?;
+    let raw_nuclear = solve_periodic_nuclear_potential(&weinert_density, spec.nuclear_charges())?;
     let raw_electrostatic = raw_hartree.add_nuclear_external(&raw_nuclear)?;
 
     let charge_scale = raw_hartree

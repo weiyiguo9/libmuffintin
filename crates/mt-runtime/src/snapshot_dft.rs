@@ -2393,16 +2393,6 @@ pub enum SnapshotDftError {
     BandProjectionCount { states: usize, projections: usize },
     #[error("initial frozen-potential basis refinement did not converge after {passes} passes")]
     InitialBasisRefinementNotConverged { passes: usize },
-    #[error("site {site:?}, spin {spin} has no linearization energy for l={l}")]
-    MissingLinearizationEnergy { site: String, spin: usize, l: u32 },
-    #[error(
-        "bound relativistic local-orbital energy is unavailable for site {site:?}, n={principal_quantum_number}, kappa={kappa}"
-    )]
-    MissingRelativisticLocalOrbitalEnergy {
-        site: String,
-        principal_quantum_number: u32,
-        kappa: i32,
-    },
     #[error("k point {0:?} contains a non-finite coordinate")]
     NonFiniteKPoint([f64; 3]),
     #[error("plane-wave cutoff {cutoff} produces no basis at k={k:?}")]
@@ -2448,8 +2438,6 @@ pub enum SnapshotDftError {
         "second-variation window starts at {start}; runtime requires start=0 so occupied lower scalar bands are not dropped"
     )]
     SecondVariationDropsLowerBands { start: usize },
-    #[error("site {site:?} has incompatible up/down l-resolved spinor local-orbital channels")]
-    SpinorLocalOrbitalChannels { site: String },
     #[error("angular momentum does not fit the signed-kappa representation")]
     AngularMomentumOverflow,
     #[error("one band solution mixed scalar and spinor k-point routes")]

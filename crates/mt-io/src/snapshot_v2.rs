@@ -74,6 +74,17 @@ impl SnapshotFile {
             Self::V2(snapshot) => snapshot.validate(),
         }
     }
+
+    /// Convert to [`SnapshotV2`] without repeating [`Self::validate`].
+    ///
+    /// Callers must have validated `self` immediately before, as
+    /// [`snapshot_file_from_toml`] does.
+    pub fn into_v2_prevalidated(self) -> Result<SnapshotV2, IoError> {
+        match self {
+            Self::V1(snapshot) => snapshot.convert_validated_v1_to_v2(),
+            Self::V2(snapshot) => Ok(snapshot),
+        }
+    }
 }
 
 /// V2 geometry and the radial basis metadata shared by all Pauli components.
@@ -657,7 +668,10 @@ impl SnapshotV1 {
     /// `Bx = By = 0`. V1 has no density payload, so the result is frozen-potential.
     pub fn normalize_v2(&self) -> Result<SnapshotV2, IoError> {
         self.validate()?;
+        self.convert_validated_v1_to_v2()
+    }
 
+    fn convert_validated_v1_to_v2(&self) -> Result<SnapshotV2, IoError> {
         let geometry = GeometryV2 {
             lattice: self.geometry.lattice,
             sites: self

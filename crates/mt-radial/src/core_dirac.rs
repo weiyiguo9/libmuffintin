@@ -1463,7 +1463,7 @@ fn select_match_index(mesh: &ExponentialMesh, potential: &[f64], energy: f64) ->
                 .abs()
                 .total_cmp(&(potential[b] - energy).abs())
         })
-        .unwrap_or(mesh.len() / 2)
+        .expect("match-point search range over a nonempty mesh is nonempty")
 }
 
 fn locate_muffin_tin_index(

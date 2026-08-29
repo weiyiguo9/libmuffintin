@@ -4,7 +4,7 @@ use crate::scalar_coulomb::{
     CoulombBridgeError, bind_interpolation_request, quadratic_discrepancy, require_thc_q_record,
     sampled_from_thc_record, vertex_action_norm,
 };
-use crate::spinor_mpb::{SpinorMpbResult, spinor_frozen_input_identity};
+use crate::spinor_mpb::SpinorMpbResult;
 use crate::spinor_product::{SpinorProductInput, SpinorQSliceError, require_spinor_q_slice};
 use crate::spinor_thc::SpinorThcResult;
 use crate::thc_grid::{ThcQRecord, records_match_parent_grid};
@@ -286,7 +286,7 @@ fn require_matched_mpb_origin(
     let input = inputs
         .get(q_index)
         .ok_or(SpinorCoulombError::ComparisonQIndex(q_index))?;
-    if comparison.mpb.frozen_input_identity() != spinor_frozen_input_identity(input) {
+    if !comparison.mpb.frozen_input_identity().matches(input) {
         return Err(SpinorCoulombError::FrozenInputMismatch { q_index });
     }
     if comparison.mpb.reciprocal != input.reciprocal {

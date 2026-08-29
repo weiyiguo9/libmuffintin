@@ -64,15 +64,11 @@ fn kappa(value: i32) -> Kappa {
 }
 
 #[test]
-fn dirac_charge_sectors_are_only_pp_and_qq() {
+fn dirac_source_requires_equal_length_physical_p_and_q() {
+    // Compile-time exhaustiveness: Dirac charge sectors are only PP and QQ.
     match DiracChargeSector::LargeLarge {
         DiracChargeSector::LargeLarge | DiracChargeSector::SmallSmall => {}
     }
-    assert_ne!(DiracChargeSector::LargeLarge, DiracChargeSector::SmallSmall);
-}
-
-#[test]
-fn dirac_source_requires_equal_length_physical_p_and_q() {
     let n = mesh().len();
     let large = vec![1.0; n];
     let error = DiracProductSource::new(

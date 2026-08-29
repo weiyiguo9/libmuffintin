@@ -68,9 +68,7 @@ pub struct AtomicSuperpositionDensity {
 pub enum AtomicSuperpositionError {
     #[error("atomic superposition requires at least one site")]
     EmptySites,
-    #[error(
-        "neutral atomic superposition requires target electron count {neutral}, got {target}"
-    )]
+    #[error("neutral atomic superposition requires target electron count {neutral}, got {target}")]
     NonNeutralTarget { target: f64, neutral: f64 },
     #[error("the Fourier layout reciprocal lattice does not match the supplied direct lattice")]
     ReciprocalLayoutMismatch,
@@ -155,12 +153,13 @@ pub fn build_atomic_superposition_density(
     let mut atoms = BTreeMap::new();
     for site in &spec.sites {
         if !atoms.contains_key(&site.atomic_number) {
-            let state = run_free_atom_lda(site.atomic_number, &spec.free_atom_scf).map_err(
-                |source| AtomicSuperpositionError::FreeAtom {
-                    atomic_number: site.atomic_number,
-                    source,
-                },
-            )?;
+            let state =
+                run_free_atom_lda(site.atomic_number, &spec.free_atom_scf).map_err(|source| {
+                    AtomicSuperpositionError::FreeAtom {
+                        atomic_number: site.atomic_number,
+                        source,
+                    }
+                })?;
             atoms.insert(site.atomic_number, state);
         }
     }
@@ -315,10 +314,7 @@ fn build_muffin_tins(
                 ((lm.l, lm.m), values)
             },
         ))?;
-        result.push(MuffinTinField::new(
-            target.muffin_tin_mesh.clone(),
-            sphere,
-        )?);
+        result.push(MuffinTinField::new(target.muffin_tin_mesh.clone(), sphere)?);
     }
     Ok(result)
 }
@@ -380,20 +376,17 @@ fn interpolate_atom(
         });
     }
     if radius > radii[radii.len() - 1].get() {
-        return Err(
-            AtomicSuperpositionError::InterpolationBeyondVerifiedTail {
-                site,
-                radius,
-                maximum: radii[radii.len() - 1].get(),
-            },
-        );
+        return Err(AtomicSuperpositionError::InterpolationBeyondVerifiedTail {
+            site,
+            radius,
+            maximum: radii[radii.len() - 1].get(),
+        });
     }
     match radii.binary_search_by(|sample| sample.get().total_cmp(&radius)) {
         Ok(index) => Ok(atom.number_density[index]),
         Err(upper) => {
             let lower = upper - 1;
-            let fraction =
-                (radius / radii[lower].get()).ln() / atom.mesh.increment();
+            let fraction = (radius / radii[lower].get()).ln() / atom.mesh.increment();
             Ok(atom.number_density[lower]
                 + fraction * (atom.number_density[upper] - atom.number_density[lower]))
         }
@@ -449,14 +442,13 @@ fn translations_within(cell: &Cell, displacement: [f64; 3], cutoff: f64) -> Vec<
         for n1 in lower[1]..=upper[1] {
             for n2 in lower[2]..=upper[2] {
                 let translation = add(
-                    add(
-                        scale(basis[0], n0 as f64),
-                        scale(basis[1], n1 as f64),
-                    ),
+                    add(scale(basis[0], n0 as f64), scale(basis[1], n1 as f64)),
                     scale(basis[2], n2 as f64),
                 );
-                if dot(subtract_raw(displacement, translation), subtract_raw(displacement, translation))
-                    <= cutoff_squared + tolerance
+                if dot(
+                    subtract_raw(displacement, translation),
+                    subtract_raw(displacement, translation),
+                ) <= cutoff_squared + tolerance
                 {
                     result.push(translation);
                 }
@@ -514,11 +506,9 @@ mod tests {
         ];
         let cell = Cell::new(direct).unwrap();
         let reciprocal = ReciprocalLattice::from_direct(direct).unwrap();
-        let layout = FourierLayout::new(
-            reciprocal,
-            reciprocal.enumerate(InverseBohr(1.0)).unwrap(),
-        )
-        .unwrap();
+        let layout =
+            FourierLayout::new(reciprocal, reciprocal.enumerate(InverseBohr(1.0)).unwrap())
+                .unwrap();
         let muffin_tin_mesh = ExponentialMesh::new(Bohr(1.0e-4), 0.1, 92).unwrap();
         let angular_grid = AngularGrid::new(
             [
@@ -565,17 +555,24 @@ mod tests {
         };
 
         let built = build_atomic_superposition_density(&spec).unwrap();
+        assert!((built.charge_closure.represented_electron_count - 2.0).abs() < 1.0e-11);
         assert!(
-            (built.charge_closure.represented_electron_count - 2.0).abs() < 1.0e-11
+            built
+                .density
+                .charge()
+                .interstitial()
+                .coefficients()
+                .any(|(g, coefficient)| g != [0, 0, 0] && coefficient.norm() > 1.0e-12)
         );
-        assert!(built.density.charge().interstitial().coefficients().any(
-            |(g, coefficient)| g != [0, 0, 0] && coefficient.norm() > 1.0e-12
-        ));
         let neighbor_channel = built.density.charge().muffin_tins()[0]
             .field()
             .channel(1, 1)
             .unwrap();
-        assert!(neighbor_channel.iter().any(|value| value.re.abs() > 1.0e-10));
+        assert!(
+            neighbor_channel
+                .iter()
+                .any(|value| value.re.abs() > 1.0e-10)
+        );
         let zero = built.density.charge().zero_like();
         for component in built.density.magnetization() {
             assert_eq!(component, &zero);

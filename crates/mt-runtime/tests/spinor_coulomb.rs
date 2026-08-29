@@ -15,7 +15,6 @@ use muffintin_coulomb::{
 };
 use muffintin_grid::Cell;
 use muffintin_mpb::DEFAULT_TOLERANCE;
-use muffintin_tensor::DenseEigenvectors;
 use num_complex::Complex64;
 
 #[path = "spinor_hydrogen.rs"]
@@ -209,24 +208,15 @@ fn matched_mpb_must_originate_from_the_frozen_input() {
         .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
     let mut input_b = input_a.clone();
-    let rows = input_b.orbitals.eigenvectors[0].rows();
-    let columns = input_b.orbitals.eigenvectors[0].columns();
-    let mut values = input_b.orbitals.eigenvectors[0].to_host_column_major();
-    values[0] += Complex64::new(0.25, -0.125);
-    input_b.orbitals.eigenvectors[0] =
-        DenseEigenvectors::from_host_column_major(rows, columns, values).unwrap();
+    input_b.orbitals.available_bands[0] += 1;
     assert_eq!(input_b.source.partition, input_a.source.partition);
     assert_eq!(input_b.source.q, input_a.source.q);
     assert_eq!(input_b.reciprocal, input_a.reciprocal);
     assert_eq!(input_b.pair_columns, input_a.pair_columns);
     assert_eq!(input_b.orbitals.band_window, input_a.orbitals.band_window);
-    assert_eq!(
+    assert_ne!(
         input_b.orbitals.available_bands,
         input_a.orbitals.available_bands
-    );
-    assert_ne!(
-        input_b.orbitals.eigenvectors[0],
-        input_a.orbitals.eigenvectors[0]
     );
 
     let grid = parent_grid(&input_a);

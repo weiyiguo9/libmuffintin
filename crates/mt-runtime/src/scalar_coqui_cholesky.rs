@@ -102,13 +102,7 @@ pub fn write_scalar_coqui_cholesky(
     let prepared = preflight_scalar_coqui_cholesky(inputs, thc, coulomb, coulomb_spec, factor)?;
     let mut writer = CoquiCholeskyWriter::create(path, &prepared.header)?;
     let mut l_scratch = vec![0.0; prepared.header.vq_len()?];
-    for (q, record) in coulomb.records.iter().enumerate() {
-        let factored = factor_hermitian_psd(
-            record.operator.matrix(),
-            record.operator.dimension(),
-            factor.tolerance,
-            q,
-        )?;
+    for (q, (record, factored)) in coulomb.records.iter().zip(prepared.factors).enumerate() {
         pack_vq(
             &factored,
             record,
@@ -131,6 +125,7 @@ struct PreparedCoqui {
     n_k: usize,
     n_band: usize,
     np: usize,
+    factors: Vec<CholeskyFactor>,
 }
 
 fn preflight_scalar_coqui_cholesky(
@@ -225,15 +220,16 @@ fn preflight_scalar_coqui_cholesky(
         }
     }
     let mut np = 0usize;
+    let mut factors = Vec::with_capacity(coulomb.records.len());
     for (q, record) in coulomb.records.iter().enumerate() {
-        let rank = factor_hermitian_psd(
+        let factored = factor_hermitian_psd(
             record.operator.matrix(),
             record.operator.dimension(),
             factor.tolerance,
             q,
-        )?
-        .rank;
-        np = np.max(rank);
+        )?;
+        np = np.max(factored.rank);
+        factors.push(factored);
     }
     if np == 0 {
         return Err(ScalarCoquiCholeskyError::EmptyFactor);
@@ -256,6 +252,7 @@ fn preflight_scalar_coqui_cholesky(
         n_k,
         n_band,
         np,
+        factors,
     })
 }
 

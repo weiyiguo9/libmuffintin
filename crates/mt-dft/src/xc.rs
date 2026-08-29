@@ -221,6 +221,7 @@ impl CorrelationParameters {
         let zeta_plus_root = (1.0 + zeta).cbrt();
         let zeta_minus_root = (1.0 - zeta).cbrt();
         let phi = (zeta_plus_root.powi(2) + zeta_minus_root.powi(2)) / 2.0;
+        // Fully-spin-polarized PBE phi(zeta) singularity guard; 1e-2 floor matches reference PBE implementations.
         let phi_zeta =
             (zeta_plus_root.max(1.0e-2).recip() - zeta_minus_root.max(1.0e-2).recip()) / 3.0;
         let t_gradient_scale = (PI / 3.0).powf(1.0 / 6.0) / (4.0 * phi * total.powf(7.0 / 6.0));

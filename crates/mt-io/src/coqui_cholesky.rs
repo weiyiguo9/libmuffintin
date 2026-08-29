@@ -310,12 +310,6 @@ impl CoquiCholeskyWriter {
 pub fn read_coqui_cholesky(path: impl AsRef<Path>) -> Result<CoquiCholeskyFile, IoError> {
     let file = File::open(path)?;
     let group = file.group(COQUI_CHOLESKY_GROUP)?;
-    require_i32_dtype(&group, "Np")?;
-    require_i32_dtype(&group, "nspin")?;
-    require_i32_dtype(&group, "nspin_in_basis")?;
-    require_i32_dtype(&group, "nkpts")?;
-    require_i32_dtype(&group, "nbnd")?;
-    require_i32_dtype(&group, "nbnd_aux")?;
     let header = CoquiCholeskyHeader {
         np: read_i32_scalar(&group, "Np")?,
         nspin: read_i32_scalar(&group, "nspin")?,
@@ -503,11 +497,6 @@ fn require_rank2(dataset: &hdf5_metno::Dataset, name: &str) -> Result<(), IoErro
         }
         .into())
     }
-}
-
-fn require_i32_dtype(group: &Group, name: &str) -> Result<(), IoError> {
-    let dataset = group.dataset(name)?;
-    require_exact_dtype::<i32>(&dataset, &format!("/Interaction/{name}"))
 }
 
 /// Exact native HDF5 dtype guard used before every numeric (and CoQui

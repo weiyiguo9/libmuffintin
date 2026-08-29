@@ -370,9 +370,15 @@ fn solve_dense(
     mut right: Vec<f64>,
 ) -> Result<Option<Vec<f64>>, MixingError> {
     let dimension = right.len();
-    if matrix.len() != dimension || matrix.iter().any(|row| row.len() != dimension) {
-        return Ok(None);
-    }
+    debug_assert_eq!(
+        matrix.len(),
+        dimension,
+        "metric_matrix produces a square Gram of the residual length"
+    );
+    debug_assert!(
+        matrix.iter().all(|row| row.len() == dimension),
+        "metric_matrix produces a square Gram of the residual length"
+    );
     if matrix.iter().flatten().any(|value| !value.is_finite()) {
         return Err(MixingError::NonFiniteAlgebra {
             quantity: MixAlgebraQuantity::Gram,

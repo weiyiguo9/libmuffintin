@@ -137,12 +137,8 @@ pub fn run_free_atom_lda(
             .zip(mesh.radii())
             .map(|(&radial, radius)| radial / (4.0 * PI * radius.get().powi(2)))
             .collect::<Vec<_>>();
-        let next_potential = effective_potential(
-            nuclear_charge,
-            mesh,
-            &radial_probability,
-            &number_density,
-        )?;
+        let next_potential =
+            effective_potential(nuclear_charge, mesh, &radial_probability, &number_density)?;
         potential_residual = potential
             .iter()
             .zip(&next_potential)
@@ -186,9 +182,7 @@ fn validate_spec(spec: &FreeAtomScfSpec) -> Result<(), FreeAtomScfError> {
         ));
     }
     if !spec.tail_tolerance.is_finite() || spec.tail_tolerance <= 0.0 {
-        return Err(FreeAtomScfError::InvalidTailTolerance(
-            spec.tail_tolerance,
-        ));
+        return Err(FreeAtomScfError::InvalidTailTolerance(spec.tail_tolerance));
     }
     if spec.max_iterations == 0 {
         return Err(FreeAtomScfError::InvalidMaxIterations);
@@ -239,9 +233,7 @@ fn effective_potential(
                 },
             )
             .map_err(|source| FreeAtomScfError::ExchangeCorrelation { index, source })?;
-            Ok((enclosed - nuclear_charge) / radius.get()
-                + outer
-                + xc.potential[0].get())
+            Ok((enclosed - nuclear_charge) / radius.get() + outer + xc.potential[0].get())
         })
         .collect()
 }
@@ -272,10 +264,8 @@ mod tests {
         assert_eq!(state.orbitals.len(), expected.occupations().len());
         for occupation in expected.occupations() {
             assert!(state.orbitals.iter().any(|orbital| {
-                orbital.solution.state.n
-                    == u32::from(occupation.orbital.principal_quantum_number())
-                    && orbital.solution.state.kappa.get()
-                        == i32::from(occupation.orbital.kappa())
+                orbital.solution.state.n == u32::from(occupation.orbital.principal_quantum_number())
+                    && orbital.solution.state.kappa.get() == i32::from(occupation.orbital.kappa())
                     && (orbital.occupation - occupation.occupation).abs() < 1.0e-14
             }));
         }

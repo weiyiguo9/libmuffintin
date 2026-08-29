@@ -40,12 +40,6 @@ pub enum CoulombError {
     WaveLatticeMismatch { index: [i32; 3] },
     #[error("auxiliary interstitial G={index:?} has zero |q+G| outside the Gamma head")]
     ZeroQPlusG { index: [i32; 3] },
-    #[error("site {site} muffin-tin radius {found} does not match the partition radius {expected}")]
-    SiteRadiusMismatch {
-        site: usize,
-        expected: f64,
-        found: f64,
-    },
     #[error("auxiliary muffin-tin L={l} exceeds Weinert LEXP={lexp}")]
     AuxiliaryLExceedsLexp { l: u32, lexp: u32 },
     #[error("factorial table overflow at n={0} (reduce LEXP)")]
