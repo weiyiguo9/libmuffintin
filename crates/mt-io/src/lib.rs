@@ -4,7 +4,11 @@
 //! noncollinear Pauli-field [`SnapshotV2`] files. [`GridArtifactV1`] is
 //! deliberately a separate format for materialized integration grids and is
 //! never embedded in a snapshot. [`MldumpFileV1`] is the libmuffintin-owned
-//! MLDUMP v1 HDF5 schema; it is not CoQui-native or SPEX-native. Populated
+//! MLDUMP v1 HDF5 schema; it is not CoQui-native or SPEX-native.
+//! [`read_spex_snapshot_hdf`] reads SPEX-owned `spex.snapshot_hdf` v1
+//! frozen fields; [`materialize_snapshot_v2`] builds [`SnapshotV2`] only
+//! with an explicit signed-$\kappa$ recipe and a tight Hermitian ingest of
+//! interstitial Fourier pairs. Populated
 //! files are written through [`ScalarMldumpStreamV1`] or
 //! [`SpinorMldumpStreamV1`]. [`CoquiCholeskyFile`] is a separate CoQui-native
 //! single-file Cholesky ERI tree and is not MLDUMP.
@@ -15,6 +19,7 @@ mod grid;
 mod mldump;
 mod snapshot;
 mod snapshot_v2;
+mod spex_snapshot;
 mod units;
 
 pub use coqui_cholesky::{
@@ -67,5 +72,12 @@ pub use snapshot_v2::{
     InitialV2, InterstitialFieldV2, MuffinTinFieldV2, PotentialV2, RadialBasisSpinV2,
     RegionalFieldV2, SNAPSHOT_VERSION_V2, SiteRadialBasisV2, SiteV2, SnapshotFile, SnapshotV2,
     SphericalChannelV2, snapshot_file_from_toml, snapshot_file_to_toml,
+};
+pub use spex_snapshot::{
+    SPEX_FOURIER_HERMITIAN_TOLERANCE, SPEX_SNAPSHOT_HDF_SCHEMA_NAME,
+    SPEX_SNAPSHOT_HDF_SCHEMA_VERSION, SPEX_SNAPSHOT_HDF_SOURCE_KIND, SpexFrozenFieldsV1,
+    SpexMaterialBasisRecipeV1, SpexMaterialChannelKind, SpexMaterialChannelV1,
+    SpexMaterializedSnapshotV1, SpexScalarLoKind, SpexScalarLoTableV1, SpexScalarLoV1,
+    SpexSnapshotHashV1, materialize_snapshot_v2, read_spex_snapshot_hdf, write_spex_snapshot_hdf,
 };
 pub use units::{EnergyUnitV1, InverseLengthUnitV1, LengthUnitV1, VolumeUnitV1};

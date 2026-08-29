@@ -68,6 +68,15 @@ pub enum ValidationError {
     },
     #[error("lattice determinant must be finite and positive, got {determinant}")]
     InvalidLattice { determinant: f64 },
+    #[error(
+        "{path} interstitial G {g:?} fails Hermitian ingest: |c-conj(c')|={discrepancy} > {tolerance}"
+    )]
+    SpexFourierHermitian {
+        path: String,
+        g: [i32; 3],
+        discrepancy: f64,
+        tolerance: f64,
+    },
 }
 
 pub(crate) fn finite(path: impl Into<String>, value: f64) -> Result<(), ValidationError> {
