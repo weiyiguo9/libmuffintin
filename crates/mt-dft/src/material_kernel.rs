@@ -75,7 +75,7 @@ pub struct MaterialKernel {
     pub(super) frozen_potential: RegionalPotential,
     pub(super) restart_density: Option<RegionalDensity>,
     pub(super) nuclear_charges: Vec<f64>,
-    pub(super) core_potentials: BTreeMap<usize, CorePotentialContext>,
+    core_potentials: BTreeMap<usize, CorePotentialContext>,
     pub(super) density_template: Option<RegionalDensity>,
     pub(super) energy_terms: BTreeMap<usize, ScfEnergyTerms>,
     pub(super) spex_spinor_binding: Option<SpexSpinorMaterialBinding>,

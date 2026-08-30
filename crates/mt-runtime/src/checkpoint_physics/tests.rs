@@ -1,5 +1,6 @@
 use super::*;
 use muffintin_core::Kappa;
+use std::collections::BTreeMap;
 use muffintin_dft::{
     BandPathPoint, BandPathRequest, FirstVariationWindow, LinearizationEnergyDiagnostic,
     NoncollinearXcRoute, ScfChannelRecipe, ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState,

@@ -1,5 +1,6 @@
 use super::*;
 use muffintin_dft::g_vector;
+use std::collections::BTreeMap;
 
 /// Build a validated V2 restart checkpoint from a converged SCF state.
 ///
