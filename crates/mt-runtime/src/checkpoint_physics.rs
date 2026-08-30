@@ -92,7 +92,7 @@ impl CheckpointPhysics {
                 frozen_potential,
                 restart_density,
                 converted.nuclear_charges,
-            ),
+            )?,
         })
     }
 

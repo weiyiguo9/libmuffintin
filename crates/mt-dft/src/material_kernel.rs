@@ -262,8 +262,8 @@ impl MaterialKernel {
         frozen_potential: RegionalPotential,
         restart_density: Option<RegionalDensity>,
         nuclear_charges: Vec<f64>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, MaterialKernelError> {
+        let kernel = Self {
             reciprocal,
             geometry,
             sites,
@@ -274,7 +274,14 @@ impl MaterialKernel {
             density_template: None,
             energy_terms: BTreeMap::new(),
             spex_spinor_binding: None,
+        };
+        kernel.require_topology_site_count("geometry", kernel.geometry.spheres().len())?;
+        kernel.require_topology_site_count("nuclear charges", kernel.nuclear_charges.len())?;
+        kernel.require_potential_site_count(&kernel.frozen_potential)?;
+        if let Some(density) = &kernel.restart_density {
+            kernel.require_density_site_count(density)?;
         }
+        Ok(kernel)
     }
 
     pub fn bind_spex_spinor(
@@ -282,14 +289,22 @@ impl MaterialKernel {
         binding: SpexSpinorMaterialBinding,
         basis: &ScfBasis,
     ) -> Result<(), MaterialKernelError> {
+        Self::validate_spex_binding(&binding, basis)?;
         self.spex_spinor_binding = Some(binding);
-        self.validate_spex_requested_basis(basis)
+        Ok(())
     }
 
     fn validate_spex_requested_basis(&self, basis: &ScfBasis) -> Result<(), MaterialKernelError> {
         let Some(binding) = &self.spex_spinor_binding else {
             return Ok(());
         };
+        Self::validate_spex_binding(binding, basis)
+    }
+
+    fn validate_spex_binding(
+        binding: &SpexSpinorMaterialBinding,
+        basis: &ScfBasis,
+    ) -> Result<(), MaterialKernelError> {
         for bound in &binding.channels {
             if basis
                 .channels
@@ -942,6 +957,36 @@ impl MaterialKernel {
                     actual,
                 });
             }
+        }
+        Ok(())
+    }
+
+    fn require_density_site_count(
+        &self,
+        density: &RegionalDensity,
+    ) -> Result<(), MaterialKernelError> {
+        self.require_topology_site_count(
+            "restart density charge",
+            density.charge().muffin_tins().len(),
+        )?;
+        for (component, field) in ["mx", "my", "mz"].into_iter().zip(density.magnetization()) {
+            self.require_topology_site_count(component, field.muffin_tins().len())?;
+        }
+        Ok(())
+    }
+
+    fn require_topology_site_count(
+        &self,
+        component: &'static str,
+        actual: usize,
+    ) -> Result<(), MaterialKernelError> {
+        let expected = self.sites.len();
+        if actual != expected {
+            return Err(MaterialKernelError::TopologySiteCount {
+                component,
+                expected,
+                actual,
+            });
         }
         Ok(())
     }
@@ -1964,6 +2009,12 @@ pub enum MaterialKernelError {
     CorePotential(#[from] CorePotentialBuildError),
     #[error(transparent)]
     CoreDensity(#[from] CoreDensityError),
+    #[error("material-kernel {component} has {actual} sites, expected {expected}")]
+    TopologySiteCount {
+        component: &'static str,
+        expected: usize,
+        actual: usize,
+    },
     #[error("potential component {component} has {actual} sites, expected {expected}")]
     PotentialComponentSiteCount {
         component: &'static str,

@@ -210,6 +210,55 @@ fn checkpoint_conversion_normalizes_monopole_and_wraps_cartesian_site() {
 }
 
 #[test]
+fn material_kernel_rejects_truncated_nuclear_topology_at_construction() {
+    let physics = CheckpointPhysics::new(&checkpoint()).unwrap();
+    let error = MaterialKernel::new(
+        *physics.kernel.reciprocal(),
+        physics.kernel.geometry().clone(),
+        physics.kernel.sites().to_vec(),
+        physics.kernel.frozen_potential().clone(),
+        physics.kernel.restart_density().cloned(),
+        Vec::new(),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        MaterialKernelError::TopologySiteCount {
+            component: "nuclear charges",
+            expected: 1,
+            actual: 0,
+        }
+    ));
+}
+
+#[test]
+fn failed_spex_binding_does_not_mutate_the_material_kernel() {
+    let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
+    let basis = config(ScfRelativity::SpinorFirstVariation).basis;
+    let mut requested = basis.channels[0].clone();
+    requested.site = "missing-site".to_owned();
+    let binding = SpexSpinorMaterialBinding::new(vec![SpexBoundSpinorChannel::new(
+        channel_l(requested.identity),
+        requested.clone(),
+        ScfResolvedChannelEnergy {
+            recipe: requested,
+            energy: Hartree(-0.1),
+            components: Vec::new(),
+        },
+    )]);
+    assert!(matches!(
+        physics.kernel.bind_spex_spinor(binding, &basis),
+        Err(MaterialKernelError::SpexMaterialChannelMismatch { .. })
+    ));
+    assert!(matches!(
+        physics
+            .kernel
+            .spinor_site_inputs(physics.kernel.frozen_potential(), &basis),
+        Err(MaterialKernelError::SpinorRadialEquation { .. })
+    ));
+}
+
+#[test]
 fn v2_interstitial_components_are_keyed_independently_of_input_order() {
     fn coefficient(g: [i32; 3], real: f64, imaginary: f64) -> FourierCoefficientV2 {
         FourierCoefficientV2 {
