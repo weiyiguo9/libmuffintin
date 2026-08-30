@@ -389,6 +389,15 @@ impl CheckpointPhysics {
         })
     }
 
+    /// Return the exact validated structure carried by this checkpoint.
+    fn structure(&self) -> PyResult<Structure> {
+        let inner = muffintin::Structure::new(self.checkpoint.geometry.clone())
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        Ok(Structure {
+            inner: Arc::new(inner),
+        })
+    }
+
     fn export_frozen_potential(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         export_regional(py, self.physics.export_frozen_potential())
     }
