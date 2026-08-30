@@ -19,8 +19,8 @@ The checkpoint-backed DFT/SCF kernel boundary remains [17](17_minimal_dft_scf.md
 | `crates/mt-coulomb` | `libmuffintin-coulomb` (`muffintin_coulomb`) |
 
 `libmuffintin-dft::MaterialKernel` owns the checkpoint-backed scalar and
-full-spinor one-particle physics and its `solve_points` and
-`solve_spinor_points` entry points. Runtime `CheckpointPhysics` is the
+full-spinor one-particle physics. Its public `solve_points` entry point
+dispatches the scalar, SOC-second-variation, or full-spinor route. Runtime `CheckpointPhysics` is the
 checkpoint/IO/orchestration/product-space bridge shell and delegates those
 solves to its kernel. `CheckpointPhysics::scalar_product_input` remains the
 runtime-owned scalar product-input capability; it consumes [`ProductSource`]
@@ -77,8 +77,10 @@ multiply $(u,\dot u)$. Local-orbital rows follow
 [`BasisLayout::site_local_orbital_range`]. `ProductRadialId` remains the
 identifier based on scalar $l$. The scalar product-input path does not add $\kappa$, $PP$, or $QQ$.
 
-`ScfState` is not the orbital source. Private
-`CheckpointBandSolution` / `CheckpointKPointSolution` fields stay private.
+`ScfState` is not the orbital source. `CheckpointBandSolution` exposes its
+ordered k-point slice so the runtime bridge can consume each scalar or spinor
+solution payload; state, weight, and energy bookkeeping remain encapsulated by
+`MaterialKernel`.
 
 ## 3. Canonical $q$ and Umklapp
 

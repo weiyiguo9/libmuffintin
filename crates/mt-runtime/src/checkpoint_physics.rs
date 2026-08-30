@@ -1,4 +1,4 @@
-//! Checkpoint conversion shell around the runtime-internal material kernel.
+//! Checkpoint conversion shell around the DFT-owned material kernel.
 
 use std::collections::BTreeSet;
 use std::f64::consts::PI;
