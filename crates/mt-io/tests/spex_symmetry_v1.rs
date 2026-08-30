@@ -71,6 +71,37 @@ fn roundtrip_preserves_the_import() {
     std::fs::remove_file(&path).ok();
 }
 
+/// Cross-language check against a file written by another producer (for
+/// example `pymuffintin.spex_log.SpexLogSymmetry.to_spexsym_v1`). Run with:
+/// `SPEXSYM_FIXTURE=/path/to/file.h5 cargo test -p libmuffintin-io --test
+/// spex_symmetry_v1 -- --ignored`
+#[test]
+#[ignore = "needs SPEXSYM_FIXTURE pointing at an externally produced spexsym v1 file"]
+fn reads_an_externally_produced_file() {
+    let path = std::env::var("SPEXSYM_FIXTURE").expect("SPEXSYM_FIXTURE not set");
+    let file = read_spex_symmetry_v1(&path).unwrap();
+    let import = &file.import;
+    assert!(!import.operations.is_empty());
+    let identity = &import.operations[0];
+    assert_eq!(identity.rotation, [[1, 0, 0], [0, 1, 0], [0, 0, 1]]);
+    assert!(!identity.time_reversal);
+    assert_eq!(import.parent.len(), import.kpoints.len());
+    let dataset = import.dataset();
+    assert_eq!(dataset.equivalent_atoms.len(), import.atom_map[0].len());
+    println!(
+        "spexsym cross-check: {} ops ({} time-reversal), {} sites, {} kpoints, {} irrep blocks",
+        import.operations.len(),
+        import
+            .operations
+            .iter()
+            .filter(|op| op.time_reversal)
+            .count(),
+        import.atom_map.first().map_or(0, Vec::len),
+        import.kpoints.len(),
+        import.irreps.len(),
+    );
+}
+
 #[test]
 fn out_of_range_little_group_index_is_rejected() {
     let path = fixture_path("libmuffintin_spexsym_v1_bad_index.h5");

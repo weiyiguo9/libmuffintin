@@ -82,11 +82,27 @@ graph LR
   same layout via `rotation_as_array`, and the SPEX `rot`/`transl` pair is
   already in that basis.
 
-On the SPEX side the dump must force the lazy irrep computation
-(`prepare_offdiag`) for every irreducible k-point, spin, and requested band
-window, then write the versioned file below with all indices converted to
-0-based. The existing frozen-snapshot writer pattern (schema-version
-attribute plus a schema-validation companion test) is the template.
+The import has two tiers:
+
+- **Stdout tier (implemented).** SPEX prints its operation table (rotations,
+  fractional translations, inverse indices, time-reversal flags), the atom
+  basis, and the irreducible-BZ table into standard output; no SPEX
+  modification is needed. `pymuffintin.spex_log` parses that text — the
+  format is pinned against `print_symmetries` (`src/symmetry.f:480`):
+  operations print in blocks of four, transposed across lines, with a
+  fixed-width prefix and 18-character matrix-row groups — and exports a
+  `libmuffintin.spexsym` v1 file whose k list is the IBZ and whose irreps
+  section is empty. Space-group classification lines in the log are ignored
+  by design: classification can depend on the origin shift, and the
+  operation table itself is the authoritative object.
+- **Dump tier (not implemented).** Wavefunction irreps never appear in
+  stdout, so reusing `irrep_sub` requires a SPEX-side dump that forces the
+  lazy irrep computation (`prepare_offdiag`) for every irreducible k-point,
+  spin, and requested band window, then writes the versioned file below with
+  all indices converted to 0-based. The existing frozen-snapshot writer
+  pattern (schema-version attribute plus a schema-validation companion test)
+  is the template. This tier is deferred until a consumer (BSE-style
+  acceleration) actually needs it.
 
 ## Implementation
 
@@ -136,5 +152,6 @@ SPEX source anchors for the writer: operation storage `src/global.f:179`
 | Rust IR + moyo detection | tests: fcc primitive is #225 with 48 operations; rutile orbits split by species |
 | Python detection + irreps | tests: Γ-point scalar and spinor irreps satisfy $\sum_\alpha d_\alpha^2 = 48$ |
 | `spexsym` v1 reader/writer | roundtrip and index-validation tests in `crates/mt-io/tests/spex_symmetry_v1.rs` |
-| SPEX-side Fortran writer | not implemented; planned as a dedicated-worktree quantity dump validated against a real SPEX run |
+| SPEX stdout parser | `pymuffintin.spex_log` with an MnTe noncollinear fixture (8 magnetic operations, 4 time-reversal, 105-point IBZ); cross-language check: its `to_spexsym_v1` output is read back by `muffintin_io` (the ignored `SPEXSYM_FIXTURE` test) |
+| SPEX-side irrep dump | not implemented; deferred until a BSE-style consumer needs `irrep_sub` |
 | Consumption in SCF / BZ reduction | not implemented; no k-reduction or symmetrization claim |
