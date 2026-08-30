@@ -12,12 +12,15 @@ name = "muffintin_python"
 crate-type = ["cdylib"]
 
 [dependencies]
+libmuffintin-coulomb = { path = "../mt-coulomb" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-io = { path = "../mt-io" }
+libmuffintin-operators = { path = "../mt-operators" }
+libmuffintin-prodbasis = { path = "../mt-prodbasis" }
 libmuffintin-runtime = { path = "../mt-runtime" }
 num-complex.workspace = true
 numpy = "=0.27.1"
-pyo3 = { version = "=0.27.2", features = ["extension-module", "abi3-py310"] }
+pyo3 = { version = "=0.27.2", features = ["extension-module", "abi3-py310", "multiple-pymethods"] }
 
 # PyO3 macros and rust-numpy's C API require unsafe expansion, so this crate does not inherit the workspace forbid.
 [lints.rust]

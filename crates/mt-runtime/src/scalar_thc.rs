@@ -8,17 +8,40 @@ use crate::thc_grid::{
     ThcCandidates, ThcEngine, ThcGridError, ThcParentGrid, ThcQRecord, ThcRegion,
     records_match_parent_grid, require_parent_grid_radials,
 };
-use muffintin_prodbasis::{ProductOrbitalKind, ProductRadial, ProductRadialId, SiteRadialSet};
 use muffintin_core::{Bohr, GVector, InverseBohr, complex_spherical_harmonics, lm_index};
 use muffintin_operators::lapw::{CompiledBasis, Provenance};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
+use muffintin_prodbasis::thc::{
+    PairBlock, RankPolicy, Selection, ThcError, fit_allq_l2_pair_blocks,
+};
+use muffintin_prodbasis::{ProductOrbitalKind, ProductRadial, ProductRadialId, SiteRadialSet};
 use muffintin_tensor::DenseEigenvectors;
-use muffintin_prodbasis::thc::{PairBlock, RankPolicy, Selection, ThcError, fit_allq_l2_pair_blocks};
 use num_complex::Complex64;
 use thiserror::Error;
 
-type OrbitalSample = (Complex64, Complex64);
-type OrbitalGrid = Vec<Vec<Vec<OrbitalSample>>>;
+/// Scalar Bloch orbitals sampled on a THC parent grid.
+///
+/// `large` and `small` are point-major arrays with shape
+/// `n_points * n_k * n_orb`; the band index is contiguous.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScalarOrbitalSamples {
+    pub n_points: usize,
+    pub n_k: usize,
+    pub n_orb: usize,
+    pub large: Vec<Complex64>,
+    pub small: Vec<Complex64>,
+}
+
+impl ScalarOrbitalSamples {
+    fn index(&self, point: usize, k: usize, band: usize) -> usize {
+        (point * self.n_k + k) * self.n_orb + band
+    }
+
+    fn at(&self, point: usize, k: usize, band: usize) -> (Complex64, Complex64) {
+        let index = self.index(point, k, band);
+        (self.large[index], self.small[index])
+    }
+}
 
 /// Production AllQL2 request for one collinear spin.
 #[derive(Clone, Debug, PartialEq)]
@@ -120,14 +143,7 @@ pub fn build_scalar_thc(
     spec: &ScalarThcSpec,
 ) -> Result<ScalarThcResult, ScalarThcError> {
     let first = require_scalar_q_slice(inputs)?;
-    if grid.partition() != &first.source.partition {
-        return Err(ScalarThcError::GridPartitionMismatch);
-    }
-    require_parent_grid_radials(grid, |site| {
-        first.source.radials.get(site).map(|set| &set.mesh)
-    })?;
-    let channel = spin_channel(first, spec.spin)?;
-    let samples = evaluate_orbitals(first, grid, channel)?;
+    let samples = sample_scalar_orbitals(first, grid, spec.spin)?;
     let blocks = pair_blocks(inputs, grid, &samples)?;
     let cartesian = grid.cartesian();
     let weights = grid.weights();
@@ -197,17 +213,29 @@ impl From<ScalarQSliceError> for ScalarThcError {
 }
 
 #[allow(clippy::needless_range_loop)]
-fn evaluate_orbitals(
+/// Sample one scalar spin channel on an externally supplied THC parent grid.
+pub fn sample_scalar_orbitals(
     input: &ScalarProductInput,
     grid: &ThcParentGrid,
-    channel: &ScalarSpinChannel,
-) -> Result<OrbitalGrid, ScalarThcError> {
+    spin: u8,
+) -> Result<ScalarOrbitalSamples, ScalarThcError> {
+    if grid.partition() != &input.source.partition {
+        return Err(ScalarThcError::GridPartitionMismatch);
+    }
+    require_parent_grid_radials(grid, |site| {
+        input.source.radials.get(site).map(|set| &set.mesh)
+    })?;
+    let channel = spin_channel(input, spin)?;
     let n_k = channel.eigenvectors.len();
     let n_orb = input.orbitals.band_window.count;
-    let mut samples = vec![
-        vec![vec![(Complex64::default(), Complex64::default()); n_orb]; n_k];
-        grid.points().len()
-    ];
+    let n_points = grid.points().len();
+    let mut samples = ScalarOrbitalSamples {
+        n_points,
+        n_k,
+        n_orb,
+        large: vec![Complex64::default(); n_points * n_k * n_orb],
+        small: vec![Complex64::default(); n_points * n_k * n_orb],
+    };
     let volume = input
         .source
         .partition
@@ -251,22 +279,22 @@ fn evaluate_orbitals(
                             radius,
                             direction,
                         )?;
-                        samples[p][k][band] = (large * k_phase, small * k_phase);
+                        let index = samples.index(p, k, band);
+                        samples.large[index] = large * k_phase;
+                        samples.small[index] = small * k_phase;
                     }
                 }
             }
             ThcRegion::Interstitial => {
                 for k in 0..n_k {
                     for band in 0..n_orb {
-                        samples[p][k][band] = (
-                            interstitial_orbital(
-                                &channel.bases[k],
-                                &channel.eigenvectors[k],
-                                band,
-                                point.coordinate,
-                                volume,
-                            ),
-                            Complex64::default(),
+                        let index = samples.index(p, k, band);
+                        samples.large[index] = interstitial_orbital(
+                            &channel.bases[k],
+                            &channel.eigenvectors[k],
+                            band,
+                            point.coordinate,
+                            volume,
                         );
                     }
                 }
@@ -365,7 +393,7 @@ fn minus_i_k_dot_r(k: [InverseBohr; 3], coordinate: [Bohr; 3]) -> Complex64 {
 fn pair_blocks(
     inputs: &[ScalarProductInput],
     grid: &ThcParentGrid,
-    samples: &[Vec<Vec<OrbitalSample>>],
+    samples: &ScalarOrbitalSamples,
 ) -> Result<Vec<PairBlock>, ScalarThcError> {
     let layout = inputs[0].pair_columns;
     let n_orb = layout.n_orb;
@@ -378,9 +406,9 @@ fn pair_blocks(
             for (p, point) in grid.points().iter().enumerate() {
                 let phase = plus_i_g_dot_r(mapped.umklapp, point.coordinate);
                 for left_band in 0..n_orb {
-                    let (p_left, q_left) = samples[p][mapped.kq_index][left_band];
+                    let (p_left, q_left) = samples.at(p, mapped.kq_index, left_band);
                     for right_band in 0..n_orb {
-                        let (p_right, q_right) = samples[p][mapped.k_index][right_band];
+                        let (p_right, q_right) = samples.at(p, mapped.k_index, right_band);
                         let column = layout.encode(mapped.k_index, left_band, right_band);
                         values[p * n_col + column] =
                             phase * (p_left.conj() * p_right + q_left.conj() * q_right);

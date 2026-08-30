@@ -16,7 +16,7 @@ pub(crate) struct Checkpoint {
 #[derive(Clone, Debug)]
 pub(crate) struct CheckpointPhysics {
     pub(crate) checkpoint: Arc<CheckpointV2>,
-    physics: Arc<muffintin::CheckpointPhysics>,
+    pub(crate) physics: Arc<muffintin::CheckpointPhysics>,
 }
 
 #[pyclass(name = "ScalarProductInput", module = "libmuffintin._native", frozen)]
@@ -24,6 +24,13 @@ pub(crate) struct CheckpointPhysics {
 pub(crate) struct ScalarProductInput {
     pub(crate) checkpoint: Arc<CheckpointV2>,
     pub(crate) inner: Arc<muffintin::ScalarProductInput>,
+}
+
+#[pyclass(name = "ScalarProductSlice", module = "libmuffintin._native", frozen)]
+#[derive(Clone, Debug)]
+pub(crate) struct ScalarProductSlice {
+    pub(crate) checkpoint: Arc<CheckpointV2>,
+    pub(crate) inner: Arc<Vec<muffintin::ScalarProductInput>>,
 }
 
 #[pyfunction]
@@ -70,6 +77,34 @@ impl CheckpointPhysics {
         Ok(ScalarProductInput {
             checkpoint: Arc::clone(&self.checkpoint),
             inner: Arc::new(input),
+        })
+    }
+
+    fn scalar_q_slice(&self, input_path: PathBuf) -> PyResult<ScalarProductSlice> {
+        let workflow = muffintin::load_input_path(input_path)
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        let config = muffintin::single_dft_scf_config(&workflow)
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        let gamma = self
+            .physics
+            .scalar_product_input(&config, [0.0, 0.0, 0.0])
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        let q_points = gamma.orbitals.k_fractional.clone();
+        let mut inputs = Vec::with_capacity(q_points.len());
+        for q in q_points {
+            if q.iter().all(|component| component.abs() <= 1.0e-12) {
+                inputs.push(gamma.clone());
+            } else {
+                inputs.push(
+                    self.physics
+                        .scalar_product_input(&config, q)
+                        .map_err(|error| PyValueError::new_err(error.to_string()))?,
+                );
+            }
+        }
+        Ok(ScalarProductSlice {
+            checkpoint: Arc::clone(&self.checkpoint),
+            inner: Arc::new(inputs),
         })
     }
 }

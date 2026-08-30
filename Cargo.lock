@@ -910,6 +910,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inventory"
+version = "0.3.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1050,7 +1059,10 @@ name = "libmuffintin-python"
 version = "0.2.0"
 dependencies = [
  "libmuffintin-core",
+ "libmuffintin-coulomb",
  "libmuffintin-io",
+ "libmuffintin-operators",
+ "libmuffintin-prodbasis",
  "libmuffintin-runtime",
  "num-complex",
  "numpy",
@@ -1658,6 +1670,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab53c047fcd1a1d2a8820fe84f05d6be69e9526be40cb03b73f86b6b03e6d87d"
 dependencies = [
  "indoc",
+ "inventory",
  "libc",
  "memoffset",
  "once_cell",

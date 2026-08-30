@@ -1,16 +1,42 @@
 //! Thin Python data-export ABI over frozen libmuffintin runtime objects.
 
 mod checkpoint;
+mod coulomb;
 mod export;
+mod products;
+mod scf;
+mod spinor;
+mod thc;
+mod writers;
 
-use checkpoint::{Checkpoint, CheckpointPhysics, ScalarProductInput, load_checkpoint};
+use checkpoint::{
+    Checkpoint, CheckpointPhysics, ScalarProductInput, ScalarProductSlice, load_checkpoint,
+};
+use coulomb::{
+    ScalarCoulombResult, ScalarMpbCoulombResult, build_scalar_coulomb, build_scalar_mpb_coulomb,
+};
+use products::{ScalarMpbResult, build_scalar_mpb};
 use pyo3::prelude::*;
+use thc::{ScalarThcResult, build_scalar_thc, sample_scalar_orbitals};
 
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<Checkpoint>()?;
     module.add_class::<CheckpointPhysics>()?;
     module.add_class::<ScalarProductInput>()?;
+    module.add_class::<ScalarProductSlice>()?;
+    module.add_class::<ScalarMpbResult>()?;
+    module.add_class::<ScalarThcResult>()?;
+    module.add_class::<ScalarCoulombResult>()?;
+    module.add_class::<ScalarMpbCoulombResult>()?;
     module.add_function(wrap_pyfunction!(load_checkpoint, module)?)?;
+    module.add_function(wrap_pyfunction!(build_scalar_mpb, module)?)?;
+    module.add_function(wrap_pyfunction!(build_scalar_thc, module)?)?;
+    module.add_function(wrap_pyfunction!(build_scalar_coulomb, module)?)?;
+    module.add_function(wrap_pyfunction!(build_scalar_mpb_coulomb, module)?)?;
+    module.add_function(wrap_pyfunction!(sample_scalar_orbitals, module)?)?;
+    spinor::register(module)?;
+    writers::register(module)?;
+    scf::register(module)?;
     Ok(())
 }

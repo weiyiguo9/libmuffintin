@@ -8,6 +8,7 @@ extern crate self as muffintin;
 mod channel_recipe;
 mod channel_token;
 mod checkpoint_physics;
+mod dft_scf;
 mod error;
 mod input;
 mod mldump_header;
@@ -44,6 +45,11 @@ pub use checkpoint_physics::{
     CheckpointPhysicsError, MaterialKernelError, checkpoint_v2_from_state,
     materialize_atomic_checkpoint_v2,
 };
+pub use dft_scf::{
+    DftConvergenceDecision, DftCoreStep, DftEnergyRecord, DftLapwDensityAssembly, DftLapwSolution,
+    DftOccupations, DftRegionalDensity, DftRegionalFourier, DftRegionalPotentialStep, DftScfError,
+    DftScfPlan, DftScfResult, DftScfSession, prepare_dft_scf, run_dft_scf,
+};
 pub use error::{InputError, InputValidationError};
 pub use input::{
     BandPathPoint, Basis, BasisEnvelope, BasisEnvelopeKind, Convergence, EnergyWindow,
@@ -72,7 +78,10 @@ pub use scalar_product::{
     SCALAR_RADIAL_LO0, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarBandWindow, ScalarFrozenOrbitals,
     ScalarKMinusQ, ScalarProductInput, ScalarSpinChannel,
 };
-pub use scalar_thc::{ScalarThcError, ScalarThcResult, ScalarThcSpec, build_scalar_thc};
+pub use scalar_thc::{
+    ScalarOrbitalSamples, ScalarThcError, ScalarThcResult, ScalarThcSpec, build_scalar_thc,
+    sample_scalar_orbitals,
+};
 pub use single_dft_scf::{SingleDftScfConfigError, single_dft_scf_config};
 pub use spinor_coulomb::{
     SPINOR_COULOMB_EXACTNESS_FLOOR, SpinorCoulombDiscrepancy, SpinorCoulombError,

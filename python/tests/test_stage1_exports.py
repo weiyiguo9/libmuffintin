@@ -22,12 +22,9 @@ def _assert_array(value: object, dtype: np.dtype, shape: tuple[int, ...]) -> Non
 
 
 def test_stage1_hydrogen_exports_follow_pyexport_v1() -> None:
-    assert mt.__all__ == [
-        "Checkpoint",
-        "CheckpointPhysics",
-        "ScalarProductInput",
-        "load_checkpoint",
-    ]
+    assert {"Checkpoint", "CheckpointPhysics", "ScalarProductInput", "load_checkpoint"} <= set(
+        mt.__all__
+    )
     checkpoint = mt.load_checkpoint(FIXTURES / "hydrogen_checkpoint.toml")
     assert isinstance(checkpoint, mt.Checkpoint)
     physics = mt.CheckpointPhysics(checkpoint)

@@ -1,6 +1,7 @@
 //! Production self-consistent-field state machine and basis-neutral physics seam.
 
 use std::error::Error;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use muffintin_core::{Hartree, Kappa};
 use thiserror::Error;
@@ -18,6 +19,7 @@ use crate::{
 const ELECTRON_TOLERANCE: f64 = 1.0e-12;
 const OCCUPATION_MAX_ITERATIONS: usize = 256;
 const BASIS_REFINEMENT_MAX_PASSES: usize = 16;
+static NEXT_SCF_LOOP_ID: AtomicU64 = AtomicU64::new(1);
 
 /// A regular full-Brillouin-zone mesh in fractional reciprocal coordinates.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -576,45 +578,333 @@ pub trait ScfPhysics {
     ) -> Result<crate::RegularSpectrum, Self::Error>;
 }
 
-/// Execute one SCF task, optionally restarting from an earlier converged state.
-pub fn run_scf<P: ScfPhysics>(
-    physics: &mut P,
-    config: &ScfConfig,
-    source: Option<&ScfState>,
-) -> Result<ScfState, ScfError<P::Error>> {
-    config.validate()?;
-    let valence_electron_count = config.electron_count - config.core_electron_count();
-    let mut mixer = config.mixing.build().map_err(ScfConfigError::from)?;
-    let mut input_density = match source {
-        Some(state) => state.density.clone(),
-        None => physics
-            .initial_density(config)
-            .map_err(|source| ScfError::Kernel {
-                operation: "initial density",
-                source,
-            })?,
-    };
-    let mut previous_energy = None;
-    let mut diagnostics = Vec::with_capacity(config.convergence.max_iterations);
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ScfLoopPhase {
+    InitialDensity,
+    Potential,
+    Core,
+    Lapw,
+    Occupations,
+    Density,
+    Energy,
+    Convergence,
+    Mix,
+    Finished,
+}
 
-    for iteration in 1..=config.convergence.max_iterations {
+impl ScfLoopPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::InitialDensity => "initial density",
+            Self::Potential => "potential",
+            Self::Core => "core",
+            Self::Lapw => "LAPW one-particle solve",
+            Self::Occupations => "occupations and spectral refinement",
+            Self::Density => "density assembly",
+            Self::Energy => "energy and residual",
+            Self::Convergence => "convergence decision",
+            Self::Mix => "mix",
+            Self::Finished => "finished",
+        }
+    }
+}
+
+/// Driver-owned state for one staged SCF run.
+#[derive(Debug)]
+pub struct ScfLoop {
+    id: u64,
+    config: ScfConfig,
+    mixer: DensityMixer,
+    restart_density: Option<RegionalDensity>,
+    previous_energy: Option<Hartree>,
+    diagnostics: Vec<ScfIterationDiagnostic>,
+    iteration: usize,
+    phase: ScfLoopPhase,
+}
+
+/// Density accepted as input to one outer iteration.
+#[derive(Debug)]
+pub struct RegionalDensityStep {
+    loop_id: u64,
+    iteration: usize,
+    density: RegionalDensity,
+}
+
+impl RegionalDensityStep {
+    pub const fn iteration(&self) -> usize {
+        self.iteration
+    }
+    pub const fn density(&self) -> &RegionalDensity {
+        &self.density
+    }
+}
+
+/// Potential built from the accepted input density.
+#[derive(Debug)]
+pub struct RegionalPotentialStep {
+    loop_id: u64,
+    iteration: usize,
+    input_density: RegionalDensity,
+    potential: RegionalPotential,
+}
+
+impl RegionalPotentialStep {
+    pub const fn iteration(&self) -> usize {
+        self.iteration
+    }
+    pub const fn potential(&self) -> &RegionalPotential {
+        &self.potential
+    }
+}
+
+/// Complete site-resolved core solve for one iteration.
+#[derive(Debug)]
+pub struct CoreStep {
+    loop_id: u64,
+    iteration: usize,
+    input_density: RegionalDensity,
+    potential: RegionalPotential,
+    core_density: RegionalDensity,
+    core_eigenvalue_sum: Hartree,
+}
+
+impl CoreStep {
+    pub const fn iteration(&self) -> usize {
+        self.iteration
+    }
+    pub const fn core_density(&self) -> &RegionalDensity {
+        &self.core_density
+    }
+    pub const fn core_eigenvalue_sum(&self) -> Hartree {
+        self.core_eigenvalue_sum
+    }
+}
+
+/// Generic solver-owned one-particle problem and provisional regular-mesh bands.
+#[derive(Debug)]
+pub struct LapwSolution<OneParticle, BandSolution> {
+    loop_id: u64,
+    iteration: usize,
+    input_density: RegionalDensity,
+    potential: RegionalPotential,
+    core_density: RegionalDensity,
+    core_eigenvalue_sum: Hartree,
+    one_particle: OneParticle,
+    bands: BandSolution,
+    passes: usize,
+}
+
+impl<OneParticle, BandSolution> LapwSolution<OneParticle, BandSolution> {
+    pub const fn iteration(&self) -> usize {
+        self.iteration
+    }
+}
+
+/// Final occupations and solver-owned LAPW bundle after spectral refinement.
+#[derive(Debug)]
+pub struct OccupationStep<OneParticle, BandSolution> {
+    loop_id: u64,
+    iteration: usize,
+    input_density: RegionalDensity,
+    potential: RegionalPotential,
+    core_density: RegionalDensity,
+    core_eigenvalue_sum: Hartree,
+    one_particle: OneParticle,
+    bands: BandSolution,
+    occupation: OccupationSolution,
+}
+
+impl<OneParticle, BandSolution> OccupationStep<OneParticle, BandSolution> {
+    pub const fn iteration(&self) -> usize {
+        self.iteration
+    }
+    pub const fn chemical_potential(&self) -> Hartree {
+        self.occupation.chemical_potential
+    }
+    pub fn occupations(&self) -> &[f64] {
+        &self.occupation.occupations
+    }
+}
+
+/// Valence plus core density assembled from the final occupied LAPW solution.
+#[derive(Debug)]
+pub struct LapwDensityAssembly<OneParticle, BandSolution> {
+    loop_id: u64,
+    iteration: usize,
+    input_density: RegionalDensity,
+    output_density: RegionalDensity,
+    potential: RegionalPotential,
+    core_eigenvalue_sum: Hartree,
+    one_particle: OneParticle,
+    bands: BandSolution,
+    occupation: OccupationSolution,
+}
+
+impl<OneParticle, BandSolution> LapwDensityAssembly<OneParticle, BandSolution> {
+    pub const fn iteration(&self) -> usize {
+        self.iteration
+    }
+    pub const fn density(&self) -> &RegionalDensity {
+        &self.output_density
+    }
+}
+
+/// Basis-neutral energy and residual record for one iteration.
+#[derive(Debug)]
+pub struct EnergyRecord {
+    loop_id: u64,
+    iteration: usize,
+    input_density: RegionalDensity,
+    output_density: RegionalDensity,
+    potential: RegionalPotential,
+    materialized_basis: ScfBasis,
+    chemical_potential: Hartree,
+    energy: ScfEnergy,
+    density_rms: f64,
+    energy_change: Option<Hartree>,
+}
+
+impl EnergyRecord {
+    pub const fn iteration(&self) -> usize {
+        self.iteration
+    }
+    pub const fn chemical_potential(&self) -> Hartree {
+        self.chemical_potential
+    }
+    pub const fn energy(&self) -> ScfEnergy {
+        self.energy
+    }
+    pub const fn density_rms(&self) -> f64 {
+        self.density_rms
+    }
+    pub const fn energy_change(&self) -> Option<Hartree> {
+        self.energy_change
+    }
+}
+
+/// Proof that the latest iteration did not converge and may be mixed.
+#[derive(Debug)]
+pub struct ContinueStep {
+    loop_id: u64,
+    iteration: usize,
+    input_density: RegionalDensity,
+    output_density: RegionalDensity,
+    energy_total: Hartree,
+    diagnostic: ScfIterationDiagnostic,
+}
+
+impl ContinueStep {
+    pub const fn iteration(&self) -> usize {
+        self.iteration
+    }
+}
+
+/// Result of the convergence transition.
+#[derive(Debug)]
+pub enum ConvergenceDecision {
+    Continue(ContinueStep),
+    Converged(ScfState),
+}
+
+impl ConvergenceDecision {
+    pub const fn is_converged(&self) -> bool {
+        matches!(self, Self::Converged(_))
+    }
+    pub fn iteration(&self) -> usize {
+        match self {
+            Self::Continue(step) => step.iteration,
+            Self::Converged(state) => state.diagnostics.len(),
+        }
+    }
+}
+
+impl ScfLoop {
+    pub fn new(config: ScfConfig, source: Option<&ScfState>) -> Result<Self, ScfConfigError> {
+        config.validate()?;
+        let mixer = config.mixing.build()?;
+        let capacity = config.convergence.max_iterations;
+        Ok(Self {
+            id: NEXT_SCF_LOOP_ID.fetch_add(1, Ordering::Relaxed),
+            config,
+            mixer,
+            restart_density: source.map(|state| state.density.clone()),
+            previous_energy: None,
+            diagnostics: Vec::with_capacity(capacity),
+            iteration: 1,
+            phase: ScfLoopPhase::InitialDensity,
+        })
+    }
+
+    pub const fn config(&self) -> &ScfConfig {
+        &self.config
+    }
+    pub fn diagnostics(&self) -> &[ScfIterationDiagnostic] {
+        &self.diagnostics
+    }
+
+    pub fn initial_density<P: ScfPhysics>(
+        &mut self,
+        physics: &mut P,
+    ) -> Result<RegionalDensityStep, ScfError<P::Error>> {
+        self.require_phase(ScfLoopPhase::InitialDensity)?;
+        let density = match self.restart_density.take() {
+            Some(density) => density,
+            None => physics
+                .initial_density(&self.config)
+                .map_err(|source| ScfError::Kernel {
+                    operation: "initial density",
+                    source,
+                })?,
+        };
+        self.phase = ScfLoopPhase::Potential;
+        Ok(RegionalDensityStep {
+            loop_id: self.id,
+            iteration: self.iteration,
+            density,
+        })
+    }
+
+    pub fn potential<P: ScfPhysics>(
+        &mut self,
+        physics: &mut P,
+        density: RegionalDensityStep,
+    ) -> Result<RegionalPotentialStep, ScfError<P::Error>> {
+        self.require_handle(density.loop_id, density.iteration, ScfLoopPhase::Potential)?;
         let potential = physics
-            .build_potential(iteration, &input_density, config.exchange_correlation)
+            .build_potential(
+                density.iteration,
+                &density.density,
+                self.config.exchange_correlation,
+            )
             .map_err(|source| ScfError::Kernel {
                 operation: "Hartree+XC potential",
                 source,
             })?;
+        self.phase = ScfLoopPhase::Core;
+        Ok(RegionalPotentialStep {
+            loop_id: self.id,
+            iteration: density.iteration,
+            input_density: density.density,
+            potential,
+        })
+    }
 
-        let mut core_density = input_density.zero_like();
+    pub fn core<P: ScfPhysics>(
+        &mut self,
+        physics: &mut P,
+        potential: RegionalPotentialStep,
+    ) -> Result<CoreStep, ScfError<P::Error>> {
+        self.require_handle(potential.loop_id, potential.iteration, ScfLoopPhase::Core)?;
+        let mut core_density = potential.input_density.zero_like();
         let mut core_eigenvalue_sum = Hartree(0.0);
-        for site in &config.core_sites {
+        for site in &self.config.core_sites {
             let contribution = physics
                 .solve_core(
-                    iteration,
+                    potential.iteration,
                     site,
-                    &potential,
-                    &config.basis,
-                    config.relativity,
+                    &potential.potential,
+                    &self.config.basis,
+                    self.config.relativity,
                 )
                 .map_err(|source| ScfError::Kernel {
                     operation: "four-component core solve",
@@ -629,134 +919,352 @@ pub fn run_scf<P: ScfPhysics>(
             core_density.add_scaled(1.0, &contribution.density)?;
             core_eigenvalue_sum += contribution.eigenvalue_sum;
         }
+        self.phase = ScfLoopPhase::Lapw;
+        Ok(CoreStep {
+            loop_id: self.id,
+            iteration: potential.iteration,
+            input_density: potential.input_density,
+            potential: potential.potential,
+            core_density,
+            core_eigenvalue_sum,
+        })
+    }
 
-        let mut one_particle = physics
-            .assemble_one_particle(iteration, &potential, &config.basis, config.relativity)
+    #[allow(clippy::type_complexity)]
+    pub fn lapw<P: ScfPhysics>(
+        &mut self,
+        physics: &mut P,
+        core: CoreStep,
+    ) -> Result<LapwSolution<P::OneParticle, P::BandSolution>, ScfError<P::Error>> {
+        self.require_handle(core.loop_id, core.iteration, ScfLoopPhase::Lapw)?;
+        let one_particle = physics
+            .assemble_one_particle(
+                core.iteration,
+                &core.potential,
+                &self.config.basis,
+                self.config.relativity,
+            )
             .map_err(|source| ScfError::Kernel {
                 operation: "radial/basis/H/S assembly",
                 source,
             })?;
-        let (bands, occupation) = {
-            let mut passes = 0;
-            loop {
-                passes += 1;
-                let bands = physics
-                    .solve_regular_bands(iteration, &one_particle, config.k_mesh, config.relativity)
-                    .map_err(|source| ScfError::Kernel {
-                        operation: "regular full-BZ band solve",
-                        source,
-                    })?;
-                let occupation = solve_occupations(
-                    physics.band_states(&bands),
-                    valence_electron_count,
-                    config.occupations,
-                )?;
-                let refinement = physics
-                    .refine_one_particle(
-                        iteration,
-                        &potential,
-                        &config.basis,
-                        &one_particle,
-                        &bands,
-                        &occupation.occupations,
-                        occupation.chemical_potential,
-                        config.relativity,
-                    )
-                    .map_err(|source| ScfError::Kernel {
-                        operation: "spectral basis refinement",
-                        source,
-                    })?;
-                match refinement {
-                    None => break (bands, occupation),
-                    Some(_) if passes == BASIS_REFINEMENT_MAX_PASSES => {
-                        return Err(ScfError::BasisRefinementNotConverged { iteration, passes });
-                    }
-                    Some(refined) => one_particle = refined,
-                }
+        let bands = physics
+            .solve_regular_bands(
+                core.iteration,
+                &one_particle,
+                self.config.k_mesh,
+                self.config.relativity,
+            )
+            .map_err(|source| ScfError::Kernel {
+                operation: "regular full-BZ band solve",
+                source,
+            })?;
+        self.phase = ScfLoopPhase::Occupations;
+        Ok(LapwSolution {
+            loop_id: self.id,
+            iteration: core.iteration,
+            input_density: core.input_density,
+            potential: core.potential,
+            core_density: core.core_density,
+            core_eigenvalue_sum: core.core_eigenvalue_sum,
+            one_particle,
+            bands,
+            passes: 1,
+        })
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn occupations<P: ScfPhysics>(
+        &mut self,
+        physics: &mut P,
+        solution: LapwSolution<P::OneParticle, P::BandSolution>,
+    ) -> Result<OccupationStep<P::OneParticle, P::BandSolution>, ScfError<P::Error>> {
+        self.require_handle(
+            solution.loop_id,
+            solution.iteration,
+            ScfLoopPhase::Occupations,
+        )?;
+        let valence_electron_count = self.config.electron_count - self.config.core_electron_count();
+        let LapwSolution {
+            loop_id,
+            iteration,
+            input_density,
+            potential,
+            core_density,
+            core_eigenvalue_sum,
+            mut one_particle,
+            mut bands,
+            mut passes,
+        } = solution;
+        let occupation = loop {
+            let occupation = solve_occupations(
+                physics.band_states(&bands),
+                valence_electron_count,
+                self.config.occupations,
+            )?;
+            let refinement = physics
+                .refine_one_particle(
+                    iteration,
+                    &potential,
+                    &self.config.basis,
+                    &one_particle,
+                    &bands,
+                    &occupation.occupations,
+                    occupation.chemical_potential,
+                    self.config.relativity,
+                )
+                .map_err(|source| ScfError::Kernel {
+                    operation: "spectral basis refinement",
+                    source,
+                })?;
+            let Some(refined) = refinement else {
+                break occupation;
+            };
+            if passes == BASIS_REFINEMENT_MAX_PASSES {
+                return Err(ScfError::BasisRefinementNotConverged { iteration, passes });
             }
+            one_particle = refined;
+            passes += 1;
+            bands = physics
+                .solve_regular_bands(
+                    iteration,
+                    &one_particle,
+                    self.config.k_mesh,
+                    self.config.relativity,
+                )
+                .map_err(|source| ScfError::Kernel {
+                    operation: "regular full-BZ band solve",
+                    source,
+                })?;
         };
-        let materialized_basis = physics.retained_basis(&config.basis, &one_particle);
+        self.phase = ScfLoopPhase::Density;
+        Ok(OccupationStep {
+            loop_id,
+            iteration,
+            input_density,
+            potential,
+            core_density,
+            core_eigenvalue_sum,
+            one_particle,
+            bands,
+            occupation,
+        })
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn density<P: ScfPhysics>(
+        &mut self,
+        physics: &mut P,
+        occupied: OccupationStep<P::OneParticle, P::BandSolution>,
+    ) -> Result<LapwDensityAssembly<P::OneParticle, P::BandSolution>, ScfError<P::Error>> {
+        self.require_handle(occupied.loop_id, occupied.iteration, ScfLoopPhase::Density)?;
         let mut output_density = physics
-            .synthesize_valence_density(iteration, &bands, &occupation.occupations)
+            .synthesize_valence_density(
+                occupied.iteration,
+                &occupied.bands,
+                &occupied.occupation.occupations,
+            )
             .map_err(|source| ScfError::Kernel {
                 operation: "valence density synthesis",
                 source,
             })?;
-        output_density.add_scaled(1.0, &core_density)?;
+        output_density.add_scaled(1.0, &occupied.core_density)?;
+        self.phase = ScfLoopPhase::Energy;
+        Ok(LapwDensityAssembly {
+            loop_id: occupied.loop_id,
+            iteration: occupied.iteration,
+            input_density: occupied.input_density,
+            output_density,
+            potential: occupied.potential,
+            core_eigenvalue_sum: occupied.core_eigenvalue_sum,
+            one_particle: occupied.one_particle,
+            bands: occupied.bands,
+            occupation: occupied.occupation,
+        })
+    }
 
-        let energy_terms = physics
+    pub fn energy<P: ScfPhysics>(
+        &mut self,
+        physics: &mut P,
+        density: LapwDensityAssembly<P::OneParticle, P::BandSolution>,
+    ) -> Result<EnergyRecord, ScfError<P::Error>> {
+        self.require_handle(density.loop_id, density.iteration, ScfLoopPhase::Energy)?;
+        let materialized_basis = physics.retained_basis(&self.config.basis, &density.one_particle);
+        let terms = physics
             .energy_terms(ScfEnergyContext {
-                iteration,
-                input_density: &input_density,
-                output_density: &output_density,
-                potential: &potential,
-                one_particle: &one_particle,
-                bands: &bands,
-                occupations: &occupation.occupations,
-                chemical_potential: occupation.chemical_potential,
-                core_eigenvalue_sum,
+                iteration: density.iteration,
+                input_density: &density.input_density,
+                output_density: &density.output_density,
+                potential: &density.potential,
+                one_particle: &density.one_particle,
+                bands: &density.bands,
+                occupations: &density.occupation.occupations,
+                chemical_potential: density.occupation.chemical_potential,
+                core_eigenvalue_sum: density.core_eigenvalue_sum,
             })
             .map_err(|source| ScfError::Kernel {
                 operation: "full-potential energy terms",
                 source,
             })?;
         let energy = assemble_scf_energy(
-            occupation.band_energy,
-            core_eigenvalue_sum,
-            energy_terms.madelung,
-            energy_terms.coulomb,
-            energy_terms.exchange_correlation,
-            energy_terms.exchange_correlation_potential,
-            occupation.energy,
+            density.occupation.band_energy,
+            density.core_eigenvalue_sum,
+            terms.madelung,
+            terms.coulomb,
+            terms.exchange_correlation,
+            terms.exchange_correlation_potential,
+            density.occupation.energy,
         )?;
-
-        let density_rms = input_density.difference_rms(&output_density)?;
-        let energy_change = previous_energy
-            .map(|previous: Hartree| Hartree((energy.total.get() - previous.get()).abs()));
-        let mut diagnostic = ScfIterationDiagnostic {
-            iteration,
-            chemical_potential: occupation.chemical_potential,
+        let density_rms = density
+            .input_density
+            .difference_rms(&density.output_density)?;
+        let energy_change = self
+            .previous_energy
+            .map(|previous| Hartree((energy.total.get() - previous.get()).abs()));
+        self.phase = ScfLoopPhase::Convergence;
+        Ok(EnergyRecord {
+            loop_id: density.loop_id,
+            iteration: density.iteration,
+            input_density: density.input_density,
+            output_density: density.output_density,
+            potential: density.potential,
+            materialized_basis,
+            chemical_potential: density.occupation.chemical_potential,
+            energy,
             density_rms,
             energy_change,
-            energy,
-            resolved_channels: materialized_basis.resolved_channels.clone(),
-            mixing: MixStatus::NotMixed,
-        };
-
-        let converged = density_rms <= config.convergence.density_tolerance
-            && energy_change
-                .is_some_and(|change| change.get() <= config.convergence.energy_tolerance.get());
-        if converged {
-            diagnostics.push(diagnostic);
-            return Ok(ScfState {
-                density: input_density,
-                potential,
-                basis: materialized_basis,
-                chemical_potential: occupation.chemical_potential,
-                energy,
-                relativity: config.relativity,
-                diagnostics,
-            });
-        }
-        if iteration == config.convergence.max_iterations {
-            diagnostics.push(diagnostic);
-            return Err(ScfError::NotConverged {
-                iterations: iteration,
-                density_rms,
-                energy_change,
-                diagnostics,
-            });
-        }
-        let mixed = mixer
-            .mix(&input_density, &output_density)
-            .map_err(|source| ScfError::MixingFailed { iteration, source })?;
-        diagnostic.mixing = mixed.status;
-        diagnostics.push(diagnostic);
-        previous_energy = Some(energy.total);
-        input_density = mixed.density;
+        })
     }
 
-    unreachable!("positive SCF iteration limit exits through convergence or failure")
+    pub fn convergence<E: Error + Send + Sync + 'static>(
+        &mut self,
+        record: EnergyRecord,
+    ) -> Result<ConvergenceDecision, ScfError<E>> {
+        self.require_handle(record.loop_id, record.iteration, ScfLoopPhase::Convergence)?;
+        let diagnostic = ScfIterationDiagnostic {
+            iteration: record.iteration,
+            chemical_potential: record.chemical_potential,
+            density_rms: record.density_rms,
+            energy_change: record.energy_change,
+            energy: record.energy,
+            resolved_channels: record.materialized_basis.resolved_channels.clone(),
+            mixing: MixStatus::NotMixed,
+        };
+        let converged = record.density_rms <= self.config.convergence.density_tolerance
+            && record.energy_change.is_some_and(|change| {
+                change.get() <= self.config.convergence.energy_tolerance.get()
+            });
+        if converged {
+            self.diagnostics.push(diagnostic);
+            self.phase = ScfLoopPhase::Finished;
+            return Ok(ConvergenceDecision::Converged(ScfState {
+                density: record.input_density,
+                potential: record.potential,
+                basis: record.materialized_basis,
+                chemical_potential: record.chemical_potential,
+                energy: record.energy,
+                relativity: self.config.relativity,
+                diagnostics: self.diagnostics.clone(),
+            }));
+        }
+        if record.iteration == self.config.convergence.max_iterations {
+            self.diagnostics.push(diagnostic);
+            self.phase = ScfLoopPhase::Finished;
+            return Err(ScfError::NotConverged {
+                iterations: record.iteration,
+                density_rms: record.density_rms,
+                energy_change: record.energy_change,
+                diagnostics: self.diagnostics.clone(),
+            });
+        }
+        self.phase = ScfLoopPhase::Mix;
+        Ok(ConvergenceDecision::Continue(ContinueStep {
+            loop_id: record.loop_id,
+            iteration: record.iteration,
+            input_density: record.input_density,
+            output_density: record.output_density,
+            energy_total: record.energy.total,
+            diagnostic,
+        }))
+    }
+
+    pub fn mix<E: Error + Send + Sync + 'static>(
+        &mut self,
+        step: ContinueStep,
+    ) -> Result<RegionalDensityStep, ScfError<E>> {
+        self.require_handle(step.loop_id, step.iteration, ScfLoopPhase::Mix)?;
+        let mixed = self
+            .mixer
+            .mix(&step.input_density, &step.output_density)
+            .map_err(|source| ScfError::MixingFailed {
+                iteration: step.iteration,
+                source,
+            })?;
+        let mut diagnostic = step.diagnostic;
+        diagnostic.mixing = mixed.status;
+        self.diagnostics.push(diagnostic);
+        self.previous_energy = Some(step.energy_total);
+        self.iteration += 1;
+        self.phase = ScfLoopPhase::Potential;
+        Ok(RegionalDensityStep {
+            loop_id: self.id,
+            iteration: self.iteration,
+            density: mixed.density,
+        })
+    }
+
+    fn require_phase<E: Error + Send + Sync + 'static>(
+        &self,
+        expected: ScfLoopPhase,
+    ) -> Result<(), ScfError<E>> {
+        if self.phase != expected {
+            return Err(ScfError::InvalidTransition {
+                expected: self.phase.label(),
+                actual: expected.label(),
+            });
+        }
+        Ok(())
+    }
+
+    fn require_handle<E: Error + Send + Sync + 'static>(
+        &self,
+        loop_id: u64,
+        iteration: usize,
+        phase: ScfLoopPhase,
+    ) -> Result<(), ScfError<E>> {
+        if loop_id != self.id {
+            return Err(ScfError::ForeignTransition);
+        }
+        if iteration != self.iteration {
+            return Err(ScfError::StaleTransition {
+                expected_iteration: self.iteration,
+                actual_iteration: iteration,
+            });
+        }
+        self.require_phase(phase)
+    }
+}
+
+/// Execute one SCF task, optionally restarting from an earlier converged state.
+pub fn run_scf<P: ScfPhysics>(
+    physics: &mut P,
+    config: &ScfConfig,
+    source: Option<&ScfState>,
+) -> Result<ScfState, ScfError<P::Error>> {
+    let mut scf = ScfLoop::new(config.clone(), source)?;
+    let mut density = scf.initial_density(physics)?;
+    loop {
+        let potential = scf.potential(physics, density)?;
+        let core = scf.core(physics, potential)?;
+        let lapw = scf.lapw(physics, core)?;
+        let occupations = scf.occupations(physics, lapw)?;
+        let assembled_density = scf.density(physics, occupations)?;
+        let energy = scf.energy(physics, assembled_density)?;
+        match scf.convergence(energy)? {
+            ConvergenceDecision::Converged(state) => return Ok(state),
+            ConvergenceDecision::Continue(step) => density = scf.mix(step)?,
+        }
+    }
 }
 
 /// Execute one frozen-potential band task against a converged SCF state.
@@ -989,6 +1497,20 @@ pub enum ScfError<E: Error + Send + Sync + 'static> {
     },
     #[error("core kernel returned site {actual:?} while solving {expected:?}")]
     WrongCoreSite { expected: String, actual: String },
+    #[error("SCF transition belongs to another staged loop")]
+    ForeignTransition,
+    #[error(
+        "SCF transition belongs to iteration {actual_iteration}, current iteration is {expected_iteration}"
+    )]
+    StaleTransition {
+        expected_iteration: usize,
+        actual_iteration: usize,
+    },
+    #[error("SCF transition out of order: current stage is {expected}, requested {actual}")]
+    InvalidTransition {
+        expected: &'static str,
+        actual: &'static str,
+    },
     #[error(transparent)]
     Regional(#[from] RegionalError),
     #[error("density mixing failed at SCF iteration {iteration}: {source}")]
@@ -1594,6 +2116,58 @@ mod tests {
         );
         assert_eq!(state.basis.channels, vec![recipe]);
         assert_eq!(state.basis.resolved_channels, expected);
+    }
+
+    #[test]
+    fn run_scf_and_manual_stages_share_refinement_and_converged_without_mix() {
+        let mut config = config(
+            ScfMixing::Linear { alpha: 1.0 },
+            ScfOccupations::FermiDirac {
+                temperature: Hartree(0.1),
+            },
+        );
+        let mut recipe = channel_recipe();
+        recipe.identity = ScfChannelIdentity::ScalarL { n: 2, l: 1 };
+        config.basis.channels.push(recipe);
+
+        let mut direct_physics =
+            MockPhysics::new(0.125).with_refinement(MockRefinement::OncePerIteration);
+        let direct = run_scf(&mut direct_physics, &config, None).unwrap();
+
+        let mut staged_physics =
+            MockPhysics::new(0.125).with_refinement(MockRefinement::OncePerIteration);
+        let mut staged = ScfLoop::new(config, None).unwrap();
+        let mut density = staged.initial_density(&mut staged_physics).unwrap();
+        let manual = loop {
+            let potential = staged.potential(&mut staged_physics, density).unwrap();
+            let core = staged.core(&mut staged_physics, potential).unwrap();
+            let lapw = staged.lapw(&mut staged_physics, core).unwrap();
+            let occupations = staged.occupations(&mut staged_physics, lapw).unwrap();
+            let assembled = staged.density(&mut staged_physics, occupations).unwrap();
+            let energy = staged.energy(&mut staged_physics, assembled).unwrap();
+            match staged.convergence::<Infallible>(energy).unwrap() {
+                ConvergenceDecision::Continue(step) => {
+                    density = staged.mix::<Infallible>(step).unwrap();
+                }
+                ConvergenceDecision::Converged(state) => break state,
+            }
+        };
+
+        assert_eq!(manual, direct);
+        assert_eq!(staged_physics.events, direct_physics.events);
+        assert_eq!(staged_physics.band_passes, direct_physics.band_passes);
+        assert_eq!(
+            manual.diagnostics.last().unwrap().mixing,
+            MixStatus::NotMixed
+        );
+        assert_eq!(
+            manual
+                .diagnostics
+                .iter()
+                .filter(|item| item.mixing != MixStatus::NotMixed)
+                .count(),
+            1
+        );
     }
 
     #[test]

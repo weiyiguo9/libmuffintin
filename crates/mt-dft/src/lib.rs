@@ -87,12 +87,14 @@ pub use scalar::{
 pub use scf::{
     ChannelKappaError, channel_kappas, channel_l, channel_n, scalar_component_energy,
     spin_resolved_energy, spinor_kappas_for_l,
-    BandPathPoint, BandPathPointResult, BandPathRequest, BandPathResult, CoreContribution,
-    DosRequest, DosResult, ScfBasis, ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe,
+    BandPathPoint, BandPathPointResult, BandPathRequest, BandPathResult, ContinueStep,
+    ConvergenceDecision, CoreContribution, CoreStep, DosRequest, DosResult, EnergyRecord,
+    LapwDensityAssembly, LapwSolution, OccupationStep, RegionalDensityStep, RegionalPotentialStep,
+    ScfBasis, ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe,
     ScfChannelTreatment, ScfConfig, ScfConfigError, ScfConvergence, ScfCoreSite, ScfCoreState,
     ScfEnergyContext, ScfEnergyTerms, ScfError, ScfExchangeCorrelation, ScfIterationDiagnostic,
-    ScfKMesh, ScfMixing, ScfOccupations, ScfPhysics, ScfRelativity, ScfResolvedChannelEnergy,
-    ScfState, run_band_path, run_dos, run_scf,
+    ScfKMesh, ScfLoop, ScfMixing, ScfOccupations, ScfPhysics, ScfRelativity,
+    ScfResolvedChannelEnergy, ScfState, run_band_path, run_dos, run_scf,
 };
 pub use soc::{
     FirstVariationRoute, FirstVariationSubspace, FirstVariationWindow,
