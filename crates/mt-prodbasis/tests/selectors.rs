@@ -1,15 +1,14 @@
 //! q0_l2 / allq_l2 / allq_coulomb_pool comparison at identical Nμ.
 
+
+mod toy_kit;
 use muffintin_prodbasis::{InterpolationRegion, PairColumnLayout};
-use muffintin_prodbasis::thc::toy::{
+use crate::toy_kit::{
     MT_NORB, mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
     mt_reference_grid, mt_uniform_grid,
 };
-use muffintin_prodbasis::thc::{
-    DEFAULT_SELECTOR, DEFAULT_SKETCH_ROWS, GridPath, HEADLINE_SEED, L2Engine, PairBlock,
-    RankPolicy, SelectionRequest, SelectorStrategy, ThcError, UniformShift, compare_strategies,
-    pivots_from_pair_blocks, run_thc,
-};
+use muffintin_prodbasis::thc::{DEFAULT_SELECTOR, GridPath, L2Engine, PairBlock, RankPolicy, SelectorStrategy, ThcError, UniformShift, pivots_from_pair_blocks};
+use crate::toy_kit::{DEFAULT_SKETCH_ROWS, HEADLINE_SEED, SelectionRequest, compare_strategies, run_thc};
 use num_complex::Complex64;
 
 #[test]
@@ -96,7 +95,7 @@ fn selection_is_deterministic_under_fixed_seed_and_column_order() {
             ninter: 6,
         },
     };
-    let a = muffintin_prodbasis::thc::select_points(
+    let a = crate::toy_kit::select_points(
         &orbitals,
         &grid.points,
         &grid.weights,
@@ -107,7 +106,7 @@ fn selection_is_deterministic_under_fixed_seed_and_column_order() {
         Some(0),
     )
     .unwrap();
-    let b = muffintin_prodbasis::thc::select_points(
+    let b = crate::toy_kit::select_points(
         &orbitals,
         &grid.points,
         &grid.weights,
@@ -147,7 +146,7 @@ fn full_qrcp_and_pivoted_cholesky_select_the_same_points() {
                     ninter: 6,
                 },
             };
-            let selection = muffintin_prodbasis::thc::select_points(
+            let selection = crate::toy_kit::select_points(
                 &orbitals,
                 &grid.points,
                 &grid.weights,
@@ -187,7 +186,7 @@ fn exact_structured_sketch_rejects_more_points_than_ranked_rows() {
         },
     };
     assert_eq!(
-        muffintin_prodbasis::thc::select_points(
+        crate::toy_kit::select_points(
             &orbitals,
             &grid.points,
             &grid.weights,

@@ -1,5 +1,8 @@
 //! Both published auxiliary representations go through the public assembler.
 
+
+#[path = "../../mt-prodbasis/tests/toy_kit/mod.rs"]
+mod toy_kit;
 mod common;
 
 use muffintin_prodbasis::{AuxiliaryLayout, InterpolationRegion, TransferQ};
@@ -9,13 +12,12 @@ use muffintin_coulomb::{
     SampledAuxiliaryFunctions, SampledPointSupport, assemble_coulomb, assemble_point_charge_oracle,
     assemble_sampled_coulomb,
 };
-use muffintin_prodbasis::thc::toy::{
+use crate::toy_kit::{
     mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
     mt_reference_grid,
 };
-use muffintin_prodbasis::thc::{
-    GridPath, HEADLINE_SEED, L2Engine, RankPolicy, SelectionRequest, SelectorStrategy, run_thc,
-};
+use muffintin_prodbasis::thc::{GridPath, L2Engine, RankPolicy, SelectorStrategy};
+use crate::toy_kit::{HEADLINE_SEED, SelectionRequest, run_thc};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 
@@ -179,7 +181,7 @@ fn thc_zeta_assembles_and_rejects_layout_mismatch() {
     assert_eq!(fit.n_points, grid.len());
     assert_eq!(fit.q, auxiliary.q);
     let first_radius: f64 = 2.0e-3;
-    let increment = (muffintin_prodbasis::thc::toy::MT_RADIUS / first_radius).ln() / (nrad - 1) as f64;
+    let increment = (crate::toy_kit::MT_RADIUS / first_radius).ln() / (nrad - 1) as f64;
     let radial_mesh = ExponentialMesh::new(Bohr(first_radius), increment, nrad).unwrap();
     let mut mt_counts = vec![0usize; partition.site_count()];
     let sampled_supports = grid
@@ -210,7 +212,7 @@ fn thc_zeta_assembles_and_rejects_layout_mismatch() {
         fit.zeta.clone(),
     )
     .unwrap();
-    let request = CoulombRequest::cubic(muffintin_prodbasis::thc::toy::MT_LATTICE, 2)
+    let request = CoulombRequest::cubic(crate::toy_kit::MT_LATTICE, 2)
         .unwrap()
         .with_interpolation(InterpolationProjection::new(InverseBohr(1.8), 1).unwrap())
         .unwrap();

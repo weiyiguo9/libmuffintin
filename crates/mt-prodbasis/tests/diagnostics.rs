@@ -1,11 +1,11 @@
 //! Error-contract regressions for the THC public boundary.
 
+
+mod toy_kit;
 use muffintin_prodbasis::{AuxiliaryIrError, InterpolationRegion, PairColumnLayout, TransferQ};
 use muffintin_core::InverseBohr;
-use muffintin_prodbasis::thc::{
-    BlochOrbitals, CoulombGramSet, GridPath, InjectedCoulombGram, KMesh, L2Engine, PairBlock,
-    RankPolicy, SelectionRequest, SelectorStrategy, ThcError, UniformShift, select_points,
-};
+use muffintin_prodbasis::thc::{CoulombGramSet, GridPath, InjectedCoulombGram, L2Engine, PairBlock, RankPolicy, SelectorStrategy, ThcError, UniformShift};
+use crate::toy_kit::{BlochOrbitals, KMesh, SelectionRequest, select_points};
 use num_complex::Complex64;
 
 fn gamma() -> TransferQ {
@@ -200,7 +200,7 @@ fn anisotropic_kminus_roundtrip_and_umklapp() {
         .unwrap();
     let (_, shift) = mesh.kminus(0, iq).unwrap();
     assert_eq!(shift, [0, -1, 0]);
-    let phase = muffintin_prodbasis::thc::umklapp_phase([0.0, 5.0 / 4.0, 0.0], shift, mesh.lattice_constant());
+    let phase = crate::toy_kit::umklapp_phase([0.0, 5.0 / 4.0, 0.0], shift, mesh.lattice_constant());
     assert!((phase + Complex64::i()).norm() < 2.0e-14);
 }
 

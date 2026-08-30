@@ -1,17 +1,12 @@
 //! End-to-end toy ISDF/THC run over the product-space IR.
 
 use crate::thc::ThcError;
-use crate::thc::fit::{
-    PerQFit, WeightedResidual, fit_per_q, gamma_report, worst_finite_q, worst_finite_q_coulomb,
-};
-use crate::thc::gram::CoulombGramSet;
-use crate::thc::kmesh::KMesh;
-use crate::thc::pair::{BlochOrbitals, PairBlock, UmklappGauge, evaluate_pair_block};
+use crate::thc::fit::{PerQFit, WeightedResidual, fit_per_q};
+use crate::thc::pair::PairBlock;
 use crate::thc::select::{
-    GridPath, L2Engine, RankPolicy, Selection, SelectionProvenance, SelectionRequest,
-    SelectorStrategy, interpolation_points, pair_block_l2_pivots, select_points, truncate_rank,
+    GridPath, L2Engine, RankPolicy, Selection, SelectionProvenance, SelectorStrategy,
+    interpolation_points, pair_block_l2_pivots, truncate_rank,
 };
-use crate::thc::toy::ToyGrid;
 use crate::{
     AuxiliaryPartition, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
     InterpolationPointAuxiliary, OrbitalPair, PairColumnLayout, PairVertex, TransferQ,
@@ -46,138 +41,7 @@ pub struct ThcResult {
     pub diagnostics: StrategyDiagnostics,
 }
 
-/// Select, fit, and emit interpolation-point auxiliaries plus Bloch pair vertices.
-#[allow(clippy::too_many_arguments)]
-pub fn run_thc(
-    orbitals: &BlochOrbitals,
-    grid: &ToyGrid,
-    mesh: &KMesh,
-    partition: &AuxiliaryPartition,
-    request: &SelectionRequest,
-    grams: Option<&CoulombGramSet>,
-    core_orbital: Option<usize>,
-    reference: Option<(&ToyGrid, &BlochOrbitals)>,
-) -> Result<ThcResult, ThcError> {
-    let selection = select_points(
-        orbitals,
-        &grid.points,
-        &grid.weights,
-        &grid.regions,
-        mesh,
-        request,
-        grams,
-        core_orbital,
-    )?;
-    let ids: Vec<usize> = selection.points.iter().map(|point| point.id).collect();
-    let n_mu = ids.len();
-    let mut fits = Vec::with_capacity(mesh.len());
-    let mut auxiliaries = Vec::with_capacity(mesh.len());
-    let mut vertices = Vec::with_capacity(mesh.len());
-    for iq in 0..mesh.len() {
-        let q = mesh.transfer_q(iq)?;
-        let candidate_block = evaluate_pair_block(
-            orbitals,
-            &grid.points,
-            mesh,
-            iq,
-            core_orbital,
-            UmklappGauge::Canonical,
-        )?;
-        let selected_rows = candidate_block.selected_rows(&ids)?;
-        let layout = candidate_block.layout;
-        let (target, weights, weight_target) = if let Some((ref_grid, ref_orbitals)) = reference {
-            let block = evaluate_pair_block(
-                ref_orbitals,
-                &ref_grid.points,
-                mesh,
-                iq,
-                core_orbital,
-                UmklappGauge::Canonical,
-            )?;
-            (block, ref_grid.weights.clone(), true)
-        } else {
-            (candidate_block, grid.weights.clone(), false)
-        };
-        let gram = grams.map(|set| set.get(iq)).transpose()?;
-        let fit = fit_per_q(
-            &selected_rows,
-            n_mu,
-            &target,
-            &weights,
-            q,
-            gram,
-            weight_target,
-        )?;
-        let auxiliary = interpolation_auxiliary(
-            partition.clone(),
-            q,
-            selection.points.clone(),
-            Provenance {
-                recipe: Some("thc-isdf".to_owned()),
-                reference: Some("scratch/thc_mt_kpoint_test.py".to_owned()),
-            },
-        )?;
-        let q_vertices = bloch_pair_vertices(q, &selected_rows, n_mu, layout, &auxiliary)?;
-        fits.push(fit);
-        auxiliaries.push(auxiliary);
-        vertices.push(q_vertices);
-    }
-    let diagnostics = strategy_diagnostics(request.strategy, n_mu, &fits, mesh);
-    Ok(ThcResult {
-        selection,
-        fits,
-        auxiliaries,
-        vertices,
-        diagnostics,
-    })
-}
 
-/// Compare `q0_l2`, `allq_l2`, and `allq_coulomb_pool` at identical $N_\mu$.
-#[allow(clippy::too_many_arguments)]
-pub fn compare_strategies(
-    orbitals: &BlochOrbitals,
-    grid: &ToyGrid,
-    mesh: &KMesh,
-    partition: &AuxiliaryPartition,
-    n_mu: usize,
-    seed: u64,
-    engine: crate::thc::select::L2Engine,
-    grid_path: GridPath,
-    grams: Option<&CoulombGramSet>,
-    core_orbital: Option<usize>,
-    reference: Option<(&ToyGrid, &BlochOrbitals)>,
-) -> Result<Vec<ThcResult>, ThcError> {
-    let strategies = [
-        SelectorStrategy::Q0L2,
-        SelectorStrategy::AllQL2,
-        SelectorStrategy::AllQCoulombPool,
-    ];
-    let mut results = Vec::with_capacity(strategies.len());
-    for strategy in strategies {
-        if strategy == SelectorStrategy::AllQCoulombPool && grams.is_none() {
-            continue;
-        }
-        let request = SelectionRequest {
-            strategy,
-            rank: crate::thc::select::RankPolicy::Exact { n_mu },
-            seed,
-            pool_factor: crate::thc::select::DEFAULT_POOL_FACTOR,
-            engine,
-            grid_path: grid_path.clone(),
-        };
-        results.push(run_thc(
-            orbitals,
-            grid,
-            mesh,
-            partition,
-            &request,
-            grams,
-            core_orbital,
-            reference,
-        )?);
-    }
-    Ok(results)
-}
 
 /// AllQL2 selection and per-$q$ $\zeta$ fit on evaluated pair blocks.
 ///
@@ -480,27 +344,3 @@ pub fn bloch_pair_vertices(
     Ok(vertices)
 }
 
-fn strategy_diagnostics(
-    strategy: SelectorStrategy,
-    n_mu: usize,
-    fits: &[PerQFit],
-    mesh: &KMesh,
-) -> StrategyDiagnostics {
-    let gamma = gamma_report(fits, |index| mesh.is_gamma(index));
-    let worst_l2 = worst_finite_q(fits, |index| mesh.is_gamma(index));
-    let worst_coulomb = worst_finite_q_coulomb(fits, |index| mesh.is_gamma(index));
-    StrategyDiagnostics {
-        strategy,
-        n_mu,
-        q0_l2: gamma.map(|fit| fit.l2_all),
-        worst_finite_q_l2: worst_l2.map(|fit| fit.l2_all),
-        worst_finite_q_index: worst_l2.map(|fit| fit.q_index),
-        q0_coulomb: gamma.and_then(|fit| fit.coulomb),
-        worst_finite_q_coulomb: worst_coulomb.and_then(|fit| fit.coulomb),
-        worst_finite_q_coulomb_index: worst_coulomb.map(|fit| fit.q_index),
-        q0_core: gamma.and_then(|fit| fit.l2_core),
-        q0_valence: gamma.and_then(|fit| fit.l2_valence),
-        finite_q_core: worst_l2.and_then(|fit| fit.l2_core),
-        finite_q_valence: worst_l2.and_then(|fit| fit.l2_valence),
-    }
-}

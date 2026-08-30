@@ -1,13 +1,13 @@
 //! Injected Coulomb Gram contract and allq_coulomb_pool rerank.
 
+
+mod toy_kit;
 use muffintin_prodbasis::{
     AuxiliaryPartition, InterpolationRegion, PairColumnLayout, TransferQ,
 };
 use muffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
-use muffintin_prodbasis::thc::{
-    BlochOrbitals, CoulombGramSet, GridPath, HEADLINE_SEED, InjectedCoulombGram, KMesh, L2Engine,
-    RankPolicy, SelectionRequest, SelectorStrategy, ThcError, run_thc,
-};
+use muffintin_prodbasis::thc::{CoulombGramSet, GridPath, InjectedCoulombGram, L2Engine, RankPolicy, SelectorStrategy, ThcError};
+use crate::toy_kit::{BlochOrbitals, HEADLINE_SEED, KMesh, SelectionRequest, run_thc};
 use num_complex::Complex64;
 
 fn tiny_mesh() -> KMesh {
@@ -27,7 +27,7 @@ fn tiny_partition() -> AuxiliaryPartition {
     )
 }
 
-fn tiny_grid() -> muffintin_prodbasis::thc::toy::ToyGrid {
+fn tiny_grid() -> crate::toy_kit::ToyGrid {
     let points = vec![
         [0.0, 0.0, 0.0],
         [0.4, 0.0, 0.0],
@@ -37,7 +37,7 @@ fn tiny_grid() -> muffintin_prodbasis::thc::toy::ToyGrid {
         [3.0, 0.0, 0.0],
     ];
     let n = points.len();
-    muffintin_prodbasis::thc::toy::ToyGrid {
+    crate::toy_kit::ToyGrid {
         name: "tiny".to_owned(),
         points,
         weights: vec![1.0; n],
@@ -45,7 +45,7 @@ fn tiny_grid() -> muffintin_prodbasis::thc::toy::ToyGrid {
     }
 }
 
-fn tiny_orbitals(grid: &muffintin_prodbasis::thc::toy::ToyGrid, mesh: &KMesh) -> BlochOrbitals {
+fn tiny_orbitals(grid: &crate::toy_kit::ToyGrid, mesh: &KMesh) -> BlochOrbitals {
     let n_k = mesh.len();
     let n_orb = 2;
     let mut values = Vec::with_capacity(grid.len() * n_k * n_orb);

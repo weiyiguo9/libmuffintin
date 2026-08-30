@@ -1,13 +1,14 @@
 //! Interpolation-point auxiliaries stay on the product-space IR.
 
+
+mod toy_kit;
 use muffintin_prodbasis::{AuxiliaryRegion, InterpolationRegion, OrbitalPair};
-use muffintin_prodbasis::thc::toy::{
+use crate::toy_kit::{
     mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
     mt_reference_grid,
 };
-use muffintin_prodbasis::thc::{
-    GridPath, HEADLINE_SEED, L2Engine, RankPolicy, SelectionRequest, SelectorStrategy, run_thc,
-};
+use muffintin_prodbasis::thc::{GridPath, L2Engine, RankPolicy, SelectorStrategy};
+use crate::toy_kit::{HEADLINE_SEED, SelectionRequest, run_thc};
 
 #[test]
 fn interpolation_auxiliary_and_bloch_vertices_match_product_regions() {

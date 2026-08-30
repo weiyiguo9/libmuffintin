@@ -1,7 +1,7 @@
 //! Canonical-q k-mesh and the Umklapp map `kminus`.
 
-use crate::thc::ThcError;
-use crate::TransferQ;
+use muffintin_prodbasis::thc::ThcError;
+use muffintin_prodbasis::TransferQ;
 use muffintin_core::InverseBohr;
 use std::f64::consts::PI;
 

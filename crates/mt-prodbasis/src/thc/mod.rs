@@ -1,43 +1,40 @@
-//! Toy k-point ISDF/THC over the product-space IR.
+//! k-point ISDF/THC kernels over the product-space IR.
 //!
-//! This crate selects a q-independent interpolation-point set on a finite
-//! periodic toy basis, fits per-q interpolation vectors, and emits
-//! representation-neutral [`crate::CompiledAuxiliaryBasis`]
-//! interpolation-point payloads and [`crate::PairVertex`]
-//! Bloch pair vertices.
+//! Callers evaluate orbital-pair blocks on a parent grid, select
+//! interpolation points with a full weighted L2 engine, fit per-q
+//! interpolation vectors, and emit representation-neutral
+//! [`crate::CompiledAuxiliaryBasis`] interpolation-point payloads and
+//! [`crate::PairVertex`] Bloch pair vertices.
 //!
-//! It does **not** assemble Weinert or SPEX $V^q$. Coulomb-aware ranking
-//! consumes [`gram::InjectedCoulombGram`]. The recorded Python numbers in
-//! [`toy`] are finite-cutoff candidate-oracle evidence, not a real-material
-//! accuracy claim.
+//! This module does **not** assemble Weinert or SPEX $V^q$. Coulomb-aware
+//! residual reporting consumes an injected [`InjectedCoulombGram`]. The toy
+//! grids, toy k-mesh, toy Bloch orbitals, and selector-strategy sweep
+//! harness live in the shared test fixture, not here.
 
 #![forbid(unsafe_code)]
 
 mod error;
 mod fit;
 mod gram;
-mod kmesh;
-mod linalg;
+pub mod linalg;
 mod pair;
 mod run;
 mod select;
-pub mod toy;
 
 pub use error::{ThcError, checked_storage_len, validate_quadrature_weights};
 pub use fit::{
     PerQFit, WeightedResidual, fit_per_q, gamma_report, worst_finite_q, worst_finite_q_coulomb,
 };
 pub use gram::{CoulombGramSet, GRAM_HERMITIAN_TOLERANCE, GRAM_PSD_TOLERANCE, InjectedCoulombGram};
-pub use kmesh::{KMesh, umklapp_phase};
-pub use pair::{BlochOrbitals, PairBlock, UmklappGauge, evaluate_pair_block};
+pub use pair::PairBlock;
 pub use run::{
-    StrategyDiagnostics, ThcResult, bloch_pair_vertices, compare_strategies,
-    fit_allq_l2_pair_blocks, interpolation_auxiliary, run_thc,
+    StrategyDiagnostics, ThcResult, bloch_pair_vertices, fit_allq_l2_pair_blocks,
+    interpolation_auxiliary,
 };
 pub use select::{
-    DEFAULT_POOL_FACTOR, DEFAULT_SELECTOR, DEFAULT_SKETCH_ROWS, GridPath, HEADLINE_SEED, L2Engine,
-    RANDOM_SHIFT_SEED, RankPolicy, STRATEGY_SEEDS, Selection, SelectionProvenance,
-    SelectionRequest, SelectorStrategy, UniformShift, pivots_from_pair_blocks, select_points,
+    DEFAULT_SELECTOR, GridPath, L2Engine, RankPolicy, Selection, SelectionProvenance,
+    SelectorStrategy, UniformShift, cholesky_pivots_from_pair_blocks, interpolation_points,
+    matmul, pivots_from_pair_blocks, reconstruct_pairs, truncate_rank, weighted_residual,
 };
 
 #[cfg(test)]

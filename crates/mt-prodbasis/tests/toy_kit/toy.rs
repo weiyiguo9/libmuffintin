@@ -4,11 +4,12 @@
 //! It is not Weinert/SPEX `coulombmatrix` and is not a production Coulomb
 //! assembler.
 
-use crate::thc::ThcError;
-use crate::thc::gram::InjectedCoulombGram;
-use crate::thc::kmesh::KMesh;
-use crate::thc::pair::{BlochOrbitals, PairBlock};
-use crate::{AuxiliaryPartition, InterpolationRegion, PairColumnLayout};
+use muffintin_prodbasis::thc::ThcError;
+use muffintin_prodbasis::thc::InjectedCoulombGram;
+use super::kmesh::KMesh;
+use super::BlochOrbitals;
+use muffintin_prodbasis::thc::PairBlock;
+use muffintin_prodbasis::{AuxiliaryPartition, InterpolationRegion, PairColumnLayout};
 use muffintin_core::{Bohr, InterstitialGeometry, Sphere, VolumeBohr3, complex_spherical_harmonic};
 use num_complex::Complex64;
 use std::f64::consts::PI;
@@ -92,11 +93,11 @@ fn log_radial_shells(r0: f64, r1: f64, n: usize) -> (Vec<f64>, Vec<f64>) {
 }
 
 /// Uniform cubic grid matching `thc_mt_kpoint_test.py:103-119`.
-pub fn mt_uniform_grid(n: usize, shift: crate::thc::select::UniformShift) -> ToyGrid {
+pub fn mt_uniform_grid(n: usize, shift: muffintin_prodbasis::thc::UniformShift) -> ToyGrid {
     let offset = match shift {
-        crate::thc::select::UniformShift::Origin => [0.0; 3],
-        crate::thc::select::UniformShift::Half => [0.5; 3],
-        crate::thc::select::UniformShift::Random { seed } => {
+        muffintin_prodbasis::thc::UniformShift::Origin => [0.0; 3],
+        muffintin_prodbasis::thc::UniformShift::Half => [0.5; 3],
+        muffintin_prodbasis::thc::UniformShift::Random { seed } => {
             let mut rng = SplitMix(seed);
             [rng.unit(), rng.unit(), rng.unit()]
         }
@@ -142,7 +143,7 @@ pub fn mt_adaptive_grid(nrad: usize, nang: usize, ninter: usize) -> ToyGrid {
             regions.push(InterpolationRegion::MuffinTin { site: 0 });
         }
     }
-    let uniform = mt_uniform_grid(ninter, crate::thc::select::UniformShift::Half);
+    let uniform = mt_uniform_grid(ninter, muffintin_prodbasis::thc::UniformShift::Half);
     for (point, weight) in uniform.points.iter().zip(&uniform.weights) {
         let distance = (point[0] * point[0] + point[1] * point[1] + point[2] * point[2]).sqrt();
         if distance > MT_RADIUS && distance <= MT_RCUT {
@@ -574,7 +575,7 @@ fn orthonormalize(
                 }
             }
         }
-        let (values, vectors) = crate::thc::linalg::hermitian_eigensystem(&overlap, n_orb)?;
+        let (values, vectors) = muffintin_prodbasis::thc::linalg::hermitian_eigensystem(&overlap, n_orb)?;
         if values[0] < 1.0e-10 {
             return Err(ThcError::LinearAlgebra(
                 "ill-conditioned synthetic APW overlap",
@@ -659,7 +660,7 @@ fn apply_saved_transform(
                 }
             }
         }
-        let (values, vectors) = crate::thc::linalg::hermitian_eigensystem(&overlap, n_orb)?;
+        let (values, vectors) = muffintin_prodbasis::thc::linalg::hermitian_eigensystem(&overlap, n_orb)?;
         let mut transform = vec![Complex64::default(); n_orb * n_orb];
         for i in 0..n_orb {
             for j in 0..n_orb {
@@ -781,7 +782,7 @@ pub fn pair_fourier(
 /// Injected pair-pair Gram from the finite-cutoff toy Coulomb oracle.
 pub fn toy_coulomb_gram(
     q_index: usize,
-    q: crate::TransferQ,
+    q: muffintin_prodbasis::TransferQ,
     layout: PairColumnLayout,
     pair_fourier: &[Complex64],
     factors: &[f64],
@@ -789,14 +790,14 @@ pub fn toy_coulomb_gram(
 ) -> Result<InjectedCoulombGram, ThcError> {
     let n_g = factors.len();
     let n = layout.n_columns()?;
-    let expected = crate::thc::error::checked_storage_len(&[n_g, n])?;
+    let expected = muffintin_prodbasis::thc::checked_storage_len(&[n_g, n])?;
     if pair_fourier.len() != expected {
         return Err(ThcError::PairBlockLength {
             expected,
             actual: pair_fourier.len(),
         });
     }
-    let gram_len = crate::thc::error::checked_storage_len(&[n, n])?;
+    let gram_len = muffintin_prodbasis::thc::checked_storage_len(&[n, n])?;
     let mut gram = vec![Complex64::default(); gram_len];
     for g in 0..n_g {
         let factor = factors[g];
@@ -886,7 +887,7 @@ pub fn values_fourier(
     g_cart: &[[f64; 3]],
     volume: f64,
 ) -> Result<Vec<Complex64>, ThcError> {
-    let expected = crate::thc::error::checked_storage_len(&[n_points, n_col])?;
+    let expected = muffintin_prodbasis::thc::checked_storage_len(&[n_points, n_col])?;
     if values.len() != expected {
         return Err(ThcError::PairBlockLength {
             expected,
@@ -899,9 +900,9 @@ pub fn values_fourier(
             points: grid.len(),
         });
     }
-    crate::thc::error::validate_quadrature_weights(&grid.weights)?;
+    muffintin_prodbasis::thc::validate_quadrature_weights(&grid.weights)?;
     let n_g = g_cart.len();
-    let mut out = vec![Complex64::default(); crate::thc::error::checked_storage_len(&[n_g, n_col])?];
+    let mut out = vec![Complex64::default(); muffintin_prodbasis::thc::checked_storage_len(&[n_g, n_col])?];
     for (g_index, g) in g_cart.iter().enumerate() {
         for p in 0..n_points {
             let phase = Complex64::from_polar(
@@ -928,21 +929,21 @@ pub fn approximate_pair_fourier(
     selected_rows: &[Complex64],
     n_col: usize,
 ) -> Result<Vec<Complex64>, ThcError> {
-    let expected_zeta = crate::thc::error::checked_storage_len(&[n_g, n_mu])?;
+    let expected_zeta = muffintin_prodbasis::thc::checked_storage_len(&[n_g, n_mu])?;
     if zeta_fourier.len() != expected_zeta {
         return Err(ThcError::PairBlockLength {
             expected: expected_zeta,
             actual: zeta_fourier.len(),
         });
     }
-    let expected_rows = crate::thc::error::checked_storage_len(&[n_mu, n_col])?;
+    let expected_rows = muffintin_prodbasis::thc::checked_storage_len(&[n_mu, n_col])?;
     if selected_rows.len() != expected_rows {
         return Err(ThcError::PairBlockLength {
             expected: expected_rows,
             actual: selected_rows.len(),
         });
     }
-    Ok(crate::thc::select::matmul(
+    Ok(muffintin_prodbasis::thc::matmul(
         zeta_fourier,
         n_g,
         n_mu,
@@ -967,11 +968,11 @@ pub fn relative_gram_frobenius(
     for (left, right) in reference.data().iter().zip(other.data()) {
         diff.push(*left - *right);
     }
-    let denom = crate::thc::linalg::frobenius(reference.data());
+    let denom = muffintin_prodbasis::thc::linalg::frobenius(reference.data());
     if denom <= 1.0e-30 {
         return Ok(0.0);
     }
-    Ok(crate::thc::linalg::frobenius(&diff) / denom)
+    Ok(muffintin_prodbasis::thc::linalg::frobenius(&diff) / denom)
 }
 
 /// Candidate-grid ζ Fourier → approximate pair Fourier/Gram vs a reference Gram.
@@ -991,7 +992,7 @@ pub fn compare_candidate_eri_action(
     kernel: &ToyFiniteCutoffKernel,
     reference_pair_fourier: &[Complex64],
     q_index: usize,
-    q: crate::TransferQ,
+    q: muffintin_prodbasis::TransferQ,
     layout: PairColumnLayout,
 ) -> Result<ToyEriActionMetrics, ThcError> {
     let g_cart = kernel.g_cartesian();
@@ -1000,7 +1001,7 @@ pub fn compare_candidate_eri_action(
     let zeta_fourier = values_fourier(zeta, n_points, n_mu, candidate, &g_cart, kernel.volume)?;
     let approx_pair = approximate_pair_fourier(&zeta_fourier, n_g, n_mu, selected_rows, n_col)?;
     let factors = toy_coulomb_factors(q_fractional, &kernel.g_integer, kernel.lattice);
-    let pair_denom = crate::thc::linalg::frobenius(reference_pair_fourier).max(1.0e-30);
+    let pair_denom = muffintin_prodbasis::thc::linalg::frobenius(reference_pair_fourier).max(1.0e-30);
     let mut pair_diff = Vec::with_capacity(approx_pair.len());
     if approx_pair.len() != reference_pair_fourier.len() {
         return Err(ThcError::PairBlockLength {
@@ -1011,7 +1012,7 @@ pub fn compare_candidate_eri_action(
     for (left, right) in approx_pair.iter().zip(reference_pair_fourier) {
         pair_diff.push(*left - *right);
     }
-    let pair_fourier = crate::thc::linalg::frobenius(&pair_diff) / pair_denom;
+    let pair_fourier = muffintin_prodbasis::thc::linalg::frobenius(&pair_diff) / pair_denom;
     let approximate_gram =
         toy_coulomb_gram(q_index, q, layout, &approx_pair, &factors, kernel.volume)?;
     let exact_gram = toy_coulomb_gram(
@@ -1032,8 +1033,8 @@ pub fn compare_candidate_eri_action(
         max_exact = max_exact.max(right.norm());
         diff.push(delta);
     }
-    let exact_frob = crate::thc::linalg::frobenius(exact_gram.data()).max(1.0e-30);
-    let eri_frobenius = crate::thc::linalg::frobenius(&diff) / exact_frob;
+    let exact_frob = muffintin_prodbasis::thc::linalg::frobenius(exact_gram.data()).max(1.0e-30);
+    let eri_frobenius = muffintin_prodbasis::thc::linalg::frobenius(&diff) / exact_frob;
     let eri_max_element = max_diff / max_exact.max(1.0e-30);
     let action = action_error(&diff, exact_gram.data(), n, ACTION_VECTOR_SEED);
     Ok(ToyEriActionMetrics {

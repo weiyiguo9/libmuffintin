@@ -1,13 +1,12 @@
 //! AllQL2 full L2 engines on already-evaluated pair blocks.
 
+
+mod toy_kit;
 use muffintin_prodbasis::{InterpolationRegion, PairColumnLayout, TransferQ};
 use muffintin_envelope::Provenance;
 use muffintin_core::InverseBohr;
-use muffintin_prodbasis::thc::toy::mt_partition;
-use muffintin_prodbasis::thc::{
-    GridPath, L2Engine, PairBlock, RankPolicy, SelectorStrategy, ThcError, ThcResult,
-    fit_allq_l2_pair_blocks,
-};
+use crate::toy_kit::mt_partition;
+use muffintin_prodbasis::thc::{GridPath, L2Engine, PairBlock, RankPolicy, SelectorStrategy, ThcError, ThcResult, fit_allq_l2_pair_blocks};
 use num_complex::Complex64;
 
 #[test]
