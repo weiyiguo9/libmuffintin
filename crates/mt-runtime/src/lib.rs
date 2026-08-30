@@ -42,9 +42,10 @@ pub use channel_token::{
 };
 pub use checkpoint_physics::{
     AtomicStart, AtomicStartError, AtomicStartRequest, CheckpointPhysics, CheckpointPhysicsError,
-    FrozenScalarRadialSamples, MaterialKernelError, RegionalFieldLayout, RegionalFieldLayoutError,
-    Structure, checkpoint_v2_from_state, materialize_atomic_start,
+    MaterialKernelError, RegionalFieldLayout, RegionalFieldLayoutError, Structure,
+    checkpoint_v2_from_state, materialize_atomic_start,
 };
+pub use muffintin_dft::ScalarRadialSamples;
 pub use dft_scf::{
     DftConvergenceDecision, DftCoreStep, DftEnergyRecord, DftLapwDensityAssembly, DftLapwSolution,
     DftOccupations, DftRegionalDensity, DftRegionalFourier, DftRegionalPotentialStep, DftScfError,

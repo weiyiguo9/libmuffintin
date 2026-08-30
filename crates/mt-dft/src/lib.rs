@@ -83,7 +83,7 @@ pub use occupations::{
     gaussian_width_matching_fermi_dirac_temperature, solve_fermi_dirac, solve_gaussian,
 };
 pub use radial_sampling::{
-    RegionalScalarRadialSamples, RegionalScalarRadialSamplingError, sample_regional_scalar_radials,
+    ScalarRadialSamples, ScalarRadialSamplingError, sample_scalar_radials,
 };
 pub use regional::{
     InterstitialField, MuffinTinField, RegionalDensity, RegionalError, RegionalPotential,

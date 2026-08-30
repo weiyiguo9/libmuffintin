@@ -5,7 +5,7 @@ use std::f64::consts::PI;
 
 use muffintin_core::{
     Bohr, ExponentialMesh, FourierFieldError, FourierLayout, Hartree, HermitianFourierField,
-    InterstitialGeometry, InverseBohr, LatticeError, MeshError, ReciprocalLattice, Sphere,
+    InterstitialGeometry, LatticeError, MeshError, ReciprocalLattice, Sphere,
     StepFunctionError, VolumeBohr3,
 };
 use muffintin_dft::{
@@ -21,9 +21,7 @@ use muffintin_io::{
     PotentialV2, RadialBasisSpinV2, RadialEquationTag, RegionalFieldV2, SpexMaterialBasisRecipeV1,
     SpexMaterialChannelKind, SphericalChannelV2,
 };
-use muffintin_sphere::{
-    HarmonicConvention, RadialEquation, RadialSolver, SphereField, SphereFieldError,
-};
+use muffintin_sphere::{HarmonicConvention, RadialEquation, SphereField, SphereFieldError};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -45,27 +43,6 @@ const CHECKPOINT_RADIUS_TOLERANCE: f64 = 1.0e-10;
 pub struct CheckpointPhysics {
     checkpoint_template: CheckpointV2,
     pub(crate) kernel: MaterialKernel,
-}
-
-/// Frozen scalar radial solutions sampled on one checkpoint muffin-tin mesh.
-#[derive(Clone, Debug, PartialEq)]
-pub struct FrozenScalarRadialSamples {
-    pub site_index: usize,
-    pub site_id: String,
-    pub angular_momentum: u32,
-    pub energies: Vec<Hartree>,
-    pub mesh_first: Bohr,
-    pub mesh_increment: f64,
-    pub mesh_count: usize,
-    pub mesh_radii: Vec<Bohr>,
-    /// Energy-major `u(r)` samples.
-    pub radial_samples: Vec<f64>,
-    pub boundary_radius: Bohr,
-    /// Rows `[u(R), du/dr(R)]`.
-    pub boundary_radial: Vec<[f64; 2]>,
-    pub log_derivative: Vec<Option<InverseBohr>>,
-    /// Rows `[du/dE(R), d(du/dr)/dE(R)]`.
-    pub energy_derivative_boundary_radial: Vec<[f64; 2]>,
 }
 
 #[derive(Clone, Debug)]
@@ -249,7 +226,7 @@ impl CheckpointPhysics {
         angular_momentum: u32,
         energies: &[Hartree],
         hard_radius: Option<Bohr>,
-    ) -> Result<FrozenScalarRadialSamples, CheckpointPhysicsError> {
+    ) -> Result<muffintin_dft::ScalarRadialSamples, CheckpointPhysicsError> {
         let (site_index, site) = self
             .kernel
             .sites()
@@ -285,50 +262,13 @@ impl CheckpointPhysics {
                 );
             }
         };
-        let mesh = site.up().mesh();
-        let v00 = self.kernel.frozen_potential().scalar().muffin_tins()[site_index]
-            .field()
-            .channel(0, 0)
-            .ok_or_else(|| {
-                CheckpointPhysicsError::MissingFrozenScalarSphericalChannel(site_id.to_owned())
-            })?;
-        let spherical_potential = v00
-            .iter()
-            .map(|coefficient| coefficient.re / (4.0 * PI).sqrt())
-            .collect::<Vec<_>>();
-        let solver = RadialSolver::new(mesh, &spherical_potential, equation)?;
-        let mut radial_samples = Vec::with_capacity(energies.len() * mesh.len());
-        let mut boundary_radial = Vec::with_capacity(energies.len());
-        let mut log_derivative = Vec::with_capacity(energies.len());
-        let mut energy_derivative_boundary_radial = Vec::with_capacity(energies.len());
-        for &energy in energies {
-            let linearized = solver.solve_with_energy_derivative(angular_momentum, energy)?;
-            radial_samples.extend(linearized.solution.u(mesh)?);
-            boundary_radial.push([
-                linearized.solution.boundary.value,
-                linearized.solution.boundary.derivative,
-            ]);
-            log_derivative.push(linearized.solution.boundary.log_derivative);
-            energy_derivative_boundary_radial.push([
-                linearized.energy_derivative.boundary.value,
-                linearized.energy_derivative.boundary.derivative,
-            ]);
-        }
-        Ok(FrozenScalarRadialSamples {
+        Ok(muffintin_dft::sample_scalar_radials(
+            self.kernel.frozen_potential(),
             site_index,
-            site_id: site_id.to_owned(),
+            equation,
             angular_momentum,
-            energies: energies.to_vec(),
-            mesh_first: mesh.first(),
-            mesh_increment: mesh.increment(),
-            mesh_count: mesh.len(),
-            mesh_radii: mesh.radii().to_vec(),
-            radial_samples,
-            boundary_radius: site.radius(),
-            boundary_radial,
-            log_derivative,
-            energy_derivative_boundary_radial,
-        })
+            energies,
+        )?)
     }
 
     pub(crate) fn nuclear_charges(&self) -> &[f64] {
@@ -507,8 +447,8 @@ pub enum CheckpointPhysicsError {
         requested: f64,
         muffin_tin: f64,
     },
-    #[error("frozen scalar potential at site {0:?} is missing the (l=0,m=0) channel")]
-    MissingFrozenScalarSphericalChannel(String),
+    #[error(transparent)]
+    ScalarRadialSampling(#[from] muffintin_dft::ScalarRadialSamplingError),
     #[error("site {site:?} muffin-tin radius is {declared}, radial mesh ends at {mesh}")]
     MuffinTinMeshRadius {
         site: String,

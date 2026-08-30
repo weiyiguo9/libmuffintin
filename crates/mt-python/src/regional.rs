@@ -273,7 +273,7 @@ impl RegionalPotential {
             }
         };
         let energies = energies.into_iter().map(Hartree).collect::<Vec<_>>();
-        let samples = muffintin_dft::sample_regional_scalar_radials(
+        let samples = muffintin_dft::sample_scalar_radials(
             &self.inner.potential,
             site_index,
             equation,

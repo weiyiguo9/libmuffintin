@@ -446,7 +446,7 @@ impl CheckpointPhysics {
             .collect::<Vec<_>>();
         let dict = export_dict(py)?;
         dict.set_item("site_index", samples.site_index)?;
-        dict.set_item("site_id", samples.site_id)?;
+        dict.set_item("site_id", site_id)?;
         dict.set_item("l", samples.angular_momentum)?;
         dict.set_item(
             "energies",
@@ -478,6 +478,17 @@ impl CheckpointPhysics {
                     samples.radial_samples,
                 )
                 .expect("one radial row is exported for every requested energy"),
+            ),
+        )?;
+        dict.set_item(
+            "small_radial_samples",
+            PyArray2::from_owned_array(
+                py,
+                Array2::from_shape_vec(
+                    (samples.energies.len(), samples.mesh_count),
+                    samples.small_radial_samples,
+                )
+                .expect("one small-component radial row is exported for every energy"),
             ),
         )?;
         dict.set_item("boundary_radius", samples.boundary_radius.get())?;

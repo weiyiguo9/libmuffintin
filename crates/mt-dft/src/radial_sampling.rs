@@ -10,7 +10,7 @@ use crate::RegionalPotential;
 
 /// Scalar radial solutions sampled on one regional-potential muffin-tin mesh.
 #[derive(Clone, Debug, PartialEq)]
-pub struct RegionalScalarRadialSamples {
+pub struct ScalarRadialSamples {
     pub site_index: usize,
     pub angular_momentum: u32,
     pub energies: Vec<Hartree>,
@@ -34,7 +34,7 @@ pub struct RegionalScalarRadialSamples {
 
 /// Failure while sampling scalar radial solutions from a regional potential.
 #[derive(Debug, Error)]
-pub enum RegionalScalarRadialSamplingError {
+pub enum ScalarRadialSamplingError {
     #[error("regional potential has {site_count} muffin-tin sites, not site index {site_index}")]
     SiteIndexOutOfBounds {
         site_index: usize,
@@ -51,16 +51,16 @@ pub enum RegionalScalarRadialSamplingError {
 /// The scalar muffin-tin coefficient is converted from the normalized
 /// spherical-harmonic channel `V00` to the physical spherical average
 /// `V(r) = V00(r) / sqrt(4 pi)` before solving.
-pub fn sample_regional_scalar_radials(
+pub fn sample_scalar_radials(
     potential: &RegionalPotential,
     site_index: usize,
     equation: RadialEquation,
     angular_momentum: u32,
     energies: &[Hartree],
-) -> Result<RegionalScalarRadialSamples, RegionalScalarRadialSamplingError> {
+) -> Result<ScalarRadialSamples, ScalarRadialSamplingError> {
     let muffin_tins = potential.scalar().muffin_tins();
     let muffin_tin = muffin_tins.get(site_index).ok_or(
-        RegionalScalarRadialSamplingError::SiteIndexOutOfBounds {
+        ScalarRadialSamplingError::SiteIndexOutOfBounds {
             site_index,
             site_count: muffin_tins.len(),
         },
@@ -68,7 +68,7 @@ pub fn sample_regional_scalar_radials(
     let v00 = muffin_tin
         .field()
         .channel(0, 0)
-        .ok_or(RegionalScalarRadialSamplingError::MissingScalarMonopole { site_index })?;
+        .ok_or(ScalarRadialSamplingError::MissingScalarMonopole { site_index })?;
     let spherical_potential = v00
         .iter()
         .map(|coefficient| coefficient.re / (4.0 * PI).sqrt())
@@ -104,7 +104,7 @@ pub fn sample_regional_scalar_radials(
         ]);
     }
 
-    Ok(RegionalScalarRadialSamples {
+    Ok(ScalarRadialSamples {
         site_index,
         angular_momentum,
         energies: energies.to_vec(),
