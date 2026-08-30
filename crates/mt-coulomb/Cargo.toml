@@ -18,7 +18,7 @@ num-complex.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
+faer.workspace = true
 
 [lints]
 workspace = true

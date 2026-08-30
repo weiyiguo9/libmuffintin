@@ -26,14 +26,9 @@ libmuffintin-operators = { path = "../mt-operators" }
 libmuffintin-sphere = { path = "../mt-sphere" }
 libmuffintin-tensor = { path = "../mt-tensor" }
 num-complex.workspace = true
-serde = { version = "1.0.219", features = ["derive"] }
+serde.workspace = true
 thiserror.workspace = true
-toml = "0.8.20"
-
-[dev-dependencies]
-libmuffintin-io = { path = "../mt-io" }
-libmuffintin-operators = { path = "../mt-operators" }
-num-complex.workspace = true
+toml.workspace = true
 
 [lints]
 workspace = true
