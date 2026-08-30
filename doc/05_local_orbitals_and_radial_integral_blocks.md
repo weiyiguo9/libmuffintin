@@ -193,7 +193,7 @@ I^{LM}_{\rm new}=T_l^\dagger I^{LM}_{\rm raw}T_{l'}.
 ```
 
 This is SPEX's factorization in `src/hamilton.f:461-612`.  Its `vmt` angular
-channels are normalized-harmonic expansion coefficients; snapshot import must
+channels are normalized-harmonic expansion coefficients; checkpoint import must
 retain a declared angular basis and transform coefficients and Gaunt tensors
 together.
 

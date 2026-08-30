@@ -1,6 +1,6 @@
 # 07. Composite grids, sphere algebra, and versioned artifacts
 
-This note fixes the grid and snapshot contracts that sit between the radial primitives and
+This note fixes the grid and checkpoint contracts that sit between the radial primitives and
 later LAPW/THC consumers.  It introduces no new electronic-structure theory:
 it makes the existing radial and angular conventions composable and
 serializable.
@@ -49,7 +49,7 @@ search is performed in the full direct-lattice metric, rather than by rounding
 three Cartesian components, so skew cells remain valid.  The retained midpoint
 weights converge to the analytic interstitial volume represented by
 `muffintin_core::InterstitialGeometry`; boundary correction is a measured later
-optimization, not part of the grid and snapshot contract.
+optimization, not part of the grid and checkpoint contract.
 
 ## 3. Sphere fields and orbitals
 
@@ -79,9 +79,9 @@ This is the common primitive for non-spherical muffin-tin potentials, density
 synthesis, and later Coulomb multipoles.  SPEX performs the same separation in
 `src/hamilton.f:461-488`.
 
-## 4. Snapshot and grid artifacts are distinct
+## 4. Checkpoint and grid artifacts are distinct
 
-`SnapshotV1` is a human-diffable physical-input artifact.  It records:
+`CheckpointV1` is a human-diffable physical-input artifact.  It records:
 
 - producer and energy-zero provenance;
 - direct lattice, sites, nuclear charges, and muffin-tin radii;
@@ -92,7 +92,7 @@ synthesis, and later Coulomb multipoles.  SPEX performs the same separation in
 Its TOML header is
 
 ```toml
-format = "libmuffintin-snapshot"
+format = "libmuffintin-checkpoint"
 version = 1
 ```
 
@@ -105,13 +105,13 @@ version = 1
 ```
 
 The two version numbers must not be coupled.  Changing a point-selection or
-quadrature representation is not a change to the physical snapshot schema.
+quadrature representation is not a change to the physical checkpoint schema.
 Both readers reject unknown fields, unsupported versions, inconsistent array
 lengths, invalid harmonic channels, and non-finite numerical samples before
 the data enters numerical kernels.
 
 The FLEUR converter remains frozen.  These formats describe what the library
-consumes; no producer-specific parser is part of the grid and snapshot contract.
+consumes; no producer-specific parser is part of the grid and checkpoint contract.
 
 ## 5. Optional tensor boundary
 
@@ -133,5 +133,5 @@ The focused acceptance suite checks:
 - stable composite ordering;
 - complex/real low-order sphere matrix elements, selection rules, and
   Hermiticity;
-- independent snapshot and grid-artifact TOML round trips and version errors;
+- independent checkpoint and grid-artifact TOML round trips and version errors;
 - default builds without RSTSR and feature-enabled tensor conversion.

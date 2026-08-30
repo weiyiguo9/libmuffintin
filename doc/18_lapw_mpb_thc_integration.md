@@ -7,7 +7,7 @@ comparison remain out of scope. The on-disk schema is [19](19_versioned_mldump_i
 
 Product kinematics remain [13](13_product_space_and_lapw_mpb.md). The toy
 canonical $q$ / Umklapp pair gauge remains [14](14_toy_kpoint_isdf_thc.md).
-The DFT snapshot kernel remains [17](17_minimal_lda_scf.md).
+The DFT checkpoint kernel remains [17](17_minimal_lda_scf.md).
 
 ## 1. Packages
 
@@ -19,13 +19,13 @@ The DFT snapshot kernel remains [17](17_minimal_lda_scf.md).
 | `crates/mt-thc` | `libmuffintin-thc` (`muffintin_thc`) |
 | `crates/mt-coulomb` | `libmuffintin-coulomb` (`muffintin_coulomb`) |
 
-`SnapshotDftPhysics::scalar_product_input` owns the scalar product-input capability. It
+`CheckpointPhysics::scalar_product_input` owns the scalar product-input capability. It
 depends on `libmuffintin-auxiliary-ir` for [`ProductSource`] and
 [`PairColumnLayout`]. It does not depend on `libmuffintin-thc`.
 `build_scalar_mpb` owns the scalar mixed-product capability and depends on
 `libmuffintin-mpb`. `build_scalar_thc` owns the scalar AllQL2 THC capability and depends
 on `libmuffintin-thc`. `build_scalar_coulomb` owns the sampled $\zeta$ Coulomb capability and
-depends on `libmuffintin-coulomb`. `SnapshotDftPhysics::spinor_product_input`
+depends on `libmuffintin-coulomb`. `CheckpointPhysics::spinor_product_input`
 owns the spinor product-input capability and consumes `DiracProductSource` from
 `libmuffintin-auxiliary-ir`. `build_spinor_mpb` owns the spinor mixed-product capability
 and depends on `libmuffintin-mpb`; MPB does not depend on runtime, THC, or
@@ -37,10 +37,10 @@ those are not production DAG edges.
 
 ## 2. Implemented boundary
 
-The input is a validated V2 snapshot, an `ScfConfig` whose relativity is
+The input is a validated V2 checkpoint, an `ScfConfig` whose relativity is
 scalar Koelling–Harmon, and a requested transfer in primitive reciprocal
 coordinates `q_fractional` $=q_{\mathrm{in}}$. The kernel materializes the
-frozen-snapshot iteration basis, rejects a folded $k-q$ that is not on the
+frozen-checkpoint iteration basis, rejects a folded $k-q$ that is not on the
 regular mesh, solves the regular full-BZ scalar eigenproblem, and returns
 [`ScalarProductInput`]:
 
@@ -73,7 +73,7 @@ multiply $(u,\dot u)$. Local-orbital rows follow
 identifier based on scalar $l$. The scalar product-input path does not add $\kappa$, $PP$, or $QQ$.
 
 `ScfState` is not the orbital source. Private
-`SnapshotBandSolution` / `SnapshotKPointSolution` fields stay private.
+`CheckpointBandSolution` / `CheckpointKPointSolution` fields stay private.
 
 ## 3. Canonical $q$ and Umklapp
 
@@ -259,7 +259,7 @@ scalar product-input, scalar mixed-product, scalar AllQL2 THC, and sampled $\zet
 
 Later stages consume this scalar product-input, mixed-product,
 interpolation-point, and sampled $\zeta$ Coulomb contract rather than reaching
-into snapshot solver internals.
+into checkpoint solver internals.
 
 ## 8. Dirac PP/QQ IR and MPB primitive
 
@@ -274,10 +274,10 @@ The spinor THC/Coulomb bridge adds spinor all $q$ THC and sampled $\zeta$ Coulom
 
 ## 9. Frozen spinor product input
 
-`SnapshotDftPhysics::spinor_product_input(&ScfConfig, q_fractional)` accepts
+`CheckpointPhysics::spinor_product_input(&ScfConfig, q_fractional)` accepts
 only `ScfRelativity::SpinorFirstVariation`. Scalar Koelling–Harmon and SOC
 second variation are distinct typed rejections; signed $\kappa$ is not routed
-through second variation. The kernel materializes the frozen-snapshot
+through second variation. The kernel materializes the frozen-checkpoint
 iteration basis, reuses the scalar product-input canonical $q$ / mesh $k-q$ helper, solves
 the regular full-BZ full-first-variation eigenproblem, and returns
 [`SpinorProductInput`]:
@@ -302,7 +302,7 @@ the regular full-BZ full-first-variation eigenproblem, and returns
   $G_{\mathrm{wrap}}$ with the same positive pair-density convention as the scalar product-input path.
 - `pair_columns`: `PairColumnLayout::new(n_k, n_orb, None)` with left band
   at $k-q$ and right band at $k$.
-- `reciprocal`: the exact snapshot lattice. Off-mesh $q$ is `OffMeshTransfer`.
+- `reciprocal`: the exact checkpoint lattice. Off-mesh $q$ is `OffMeshTransfer`.
 - `orbitals.band_window`: `{start: 0, count: n_orb}`. `available_bands[k]`
   keeps the untruncated eigenpair count. Eigenvector **rows** equal the
   k-local basis dimension and are not truncated to a common size.

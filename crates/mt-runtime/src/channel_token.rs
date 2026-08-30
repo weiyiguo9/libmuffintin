@@ -59,7 +59,7 @@ impl ChannelEnergyGenerator {
             "log-derivative" => Some(Self::LogDerivative),
             "band-cog" => Some(Self::BandCog),
             "fermi-offset" => Some(Self::FermiOffset),
-            "frozen-checkpoint" | "frozen" => Some(Self::FrozenCheckpoint),
+            "frozen-checkpoint" | "frozen-snapshot" | "frozen" => Some(Self::FrozenCheckpoint),
             _ => None,
         }
     }

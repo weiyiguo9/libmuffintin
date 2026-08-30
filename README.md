@@ -29,7 +29,7 @@ exact contracts and derivations.
   composite quadrature grids, with an optional `rstsr` conversion feature.
 - `libmuffintin-sphere` — sphere fields resolved in $(L,M)$ and Gaunt-weighted
   radial matrix elements, with a parallel typed spinor path.
-- `libmuffintin-io` — versioned, human-diffable TOML snapshot and grid
+- `libmuffintin-io` — versioned, human-diffable TOML checkpoint and grid
   formats; the MLDUMP v1 HDF5 interchange schema (`libmuffintin.mldump`,
   neither CoQui-native nor SPEX-native); the SPEX `spex.snapshot_hdf` v1
   reader; and the CoQui-native scalar Cholesky writer. The FLEUR converter
@@ -64,7 +64,7 @@ exact contracts and derivations.
   generators, free-atom LDA, and the periodic neutral-atom superposition.
 - `libmuffintin-runtime` — the single `muffintin` binary and its library
   boundary: ordered TOML workflows with Input V2, the neutral atomic-start
-  generator `materialize_atomic_snapshot_v2`, the frozen scalar and spinor
+  generator `materialize_atomic_checkpoint_v2`, the frozen scalar and spinor
   product-input, mixed-product, THC, and sampled-Coulomb bridges, and the
   MLDUMP and CoQui writers. The bridge contracts live in
   [`doc/17`](doc/17_minimal_lda_scf.md)–[`doc/20`](doc/20_sm_dy_full_spinor_material_demo.md).
@@ -108,7 +108,7 @@ derivation notes.
 The DFT contract, the orbital-configuration V2 extension, and the neutral
 atomic-start generator close the v0.2 implementation sequence across the
 library, ordered TOML workflow, single executable, and versioned
-snapshot/restart boundary. The real hashed SPEX `b45d9b9` Sm fcc artifact
+checkpoint/restart boundary. The real hashed SPEX `b45d9b9` Sm fcc artifact
 completes the bounded $0.5\,a_0^{-1}$ spinor lane from target Dirac $P,Q$
 through MPB, both THC engines, sampled Coulomb, and MLDUMP roundtrip, as
 recorded in [`doc/20`](doc/20_sm_dy_full_spinor_material_demo.md).
@@ -117,8 +117,8 @@ None of this is a release tag, cross-code acceptance, or production
 validation. Still open: full source-cutoff and rank/grid convergence, honest
 Dy bcc producer data, an external spinor MLDUMP consumer, and the planned
 Si/SrVO3 scalar, Pt/Au second-variation SOC, magnetic, and cross-code
-tetrahedron-DOS fixtures. Snapshot V1 remains readable through exact
-normalization to Snapshot V2.
+tetrahedron-DOS fixtures. Checkpoint V1 remains readable through exact
+normalization to Checkpoint V2.
 
 The next planned step is a thin PyO3/maturin Python binding that would expose
 the frozen scalar and spinor product/THC/Coulomb boundaries as versioned NumPy

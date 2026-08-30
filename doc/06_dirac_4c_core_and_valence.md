@@ -221,7 +221,7 @@ acceptance boundary, and no FRA request API is created.
 
 One per-sphere `radial_eq` field is insufficient.  Production LAPW calculations
 commonly use scalar-relativistic valence functions and fully relativistic core
-states in the same sphere.  The snapshot therefore needs separate contracts,
+states in the same sphere.  The checkpoint therefore needs separate contracts,
 conceptually
 
 ```text

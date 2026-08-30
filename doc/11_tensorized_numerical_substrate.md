@@ -15,7 +15,7 @@ A dense local tensor carries:
 - a one-process [`LocalWorld`](../crates/mt-tensor/src/lib.rs);
 - placement intent [`Placement::Auto`](../crates/mt-tensor/src/lib.rs).
 
-Host snapshots remain ordinary `Vec<Complex64>` buffers with an explicit
+Host checkpoints remain ordinary `Vec<Complex64>` buffers with an explicit
 row-major or column-major contract. General contraction tensors use row-major
 host construction. [`DenseEigenvectors`](../crates/mt-tensor/src/lib.rs) has
 logical axes `[GlobalBasis, Band]` and canonical column-major storage, so all

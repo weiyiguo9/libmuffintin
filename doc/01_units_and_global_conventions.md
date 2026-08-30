@@ -136,7 +136,7 @@ The scalar radial wavefunction convention is
 \qquad P_l(r)=r u_l(r).
 ```
 
-Radial arrays must say whether they store $u$, $P=ru$, or a code-specific quantity such as $rV$. The library's potential channel $V_{LM}(r)$ is an energy in Hartree, not $rV$. A converter must undo any producer-specific radial prefactor before constructing the snapshot.
+Radial arrays must say whether they store $u$, $P=ru$, or a code-specific quantity such as $rV$. The library's potential channel $V_{LM}(r)$ is an energy in Hartree, not $rV$. A converter must undo any producer-specific radial prefactor before constructing the checkpoint.
 
 In particular, the physical spherical potential stored by `libmuffintin` is
 the actual function $V_{00}^{\rm phys}(r)$ that enters the radial equation.
@@ -186,7 +186,7 @@ within the declared tolerance. For each radial solution, serialize enough bounda
 2. $A^TB=2\pi I$, $\det A>0$, and reciprocal norms are computed only after conversion to Cartesian `bohr^-1`.
 3. The free-electron kinetic diagonal is $|\mathbf k+\mathbf G|^2/2$, which detects an accidental Rydberg convention immediately.
 4. Fourier reconstruction uses the same sign as the analytic step function.
-5. Snapshot readers reject absent or unknown dimensional units rather than guessing.
+5. Checkpoint readers reject absent or unknown dimensional units rather than guessing.
 
 ## Source anchors
 

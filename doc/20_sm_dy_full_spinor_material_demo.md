@@ -30,22 +30,22 @@ whitespace, or a 1-d VL token array. Collinear $B_x/B_y$ may be
 all-zero only with `@zero_source` proving the spin layout; omitted $B$
 is a blocker. `@external_basis_required=true`.
 
-`materialize_snapshot_v2` builds `SnapshotV2` only with an explicit
+`materialize_checkpoint_v2` builds `CheckpointV2` only with an explicit
 caller-owned recipe whose $l$ and energy match the SPEX scalar LO
 table; both SPEX hashes and `recipe_sha256` are recorded. It ingests
 ULP-scale interstitial pairs with tolerance
 $10^{-12}\max(|c|,|c'|,1)$ and writes conjugate-symmetric averages so
-Snapshot V2 is exactly Hermitian.
+Checkpoint V2 is exactly Hermitian.
 
-`SnapshotDftPhysics::new` on such an import still rejects
+`CheckpointPhysics::new` on such an import still rejects
 `SpinorFirstVariation`, because SPEX `radial_equation` is honestly
 `scalar-koelling-harmon`. The typed material route is
-`SnapshotDftPhysics::new_spex_material`: it retains that source tag,
+`CheckpointPhysics::new_spex_material`: it retains that source tag,
 binds the caller-owned $(n,l,\kappa)$, treatment, derivative order,
 and energy to the exact runtime `ScfBasis` request and resolved
 energy, then solves target Dirac $P,Q$ from the imported $V_0$
 monopole. A recipe/runtime mismatch is
-`SnapshotDftError::SpexMaterialChannelMismatch`, and the route never
+`CheckpointPhysicsError::SpexMaterialChannelMismatch`, and the route never
 claims SPEX $P,Q$ or a SPEX signed $\kappa$.
 
 ## 3. Status
@@ -64,8 +64,8 @@ evidence for Sm within those bounds; it establishes neither
 convergence nor production validation, and no cross-code spinor
 consumer has read the output.
 
-The Dy bcc lane is blocked: no honest Dy bcc DFT snapshot, `spex.pot`,
-FLEUR `cdn/pot`, or Snapshot V2 exists, and synthetic atomic data
+The Dy bcc lane is blocked: no honest Dy bcc DFT checkpoint, `spex.pot`,
+FLEUR `cdn/pot`, or Checkpoint V2 exists, and synthetic atomic data
 would not be Dy material and is forbidden here. Catalogue-only facts
 (the FLEUR `default.econfig` for $Z=66$, the $5p_{1/2}$ rLO assignment
 for $Z=55$ to $86$, both valence $4f$ $\kappa$ partners) are locked in
@@ -79,7 +79,7 @@ reader is implemented here.
 
 ## 4. Remaining Dy acceptance boundary
 
-1. An honest hashed Snapshot V2 with the physical muffin-tin potential
+1. An honest hashed Checkpoint V2 with the physical muffin-tin potential
    from a named DFT producer.
 2. `SpinorFirstVariation` materialization whose resolved channels
    include the required $4f$ and $5p_{1/2}$ rLO set from an explicit

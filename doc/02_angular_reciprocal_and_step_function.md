@@ -57,7 +57,7 @@ R_{l,-p}=\frac{i}{\sqrt2}
 ```
 
 These functions are real on the sphere and orthonormal.  This is the transform
-implemented by SPEX `src/vector.f:241-280`.  A snapshot must name its angular
+implemented by SPEX `src/vector.f:241-280`.  A checkpoint must name its angular
 basis; changing from real to complex harmonics is a matrix transform, not an
 index relabeling.
 

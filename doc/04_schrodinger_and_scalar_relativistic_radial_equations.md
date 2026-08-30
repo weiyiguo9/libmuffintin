@@ -208,7 +208,7 @@ conditioned $B_l$, not continue with unstable coefficients.
    $\langle u|\dot u\rangle=0$, and the stored $\dot N$.
 4. Recompute $U_r$ both from a numerical derivative of $P/r$ and from the
    first-order equation.
-5. Confirm that a SPEX `vmt(:,1)` snapshot was divided by
+5. Confirm that a SPEX `vmt(:,1)` checkpoint was divided by
    $\sqrt{4\pi}$ before it is used as $V(r)$.
 
 ## Source anchors

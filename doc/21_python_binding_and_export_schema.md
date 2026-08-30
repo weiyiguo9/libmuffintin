@@ -38,9 +38,9 @@ Out of scope for v0.3:
 
 | Out of scope | Reason |
 |---|---|
-| SCF binding (`run_scf`, mixing, occupations) | The frozen-snapshot solve is the fixed-orbital entry; SCF stays behind the `muffintin` binary. |
+| SCF binding (`run_scf`, mixing, occupations) | The frozen-checkpoint solve is the fixed-orbital entry; SCF stays behind the `muffintin` binary. |
 | Symmetry layer | Full-BZ experiments first; symmetry is a later prefactor optimization, not part of the algorithm question. |
-| SPEX importer work | Already in `libmuffintin-io`; the binding loads its Snapshot V2 output unchanged. |
+| SPEX importer work | Already in `libmuffintin-io`; the binding loads its Checkpoint V2 output unchanged. |
 | LMTO/NMTO producers | Later producers of the same export schema; the schema is method-neutral from day one. |
 | Wheel or PyPI distribution | The extension links TBLIS and HDF5; local `maturin develop` only. |
 | New Rust auxiliary representations | Hybrid MT-RI plus interstitial-THC compositions are assembled in Python from exported primitives. |
@@ -51,7 +51,7 @@ Out of scope for v0.3:
 ```text
 crates/mt-python/            # the only crate containing PyO3
   Cargo.toml                 # package libmuffintin-python, [lib] name muffintin_python, cdylib
-  src/{lib.rs, snapshot.rs, orbitals.rs, products.rs, thc.rs, coulomb.rs, export.rs}
+  src/{lib.rs, checkpoint.rs, orbitals.rs, products.rs, thc.rs, coulomb.rs, export.rs}
 python/
   pyproject.toml             # maturin backend, module-name = "libmuffintin._native"
   libmuffintin/
@@ -142,8 +142,8 @@ first:
 ```python
 import libmuffintin as mt
 
-snap = mt.load_snapshot("snapshot.toml")            # Snapshot V1/V2 via mt-io
-phys = mt.SnapshotPhysics(snap)                     # SnapshotDftPhysics::new
+snap = mt.load_checkpoint("checkpoint.toml")            # Checkpoint V1/V2 via mt-io
+phys = mt.CheckpointPhysics(snap)                     # CheckpointPhysics::new
 inp  = phys.scalar_product_input("input.toml", q=[0.0, 0.0, 0.0])
 inps = phys.scalar_q_slice("input.toml")            # complete k-mesh slice in
                                                     # production q-index order
@@ -183,7 +183,7 @@ else reuses the frozen runtime boundaries as they stand.
 
 | Stage | Content |
 |---|---|
-| 1 | Scaffolding (`mt-python`, `python/`, maturin), snapshot loading, `scalar_product_input`, and the seven `export_*` methods on it. |
+| 1 | Scaffolding (`mt-python`, `python/`, maturin), checkpoint loading, `scalar_product_input`, and the seven `export_*` methods on it. |
 | 2 | `build_scalar_mpb` / `build_scalar_thc` / `build_scalar_coulomb` handles with exports, the parent-grid array input, and `sample_scalar_orbitals`. |
 | 3 | Spinor twins of stages 1 and 2, plus the MLDUMP and CoQui Cholesky writer pass-throughs. |
 | 4 | Bootstrap of the separate `pymuffintin` package: provider protocols, the muffintin backend adapter over pyexport v1, `auxiliary/{lri,thc,hybrid}.py`, `mbpt/hf.py`, and gate 3. Gates 1 and 2 stay in this repository as binding tests. |

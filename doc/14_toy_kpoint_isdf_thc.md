@@ -3,7 +3,7 @@
 This note records the toy k-point THC public contract. It does not add a production
 Coulomb assembler, real-material SCF/GW, MPI, or an umbrella crate. Product
 kinematics remain [13](13_product_space_and_lapw_mpb.md). Grids remain
-[07](07_grids_sphere_algebra_and_snapshot_formats.md).
+[07](07_grids_sphere_algebra_and_checkpoint_formats.md).
 
 ## 1. Scope
 
