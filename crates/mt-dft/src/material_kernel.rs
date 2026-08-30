@@ -1698,15 +1698,10 @@ fn extend_mesh(
 }
 
 fn spex_bound_channel_mismatch(bound: &SpexBoundSpinorChannel) -> MaterialKernelError {
-    let (n, kappa) = match bound.requested.identity {
-        ScfChannelIdentity::Kappa { n, kappa } => (n, kappa),
-        ScfChannelIdentity::ScalarL { .. } => unreachable!("SPEX material binding is signed kappa"),
-    };
     MaterialKernelError::SpexMaterialChannelMismatch {
         site: bound.requested.site.clone(),
-        n,
+        identity: bound.requested.identity,
         l: bound.l,
-        kappa,
         treatment: bound.requested.treatment,
         derivative_order: bound.requested.derivative_order,
         energy: bound.resolved.energy.get(),
@@ -2038,13 +2033,12 @@ pub enum MaterialKernelError {
         route: RadialRoute,
     },
     #[error(
-        "SPEX material channel site={site:?}, n={n}, l={l}, kappa={kappa}, treatment={treatment:?}, derivative_order={derivative_order}, energy={energy} is not bound exactly to the runtime basis"
+        "SPEX material channel site={site:?}, identity={identity:?}, l={l}, treatment={treatment:?}, derivative_order={derivative_order}, energy={energy} is not bound exactly to the runtime basis"
     )]
     SpexMaterialChannelMismatch {
         site: String,
-        n: u32,
+        identity: ScfChannelIdentity,
         l: u32,
-        kappa: i32,
         treatment: ScfChannelTreatment,
         derivative_order: u32,
         energy: f64,
