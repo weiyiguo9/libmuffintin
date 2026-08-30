@@ -43,6 +43,7 @@ pub fn detect(cell: &CrystalCell, symprec: Bohr) -> Result<SymmetryDataset, Moyo
         .map(|operation| SymmetryOperation {
             rotation: operation.rotation_as_array(),
             translation: operation.translation.into(),
+            time_reversal: false,
         })
         .collect();
     Ok(SymmetryDataset {
@@ -65,11 +66,7 @@ mod tests {
         let half = Bohr(3.6);
         let zero = Bohr(0.0);
         let cell = CrystalCell {
-            lattice: [
-                [zero, half, half],
-                [half, zero, half],
-                [half, half, zero],
-            ],
+            lattice: [[zero, half, half], [half, zero, half], [half, half, zero]],
             positions: vec![[0.0, 0.0, 0.0]],
             atomic_numbers: vec![62],
         };
@@ -81,6 +78,7 @@ mod tests {
         let identity = SymmetryOperation {
             rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
             translation: [0.0, 0.0, 0.0],
+            time_reversal: false,
         };
         assert!(dataset.operations.contains(&identity));
     }

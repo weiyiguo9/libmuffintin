@@ -3,15 +3,14 @@ use std::collections::BTreeMap;
 use muffintin_core::Bohr;
 use muffintin_core::{Cell, Grid, UniformGrid};
 use muffintin_io::{
-    AngularBasis, BasisHints, Complex64V1, EnergyParameterV1, EnergyUnit,
-    ExponentialMeshSpec, FieldRepresentationV2, FieldUnitV2, FourierCoefficientV1,
-    FourierNormalization, FourierPhase, GeometryV1, GridArtifactV1, InitialV2, InterstitialV1,
-    InverseLengthUnit, IoError, LatticeV1, LengthUnit, LinearizationV1, CheckpointMeta,
+    AngularBasis, BasisHints, CheckpointFile, CheckpointMeta, CheckpointV1, Complex64V1,
+    EnergyParameterV1, EnergyUnit, ExponentialMeshSpec, FieldRepresentationV2, FieldUnitV2,
+    FourierCoefficientV1, FourierNormalization, FourierPhase, GeometryV1, GridArtifactV1,
+    InitialV2, InterstitialV1, InverseLengthUnit, IoError, LatticeV1, LengthUnit, LinearizationV1,
     PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1, RadialBasisSpinV2,
-    RadialEquationTag, SiteSpinV1, SiteV1, CheckpointFile, CheckpointV1,
-    SphericalChannelConvention, SpinTag, VolumeUnit, grid_artifact_from_toml,
-    grid_artifact_to_toml, checkpoint_file_from_toml, checkpoint_file_to_toml, checkpoint_from_toml,
-    checkpoint_to_toml,
+    RadialEquationTag, SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag, VolumeUnit,
+    checkpoint_file_from_toml, checkpoint_file_to_toml, checkpoint_from_toml, checkpoint_to_toml,
+    grid_artifact_from_toml, grid_artifact_to_toml,
 };
 
 fn checkpoint() -> CheckpointV1 {

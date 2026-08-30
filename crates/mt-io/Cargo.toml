@@ -13,6 +13,8 @@ name = "muffintin_io"
 [dependencies]
 hdf5-metno = "=0.12.3"
 libmuffintin-core = { path = "../mt-core" }
+libmuffintin-symmetry = { path = "../mt-symmetry", default-features = false }
+num-complex.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 toml.workspace = true

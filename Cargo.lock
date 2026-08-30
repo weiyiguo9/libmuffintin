@@ -1054,6 +1054,8 @@ version = "0.2.0"
 dependencies = [
  "hdf5-metno",
  "libmuffintin-core",
+ "libmuffintin-symmetry",
+ "num-complex",
  "serde",
  "thiserror 2.0.20",
  "toml",
@@ -1137,6 +1139,7 @@ dependencies = [
  "libmuffintin-core",
  "moyo",
  "nalgebra",
+ "num-complex",
  "thiserror 2.0.20",
 ]
 

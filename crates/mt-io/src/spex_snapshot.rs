@@ -18,21 +18,22 @@ use std::path::Path;
 use hdf5_metno::types::{TypeDescriptor, VarLenAscii, VarLenUnicode};
 use hdf5_metno::{Attribute, Dataset, File, Group, Location};
 
+use crate::checkpoint::{
+    AngularBasis, BasisHints, CHECKPOINT_FORMAT, CheckpointMeta, EnergyParameterV1,
+    ExponentialMeshSpec, FourierNormalization, FourierPhase, LinearizationV1,
+    PotentialConventionV1, PotentialRadialQuantityV1, RadialEquationTag,
+    SphericalChannelConvention,
+};
+use crate::checkpoint_v2::{
+    CHECKPOINT_VERSION_V2, CheckpointV2, Complex64V2, DensityV2, FieldRepresentationV2,
+    FieldUnitV2, FourierCoefficientV2, GeometryV2, InitialV2, InterstitialFieldV2,
+    MuffinTinFieldV2, PotentialV2, RadialBasisSpinV2, RegionalFieldV2, SiteRadialBasisV2, SiteV2,
+    SphericalChannelV2,
+};
 use crate::error::{IoError, ValidationError, nonempty, positive};
 use crate::mldump::{
     child_basename, create_dataset, require_finite_f64s, require_flat_len, require_len,
     require_numeric_dataset, require_shape, usize_as_i64, write_f64_attr, write_i64_attr,
-};
-use crate::checkpoint::{
-    AngularBasis, BasisHints, EnergyParameterV1, ExponentialMeshSpec, FourierNormalization,
-    FourierPhase, LinearizationV1, CheckpointMeta, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTag, CHECKPOINT_FORMAT, SphericalChannelConvention,
-};
-use crate::checkpoint_v2::{
-    Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2, FourierCoefficientV2, GeometryV2,
-    InitialV2, InterstitialFieldV2, MuffinTinFieldV2, PotentialV2, RadialBasisSpinV2,
-    RegionalFieldV2, CHECKPOINT_VERSION_V2, SiteRadialBasisV2, SiteV2, CheckpointV2,
-    SphericalChannelV2,
 };
 use crate::units::{EnergyUnit, InverseLengthUnit, LengthUnit};
 
@@ -244,7 +245,10 @@ pub fn write_spex_snapshot_hdf(path: &Path, file: &SpexFrozenFieldsV1) -> Result
         &file.source_kind,
     )?;
     write_hashes(&hdf.create_group(GROUP_HASHES)?, &file.hashes)?;
-    write_geometry(&hdf.create_group(GROUP_GEOMETRY)?, &file.checkpoint.geometry)?;
+    write_geometry(
+        &hdf.create_group(GROUP_GEOMETRY)?,
+        &file.checkpoint.geometry,
+    )?;
     write_radial_basis(
         &hdf.create_group(GROUP_RADIAL)?,
         &file.checkpoint.geometry,
@@ -2646,7 +2650,9 @@ fn symmetrize_regional_interstitial(
     symmetrize_interstitial_fourier(&mut field.interstitial, path)
 }
 
-fn symmetrize_checkpoint_interstitial_fourier(checkpoint: &mut CheckpointV2) -> Result<(), IoError> {
+fn symmetrize_checkpoint_interstitial_fourier(
+    checkpoint: &mut CheckpointV2,
+) -> Result<(), IoError> {
     match &mut checkpoint.initial {
         InitialV2::FrozenPotential { potential } => {
             symmetrize_regional_interstitial(&mut potential.v0, "/initial/potential/v0")?;

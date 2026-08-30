@@ -10,10 +10,15 @@ rust-version.workspace = true
 [lib]
 name = "muffintin_symmetry"
 
+[features]
+default = ["backend-moyo"]
+backend-moyo = ["dep:moyo", "dep:nalgebra"]
+
 [dependencies]
 libmuffintin-core = { path = "../mt-core" }
-moyo = "0.17"
-nalgebra = "0.35"
+moyo = { version = "0.17", optional = true }
+nalgebra = { version = "0.35", optional = true }
+num-complex.workspace = true
 thiserror.workspace = true
 
 [lints]

@@ -13,15 +13,31 @@
 //! [`SpinorMldumpStreamV1`]. [`CoquiCholeskyFile`] is a separate CoQui-native
 //! single-file Cholesky ERI tree and is not MLDUMP.
 
+mod checkpoint;
+mod checkpoint_v2;
 mod coqui_cholesky;
 mod error;
 mod grid;
 mod mldump;
-mod checkpoint;
-mod checkpoint_v2;
 mod spex_snapshot;
+mod spex_symmetry;
 mod units;
 
+pub use checkpoint::{
+    AngularBasis, BasisHints, CHECKPOINT_FORMAT, CHECKPOINT_VERSION, CheckpointMeta, CheckpointV1,
+    Complex64V1, EnergyParameterV1, ExponentialMeshSpec, FourierCoefficientV1,
+    FourierNormalization, FourierPhase, GeometryV1, InterstitialV1, LatticeV1, LinearizationV1,
+    PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1, RadialEquationTag,
+    SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag, checkpoint_from_toml,
+    checkpoint_to_toml,
+};
+pub use checkpoint_v2::{
+    CHECKPOINT_VERSION_V2, CheckpointFile, CheckpointV2, Complex64V2, DensityV2,
+    FieldRepresentationV2, FieldUnitV2, FourierCoefficientV2, GeometryV2, InitialV2,
+    InterstitialFieldV2, MuffinTinFieldV2, PotentialV2, RadialBasisSpinV2, RegionalFieldV2,
+    SiteRadialBasisV2, SiteV2, SphericalChannelV2, checkpoint_file_from_toml,
+    checkpoint_file_to_toml,
+};
 pub use coqui_cholesky::{
     COQUI_CHOLESKY_COMPLEX_ATTR, COQUI_CHOLESKY_COMPLEX_VALUE, COQUI_CHOLESKY_GROUP,
     CoquiCholeskyFile, CoquiCholeskyHeader, CoquiCholeskyVq, CoquiCholeskyVqRef,
@@ -59,20 +75,11 @@ pub use mldump::{
     SpinorProductsBeginV1, SpinorProductsV1, SpinorProjectionCoordV1, SpinorSiteMatchRefV1,
     SpinorSiteMatchV1, read_mldump_v1,
 };
-pub use checkpoint::{
-    AngularBasis, BasisHints, Complex64V1, EnergyParameterV1, ExponentialMeshSpec,
-    FourierCoefficientV1, FourierNormalization, FourierPhase, GeometryV1, InterstitialV1,
-    LatticeV1, LinearizationV1, CheckpointMeta, PotentialChannelV1, PotentialConventionV1,
-    PotentialRadialQuantityV1, RadialEquationTag, CHECKPOINT_FORMAT, CHECKPOINT_VERSION, SiteSpinV1,
-    SiteV1, CheckpointV1, SphericalChannelConvention, SpinTag, checkpoint_from_toml,
-    checkpoint_to_toml,
+pub use spex_symmetry::{
+    SPEX_SYMMETRY_SCHEMA_NAME, SPEX_SYMMETRY_SCHEMA_VERSION, SpexSymmetryFileV1,
+    read_spex_symmetry_v1, write_spex_symmetry_v1,
 };
-pub use checkpoint_v2::{
-    Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2, FourierCoefficientV2, GeometryV2,
-    InitialV2, InterstitialFieldV2, MuffinTinFieldV2, PotentialV2, RadialBasisSpinV2,
-    RegionalFieldV2, CHECKPOINT_VERSION_V2, SiteRadialBasisV2, SiteV2, CheckpointFile, CheckpointV2,
-    SphericalChannelV2, checkpoint_file_from_toml, checkpoint_file_to_toml,
-};
+
 pub use spex_snapshot::{
     SPEX_FOURIER_HERMITIAN_TOLERANCE, SPEX_SNAPSHOT_HDF_SCHEMA_NAME,
     SPEX_SNAPSHOT_HDF_SCHEMA_VERSION, SPEX_SNAPSHOT_HDF_SOURCE_KIND, SpexFrozenFieldsV1,

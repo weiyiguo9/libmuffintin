@@ -23,11 +23,13 @@ exact contracts and derivations.
   spinor-harmonic contracts, and typed atom-centred, uniform, interstitial,
   and composite quadrature grids (optional `rstsr` conversion feature).
 - `libmuffintin-symmetry`: the method-neutral crystal symmetry dataset
-  (integer fractional-basis operations, orbit representatives, space-group
-  classification) with a moyo detection backend under `moyo_backend::`;
-  importers from external codes populate the same IR instead of
-  re-detecting. The Python-side mirror lives in `pymuffintin.symmetry`
-  over spglib and spgrep.
+  (integer fractional-basis operations with a time-reversal flag, orbit
+  representatives, space-group classification) with a moyo detection
+  backend under `moyo_backend::` and the SPEX import contract under
+  `spex::`, so external codes populate the same IR instead of re-detecting.
+  The Python-side mirror lives in `pymuffintin.symmetry` over spglib and
+  spgrep. The contracts live in
+  [`doc/22`](doc/22_crystal_symmetry_and_spex_irrep_import.md).
 - `libmuffintin-tensor`: backend-neutral `einsum` over dense complex tensors:
   RSTSR linked with TBLIS by default, `tenferro` as an optional second engine,
   faer as the Hermitian eigensolver, and column-major `[basis, band]`
@@ -68,8 +70,9 @@ exact contracts and derivations.
 - `libmuffintin-io`: versioned, human-diffable TOML checkpoint and grid
   formats; the MLDUMP v1 HDF5 interchange schema (`libmuffintin.mldump`,
   neither CoQui-native nor SPEX-native); the SPEX `spex.snapshot_hdf` v1
-  reader; and the CoQui-native scalar Cholesky writer. The FLEUR converter
-  remains frozen.
+  reader; the `libmuffintin.spexsym` v1 symmetry+irrep dump reader and
+  reference writer; and the CoQui-native scalar Cholesky writer. The FLEUR
+  converter remains frozen.
 - `libmuffintin-runtime`: the single `muffintin` binary and its library
   boundary: ordered TOML workflows with Input V3 and the `CheckpointPhysics`
   checkpoint/IO/orchestration shell, which delegates DFT/SCF physics to

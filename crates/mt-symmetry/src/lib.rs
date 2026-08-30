@@ -5,11 +5,14 @@
 //! as SPEX populate the same IR through importers instead of re-detection, so
 //! downstream consumers never see a backend-native type.
 
+#[cfg(feature = "backend-moyo")]
 pub mod moyo_backend;
+pub mod spex;
 
 use muffintin_core::Bohr;
 
-/// One space-group operation acting on fractional coordinates as `x' = W x + w`.
+/// One space-group operation acting on fractional coordinates as `x' = W x + w`,
+/// composed with complex conjugation when `time_reversal` is set.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SymmetryOperation {
     /// Integer rotation part `W` in the input-cell crystallographic basis;
@@ -17,6 +20,10 @@ pub struct SymmetryOperation {
     pub rotation: [[i32; 3]; 3],
     /// Translation part `w` in fractional coordinates of the input cell.
     pub translation: [f64; 3],
+    /// Antiunitary flag: the operation includes time reversal. Detection
+    /// backends emit unitary operations only; importers may carry the
+    /// time-reversal-doubled set of the producing code.
+    pub time_reversal: bool,
 }
 
 /// Origin of a dataset, so consumers can tell detected from imported symmetry.

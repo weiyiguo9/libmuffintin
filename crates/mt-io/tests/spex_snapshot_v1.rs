@@ -4,17 +4,17 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use muffintin_io::{
-    AngularBasis, BasisHints, Complex64V2, EnergyParameterV1, ExponentialMeshSpec,
-    FieldRepresentationV2, FieldUnitV2, FourierCoefficientV2, FourierNormalization,
-    FourierPhase, GeometryV2, InitialV2, InterstitialFieldV2, IoError, LatticeV1,
-    LinearizationV1, CheckpointMeta, MuffinTinFieldV2, PotentialConventionV1, PotentialRadialQuantityV1,
-    PotentialV2, RadialBasisSpinV2, RadialEquationTag, RegionalFieldV2, CHECKPOINT_FORMAT,
-    CHECKPOINT_VERSION_V2, SPEX_FOURIER_HERMITIAN_TOLERANCE, SPEX_SNAPSHOT_HDF_SCHEMA_NAME,
-    SPEX_SNAPSHOT_HDF_SCHEMA_VERSION, SPEX_SNAPSHOT_HDF_SOURCE_KIND, SiteRadialBasisV2, SiteV2,
-    CheckpointV2, SpexFrozenFieldsV1, SpexMaterialBasisRecipeV1, SpexMaterialChannelKind,
-    SpexMaterialChannelV1, SpexScalarLoKind, SpexScalarLoTableV1, SpexScalarLoV1,
-    SpexSnapshotHashV1, SphericalChannelConvention, SphericalChannelV2, ValidationError,
-    materialize_checkpoint_v2, read_spex_snapshot_hdf, write_spex_snapshot_hdf,
+    AngularBasis, BasisHints, CHECKPOINT_FORMAT, CHECKPOINT_VERSION_V2, CheckpointMeta,
+    CheckpointV2, Complex64V2, EnergyParameterV1, ExponentialMeshSpec, FieldRepresentationV2,
+    FieldUnitV2, FourierCoefficientV2, FourierNormalization, FourierPhase, GeometryV2, InitialV2,
+    InterstitialFieldV2, IoError, LatticeV1, LinearizationV1, MuffinTinFieldV2,
+    PotentialConventionV1, PotentialRadialQuantityV1, PotentialV2, RadialBasisSpinV2,
+    RadialEquationTag, RegionalFieldV2, SPEX_FOURIER_HERMITIAN_TOLERANCE,
+    SPEX_SNAPSHOT_HDF_SCHEMA_NAME, SPEX_SNAPSHOT_HDF_SCHEMA_VERSION, SPEX_SNAPSHOT_HDF_SOURCE_KIND,
+    SiteRadialBasisV2, SiteV2, SpexFrozenFieldsV1, SpexMaterialBasisRecipeV1,
+    SpexMaterialChannelKind, SpexMaterialChannelV1, SpexScalarLoKind, SpexScalarLoTableV1,
+    SpexScalarLoV1, SpexSnapshotHashV1, SphericalChannelConvention, SphericalChannelV2,
+    ValidationError, materialize_checkpoint_v2, read_spex_snapshot_hdf, write_spex_snapshot_hdf,
 };
 use muffintin_io::{EnergyUnit, InverseLengthUnit, LengthUnit};
 
@@ -343,7 +343,8 @@ fn materialize_symmetrizes_live_ulp_and_rejects_large_hermitian_error() {
         SPEX_FOURIER_HERMITIAN_TOLERANCE * scale
     );
     let recipe = artifact_recipe(&fields);
-    let done = materialize_checkpoint_v2(&fields, &recipe).expect("ULP-scale pair must materialize");
+    let done =
+        materialize_checkpoint_v2(&fields, &recipe).expect("ULP-scale pair must materialize");
     let InitialV2::FrozenPotential { potential } = &done.checkpoint.initial else {
         panic!("frozen-potential");
     };
