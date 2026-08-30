@@ -21,6 +21,31 @@
 - Run the full workspace test suite only for a major cross-crate refactor or
   another change whose blast radius genuinely spans most of the workspace.
 
+## Commit messages
+
+Follow Conventional Commits 1.0.0.
+
+Format:
+
+    <type>[optional scope]: <description>
+
+    <body: 1-3 sentences explaining what changed and why>
+
+    [optional footer(s)]
+
+Rules:
+
+- type: feat | fix | refactor | perf | docs | test | build | ci | chore
+- description: imperative mood, lowercase, no trailing period, ≤72 chars total
+- Body is required for feat, fix, refactor, perf; optional for docs/chore.
+  Explain motivation and effect, not a restatement of the diff.
+- Breaking changes: append `!` after type/scope and add a
+  `BREAKING CHANGE:` footer describing migration.
+- scope: use module/crate/package name when the change is localized,
+  e.g. `feat(solver): ...`
+- One logical change per commit; do not mix refactor with behavior changes.
+- Do not add "Co-Authored-By" or tool attribution lines.
+
 ## Crate naming
 
 - Name workspace directories `crates/mt-<suffix>`.
