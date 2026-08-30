@@ -4,11 +4,11 @@ use crate::{
     FullSpinorDensitySiteBasis, FullSpinorSiteInput, LocalPauliPotential, RelativisticSpinorRoute,
     SolvedFullSpinorFirstVariation, SpinorFirstVariationError, solve_full_spinor_first_variation,
 };
+use muffintin_core::{Bohr, ExponentialMesh, Hartree, InterstitialGeometry, Kappa, KappaError};
 use muffintin_envelope::{
     BasisError, Provenance, SpinorBasisSite, SpinorBasisSpec, SpinorCompiledBasis,
     SpinorSiteLayout, compile_spinor,
 };
-use muffintin_core::{Bohr, ExponentialMesh, Hartree, InterstitialGeometry, Kappa, KappaError};
 use muffintin_operators::lapw::{InterstitialPauliPotential, PlaneWaveEnvelope};
 use muffintin_sphere::{
     DiracError, DiracLocalOrbital, DiracSecondEnergyDerivative, RadialComponents,

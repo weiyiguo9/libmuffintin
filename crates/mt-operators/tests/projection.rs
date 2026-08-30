@@ -1,10 +1,10 @@
+use muffintin_core::{Bohr, GVector, InverseBohr, Kappa, RelativisticChannel, TwiceMu};
+use muffintin_envelope::PlaneWave;
 use muffintin_envelope::{
     ApwSiteGeometry, BasisLayout, CompiledBasis, LocalOrbitalLayout, PlaneWaveAugmentation,
     Provenance, SpinorBasisLayout, SpinorCompiledBasis, SpinorPlaneWaveAugmentation,
     SpinorSiteLayout,
 };
-use muffintin_core::{Bohr, GVector, InverseBohr, Kappa, RelativisticChannel, TwiceMu};
-use muffintin_envelope::PlaneWave;
 use muffintin_operators::{
     CompiledSiteProjection, SiteOperatorBlocks, add_site_contributions,
     project_eigenvectors_to_site, project_spinor_eigenvectors_to_site,

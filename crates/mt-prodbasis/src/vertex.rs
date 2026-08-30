@@ -3,8 +3,8 @@
 use crate::{
     AuxiliaryIrError, AuxiliaryLayout, CompiledAuxiliaryBasis, ProductRadialId, TransferQ,
 };
-use muffintin_envelope::Provenance;
 use muffintin_core::GVector;
+use muffintin_envelope::Provenance;
 use num_complex::Complex64;
 
 /// Representation-neutral factor of an orbital pair.

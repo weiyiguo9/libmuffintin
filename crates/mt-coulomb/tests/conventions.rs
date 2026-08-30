@@ -2,14 +2,14 @@
 
 mod common;
 
-use muffintin_prodbasis::TransferQ;
+use muffintin_core::Cell;
 use muffintin_core::{Bohr, ExponentialMesh, InverseBohr, ReciprocalLattice};
 use muffintin_coulomb::{
     CoulombError, CoulombRequest, DEFAULT_LEXP, assemble_coulomb, brute_force_structure_constant,
     intra_sphere_poisson, multipole_moment, radial_primitive, second_moment, spex_real_g,
     spherical_bessel_moment, structure_constants, weinert_gmat,
 };
-use muffintin_core::Cell;
+use muffintin_prodbasis::TransferQ;
 use std::f64::consts::E;
 use std::f64::consts::PI;
 

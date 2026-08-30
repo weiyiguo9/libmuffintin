@@ -2,13 +2,9 @@
 
 use std::f64::consts::PI;
 
-use muffintin_prodbasis::{
-    AuxiliaryPartition, CompiledAuxiliaryBasis, DiracSiteRadialSet, OrbitalPair, PartitionSite,
-    SiteRadialSet, TransferQ,
-};
+use muffintin_core::Cell;
 use muffintin_core::{ExponentialMesh, ReciprocalLattice};
 use muffintin_coulomb::CoulombOperator;
-use muffintin_core::Cell;
 use muffintin_io::{
     IoError, MLDUMP_INTERSTITIAL_SENTINEL, MLDUMP_PARENT_REGION_INTERSTITIAL,
     MLDUMP_PARENT_REGION_MUFFIN_TIN, MLDUMP_THC_ENGINE_PIVOTED_CHOLESKY, MLDUMP_THC_ENGINE_QRCP,
@@ -18,8 +14,12 @@ use muffintin_io::{
     ScalarMldumpStreamV1, SpinorMldumpStreamV1, ValidationError,
 };
 use muffintin_operators::lapw::Provenance;
-use muffintin_tensor::DenseEigenvectors;
 use muffintin_prodbasis::thc::{L2Engine, RankPolicy, Selection, SelectorStrategy};
+use muffintin_prodbasis::{
+    AuxiliaryPartition, CompiledAuxiliaryBasis, DiracSiteRadialSet, OrbitalPair, PartitionSite,
+    SiteRadialSet, TransferQ,
+};
+use muffintin_tensor::DenseEigenvectors;
 use num_complex::Complex64;
 
 use crate::mldump_header::{

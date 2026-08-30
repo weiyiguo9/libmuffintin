@@ -7,9 +7,9 @@
 #![allow(dead_code)]
 
 use muffintin::{ScalarProductInput, SpinorProductInput, ThcParentGrid, ThcPoint, ThcRegion};
-use muffintin_prodbasis::AuxiliaryPartition;
 use muffintin_core::{Bohr, ExponentialMesh};
 use muffintin_operators::lapw::Provenance;
+use muffintin_prodbasis::AuxiliaryPartition;
 
 pub fn on_shell(origin: [Bohr; 3], radius: f64, direction: [f64; 3]) -> [Bohr; 3] {
     let norm = direction

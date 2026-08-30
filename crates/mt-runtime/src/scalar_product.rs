@@ -16,9 +16,7 @@ use muffintin_sphere::CorePotentialContinuationSpec;
 use muffintin_tensor::DenseEigenvectors;
 use std::collections::BTreeSet;
 
-use crate::checkpoint_physics::{
-    CheckpointPhysics, CheckpointPhysicsError,
-};
+use crate::checkpoint_physics::{CheckpointPhysics, CheckpointPhysicsError};
 use crate::q_mesh::{canonical_transfer_q, map_k_minus_q};
 
 /// ProductRadial $n$ for the scalar linearization function $u$.

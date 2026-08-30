@@ -1,13 +1,12 @@
 //! Injected Coulomb Gram contract and allq_coulomb_pool rerank.
 
-
 mod toy_kit;
-use muffintin_prodbasis::{
-    AuxiliaryPartition, InterpolationRegion, PairColumnLayout, TransferQ,
-};
-use muffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
-use muffintin_prodbasis::thc::{CoulombGramSet, GridPath, InjectedCoulombGram, L2Engine, RankPolicy, SelectorStrategy, ThcError};
 use crate::toy_kit::{BlochOrbitals, HEADLINE_SEED, KMesh, SelectionRequest, run_thc};
+use muffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
+use muffintin_prodbasis::thc::{
+    CoulombGramSet, GridPath, InjectedCoulombGram, L2Engine, RankPolicy, SelectorStrategy, ThcError,
+};
+use muffintin_prodbasis::{AuxiliaryPartition, InterpolationRegion, PairColumnLayout, TransferQ};
 use num_complex::Complex64;
 
 fn tiny_mesh() -> KMesh {

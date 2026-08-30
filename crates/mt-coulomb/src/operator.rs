@@ -1,10 +1,10 @@
 //! Finite-$q$ Coulomb operator over a compiled auxiliary basis.
 
 use crate::CoulombError;
-use muffintin_prodbasis::{AuxiliaryLayout, AuxiliaryRegion, PairVertex, TransferQ};
-use muffintin_envelope::Provenance;
-use muffintin_core::ReciprocalLattice;
 use muffintin_core::Cell;
+use muffintin_core::ReciprocalLattice;
+use muffintin_envelope::Provenance;
+use muffintin_prodbasis::{AuxiliaryLayout, AuxiliaryRegion, PairVertex, TransferQ};
 use num_complex::Complex64;
 
 /// Typed auxiliary representation stored with $V^q$. Neither mixed-product nor

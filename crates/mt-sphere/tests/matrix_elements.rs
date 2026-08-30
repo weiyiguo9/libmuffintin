@@ -1,11 +1,11 @@
 use muffintin_core::{
     Bohr, ExponentialMesh, Kappa, Lm, RelativisticChannel, TwiceMu, spinor_gaunt,
 };
-use muffintin_sphere::{RadialComponents, RadialIntegralKernel, radial_integral};
 use muffintin_sphere::{
     HarmonicConvention, MatrixElementError, SphereField, SphereFieldError, SphereOrbital,
     SphereOrbitalError, SpinorSphereOrbital, matrix_element, spinor_matrix_element,
 };
+use muffintin_sphere::{RadialComponents, RadialIntegralKernel, radial_integral};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 

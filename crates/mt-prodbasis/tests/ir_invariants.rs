@@ -1,14 +1,14 @@
 //! Product-space IR invariants independent of mixed-product `TOL`.
 
+use muffintin_core::{
+    Bohr, ExponentialMesh, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere,
+    VolumeBohr3,
+};
+use muffintin_envelope::Provenance;
 use muffintin_prodbasis::{
     AuxiliaryIrError, AuxiliaryPartition, AuxiliarySource, PairColumnLayout, ProductRadial,
     RadialSamples, RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet,
     TransferQ,
-};
-use muffintin_envelope::Provenance;
-use muffintin_core::{
-    Bohr, ExponentialMesh, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere,
-    VolumeBohr3,
 };
 
 fn geometry() -> InterstitialGeometry {
@@ -189,12 +189,12 @@ fn product_source_rejects_pair_support_at_a_different_q() {
 
 #[test]
 fn interpolation_points_are_not_empty_mixed_product_payloads() {
+    use muffintin_core::{Bohr, VolumeBohr3};
     use muffintin_prodbasis::{
         AuxiliaryRegion, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
         InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
         MixedProductAuxiliary, OrbitalPair, PairVertex,
     };
-    use muffintin_core::{Bohr, VolumeBohr3};
     use num_complex::Complex64;
 
     let partition = AuxiliaryPartition::from_interstitial(geometry());
@@ -292,11 +292,11 @@ fn interpolation_points_are_not_empty_mixed_product_payloads() {
 
 #[test]
 fn interpolation_points_reject_negative_and_all_zero_weights() {
+    use muffintin_core::{Bohr, VolumeBohr3};
     use muffintin_prodbasis::{
         AuxiliaryRepresentation, CompiledAuxiliaryBasis, InterpolationAuxiliaryPoint,
         InterpolationPointAuxiliary, InterpolationRegion,
     };
-    use muffintin_core::{Bohr, VolumeBohr3};
 
     let partition = AuxiliaryPartition::from_interstitial(geometry());
     let q = q_gamma();

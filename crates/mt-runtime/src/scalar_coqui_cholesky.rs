@@ -7,10 +7,10 @@
 
 use std::path::Path;
 
-use muffintin_prodbasis::OrbitalPair;
 use muffintin_io::{
     CoquiCholeskyHeader, CoquiCholeskyVqRef, CoquiCholeskyWriter, IoError, ValidationError,
 };
+use muffintin_prodbasis::OrbitalPair;
 use muffintin_prodbasis::thc::{L2Engine, SelectorStrategy};
 use num_complex::Complex64;
 use thiserror::Error;

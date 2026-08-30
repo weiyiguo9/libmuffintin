@@ -1,18 +1,18 @@
 //! Dirac PP/QQ muffin-tin products and checked vertices.
 
+use muffintin_core::{
+    Bohr, ExponentialMesh, InterstitialGeometry, InverseBohr, Kappa, Lm, RelativisticChannel,
+    Sphere, TwiceMu, VolumeBohr3, gaunt,
+};
+use muffintin_envelope::Provenance;
+use muffintin_prodbasis::mpb::{
+    DiracPairVertexAccumulator, dirac_mt_pair_vertex, untruncated_dirac_product_space,
+};
 use muffintin_prodbasis::{
     AuxiliaryInterstitialSupport, AuxiliaryPartition, AuxiliaryRepresentation,
     CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracProductSource, DiracRadial,
     DiracRadialId, DiracRadialSamples, DiracSiteRadialSet, MixedProductAuxiliary, MtAuxiliaryMode,
     ProductOrbitalKind, RawInterstitialPairSupport, SiteAuxiliaryBlock, TransferQ,
-};
-use muffintin_envelope::Provenance;
-use muffintin_core::{
-    Bohr, ExponentialMesh, InterstitialGeometry, InverseBohr, Kappa, Lm, RelativisticChannel,
-    Sphere, TwiceMu, VolumeBohr3, gaunt,
-};
-use muffintin_prodbasis::mpb::{
-    DiracPairVertexAccumulator, dirac_mt_pair_vertex, untruncated_dirac_product_space,
 };
 use num_complex::Complex64;
 use std::collections::BTreeSet;

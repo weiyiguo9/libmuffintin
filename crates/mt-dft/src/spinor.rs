@@ -1,9 +1,9 @@
 //! Full four-component first-variation magnetic and noncollinear route.
 
-use muffintin_envelope::{SpinorCompiledBasis, SpinorSiteLayout};
 use muffintin_core::{
     ExponentialMesh, InterstitialGeometry, Lm, RelativisticChannel, SpinProjection, gaunt,
 };
+use muffintin_envelope::{SpinorCompiledBasis, SpinorSiteLayout};
 use muffintin_operators::lapw::{
     GeneralizedEigensolution, InterstitialPauliPotential, LapwEigenproblem, LapwError,
     assemble_sra_spinor_compiled, solve_generalized_hermitian,

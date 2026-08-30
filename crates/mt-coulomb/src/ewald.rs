@@ -3,9 +3,9 @@
 use crate::CoulombError;
 use crate::math::plane_wave_phase;
 
-use muffintin_prodbasis::TransferQ;
-use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice};
 use muffintin_core::Cell;
+use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice};
+use muffintin_prodbasis::TransferQ;
 use num_complex::Complex64;
 use std::f64::consts::PI;
 

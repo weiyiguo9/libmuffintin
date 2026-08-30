@@ -27,10 +27,10 @@ pub(crate) fn spinor_provenance() -> Provenance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, VolumeBohr3};
     use muffintin_envelope::{
         ApwBoundaryBasis, ApwSiteAugmentation, BasisBlock, BasisSpec, LocalOrbitalLayout, compile,
     };
-    use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, VolumeBohr3};
     use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
     use muffintin_sphere::BoundaryData;
 

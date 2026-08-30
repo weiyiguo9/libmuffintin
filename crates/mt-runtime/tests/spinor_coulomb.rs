@@ -3,18 +3,18 @@
 use std::f64::consts::PI;
 
 use muffintin::{
-    SPINOR_COULOMB_EXACTNESS_FLOOR, CheckpointPhysics, SpinorCoulombError, SpinorCoulombPairMatch,
+    CheckpointPhysics, SPINOR_COULOMB_EXACTNESS_FLOOR, SpinorCoulombError, SpinorCoulombPairMatch,
     SpinorCoulombSpec, SpinorMpbSelection, SpinorMpbSpec, ThcParentGrid, build_spinor_coulomb,
     build_spinor_mpb, build_spinor_thc,
 };
-use muffintin_prodbasis::{AuxiliaryLayout, OrbitalPair, PairVertex, TransferQ};
+use muffintin_core::Cell;
 use muffintin_core::{Bohr, InverseBohr};
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombRequest, InterpolationProjection, SampledPointSupport,
     assemble_coulomb,
 };
-use muffintin_core::Cell;
 use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
+use muffintin_prodbasis::{AuxiliaryLayout, OrbitalPair, PairVertex, TransferQ};
 use num_complex::Complex64;
 
 #[path = "spinor_hydrogen.rs"]

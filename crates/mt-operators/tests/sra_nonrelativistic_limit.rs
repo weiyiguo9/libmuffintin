@@ -1,13 +1,13 @@
 //! Repository-local large-`c` SRA regression against a frozen synthetic scalar fixture.
 
+use muffintin_core::{
+    Bohr, ExponentialMesh, Hartree, InterstitialGeometry, InverseBohr, Kappa, ReciprocalLattice,
+    RelativisticChannel, Sphere, VolumeBohr3,
+};
 use muffintin_envelope::{
     ApwBoundaryBasis, ApwSiteAugmentation, ApwSiteGeometry, BasisBlock, BasisSpec, Provenance,
     SpinorApwMatch, SpinorBasisLayout, SpinorCompiledBasis, SpinorSiteLayout, compile,
     match_apw_boundary, spinor_augmentation_coefficients,
-};
-use muffintin_core::{
-    Bohr, ExponentialMesh, Hartree, InterstitialGeometry, InverseBohr, Kappa, ReciprocalLattice,
-    RelativisticChannel, Sphere, VolumeBohr3,
 };
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_operators::lapw::{

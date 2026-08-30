@@ -1,7 +1,7 @@
 //! Public spinor AllQL2 THC tests on frozen spinor product input.
 
 use muffintin::{
-    RankPolicy, SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, CheckpointPhysics,
+    CheckpointPhysics, RankPolicy, SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT,
     SpinorProductInput, SpinorThcError, SpinorThcSpec, ThcCandidates, ThcEngine, ThcParentGrid,
     ThcRegion, build_spinor_thc,
 };

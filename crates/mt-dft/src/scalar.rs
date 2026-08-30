@@ -8,13 +8,13 @@ use muffintin_operators::lapw::{
 };
 use muffintin_operators::{Collinear, OperatorError, SiteSpinOrbitBlock};
 use muffintin_sphere::{
+    HarmonicConvention, MatrixElementError, SphereField, SphereFieldError, SphereOrbital,
+    SphereOrbitalError, matrix_element,
+};
+use muffintin_sphere::{
     LinearizedRadialSolution, LocalOrbital, RadialComponents, RadialEquation, RadialError,
     RadialIntegralError, RadialIntegralKernel, RadialSolution, RadialSolver,
     SecondEnergyDerivative, radial_integral,
-};
-use muffintin_sphere::{
-    HarmonicConvention, MatrixElementError, SphereField, SphereFieldError, SphereOrbital,
-    SphereOrbitalError, matrix_element,
 };
 use muffintin_tensor::{Axis, DenseHermitianMatrix, TensorError};
 use num_complex::Complex64;
@@ -746,7 +746,9 @@ pub enum ScalarBuilderError {
 mod tests {
     use super::*;
     use muffintin_core::{GVector, InverseBohr, Sphere, VolumeBohr3};
-    use muffintin_operators::lapw::{PlaneWave, RadialOverlapBlock, spex_spherical_radial_hamiltonian};
+    use muffintin_operators::lapw::{
+        PlaneWave, RadialOverlapBlock, spex_spherical_radial_hamiltonian,
+    };
 
     fn mesh() -> ExponentialMesh {
         ExponentialMesh::new(Bohr(1.0e-5), 0.015, 801).unwrap()

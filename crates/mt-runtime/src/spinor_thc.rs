@@ -5,15 +5,17 @@ use crate::thc_grid::{
     ThcCandidates, ThcEngine, ThcGridError, ThcParentGrid, ThcQRecord, ThcRegion,
     records_match_parent_grid, require_parent_grid_radials,
 };
-use muffintin_prodbasis::{DiracRadial, DiracRadialId, DiracSiteRadialSet, ProductOrbitalKind};
 use muffintin_core::{
     Bohr, GVector, InverseBohr, RelativisticChannel, SpinProjection, complex_spherical_harmonics,
     lm_index,
 };
 use muffintin_operators::lapw::{Provenance, SpinorCompiledBasis};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
+use muffintin_prodbasis::thc::{
+    PairBlock, RankPolicy, Selection, ThcError, fit_allq_l2_pair_blocks,
+};
+use muffintin_prodbasis::{DiracRadial, DiracRadialId, DiracSiteRadialSet, ProductOrbitalKind};
 use muffintin_tensor::DenseEigenvectors;
-use muffintin_prodbasis::thc::{PairBlock, RankPolicy, Selection, ThcError, fit_allq_l2_pair_blocks};
 use num_complex::Complex64;
 use thiserror::Error;
 

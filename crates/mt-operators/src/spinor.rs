@@ -1,8 +1,8 @@
 //! Site projection for the parallel typed spinor basis.
 
 use crate::{CompiledSiteProjection, OperatorError, OperatorSet};
-use muffintin_envelope::SpinorCompiledBasis;
 use muffintin_core::RelativisticChannel;
+use muffintin_envelope::SpinorCompiledBasis;
 use muffintin_tensor::{Axis, DenseHermitianMatrix, TensorError};
 use num_complex::Complex64;
 

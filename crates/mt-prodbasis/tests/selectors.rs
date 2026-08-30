@@ -1,14 +1,18 @@
 //! q0_l2 / allq_l2 / allq_coulomb_pool comparison at identical Nμ.
 
-
 mod toy_kit;
-use muffintin_prodbasis::{InterpolationRegion, PairColumnLayout};
+use crate::toy_kit::{
+    DEFAULT_SKETCH_ROWS, HEADLINE_SEED, SelectionRequest, compare_strategies, run_thc,
+};
 use crate::toy_kit::{
     MT_NORB, mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
     mt_reference_grid, mt_uniform_grid,
 };
-use muffintin_prodbasis::thc::{DEFAULT_SELECTOR, GridPath, L2Engine, PairBlock, RankPolicy, SelectorStrategy, ThcError, UniformShift, pivots_from_pair_blocks};
-use crate::toy_kit::{DEFAULT_SKETCH_ROWS, HEADLINE_SEED, SelectionRequest, compare_strategies, run_thc};
+use muffintin_prodbasis::thc::{
+    DEFAULT_SELECTOR, GridPath, L2Engine, PairBlock, RankPolicy, SelectorStrategy, ThcError,
+    UniformShift, pivots_from_pair_blocks,
+};
+use muffintin_prodbasis::{InterpolationRegion, PairColumnLayout};
 use num_complex::Complex64;
 
 #[test]

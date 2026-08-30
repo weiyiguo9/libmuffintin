@@ -8,8 +8,8 @@ use crate::{
     DiracRawProductSpace, DiracRawRadialProduct, DiracSiteRadialSet, MixedProductAuxiliary,
     ProductOrbitalKind, SiteAuxiliaryBlock,
 };
-use muffintin_envelope::Provenance;
 use muffintin_core::{ExponentialMesh, InverseBohr, ReciprocalLattice};
+use muffintin_envelope::Provenance;
 use std::collections::{BTreeMap, HashSet};
 
 /// Untruncated Dirac mixed-product space: separate PP and QQ radial products.

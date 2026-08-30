@@ -4,13 +4,13 @@
 //! It is not Weinert/SPEX `coulombmatrix` and is not a production Coulomb
 //! assembler.
 
-use muffintin_prodbasis::thc::ThcError;
-use muffintin_prodbasis::thc::InjectedCoulombGram;
-use super::kmesh::KMesh;
 use super::BlochOrbitals;
-use muffintin_prodbasis::thc::PairBlock;
-use muffintin_prodbasis::{AuxiliaryPartition, InterpolationRegion, PairColumnLayout};
+use super::kmesh::KMesh;
 use muffintin_core::{Bohr, InterstitialGeometry, Sphere, VolumeBohr3, complex_spherical_harmonic};
+use muffintin_prodbasis::thc::InjectedCoulombGram;
+use muffintin_prodbasis::thc::PairBlock;
+use muffintin_prodbasis::thc::ThcError;
+use muffintin_prodbasis::{AuxiliaryPartition, InterpolationRegion, PairColumnLayout};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 
@@ -575,7 +575,8 @@ fn orthonormalize(
                 }
             }
         }
-        let (values, vectors) = muffintin_prodbasis::thc::linalg::hermitian_eigensystem(&overlap, n_orb)?;
+        let (values, vectors) =
+            muffintin_prodbasis::thc::linalg::hermitian_eigensystem(&overlap, n_orb)?;
         if values[0] < 1.0e-10 {
             return Err(ThcError::LinearAlgebra(
                 "ill-conditioned synthetic APW overlap",
@@ -660,7 +661,8 @@ fn apply_saved_transform(
                 }
             }
         }
-        let (values, vectors) = muffintin_prodbasis::thc::linalg::hermitian_eigensystem(&overlap, n_orb)?;
+        let (values, vectors) =
+            muffintin_prodbasis::thc::linalg::hermitian_eigensystem(&overlap, n_orb)?;
         let mut transform = vec![Complex64::default(); n_orb * n_orb];
         for i in 0..n_orb {
             for j in 0..n_orb {
@@ -902,7 +904,8 @@ pub fn values_fourier(
     }
     muffintin_prodbasis::thc::validate_quadrature_weights(&grid.weights)?;
     let n_g = g_cart.len();
-    let mut out = vec![Complex64::default(); muffintin_prodbasis::thc::checked_storage_len(&[n_g, n_col])?];
+    let mut out =
+        vec![Complex64::default(); muffintin_prodbasis::thc::checked_storage_len(&[n_g, n_col])?];
     for (g_index, g) in g_cart.iter().enumerate() {
         for p in 0..n_points {
             let phase = Complex64::from_polar(
@@ -1001,7 +1004,8 @@ pub fn compare_candidate_eri_action(
     let zeta_fourier = values_fourier(zeta, n_points, n_mu, candidate, &g_cart, kernel.volume)?;
     let approx_pair = approximate_pair_fourier(&zeta_fourier, n_g, n_mu, selected_rows, n_col)?;
     let factors = toy_coulomb_factors(q_fractional, &kernel.g_integer, kernel.lattice);
-    let pair_denom = muffintin_prodbasis::thc::linalg::frobenius(reference_pair_fourier).max(1.0e-30);
+    let pair_denom =
+        muffintin_prodbasis::thc::linalg::frobenius(reference_pair_fourier).max(1.0e-30);
     let mut pair_diff = Vec::with_capacity(approx_pair.len());
     if approx_pair.len() != reference_pair_fourier.len() {
         return Err(ThcError::PairBlockLength {

@@ -706,8 +706,8 @@ mod tests {
         Bohr, DiracAngularContract, FourierLayout, InverseBohr, Kappa, ReciprocalLattice, Sphere,
         VolumeBohr3,
     };
-    use muffintin_sphere::{CoreState, RelativisticRole};
     use muffintin_sphere::HarmonicConvention;
+    use muffintin_sphere::{CoreState, RelativisticRole};
 
     const CELL_LENGTH: f64 = 8.0;
 

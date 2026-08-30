@@ -17,11 +17,11 @@ use crate::operator::{AuxiliaryKind, CoulombOperator, GammaHead};
 use crate::primitive::intra_sphere_poisson;
 use crate::spec::CoulombRequest;
 use crate::structure::structure_constants;
+use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, complex_spherical_harmonics, lm_index};
+use muffintin_envelope::Provenance;
 use muffintin_prodbasis::{
     AuxiliaryInterstitialWave, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
 };
-use muffintin_envelope::Provenance;
-use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, complex_spherical_harmonics, lm_index};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 

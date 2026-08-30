@@ -1,21 +1,21 @@
 //! Dirac PP/QQ union overlap spectra, retained cutoff, and Bloch $\Theta_I$.
 
+use muffintin_core::{
+    Bohr, ExponentialMesh, GVector, InterstitialGeometry, InverseBohr, Kappa, ReciprocalLattice,
+    Sphere, VolumeBohr3,
+};
+use muffintin_envelope::Provenance;
+use muffintin_operators::solve_real_symmetric;
+use muffintin_prodbasis::mpb::{
+    DEFAULT_TOLERANCE, DiracBlochVertexAccumulator, MpbError, apply_dirac_overlap_cutoff,
+    auxiliary_interstitial_support, untruncated_dirac_product_space,
+};
 use muffintin_prodbasis::{
     AuxiliaryPartition, AuxiliaryRegion, ChannelSpectrum, CompiledAuxiliaryBasis,
     DiracChargeSector, DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples,
     DiracSiteRadialSet, InterstitialPairSpec, MixedProductAuxiliary, OrbitalPair,
     ProductOrbitalKind, RawInterstitialPairComponent, RawInterstitialPairSupport, TransferQ,
 };
-use muffintin_envelope::Provenance;
-use muffintin_core::{
-    Bohr, ExponentialMesh, GVector, InterstitialGeometry, InverseBohr, Kappa, ReciprocalLattice,
-    Sphere, VolumeBohr3,
-};
-use muffintin_prodbasis::mpb::{
-    DEFAULT_TOLERANCE, DiracBlochVertexAccumulator, MpbError, apply_dirac_overlap_cutoff,
-    auxiliary_interstitial_support, untruncated_dirac_product_space,
-};
-use muffintin_operators::solve_real_symmetric;
 use num_complex::Complex64;
 
 const RADIUS: f64 = 0.8;

@@ -8,13 +8,13 @@ use crate::spinor_mpb::SpinorMpbResult;
 use crate::spinor_product::{SpinorProductInput, SpinorQSliceError, require_spinor_q_slice};
 use crate::spinor_thc::SpinorThcResult;
 use crate::thc_grid::{ThcQRecord, records_match_parent_grid};
-use muffintin_prodbasis::{OrbitalPair, PairColumnLayout, PairVertex, TransferQ};
 use muffintin_core::ExponentialMesh;
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, InterpolationProjection,
     SampledAuxiliaryFunctions, assemble_coulomb, assemble_sampled_coulomb,
 };
 use muffintin_prodbasis::thc::{L2Engine, SelectorStrategy};
+use muffintin_prodbasis::{OrbitalPair, PairColumnLayout, PairVertex, TransferQ};
 use num_complex::Complex64;
 use thiserror::Error;
 

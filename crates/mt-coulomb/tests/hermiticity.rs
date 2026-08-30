@@ -3,11 +3,11 @@
 mod common;
 
 use faer::{Mat, Side};
-use muffintin_prodbasis::TransferQ;
 use muffintin_core::InverseBohr;
 use muffintin_coulomb::{
     CoulombRequest, InterpolationProjection, assemble_coulomb, assemble_sampled_coulomb,
 };
+use muffintin_prodbasis::TransferQ;
 use num_complex::Complex64;
 
 fn hermiticity_residual(matrix: &[Complex64], n: usize) -> f64 {

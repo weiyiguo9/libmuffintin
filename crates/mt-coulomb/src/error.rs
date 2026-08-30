@@ -1,8 +1,8 @@
 //! Coulomb construction, assembly, and context errors.
 
-use muffintin_prodbasis::AuxiliaryIrError;
-use muffintin_core::{LatticeError, LmError, MeshError, StepFunctionError};
 use muffintin_core::GridError;
+use muffintin_core::{LatticeError, LmError, MeshError, StepFunctionError};
+use muffintin_prodbasis::AuxiliaryIrError;
 use thiserror::Error;
 
 /// Coulomb operator construction or application error.

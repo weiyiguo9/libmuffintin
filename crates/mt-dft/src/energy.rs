@@ -6,10 +6,16 @@ use thiserror::Error;
 /// Energy correction paired with the caller's occupation functional.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OccupationEnergy {
-    FermiDirac { minus_temperature_entropy: Hartree },
-    Gaussian { smearing_correction: Hartree },
+    FermiDirac {
+        minus_temperature_entropy: Hartree,
+    },
+    Gaussian {
+        smearing_correction: Hartree,
+    },
     /// Caller-owned occupation method with an explicitly evaluated correction.
-    External { correction: Hartree },
+    External {
+        correction: Hartree,
+    },
 }
 
 impl OccupationEnergy {
@@ -146,9 +152,7 @@ pub fn evaluate_total_energy(
             correction: input.occupation_correction,
         },
     )?;
-    let density_rms = potential
-        .source_density()
-        .difference_rms(output_density)?;
+    let density_rms = potential.source_density().difference_rms(output_density)?;
     let energy_change =
         previous_total.map(|previous| Hartree((energy.total.get() - previous.get()).abs()));
     Ok(TotalEnergyEvaluation {

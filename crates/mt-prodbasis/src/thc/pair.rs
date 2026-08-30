@@ -1,12 +1,9 @@
 //! Per-q orbital-pair collocation in the canonical-q / Umklapp gauge.
 
+use crate::PairColumnLayout;
 use crate::thc::ThcError;
 use crate::thc::error::checked_storage_len;
-use crate::PairColumnLayout;
 use num_complex::Complex64;
-
-
-
 
 /// Pair-density block at one canonical $q$: `n_points × n_columns`, row-major.
 #[derive(Clone, Debug, PartialEq)]
@@ -72,4 +69,3 @@ impl PairBlock {
         Ok(out)
     }
 }
-

@@ -1,21 +1,21 @@
 //! SPEX-convention mixed-product core path without a live SPEX dump.
 
+use muffintin_core::{
+    Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3, gaunt,
+};
+use muffintin_envelope::Provenance;
+use muffintin_envelope::site_translation_phase;
+use muffintin_operators::solve_real_symmetric;
+use muffintin_prodbasis::mpb::{
+    DEFAULT_TOLERANCE, PairVertexAccumulator, apply_overlap_cutoff, auxiliary_interstitial_support,
+    pair_vertex, spex_mixed_product_basis,
+};
 use muffintin_prodbasis::{
     AuxiliaryIrError, AuxiliaryPartition, AuxiliaryRegion, AuxiliarySource, CompiledAuxiliaryBasis,
     InterstitialPairSpec, MixedProductAuxiliary, MtPairSpec, OrbitalPair, PairVertexSpec,
     ProductOrbitalKind, ProductRadial, ProductRadialId, RadialSamples,
     RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet, TransferQ,
 };
-use muffintin_envelope::Provenance;
-use muffintin_core::{
-    Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3, gaunt,
-};
-use muffintin_envelope::site_translation_phase;
-use muffintin_prodbasis::mpb::{
-    DEFAULT_TOLERANCE, PairVertexAccumulator, apply_overlap_cutoff, auxiliary_interstitial_support,
-    pair_vertex, spex_mixed_product_basis,
-};
-use muffintin_operators::solve_real_symmetric;
 use num_complex::Complex64;
 
 const RADIUS: f64 = 0.8;

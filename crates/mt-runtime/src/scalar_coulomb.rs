@@ -4,15 +4,13 @@ use crate::scalar_mpb::ScalarMpbResult;
 use crate::scalar_product::{ScalarProductInput, ScalarQSliceError, require_scalar_q_slice};
 use crate::scalar_thc::ScalarThcResult;
 use crate::thc_grid::{ThcParentGrid, ThcQRecord, ThcRegion, records_match_parent_grid};
-use muffintin_prodbasis::{
-    AuxiliarySource, OrbitalPair, PairColumnLayout, PairVertex, TransferQ,
-};
 use muffintin_core::{ExponentialMesh, VolumeBohr3};
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, InterpolationProjection,
     SampledAuxiliaryFunctions, SampledPointSupport, assemble_coulomb, assemble_sampled_coulomb,
 };
 use muffintin_prodbasis::thc::{L2Engine, SelectorStrategy};
+use muffintin_prodbasis::{AuxiliarySource, OrbitalPair, PairColumnLayout, PairVertex, TransferQ};
 use num_complex::Complex64;
 use thiserror::Error;
 

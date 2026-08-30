@@ -9,7 +9,6 @@ use crate::{
 use muffintin_core::{Bohr, VolumeBohr3};
 use num_complex::Complex64;
 
-
 /// Named ISDF/THC selector.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SelectorStrategy {
@@ -64,7 +63,6 @@ pub enum L2Engine {
     FullPivotedCholesky,
 }
 
-
 /// Parent-grid path recorded on the selection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GridPath {
@@ -107,8 +105,6 @@ impl UniformShift {
     }
 }
 
-
-
 /// Recorded selector provenance.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SelectionProvenance {
@@ -136,10 +132,6 @@ pub struct Selection {
     pub points: Vec<InterpolationAuxiliaryPoint>,
     pub provenance: SelectionProvenance,
 }
-
-
-
-
 
 pub fn truncate_rank(
     mut pivots: (Vec<usize>, Vec<f64>),
@@ -173,10 +165,6 @@ pub fn truncate_rank(
         }
     }
 }
-
-
-
-
 
 /// Full weighted QRCP on already-evaluated pair blocks (test and pool helpers).
 pub fn pivots_from_pair_blocks(
@@ -255,7 +243,6 @@ fn stacked_weighted_pair_blocks(
     }
     Ok((stacked, nrows, n_pts))
 }
-
 
 pub fn interpolation_points(
     pivots: &[usize],

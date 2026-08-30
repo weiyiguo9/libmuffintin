@@ -1,8 +1,8 @@
 //! One-particle product input: partition, radials, transfer q, and pair support.
 
 use crate::{AuxiliaryIrError, AuxiliaryPartition, RawInterstitialPairSupport};
-use muffintin_envelope::Provenance;
 use muffintin_core::{ExponentialMesh, GVector, InverseBohr};
+use muffintin_envelope::Provenance;
 use muffintin_sphere::RadialComponents;
 
 /// Valence or selected core origin of one muffin-tin radial factor.

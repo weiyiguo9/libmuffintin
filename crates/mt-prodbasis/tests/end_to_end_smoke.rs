@@ -12,10 +12,7 @@
 //!    may assert `RECORDED_REFERENCE_GATE` / `RECORDED_ERI_ACTION_GATE`.
 //!    Python table values are evidence, not bit-identity targets.
 
-
 mod toy_kit;
-use muffintin_prodbasis::{PairColumnLayout, TransferQ};
-use muffintin_core::InverseBohr;
 use crate::toy_kit::{
     ACTION_VECTOR_COUNT, ACTION_VECTOR_SEED, LAPW_LATTICE, LAPW_NORB, RECORDED_ERI_ACTION_GATE,
     RECORDED_REFERENCE_GATE, ToyEriActionMetrics, ToyFiniteCutoffKernel, ToyGrid,
@@ -23,8 +20,15 @@ use crate::toy_kit::{
     lapw_composite_grid, lapw_kmesh, lapw_uniform_grid, pair_fourier, reciprocal_vectors,
     relative_gram_frobenius, toy_coulomb_factors, toy_coulomb_gram, values_fourier,
 };
-use muffintin_prodbasis::thc::{CoulombGramSet, GridPath, L2Engine, RankPolicy, SelectorStrategy, ThcError, fit_per_q};
-use crate::toy_kit::{BlochOrbitals, KMesh, SelectionRequest, UmklappGauge, evaluate_pair_block, select_points, umklapp_phase};
+use crate::toy_kit::{
+    BlochOrbitals, KMesh, SelectionRequest, UmklappGauge, evaluate_pair_block, select_points,
+    umklapp_phase,
+};
+use muffintin_core::InverseBohr;
+use muffintin_prodbasis::thc::{
+    CoulombGramSet, GridPath, L2Engine, RankPolicy, SelectorStrategy, ThcError, fit_per_q,
+};
+use muffintin_prodbasis::{PairColumnLayout, TransferQ};
 use num_complex::Complex64;
 
 #[allow(clippy::too_many_arguments)]

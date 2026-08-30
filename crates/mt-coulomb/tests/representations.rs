@@ -1,23 +1,22 @@
 //! Both published auxiliary representations go through the public assembler.
 
-
+mod common;
 #[path = "../../mt-prodbasis/tests/toy_kit/mod.rs"]
 mod toy_kit;
-mod common;
 
-use muffintin_prodbasis::{AuxiliaryLayout, InterpolationRegion, TransferQ};
+use crate::toy_kit::{HEADLINE_SEED, SelectionRequest, run_thc};
+use crate::toy_kit::{
+    mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
+    mt_reference_grid,
+};
 use muffintin_core::{Bohr, ExponentialMesh, InverseBohr, VolumeBohr3};
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombRequest, InterpolationProjection,
     SampledAuxiliaryFunctions, SampledPointSupport, assemble_coulomb, assemble_point_charge_oracle,
     assemble_sampled_coulomb,
 };
-use crate::toy_kit::{
-    mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
-    mt_reference_grid,
-};
 use muffintin_prodbasis::thc::{GridPath, L2Engine, RankPolicy, SelectorStrategy};
-use crate::toy_kit::{HEADLINE_SEED, SelectionRequest, run_thc};
+use muffintin_prodbasis::{AuxiliaryLayout, InterpolationRegion, TransferQ};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 
@@ -142,7 +141,10 @@ fn sampled_mt_projection_uses_declared_shells_without_coordinate_snapping() {
 
 #[test]
 fn thc_zeta_assembles_and_rejects_layout_mismatch() {
-    assert_eq!(muffintin_prodbasis::thc::DEFAULT_SELECTOR, SelectorStrategy::AllQL2);
+    assert_eq!(
+        muffintin_prodbasis::thc::DEFAULT_SELECTOR,
+        SelectorStrategy::AllQL2
+    );
     let mesh = mt_kmesh();
     let partition = mt_partition();
     let nrad = 73;

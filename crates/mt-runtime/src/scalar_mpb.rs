@@ -2,17 +2,17 @@
 
 use crate::scalar_product::{ScalarProductInput, ScalarSpinChannel};
 use crate::site_coords::site_coordinate;
+use muffintin_core::{InverseBohr, ReciprocalLattice};
+use muffintin_envelope::site_translation_phase;
+use muffintin_operators::lapw::CompiledBasis;
+use muffintin_operators::{CompiledSiteProjection, OperatorError};
+use muffintin_prodbasis::mpb::{
+    MpbError, PairVertexAccumulator, apply_overlap_cutoff, spex_mixed_product_basis,
+};
 use muffintin_prodbasis::{
     CompiledAuxiliaryBasis, InterstitialPairSpec, MtPairSpec, OrbitalPair, PairVertex,
     ProductRadialId, RawProductSpace,
 };
-use muffintin_core::{InverseBohr, ReciprocalLattice};
-use muffintin_envelope::site_translation_phase;
-use muffintin_operators::lapw::CompiledBasis;
-use muffintin_prodbasis::mpb::{
-    MpbError, PairVertexAccumulator, apply_overlap_cutoff, spex_mixed_product_basis,
-};
-use muffintin_operators::{CompiledSiteProjection, OperatorError};
 use muffintin_tensor::DenseEigenvectors;
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;

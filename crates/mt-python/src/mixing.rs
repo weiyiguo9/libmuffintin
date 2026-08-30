@@ -34,11 +34,7 @@ impl DensityMixer {
     }
 
     #[classmethod]
-    fn broyden2(
-        _class: &Bound<'_, PyType>,
-        alpha: f64,
-        history: usize,
-    ) -> PyResult<Self> {
+    fn broyden2(_class: &Bound<'_, PyType>, alpha: f64, history: usize) -> PyResult<Self> {
         Ok(Self {
             inner: Mutex::new(
                 muffintin_dft::DensityMixer::broyden2(alpha, history).map_err(py_error)?,
@@ -47,11 +43,7 @@ impl DensityMixer {
     }
 
     #[classmethod]
-    fn pulay_anderson(
-        _class: &Bound<'_, PyType>,
-        alpha: f64,
-        history: usize,
-    ) -> PyResult<Self> {
+    fn pulay_anderson(_class: &Bound<'_, PyType>, alpha: f64, history: usize) -> PyResult<Self> {
         Ok(Self {
             inner: Mutex::new(
                 muffintin_dft::DensityMixer::pulay_anderson(alpha, history).map_err(py_error)?,
@@ -105,10 +97,7 @@ impl DensityMixer {
 #[pymethods]
 impl DensityMixStep {
     fn density(&self) -> RegionalDensity {
-        RegionalDensity::from_runtime(
-            self.inner.density.clone(),
-            Arc::clone(&self.structure),
-        )
+        RegionalDensity::from_runtime(self.inner.density.clone(), Arc::clone(&self.structure))
     }
 
     #[getter]

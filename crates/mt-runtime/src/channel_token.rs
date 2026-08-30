@@ -520,7 +520,10 @@ mod tests {
             ("log-derivative", ChannelEnergyGenerator::LogDerivative),
             ("band-cog", ChannelEnergyGenerator::BandCog),
             ("fermi-offset", ChannelEnergyGenerator::FermiOffset),
-            ("frozen-checkpoint", ChannelEnergyGenerator::FrozenCheckpoint),
+            (
+                "frozen-checkpoint",
+                ChannelEnergyGenerator::FrozenCheckpoint,
+            ),
             ("frozen", ChannelEnergyGenerator::FrozenCheckpoint),
         ];
         for (suffix, expected) in cases {

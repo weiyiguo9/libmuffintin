@@ -1,18 +1,18 @@
 //! Shared toy fixtures for Coulomb integration tests.
 #![allow(dead_code)]
 
+use muffintin_core::{
+    Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3,
+};
+use muffintin_coulomb::{SampledAuxiliaryFunctions, SampledPointSupport};
+use muffintin_envelope::Provenance;
+use muffintin_prodbasis::mpb::spex_mixed_product_basis;
 use muffintin_prodbasis::{
     AuxiliaryPartition, AuxiliaryRepresentation, AuxiliarySource, CompiledAuxiliaryBasis,
     InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion, OrbitalPair,
     PairOrbital, PairVertex, ProductOrbitalKind, ProductRadial, ProductRadialId, RadialSamples,
     RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet, TransferQ,
 };
-use muffintin_envelope::Provenance;
-use muffintin_core::{
-    Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3,
-};
-use muffintin_coulomb::{SampledAuxiliaryFunctions, SampledPointSupport};
-use muffintin_prodbasis::mpb::spex_mixed_product_basis;
 use num_complex::Complex64;
 use std::f64::consts::PI;
 

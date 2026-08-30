@@ -1,9 +1,8 @@
 //! Canonical-q / Umklapp pair-matrix regressions from the scratch scripts.
 
-
 mod toy_kit;
-use muffintin_prodbasis::PairColumnLayout;
 use crate::toy_kit::{BlochOrbitals, KMesh, UmklappGauge, evaluate_pair_block, umklapp_phase};
+use muffintin_prodbasis::PairColumnLayout;
 use num_complex::Complex64;
 
 fn constant_orbitals(n_points: usize, n_k: usize, n_orb: usize) -> BlochOrbitals {

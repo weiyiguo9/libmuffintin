@@ -11,18 +11,15 @@ pub use kmesh::{KMesh, umklapp_phase};
 pub use toy::*;
 
 use muffintin_envelope::Provenance;
-use muffintin_prodbasis::{
-    AuxiliaryPartition, InterpolationRegion, PairColumnLayout,
-};
 use muffintin_prodbasis::thc::linalg::{column_pivots, hermitian_sqrt};
 use muffintin_prodbasis::thc::{
     CoulombGramSet, GridPath, L2Engine, PairBlock, PerQFit, RankPolicy, Selection,
     SelectionProvenance, SelectorStrategy, StrategyDiagnostics, ThcError, ThcResult,
-    bloch_pair_vertices, checked_storage_len,
-    cholesky_pivots_from_pair_blocks, fit_per_q, gamma_report, interpolation_auxiliary,
-    interpolation_points, pivots_from_pair_blocks, truncate_rank,
-    worst_finite_q, worst_finite_q_coulomb,
+    bloch_pair_vertices, checked_storage_len, cholesky_pivots_from_pair_blocks, fit_per_q,
+    gamma_report, interpolation_auxiliary, interpolation_points, pivots_from_pair_blocks,
+    truncate_rank, worst_finite_q, worst_finite_q_coulomb,
 };
+use muffintin_prodbasis::{AuxiliaryPartition, InterpolationRegion, PairColumnLayout};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 
@@ -623,12 +620,13 @@ impl SelectionRequest {
             rank: RankPolicy::Exact { n_mu },
             seed: HEADLINE_SEED,
             pool_factor: DEFAULT_POOL_FACTOR,
-            engine: L2Engine::StructuredSketch { rows: DEFAULT_SKETCH_ROWS },
+            engine: L2Engine::StructuredSketch {
+                rows: DEFAULT_SKETCH_ROWS,
+            },
             grid_path,
         }
     }
 }
-
 
 /// Select, fit, and emit interpolation-point auxiliaries plus Bloch pair vertices.
 #[allow(clippy::too_many_arguments)]

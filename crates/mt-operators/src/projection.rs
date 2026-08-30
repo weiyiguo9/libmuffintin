@@ -1,8 +1,8 @@
 //! Shared scalar and spinor maps from global basis to site coordinates.
 
 use crate::OperatorError;
-use muffintin_envelope::{CompiledBasis, SpinorCompiledBasis};
 use muffintin_core::RelativisticChannel;
+use muffintin_envelope::{CompiledBasis, SpinorCompiledBasis};
 use muffintin_tensor::{
     Axis, ComplexTensor, DenseEigenvectors, DenseHermitianMatrix, einsum, hermitian_congruence,
 };

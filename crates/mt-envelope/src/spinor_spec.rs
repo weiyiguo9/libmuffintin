@@ -1,11 +1,11 @@
 //! Typed SRA spinor basis specification and compilation.
 
+use crate::PlaneWaveEnvelope;
 use crate::{
     ApwBoundaryBasis, ApwSiteGeometry, BasisError, Provenance, SpinorApwMatch, SpinorBasisLayout,
     SpinorCompiledBasis, SpinorSiteLayout, match_apw_boundary, spinor_augmentation_coefficients,
 };
 use muffintin_core::{Bohr, VolumeBohr3};
-use crate::PlaneWaveEnvelope;
 use muffintin_sphere::{RelativisticRole, ValenceDiracSolution};
 use std::collections::BTreeSet;
 
@@ -129,9 +129,9 @@ pub fn compile_spinor(spec: &SpinorBasisSpec) -> Result<SpinorCompiledBasis, Bas
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::PlaneWave;
     use muffintin_core::Kappa;
     use muffintin_core::{DiracAngularContract, Hartree, InverseBohr, ReciprocalLattice, TwiceMu};
-    use crate::PlaneWave;
     use muffintin_sphere::{
         DiracBoundaryTrace, DiracEnergyDerivative, DiracSecondEnergyDerivative,
     };

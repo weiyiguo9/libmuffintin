@@ -33,8 +33,8 @@ pub use run::{
 };
 pub use select::{
     DEFAULT_SELECTOR, GridPath, L2Engine, RankPolicy, Selection, SelectionProvenance,
-    SelectorStrategy, UniformShift, cholesky_pivots_from_pair_blocks, interpolation_points,
-    matmul, pivots_from_pair_blocks, reconstruct_pairs, truncate_rank, weighted_residual,
+    SelectorStrategy, UniformShift, cholesky_pivots_from_pair_blocks, interpolation_points, matmul,
+    pivots_from_pair_blocks, reconstruct_pairs, truncate_rank, weighted_residual,
 };
 
 #[cfg(test)]

@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 use std::path::PathBuf;
 
 use muffintin::{
-    SPINOR_COULOMB_EXACTNESS_FLOOR, SPINOR_RADIAL_LO0, CheckpointPhysics, SpinorCoulombError,
+    CheckpointPhysics, SPINOR_COULOMB_EXACTNESS_FLOOR, SPINOR_RADIAL_LO0, SpinorCoulombError,
     SpinorCoulombResult, SpinorCoulombSpec, SpinorMldumpError, SpinorProductInput,
     build_spinor_coulomb, build_spinor_thc, write_spinor_mldump,
 };

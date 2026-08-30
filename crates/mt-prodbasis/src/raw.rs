@@ -1,8 +1,8 @@
 //! Untruncated muffin-tin products, coupled channels, and raw pair support.
 
 use crate::{AuxiliaryIrError, AuxiliaryPartition, AuxiliarySource, ProductRadialId, TransferQ};
-use muffintin_envelope::Provenance;
 use muffintin_core::{GVector, InverseBohr, ReciprocalLattice};
+use muffintin_envelope::Provenance;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// q-aware muffin-tin product of two radial factors, before spectral cutoff.

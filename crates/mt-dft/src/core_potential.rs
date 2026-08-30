@@ -15,11 +15,11 @@ use crate::{
     InterstitialField, MuffinTinField, RegionalDensity, RegionalElectrostaticResult,
     RegionalXcError, RegionalXcResult, XcFunctional,
 };
+use muffintin_core::{AngularGrid, GridError};
 use muffintin_core::{
     Bohr, ExponentialMesh, InterstitialGeometry, spherical_bessel_j, spherical_bessel_j_derivative,
 };
 use muffintin_coulomb::{InterstitialHartreePotential, MuffinTinHartreePotential};
-use muffintin_core::{AngularGrid, GridError};
 use muffintin_sphere::{
     CenteredSphericalFourierMode, CorePotentialContinuationError, CorePotentialContinuationSpec,
     ExtendedCorePotential, join_core_spherical_potential,
@@ -624,7 +624,9 @@ pub enum CorePotentialBuildError {
     ExtendedMeshCount { expected: usize, actual: usize },
     #[error("scalar XC muffin-tin potential has {actual} sites, expected {expected}")]
     XcSiteCount { expected: usize, actual: usize },
-    #[error("scalar frozen checkpoint muffin-tin potential has {actual} sites, expected {expected}")]
+    #[error(
+        "scalar frozen checkpoint muffin-tin potential has {actual} sites, expected {expected}"
+    )]
     CheckpointSiteCount { expected: usize, actual: usize },
     #[error("charge/scalar-XC/raw-electrostatic interstitial layouts differ")]
     InterstitialLayout,

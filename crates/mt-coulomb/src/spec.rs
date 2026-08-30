@@ -1,8 +1,8 @@
 //! Assembly request: direct cell, Weinert `LEXP`, and interpolation projection.
 
 use crate::CoulombError;
-use muffintin_core::{InverseBohr, ReciprocalLattice};
 use muffintin_core::Cell;
+use muffintin_core::{InverseBohr, ReciprocalLattice};
 
 /// Default SPEX-style Weinert expansion cutoff used by the toy assembler.
 pub const DEFAULT_LEXP: u32 = 4;

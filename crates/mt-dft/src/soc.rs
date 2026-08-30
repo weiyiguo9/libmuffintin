@@ -5,8 +5,8 @@
 //! scalar approximation, and it does not claim four-component accuracy in the
 //! muffin-tin spheres.
 
-use muffintin_envelope::CompiledBasis;
 use muffintin_core::Hartree;
+use muffintin_envelope::CompiledBasis;
 use muffintin_operators::{
     CompiledSiteProjection, OperatorError, SecondVariationMixing, SiteSpinOrbitBlock,
     SocEigenpairResidual, SocOperatorError, project_site_soc_to_subspace,

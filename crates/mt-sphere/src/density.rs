@@ -4,10 +4,10 @@ use super::{
     HarmonicConvention, SphereField, SphereFieldError, SphereOrbital, SpinorSphereOrbital,
     complex_matrix_gaunt, magnetic_phase,
 };
+use crate::RadialComponents;
 use muffintin_core::{
     ExponentialMesh, Lm, RelativisticChannel, SpinProjection, real_gaunt, spinor_gaunt,
 };
-use crate::RadialComponents;
 use num_complex::Complex64;
 use thiserror::Error;
 

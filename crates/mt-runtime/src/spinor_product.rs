@@ -2,9 +2,9 @@
 
 use muffintin_core::{Hartree, Kappa, ReciprocalLattice, TwiceMu};
 use muffintin_dft::{
-    CheckpointBandSolution, CheckpointKPointSolution, MaterialKernelError, ScfConfig, ScfRelativity,
-    SpinorIterationBasis, SpinorRadialSite, build_extended_checkpoint_core_potentials,
-    regular_k_points,
+    CheckpointBandSolution, CheckpointKPointSolution, MaterialKernelError, ScfConfig,
+    ScfRelativity, SpinorIterationBasis, SpinorRadialSite,
+    build_extended_checkpoint_core_potentials, regular_k_points,
 };
 use muffintin_operators::lapw::{Provenance, SpinorCompiledBasis};
 use muffintin_prodbasis::{
@@ -16,9 +16,7 @@ use muffintin_sphere::CorePotentialContinuationSpec;
 use muffintin_tensor::DenseEigenvectors;
 use std::collections::BTreeSet;
 
-use crate::checkpoint_physics::{
-    CheckpointPhysics, CheckpointPhysicsError,
-};
+use crate::checkpoint_physics::{CheckpointPhysics, CheckpointPhysicsError};
 use crate::q_mesh::{canonical_transfer_q, map_k_minus_q};
 use crate::scalar_product::leading_bands;
 use crate::thc_grid::is_gamma_fractional;

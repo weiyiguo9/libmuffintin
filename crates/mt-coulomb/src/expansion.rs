@@ -2,13 +2,13 @@
 
 use crate::CoulombError;
 use crate::spec::{CoulombRequest, InterpolationProjection};
-use muffintin_prodbasis::{
-    AuxiliaryInterstitialWave, AuxiliaryLayout, AuxiliaryRegion, CompiledAuxiliaryBasis,
-    InterpolationRegion, MixedProductAuxiliary, TransferQ,
-};
 use muffintin_core::{
     Bohr, ExponentialMesh, InverseBohr, VolumeBohr3, complex_spherical_harmonics, lm_count,
     lm_index,
+};
+use muffintin_prodbasis::{
+    AuxiliaryInterstitialWave, AuxiliaryLayout, AuxiliaryRegion, CompiledAuxiliaryBasis,
+    InterpolationRegion, MixedProductAuxiliary, TransferQ,
 };
 use num_complex::Complex64;
 

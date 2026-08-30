@@ -6,8 +6,8 @@
 use std::path::PathBuf;
 
 use muffintin::{
-    SCALAR_COULOMB_EXACTNESS_FLOOR, ScalarCoquiCholeskyError, ScalarCoquiCholeskySpec,
-    ScalarCoulombError, ScalarCoulombResult, ScalarProductInput, CheckpointPhysics,
+    CheckpointPhysics, SCALAR_COULOMB_EXACTNESS_FLOOR, ScalarCoquiCholeskyError,
+    ScalarCoquiCholeskySpec, ScalarCoulombError, ScalarCoulombResult, ScalarProductInput,
     build_scalar_coulomb, build_scalar_thc, write_scalar_coqui_cholesky,
 };
 use muffintin_core::InverseBohr;

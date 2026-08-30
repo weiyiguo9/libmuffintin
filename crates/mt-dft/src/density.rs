@@ -3,10 +3,10 @@
 use crate::{
     InterstitialField, MuffinTinField, RegionalDensity, RegionalError, RegionalScalarField,
 };
-use muffintin_envelope::{CompiledBasis, SpinorCompiledBasis};
 use muffintin_core::{
     ExponentialMesh, FourierLayout, InterstitialGeometry, Lm, MeshError, RelativisticChannel,
 };
+use muffintin_envelope::{CompiledBasis, SpinorCompiledBasis};
 use muffintin_operators::{
     Collinear, CompiledSiteProjection, GeneralizedEigensolution, OperatorError,
 };
@@ -1177,15 +1177,15 @@ pub enum DensityError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use muffintin_envelope::{
-        ApwSiteGeometry, BasisLayout, LocalOrbitalLayout, Provenance, SpinorBasisLayout,
-        SpinorCompiledBasis, SpinorSiteLayout,
-    };
     use muffintin_core::{
         Bohr, Hartree, HermitianFourierField, InverseBohr, Kappa, ReciprocalLattice, Sphere,
         VolumeBohr3,
     };
     use muffintin_envelope::PlaneWave;
+    use muffintin_envelope::{
+        ApwSiteGeometry, BasisLayout, LocalOrbitalLayout, Provenance, SpinorBasisLayout,
+        SpinorCompiledBasis, SpinorSiteLayout,
+    };
     use muffintin_sphere::{CoreState, RelativisticRole};
     use muffintin_tensor::{Axis, DenseEigenvectors, DenseHermitianMatrix};
 

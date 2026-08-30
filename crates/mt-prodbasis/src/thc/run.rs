@@ -41,8 +41,6 @@ pub struct ThcResult {
     pub diagnostics: StrategyDiagnostics,
 }
 
-
-
 /// AllQL2 selection and per-$q$ $\zeta$ fit on evaluated pair blocks.
 ///
 /// Pair blocks are already collocated on the parent grid. Quadrature weights are
@@ -343,4 +341,3 @@ pub fn bloch_pair_vertices(
     }
     Ok(vertices)
 }
-

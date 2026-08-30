@@ -5,13 +5,13 @@
 //! `muffintin_operators::recipes::lapw`. Both paths assemble through
 //! `assemble_compiled` / the shared operator layer.
 
-use muffintin_envelope::{
-    ApwBoundaryBasis, ApwSiteAugmentation, BasisBlock, BasisSpec, LocalOrbitalLayout, Provenance,
-    compile,
-};
 use muffintin_core::{
     Bohr, Hartree, InterstitialGeometry, InverseBohr, KineticOperatorConvention, ReciprocalLattice,
     Sphere, VolumeBohr3,
+};
+use muffintin_envelope::{
+    ApwBoundaryBasis, ApwSiteAugmentation, BasisBlock, BasisSpec, LocalOrbitalLayout, Provenance,
+    compile,
 };
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_operators::lapw::{

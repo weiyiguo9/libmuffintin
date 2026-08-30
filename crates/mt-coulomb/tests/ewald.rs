@@ -2,15 +2,15 @@
 
 mod common;
 
-use muffintin_prodbasis::{
-    AuxiliaryPartition, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
-    InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
-};
-use muffintin_envelope::Provenance;
 use muffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
 use muffintin_coulomb::{
     CoulombError, CoulombRequest, EwaldScan, EwaldSummation, InterpolationProjection,
     assemble_point_charge_oracle, converged_ewald_point_kernel, ewald_point_kernel,
+};
+use muffintin_envelope::Provenance;
+use muffintin_prodbasis::{
+    AuxiliaryPartition, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
+    InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
 };
 use std::f64::consts::PI;
 

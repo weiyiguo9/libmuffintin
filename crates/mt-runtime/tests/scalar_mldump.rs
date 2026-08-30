@@ -4,8 +4,8 @@ use std::f64::consts::PI;
 use std::path::PathBuf;
 
 use muffintin::{
-    SCALAR_COULOMB_EXACTNESS_FLOOR, ScalarCoulombError, ScalarCoulombResult, ScalarCoulombSpec,
-    ScalarMldumpError, ScalarProductInput, CheckpointPhysics, build_scalar_coulomb,
+    CheckpointPhysics, SCALAR_COULOMB_EXACTNESS_FLOOR, ScalarCoulombError, ScalarCoulombResult,
+    ScalarCoulombSpec, ScalarMldumpError, ScalarProductInput, build_scalar_coulomb,
     build_scalar_thc, write_scalar_mldump,
 };
 use muffintin_core::InverseBohr;

@@ -1,11 +1,11 @@
 //! SPEX-compatible LAPW (APW+lo) recipe.
 
 use super::lapw_provenance;
+use muffintin_core::{Bohr, VolumeBohr3};
+use muffintin_envelope::PlaneWaveEnvelope;
 use muffintin_envelope::{
     ApwBoundaryBasis, ApwSiteAugmentation, BasisBlock, BasisSpec, LocalOrbitalLayout,
 };
-use muffintin_core::{Bohr, VolumeBohr3};
-use muffintin_envelope::PlaneWaveEnvelope;
 
 /// One muffin-tin site in the LAPW recipe.
 #[derive(Clone, Debug, PartialEq)]

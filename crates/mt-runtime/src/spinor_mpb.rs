@@ -1,19 +1,19 @@
 //! Selected-band spinor mixed-product bridge from frozen [`SpinorProductInput`].
 
 use crate::spinor_product::{SpinorBandWindow, SpinorProductInput};
+use muffintin_core::{InverseBohr, ReciprocalLattice, RelativisticChannel};
+use muffintin_envelope::site_translation_phase;
+use muffintin_operators::lapw::SpinorCompiledBasis;
+use muffintin_operators::{CompiledSiteProjection, OperatorError};
+use muffintin_prodbasis::mpb::{
+    DiracBlochVertexAccumulator, MpbError, apply_dirac_overlap_cutoff,
+    untruncated_dirac_product_space,
+};
 use muffintin_prodbasis::{
     AuxiliaryPartition, CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracRadialId,
     DiracRawProductSpace, InterstitialPairSpec, OrbitalPair, PairColumnLayout, PairVertex,
     TransferQ,
 };
-use muffintin_core::{InverseBohr, ReciprocalLattice, RelativisticChannel};
-use muffintin_envelope::site_translation_phase;
-use muffintin_operators::lapw::SpinorCompiledBasis;
-use muffintin_prodbasis::mpb::{
-    DiracBlochVertexAccumulator, MpbError, apply_dirac_overlap_cutoff,
-    untruncated_dirac_product_space,
-};
-use muffintin_operators::{CompiledSiteProjection, OperatorError};
 use muffintin_tensor::DenseEigenvectors;
 use num_complex::Complex64;
 use std::collections::{HashMap, HashSet};

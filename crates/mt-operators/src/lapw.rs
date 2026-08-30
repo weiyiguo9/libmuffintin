@@ -7,15 +7,20 @@
 
 #![forbid(unsafe_code)]
 
-use muffintin_envelope::BasisError;
-use muffintin_core::{Bohr, Hartree, InterstitialGeometry, InverseBohr, KineticOperatorConvention};
-use muffintin_envelope::EnvelopeError;
 use crate::{OperatorError, add_site_contributions, add_spinor_site_contributions};
+use muffintin_core::{Bohr, Hartree, InterstitialGeometry, InverseBohr, KineticOperatorConvention};
+use muffintin_envelope::BasisError;
+use muffintin_envelope::EnvelopeError;
 use muffintin_tensor::{Axis, TensorError};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+pub use crate::recipes::{LapwSiteInput, lapw};
+pub use crate::{
+    Collinear, EigenpairResidual, GeneralizedEigensolution, OperatorSet as LapwEigenproblem,
+    SiteOperatorBlocks, SpinorSiteOperatorBlocks, solve_generalized_hermitian,
+};
 pub use muffintin_envelope::BasisLayout as LapwBasisLayout;
 pub use muffintin_envelope::{
     ApwBoundaryBasis, ApwMatch, ApwSiteAugmentation, ApwSiteGeometry, BasisBlock, BasisLayout,
@@ -27,11 +32,6 @@ pub use muffintin_envelope::{
 pub use muffintin_envelope::{
     PlaneWave, PlaneWaveEnvelope, rayleigh_coefficient, site_translation_phase,
 };
-pub use crate::{
-    Collinear, EigenpairResidual, GeneralizedEigensolution, OperatorSet as LapwEigenproblem,
-    SiteOperatorBlocks, SpinorSiteOperatorBlocks, solve_generalized_hermitian,
-};
-pub use crate::recipes::{LapwSiteInput, lapw};
 pub use muffintin_tensor::{ComplexTensor, DenseEigenvectors, DenseHermitianMatrix};
 
 const INTERSTITIAL_KINETIC: KineticOperatorConvention =

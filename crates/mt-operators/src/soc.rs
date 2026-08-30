@@ -1,8 +1,8 @@
 //! Site assembly and first-variation congruence for SOC second variation.
 
 use faer::{Mat, Side};
-use muffintin_envelope::LocalOrbitalLayout;
 use muffintin_core::{Hartree, Lm, lm_count};
+use muffintin_envelope::LocalOrbitalLayout;
 use muffintin_sphere::SpinOrbitRadialShell;
 use muffintin_tensor::{
     Axis, ComplexTensor, DenseHermitianMatrix, TensorError, hermitian_congruence,

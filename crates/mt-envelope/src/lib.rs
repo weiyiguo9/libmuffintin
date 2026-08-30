@@ -82,10 +82,8 @@ pub enum BasisError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{PlaneWave, PlaneWaveEnvelope, rayleigh_coefficient, site_translation_phase};
     use muffintin_core::{Bohr, InverseBohr, Kappa, Lm, ReciprocalLattice, TwiceMu, VolumeBohr3};
-    use crate::{
-        PlaneWave, PlaneWaveEnvelope, rayleigh_coefficient, site_translation_phase,
-    };
     use muffintin_sphere::BoundaryData;
 
     fn boundary(value: f64, derivative: f64) -> BoundaryData {

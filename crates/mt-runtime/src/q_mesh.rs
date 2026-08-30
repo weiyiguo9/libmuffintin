@@ -4,9 +4,9 @@
 //! wrap, and off-mesh rejection. This module owns those semantics; it does
 //! not forward a later Coulomb or MPB $q$.
 
-use muffintin_prodbasis::TransferQ;
 use muffintin_core::{GVector, InverseBohr, ReciprocalLattice};
 use muffintin_dft::g_vector;
+use muffintin_prodbasis::TransferQ;
 
 use crate::checkpoint_physics::CheckpointPhysicsError;
 

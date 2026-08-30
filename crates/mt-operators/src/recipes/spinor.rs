@@ -1,9 +1,9 @@
 //! First-variation SRA spinor LAPW recipe.
 
 use super::spinor_provenance;
-use muffintin_envelope::{SpinorBasisSite, SpinorBasisSpec};
 use muffintin_core::VolumeBohr3;
 use muffintin_envelope::PlaneWaveEnvelope;
+use muffintin_envelope::{SpinorBasisSite, SpinorBasisSpec};
 
 /// Construct the typed two-component-interstitial/four-component-site recipe.
 ///
@@ -26,9 +26,9 @@ pub fn spinor_lapw(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use muffintin_envelope::{SpinorSiteLayout, compile_spinor};
     use muffintin_core::{Bohr, DiracAngularContract, GVector, Hartree, InverseBohr, Kappa};
     use muffintin_envelope::PlaneWave;
+    use muffintin_envelope::{SpinorSiteLayout, compile_spinor};
     use muffintin_sphere::{
         DiracBoundaryTrace, DiracEnergyDerivative, DiracSecondEnergyDerivative, RelativisticRole,
         ValenceDiracSolution,
