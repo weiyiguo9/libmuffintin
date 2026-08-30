@@ -719,6 +719,16 @@ another session is an explicit error. `ScfResult` exposes `converged`,
 `convergence_history(): float64[n_iteration,2]` ordered as density RMS then
 absolute energy change, and `restart_checkpoint()`.
 
+`ScfResult.band_path(labels: list[str], k_fractional: float64[n_k,3],
+bands: int)` evaluates arbitrary fractional reciprocal points against the
+converged frozen potential. It reconstructs the material kernel from the
+result checkpoint and passes the exact retained `ScfState` to the existing
+`run_band_path`; the binding does not duplicate the LAPW solve. The returned
+pyexport v1 dictionary contains `labels: list[str]`,
+`k_fractional: float64[n_k,3]`, and `energies: float64[n_k,bands]` in Hartree,
+all in request order. The DFT layer requires at least two points, a positive
+band count, and finite fractional coordinates.
+
 Reusable `RegionalDensity` and `RegionalPotential`, plus the session tickets
 `RegionalDensityStep`, `RegionalPotentialStep`, and `LapwDensityAssembly`,
 export pyexport v1 dictionaries with

@@ -65,6 +65,22 @@ def test_hydrogen_global_and_staged_scf_share_one_transition_loop() -> None:
     assert next_density.iteration == 2
 
 
+def test_converged_result_solves_fractional_band_path() -> None:
+    result = mt.run_dft_scf(INPUT)
+    bands = result.band_path(
+        ["Γ", "X"], np.array([[0.0, 0.0, 0.0], [0.5, 0.0, 0.0]]), 1
+    )
+
+    assert bands["labels"] == ["Γ", "X"]
+    np.testing.assert_array_equal(
+        bands["k_fractional"], [[0.0, 0.0, 0.0], [0.5, 0.0, 0.0]]
+    )
+    assert bands["k_fractional"].dtype == np.float64
+    assert bands["energies"].shape == (2, 1)
+    assert bands["energies"].dtype == np.float64
+    assert np.isfinite(bands["energies"]).all()
+
+
 def test_stage4_reusing_a_consumed_transition_handle_raises() -> None:
     checkpoint = mt.load_checkpoint(FIXTURES / "hydrogen_checkpoint.toml")
     session = mt.CheckpointPhysics(checkpoint).scf_session(INPUT)

@@ -3,10 +3,10 @@
 use std::path::Path;
 
 use muffintin_dft::{
-    CheckpointBandSolution, CheckpointOneParticle, ContinueStep, CoreStep, EnergyRecord,
-    LapwDensityAssembly, LapwSolution, MaterialKernelError, OccupationStep, RegionalDensity,
-    RegionalDensityStep, RegionalPotential, RegionalPotentialStep, ScfConfig, ScfError,
-    ScfIterationDiagnostic, ScfLoop, ScfState,
+    BandPathRequest, BandPathResult, CheckpointBandSolution, CheckpointOneParticle, ContinueStep,
+    CoreStep, EnergyRecord, LapwDensityAssembly, LapwSolution, MaterialKernelError, OccupationStep,
+    RegionalDensity, RegionalDensityStep, RegionalPotential, RegionalPotentialStep, ScfConfig,
+    ScfError, ScfIterationDiagnostic, ScfLoop, ScfState, run_band_path,
 };
 use muffintin_io::CheckpointV2;
 use muffintin_sphere::HarmonicConvention;
@@ -311,6 +311,12 @@ pub struct DftScfResult {
 impl DftScfResult {
     pub fn diagnostics(&self) -> &[ScfIterationDiagnostic] {
         &self.state.diagnostics
+    }
+
+    /// Solve an arbitrary fractional-k path against this converged frozen potential.
+    pub fn band_path(&self, request: &BandPathRequest) -> Result<BandPathResult, DftScfError> {
+        let mut physics = CheckpointPhysics::new(&self.checkpoint)?;
+        Ok(run_band_path(&mut physics.kernel, &self.state, request)?)
     }
 }
 

@@ -2,13 +2,13 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use numpy::ndarray::Array2;
-use numpy::{PyArray1, PyArray2};
+use numpy::{PyArray1, PyArray2, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use crate::checkpoint::{Checkpoint, CheckpointPhysics};
-use crate::export::export_dict;
+use crate::export::{array2, export_dict};
 
 fn py_error(error: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(error.to_string())
@@ -582,6 +582,53 @@ impl ScfResult {
             Array2::from_shape_vec((self.inner.diagnostics().len(), 2), values)
                 .expect("two convergence values per iteration"),
         )
+    }
+    fn band_path(
+        &self,
+        py: Python<'_>,
+        labels: Vec<String>,
+        k_fractional: PyReadonlyArray2<'_, f64>,
+        bands: usize,
+    ) -> PyResult<Py<PyDict>> {
+        let k_fractional = k_fractional.as_array();
+        if k_fractional.shape()[1] != 3 || labels.len() != k_fractional.shape()[0] {
+            return Err(PyValueError::new_err(
+                "labels and k_fractional must have shapes (N,) and (N, 3)",
+            ));
+        }
+        let request = muffintin_dft::BandPathRequest {
+            bands,
+            points: labels
+                .into_iter()
+                .zip(k_fractional.rows())
+                .map(|(label, row)| muffintin_dft::BandPathPoint {
+                    label,
+                    k: [row[0], row[1], row[2]],
+                })
+                .collect(),
+        };
+        let result = self.inner.band_path(&request).map_err(py_error)?;
+        let point_count = result.points.len();
+        let labels = result
+            .points
+            .iter()
+            .map(|point| point.label.clone())
+            .collect::<Vec<_>>();
+        let k_fractional = result
+            .points
+            .iter()
+            .flat_map(|point| point.k)
+            .collect::<Vec<_>>();
+        let energies = result
+            .points
+            .iter()
+            .flat_map(|point| point.energies.iter().map(|energy| energy.get()))
+            .collect::<Vec<_>>();
+        let dict = export_dict(py)?;
+        dict.set_item("labels", labels)?;
+        dict.set_item("k_fractional", array2(py, point_count, 3, k_fractional))?;
+        dict.set_item("energies", array2(py, point_count, bands, energies))?;
+        Ok(dict.unbind())
     }
     fn restart_checkpoint(&self) -> Checkpoint {
         Checkpoint {
