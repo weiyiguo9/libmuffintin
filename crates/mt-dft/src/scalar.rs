@@ -7,7 +7,7 @@ use muffintin_lapw::{
     SiteOperatorBlocks, assemble_compiled, compile, lapw, solve_generalized_hermitian,
 };
 use muffintin_operators::{Collinear, OperatorError, SiteSpinOrbitBlock};
-use muffintin_radial::{
+use muffintin_sphere::{
     LinearizedRadialSolution, LocalOrbital, RadialComponents, RadialEquation, RadialError,
     RadialIntegralError, RadialIntegralKernel, RadialSolution, RadialSolver,
     SecondEnergyDerivative, radial_integral,

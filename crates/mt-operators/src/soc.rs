@@ -3,7 +3,7 @@
 use faer::{Mat, Side};
 use muffintin_basis::LocalOrbitalLayout;
 use muffintin_core::{Hartree, Lm, lm_count};
-use muffintin_radial::SpinOrbitRadialShell;
+use muffintin_sphere::SpinOrbitRadialShell;
 use muffintin_tensor::{
     Axis, ComplexTensor, DenseHermitianMatrix, TensorError, hermitian_congruence,
 };
@@ -402,7 +402,7 @@ pub enum SocOperatorError {
 mod tests {
     use super::*;
     use muffintin_core::{Bohr, ExponentialMesh};
-    use muffintin_radial::{
+    use muffintin_sphere::{
         RadialEquation, RadialSolver, SpexSpinOrbitPotential, spex_spin_orbit_radial_shell,
     };
 

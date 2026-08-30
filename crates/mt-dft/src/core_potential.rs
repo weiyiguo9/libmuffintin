@@ -20,7 +20,7 @@ use muffintin_core::{
 };
 use muffintin_coulomb::{InterstitialHartreePotential, MuffinTinHartreePotential};
 use muffintin_core::{AngularGrid, GridError};
-use muffintin_radial::{
+use muffintin_sphere::{
     CenteredSphericalFourierMode, CorePotentialContinuationError, CorePotentialContinuationSpec,
     ExtendedCorePotential, join_core_spherical_potential,
 };

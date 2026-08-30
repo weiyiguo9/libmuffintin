@@ -10,7 +10,7 @@ use muffintin_core::{
 use muffintin_operators::{
     Collinear, CompiledSiteProjection, GeneralizedEigensolution, OperatorError,
 };
-use muffintin_radial::{CoreDiracSolution, RadialComponents};
+use muffintin_sphere::{CoreDiracSolution, RadialComponents};
 use muffintin_sphere::{
     DensityProjectionError, HarmonicConvention, SphereField, SphereFieldError, SphereOrbital,
     SpinorSphereOrbital, project_orbital_pair_density, project_spinor_pair_density_components,
@@ -1186,7 +1186,7 @@ mod tests {
         VolumeBohr3,
     };
     use muffintin_envelope::PlaneWave;
-    use muffintin_radial::{CoreState, RelativisticRole};
+    use muffintin_sphere::{CoreState, RelativisticRole};
     use muffintin_tensor::{Axis, DenseEigenvectors, DenseHermitianMatrix};
 
     #[test]

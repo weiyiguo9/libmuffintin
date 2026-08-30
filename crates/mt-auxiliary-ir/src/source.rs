@@ -3,7 +3,7 @@
 use crate::{AuxiliaryIrError, AuxiliaryPartition, RawInterstitialPairSupport};
 use muffintin_basis::Provenance;
 use muffintin_core::{ExponentialMesh, GVector, InverseBohr};
-use muffintin_radial::RadialComponents;
+use muffintin_sphere::RadialComponents;
 
 /// Valence or selected core origin of one muffin-tin radial factor.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

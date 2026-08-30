@@ -1,7 +1,7 @@
 use muffintin_core::{
     Bohr, ExponentialMesh, Kappa, Lm, RelativisticChannel, TwiceMu, spinor_gaunt,
 };
-use muffintin_radial::{RadialComponents, RadialIntegralKernel, radial_integral};
+use muffintin_sphere::{RadialComponents, RadialIntegralKernel, radial_integral};
 use muffintin_sphere::{
     HarmonicConvention, MatrixElementError, SphereField, SphereFieldError, SphereOrbital,
     SphereOrbitalError, SpinorSphereOrbital, matrix_element, spinor_matrix_element,

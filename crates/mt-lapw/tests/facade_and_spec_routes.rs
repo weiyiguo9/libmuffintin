@@ -21,7 +21,7 @@ use muffintin_lapw::{
 use muffintin_operators::{
     Collinear, EigenpairResidual, GeneralizedEigensolution, solve_generalized_hermitian,
 };
-use muffintin_radial::BoundaryData;
+use muffintin_sphere::BoundaryData;
 use muffintin_tensor::{Axis, DenseHermitianMatrix};
 use num_complex::Complex64;
 

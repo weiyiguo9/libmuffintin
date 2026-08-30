@@ -1,29 +1,64 @@
-//! Angular and radial algebra inside a muffin-tin sphere.
+//! Radial solvers and angular algebra inside a muffin-tin sphere.
 //!
-//! A [`SphereField`] stores radial expansion coefficients by `(L,M)`
-//! channel.  A [`SphereOrbital`] combines an angular channel with reduced
-//! large and optional small radial components, while a [`SpinorSphereOrbital`]
-//! carries an explicit `(kappa,mu)` channel and separate `P` and `Q` radial
-//! components.  [`matrix_element`] and [`spinor_matrix_element`] compose the
-//! Gaunt coefficients from `libmuffintin-core` with the radial quadrature from
-//! `libmuffintin-radial`.
+//! The radial half solves the Schrödinger, scalar-relativistic, and
+//! spherical core-Dirac equations.  Energies are Hartree throughout.
+//! Valence functions use the LAPW convention `p(r) = r u(r)`.  For
+//! Koelling--Harmon and four-component Dirac solutions, the public small
+//! component is the physical radial component `Q`; internally the
+//! differential equations evolve `c Q`, as SPEX does.
+//!
+//! The angular half stores fields and orbitals: a [`SphereField`] holds
+//! radial expansion coefficients by `(L,M)` channel.  A [`SphereOrbital`]
+//! combines an angular channel with reduced large and optional small radial
+//! components, while a [`SpinorSphereOrbital`] carries an explicit
+//! `(kappa,mu)` channel and separate `P` and `Q` radial components.
+//! [`matrix_element`] and [`spinor_matrix_element`] compose the Gaunt
+//! coefficients from `libmuffintin-core` with the radial quadrature.
 
 #![forbid(unsafe_code)]
 
+/// Implementation diagnostic for RK4 state growth, not a public convention.
+///
+/// It fires before squaring can overflow (`sqrt(f64::MAX) ~= 1.34e154`) and
+/// leaves headroom for the mesh-weighted norm.
+const MAX_RADIAL_AMPLITUDE: f64 = 1.0e150;
+
+mod core_dirac;
+mod core_potential;
 mod density;
+mod integrals;
+mod spin_orbit;
+mod valence;
 
 use muffintin_core::{ExponentialMesh, Lm, RelativisticChannel, gaunt, real_gaunt, spinor_gaunt};
-use muffintin_radial::{
-    RadialComponents, RadialIntegralError, RadialIntegralKernel, radial_integral,
-};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+pub use core_dirac::{
+    CoreBracketSearch, CoreDiracSolution, CoreDiracSpec, CoreState, DiracBoundaryTrace,
+    DiracEnergyDerivative, DiracError, DiracLocalOrbital, DiracSecondEnergyDerivative,
+    EnergyBracket, RelativisticRole, ValenceDiracSolution, ValenceDiracSpec,
+    isolate_core_dirac_bracket, solve_core_dirac, solve_valence_dirac,
+};
+pub use core_potential::{
+    CenteredSphericalFourierMode, CorePotentialContinuationError, CorePotentialContinuationSpec,
+    ExtendedCorePotential, continue_core_spherical_potential, join_core_spherical_potential,
+};
 pub use density::{
     DensityComponent, DensityOperand, DensityProjectionError, SpinorPairDensity,
     project_orbital_pair_density, project_orbital_pair_density_with_convention,
     project_spinor_pair_density, project_spinor_pair_density_components,
+};
+pub use integrals::{RadialComponents, RadialIntegralError, RadialIntegralKernel, radial_integral};
+pub use spin_orbit::{
+    SpexSpinOrbitPotential, SpinOrbitRadialError, SpinOrbitRadialShell,
+    spex_spin_orbit_radial_shell,
+};
+pub use valence::{
+    BandCenter, BandEdge, BoundaryData, EnergyDerivative, LinearizedRadialSolution, LocalOrbital,
+    LocalOrbitalCoefficients, LogDerivativeEnergy, RadialEquation, RadialError, RadialSolution,
+    RadialSolver, SPEX_SPEED_OF_LIGHT, SecondEnergyDerivative,
 };
 
 /// Spherical-harmonic basis used for a field and its orbital labels.

@@ -32,7 +32,7 @@ mod tests {
     };
     use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, VolumeBohr3};
     use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
-    use muffintin_radial::BoundaryData;
+    use muffintin_sphere::BoundaryData;
 
     fn boundary(value: f64, derivative: f64) -> BoundaryData {
         BoundaryData {

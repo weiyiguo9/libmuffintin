@@ -15,7 +15,7 @@ use muffintin_lapw::{
     SpinorSiteOperatorBlocks, assemble_compiled, assemble_sra_spinor_compiled,
     solve_generalized_hermitian,
 };
-use muffintin_radial::{BoundaryData, ValenceDiracSpec, solve_valence_dirac};
+use muffintin_sphere::{BoundaryData, ValenceDiracSpec, solve_valence_dirac};
 use muffintin_tensor::{Axis, DenseHermitianMatrix};
 use num_complex::Complex64;
 

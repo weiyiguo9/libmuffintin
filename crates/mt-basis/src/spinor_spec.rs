@@ -6,7 +6,7 @@ use crate::{
 };
 use muffintin_core::{Bohr, VolumeBohr3};
 use muffintin_envelope::PlaneWaveEnvelope;
-use muffintin_radial::{RelativisticRole, ValenceDiracSolution};
+use muffintin_sphere::{RelativisticRole, ValenceDiracSolution};
 use std::collections::BTreeSet;
 
 /// One muffin-tin site in a first-variation SRA spinor basis.
@@ -132,7 +132,7 @@ mod tests {
     use muffintin_core::Kappa;
     use muffintin_core::{DiracAngularContract, Hartree, InverseBohr, ReciprocalLattice, TwiceMu};
     use muffintin_envelope::PlaneWave;
-    use muffintin_radial::{
+    use muffintin_sphere::{
         DiracBoundaryTrace, DiracEnergyDerivative, DiracSecondEnergyDerivative,
     };
 

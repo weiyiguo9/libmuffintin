@@ -4,7 +4,6 @@ members = [
     "crates/mt-core",
     "crates/mt-io",
     "crates/mt-lapw",
-    "crates/mt-radial",
     "crates/mt-sphere",
     "crates/mt-tensor",
     "crates/mt-envelope",

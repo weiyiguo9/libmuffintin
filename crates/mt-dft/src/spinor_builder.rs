@@ -10,7 +10,7 @@ use muffintin_basis::{
 };
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, InterstitialGeometry, Kappa, KappaError};
 use muffintin_lapw::{InterstitialPauliPotential, PlaneWaveEnvelope};
-use muffintin_radial::{
+use muffintin_sphere::{
     DiracError, DiracLocalOrbital, DiracSecondEnergyDerivative, RadialComponents,
     RadialIntegralError, RadialIntegralKernel, ValenceDiracSolution, ValenceDiracSpec,
     radial_integral, solve_valence_dirac,

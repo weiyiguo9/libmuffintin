@@ -9,7 +9,7 @@ use muffintin_core::{
     ExponentialMesh, FourierFieldError, Hartree, HermitianFourierField, InterstitialGeometry,
     InverseBohr, Lm, StepFunctionError, spherical_bessel_j,
 };
-use muffintin_radial::{CoreDiracSolution, CoreState};
+use muffintin_sphere::{CoreDiracSolution, CoreState};
 use muffintin_sphere::{SphereField, SphereFieldError};
 use num_complex::Complex64;
 use std::f64::consts::PI;
@@ -706,7 +706,7 @@ mod tests {
         Bohr, DiracAngularContract, FourierLayout, InverseBohr, Kappa, ReciprocalLattice, Sphere,
         VolumeBohr3,
     };
-    use muffintin_radial::{CoreState, RelativisticRole};
+    use muffintin_sphere::{CoreState, RelativisticRole};
     use muffintin_sphere::HarmonicConvention;
 
     const CELL_LENGTH: f64 = 8.0;

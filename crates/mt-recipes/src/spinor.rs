@@ -29,7 +29,7 @@ mod tests {
     use muffintin_basis::{SpinorSiteLayout, compile_spinor};
     use muffintin_core::{Bohr, DiracAngularContract, GVector, Hartree, InverseBohr, Kappa};
     use muffintin_envelope::PlaneWave;
-    use muffintin_radial::{
+    use muffintin_sphere::{
         DiracBoundaryTrace, DiracEnergyDerivative, DiracSecondEnergyDerivative, RelativisticRole,
         ValenceDiracSolution,
     };

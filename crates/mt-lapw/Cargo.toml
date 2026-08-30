@@ -14,7 +14,7 @@ libmuffintin-basis = { path = "../mt-basis" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-operators = { path = "../mt-operators" }
-libmuffintin-radial = { path = "../mt-radial" }
+libmuffintin-sphere = { path = "../mt-sphere" }
 libmuffintin-recipes = { path = "../mt-recipes" }
 libmuffintin-tensor = { path = "../mt-tensor" }
 num-complex.workspace = true

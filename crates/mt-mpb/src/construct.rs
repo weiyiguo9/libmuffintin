@@ -9,7 +9,7 @@ use muffintin_auxiliary_ir::{
 };
 use muffintin_basis::Provenance;
 use muffintin_core::{InverseBohr, ReciprocalLattice};
-use muffintin_radial::RadialComponents;
+use muffintin_sphere::RadialComponents;
 use std::collections::BTreeSet;
 
 fn spex_provenance(cutoff: Option<&CutoffRecord>) -> Provenance {

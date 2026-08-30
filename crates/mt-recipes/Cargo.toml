@@ -16,7 +16,7 @@ libmuffintin-core = { path = "../mt-core" }
 libmuffintin-envelope = { path = "../mt-envelope" }
 
 [dev-dependencies]
-libmuffintin-radial = { path = "../mt-radial" }
+libmuffintin-sphere = { path = "../mt-sphere" }
 
 [lints]
 workspace = true

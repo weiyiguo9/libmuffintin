@@ -45,7 +45,7 @@ use muffintin_operators::{
     CompiledSiteProjection, OperatorError, SiteSpinOrbitBlock, SocOperatorError,
     SpinorSiteOperatorBlocks,
 };
-use muffintin_radial::{
+use muffintin_sphere::{
     CoreBracketSearch, CoreDiracSpec, CorePotentialContinuationSpec, CoreState, DiracError,
     EnergyBracket, ExtendedCorePotential, RadialEquation, SpexSpinOrbitPotential,
     SpinOrbitRadialError, isolate_core_dirac_bracket, solve_core_dirac,
@@ -1196,7 +1196,7 @@ impl SnapshotDftPhysics {
         principal_quantum_number: u32,
         kappa: i32,
         extended: &ExtendedCorePotential,
-    ) -> Result<muffintin_radial::CoreDiracSolution, SnapshotDftError> {
+    ) -> Result<muffintin_sphere::CoreDiracSolution, SnapshotDftError> {
         let state = CoreState::new(principal_quantum_number, Kappa::new(kappa)?)?;
         let charge = self.nuclear_charges[site_index];
         let converted = &self.sites[site_index];

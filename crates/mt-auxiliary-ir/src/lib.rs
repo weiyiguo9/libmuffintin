@@ -45,7 +45,7 @@ pub use vertex::{
 };
 
 use muffintin_core::StepFunctionError;
-use muffintin_radial::RadialIntegralError;
+use muffintin_sphere::RadialIntegralError;
 use thiserror::Error;
 
 /// Product-space construction or validation error.

@@ -22,7 +22,7 @@ use muffintin_io::{
     RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
-use muffintin_radial::{SPEX_SPEED_OF_LIGHT, ValenceDiracSpec, solve_valence_dirac};
+use muffintin_sphere::{SPEX_SPEED_OF_LIGHT, ValenceDiracSpec, solve_valence_dirac};
 use num_complex::Complex64;
 
 fn hydrogen_spinor_snapshot() -> SnapshotV2 {

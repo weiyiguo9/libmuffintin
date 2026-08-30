@@ -1,5 +1,5 @@
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, Kappa};
-use muffintin_radial::{
+use muffintin_sphere::{
     CoreDiracSpec, CoreState, DiracError, EnergyBracket, SPEX_SPEED_OF_LIGHT, ValenceDiracSpec,
     solve_core_dirac, solve_valence_dirac,
 };
@@ -49,7 +49,7 @@ fn valence_fixture(
 ) -> (
     ExponentialMesh,
     Vec<f64>,
-    muffintin_radial::ValenceDiracSolution,
+    muffintin_sphere::ValenceDiracSolution,
 ) {
     valence_fixture_for_kappa(energy, Kappa::new(-1).unwrap())
 }
@@ -60,7 +60,7 @@ fn valence_fixture_for_kappa(
 ) -> (
     ExponentialMesh,
     Vec<f64>,
-    muffintin_radial::ValenceDiracSolution,
+    muffintin_sphere::ValenceDiracSolution,
 ) {
     let mesh = extended_mesh(1.0e-6, 8.0, 0.003);
     let potential: Vec<f64> = mesh
@@ -182,7 +182,7 @@ fn analytic_second_derivative_matches_phase_aligned_centered_difference() {
     let (mesh, _, center) = valence_fixture(energy);
     let (_, _, minus) = valence_fixture(energy - step);
     let (_, _, plus) = valence_fixture(energy + step);
-    let overlap = |candidate: &muffintin_radial::ValenceDiracSolution| {
+    let overlap = |candidate: &muffintin_sphere::ValenceDiracSolution| {
         let values: Vec<f64> = center
             .p
             .iter()
@@ -381,7 +381,7 @@ fn analytic_energy_derivative_matches_phase_aligned_centered_difference() {
     let (mesh, _, center) = valence_fixture(energy);
     let (_, _, minus) = valence_fixture(energy - step);
     let (_, _, plus) = valence_fixture(energy + step);
-    let overlap = |candidate: &muffintin_radial::ValenceDiracSolution| {
+    let overlap = |candidate: &muffintin_sphere::ValenceDiracSolution| {
         let values: Vec<f64> = center
             .p
             .iter()

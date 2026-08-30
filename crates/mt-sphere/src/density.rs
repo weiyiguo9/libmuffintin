@@ -7,7 +7,7 @@ use super::{
 use muffintin_core::{
     ExponentialMesh, Lm, RelativisticChannel, SpinProjection, real_gaunt, spinor_gaunt,
 };
-use muffintin_radial::RadialComponents;
+use crate::RadialComponents;
 use num_complex::Complex64;
 use thiserror::Error;
 

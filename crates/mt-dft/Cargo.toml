@@ -15,7 +15,6 @@ libmuffintin-core = { path = "../mt-core" }
 libmuffintin-coulomb = { path = "../mt-coulomb" }
 libmuffintin-lapw = { path = "../mt-lapw" }
 libmuffintin-operators = { path = "../mt-operators" }
-libmuffintin-radial = { path = "../mt-radial" }
 libmuffintin-sphere = { path = "../mt-sphere" }
 libmuffintin-tensor = { path = "../mt-tensor" }
 libm.workspace = true

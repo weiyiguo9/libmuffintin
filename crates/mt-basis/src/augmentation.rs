@@ -6,7 +6,7 @@ use muffintin_core::{
     spherical_bessel_j, spherical_bessel_j_derivative,
 };
 use muffintin_envelope::{PlaneWave, rayleigh_coefficient, site_translation_phase};
-use muffintin_radial::BoundaryData;
+use muffintin_sphere::BoundaryData;
 use num_complex::Complex64;
 
 /// The two primitive radial boundary columns `(u_l, du_l/dE)`.

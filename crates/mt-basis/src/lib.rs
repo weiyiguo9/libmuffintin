@@ -81,7 +81,7 @@ mod tests {
     use muffintin_envelope::{
         PlaneWave, PlaneWaveEnvelope, rayleigh_coefficient, site_translation_phase,
     };
-    use muffintin_radial::BoundaryData;
+    use muffintin_sphere::BoundaryData;
 
     fn boundary(value: f64, derivative: f64) -> BoundaryData {
         BoundaryData {

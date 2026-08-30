@@ -11,7 +11,7 @@ use muffintin_dft::{
 };
 use muffintin_lapw::{CompiledBasis, Provenance};
 use muffintin_operators::Collinear;
-use muffintin_radial::CorePotentialContinuationSpec;
+use muffintin_sphere::CorePotentialContinuationSpec;
 use muffintin_tensor::DenseEigenvectors;
 use std::collections::BTreeSet;
 

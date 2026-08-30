@@ -11,7 +11,7 @@ use muffintin_dft::{
     build_extended_snapshot_core_potentials,
 };
 use muffintin_lapw::{Provenance, SpinorCompiledBasis};
-use muffintin_radial::CorePotentialContinuationSpec;
+use muffintin_sphere::CorePotentialContinuationSpec;
 use muffintin_tensor::DenseEigenvectors;
 use std::collections::BTreeSet;
 

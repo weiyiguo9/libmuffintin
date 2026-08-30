@@ -615,7 +615,7 @@ fn set_hermitian(
 mod tests {
     use super::*;
     use muffintin_core::{Bohr, Kappa, ReciprocalLattice, Sphere, VolumeBohr3};
-    use muffintin_radial::BoundaryData;
+    use muffintin_sphere::BoundaryData;
     use num_complex::Complex64;
 
     fn boundary(value: f64, derivative: f64) -> BoundaryData {

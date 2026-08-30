@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 
 use muffintin_core::{ExponentialMesh, Hartree, Kappa, MeshError};
 use muffintin_coulomb::{CoulombError, radial_primitive};
-use muffintin_radial::{CoreDiracSolution, CoreState};
+use muffintin_sphere::{CoreDiracSolution, CoreState};
 use thiserror::Error;
 
 use crate::atomic_configuration::{AtomicNumber, fleur_default_atomic_configuration};

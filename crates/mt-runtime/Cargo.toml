@@ -26,7 +26,6 @@ libmuffintin-lapw = { path = "../mt-lapw" }
 libmuffintin-mpb = { path = "../mt-mpb" }
 libmuffintin-operators = { path = "../mt-operators" }
 libmuffintin-thc = { path = "../mt-thc" }
-libmuffintin-radial = { path = "../mt-radial" }
 libmuffintin-sphere = { path = "../mt-sphere" }
 libmuffintin-tensor = { path = "../mt-tensor" }
 num-complex.workspace = true

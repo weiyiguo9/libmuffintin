@@ -1,7 +1,7 @@
 //! Current-potential linearization-energy generators and their provenance.
 
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, InverseBohr, Kappa, KappaError};
-use muffintin_radial::{
+use muffintin_sphere::{
     CoreBracketSearch, CoreDiracSolution, CoreDiracSpec, CoreState, DiracError, EnergyBracket,
     RadialEquation, RadialError, RadialSolver, isolate_core_dirac_bracket, solve_core_dirac,
 };
