@@ -92,6 +92,36 @@ def test_regional_density_roundtrip_and_potential_station() -> None:
     combined = roundtrip.add_scaled(1.0, core_density)
     assert np.isfinite(combined.export_interstitial()["components"]).all()
 
+    band_energy = -1.25
+    occupation_correction = 0.02
+    energy = mt.evaluate_total_energy(
+        potential,
+        combined,
+        band_energy=band_energy,
+        core_eigenvalue_sum=core.core_eigenvalue_sum,
+        occupation_correction=occupation_correction,
+    )
+    expected_total = (
+        band_energy
+        + core.core_eigenvalue_sum
+        + 0.5 * (potential.madelung - potential.coulomb)
+        + potential.exchange_correlation
+        - potential.exchange_correlation_potential
+        + occupation_correction
+    )
+    assert energy.total == pytest.approx(expected_total)
+    assert energy.density_rms == pytest.approx(roundtrip.difference_rms(combined))
+    assert energy.energy_change is None
+    changed = mt.evaluate_total_energy(
+        potential,
+        combined,
+        band_energy=band_energy,
+        core_eigenvalue_sum=core.core_eigenvalue_sum,
+        occupation_correction=occupation_correction,
+        previous_total=energy.total + 0.001,
+    )
+    assert changed.energy_change == pytest.approx(0.001)
+
     with pytest.raises(ValueError, match="mt_sample_offsets"):
         mt.RegionalDensity(
             structure,

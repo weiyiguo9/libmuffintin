@@ -50,7 +50,7 @@ Out of scope for v0.3:
 ```text
 crates/mt-python/            # the only crate containing PyO3
   Cargo.toml                 # package libmuffintin-python, [lib] name muffintin_python, cdylib
-  src/{lib,checkpoint,products,thc,coulomb,spinor,writers,regional,core,scf,export}.rs
+  src/{lib,checkpoint,products,thc,coulomb,spinor,writers,regional,core,energy,scf,export}.rs
 python/
   pyproject.toml             # maturin backend, module-name = "libmuffintin._native"
   libmuffintin/
@@ -642,6 +642,25 @@ effective potential. An explicit spin partition controls only how the solved
 physical $P^2+Q^2$ density is distributed into charge and $m_z$; it does not
 create a magnetic radial core Hamiltonian or a spin-dependent core
 eigenproblem.
+
+`evaluate_total_energy` is the independent method-neutral energy station. Its
+only caller-owned scalar inputs are `band_energy`, `core_eigenvalue_sum`, and
+`occupation_correction`; the completed output `RegionalDensity` supplies the
+density residual against the source density retained by `RegionalPotential`.
+The station evaluates exactly
+
+```math
+E_{\mathrm{total}} = E_{\mathrm{band}} + E_{\mathrm{core}}
++ \frac{1}{2}(M-C) + E_{\mathrm{xc}} - I_{\rho V_{\mathrm{xc}}}
++ E_{\mathrm{occupation}}.
+```
+
+Python owns $k$ weights, degeneracies, occupations, and their counting. It
+includes each of them exactly once when forming `band_energy` and supplies the
+correction of its arbitrary occupation method explicitly. Rust never infers
+an occupation vector, chemical potential, smearing family, or band
+degeneracy, and labels this generic contribution as external rather than
+Fermi–Dirac or Gaussian.
 
 The MTO research boundary remains in Python: USW construction, value-and-
 derivative data, kink matrices, LMTO/NMTO assembly, occupations, and NMTO

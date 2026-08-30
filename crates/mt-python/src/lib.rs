@@ -3,6 +3,7 @@
 mod checkpoint;
 mod core;
 mod coulomb;
+mod energy;
 mod export;
 mod products;
 mod regional;
@@ -44,6 +45,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(build_scalar_mpb_coulomb, module)?)?;
     module.add_function(wrap_pyfunction!(sample_scalar_orbitals, module)?)?;
     core::register(module)?;
+    energy::register(module)?;
     spinor::register(module)?;
     writers::register(module)?;
     regional::register(module)?;

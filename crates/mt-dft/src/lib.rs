@@ -51,7 +51,10 @@ pub use density::{
     physical_site_band_projections, synthesize_collinear_valence_density,
     synthesize_full_spinor_valence_density,
 };
-pub use energy::{EnergyError, OccupationEnergy, ScfEnergy, assemble_scf_energy};
+pub use energy::{
+    EnergyError, OccupationEnergy, ScfEnergy, TotalEnergyError, TotalEnergyEvaluation,
+    TotalEnergyInput, assemble_scf_energy, evaluate_total_energy,
+};
 pub use free_atom::{
     FreeAtomOrbital, FreeAtomScfError, FreeAtomScfSpec, FreeAtomState, run_free_atom_lda,
 };

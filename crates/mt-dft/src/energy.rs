@@ -3,11 +3,13 @@
 use muffintin_core::Hartree;
 use thiserror::Error;
 
-/// Smearing contribution paired with the selected occupation functional.
+/// Energy correction paired with the caller's occupation functional.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OccupationEnergy {
     FermiDirac { minus_temperature_entropy: Hartree },
     Gaussian { smearing_correction: Hartree },
+    /// Caller-owned occupation method with an explicitly evaluated correction.
+    External { correction: Hartree },
 }
 
 impl OccupationEnergy {
@@ -19,6 +21,7 @@ impl OccupationEnergy {
             Self::Gaussian {
                 smearing_correction,
             } => smearing_correction,
+            Self::External { correction } => correction,
         }
     }
 }
@@ -36,10 +39,37 @@ pub struct ScfEnergy {
     pub total: Hartree,
 }
 
+/// Method-neutral scalar inputs whose counting is owned by the caller.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TotalEnergyInput {
+    pub band_energy: Hartree,
+    pub core_eigenvalue_sum: Hartree,
+    pub occupation_correction: Hartree,
+}
+
+/// Total energy plus the two neutral convergence observations.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TotalEnergyEvaluation {
+    pub energy: ScfEnergy,
+    pub density_rms: f64,
+    pub energy_change: Option<Hartree>,
+}
+
 #[derive(Clone, Copy, Debug, Error, PartialEq)]
 pub enum EnergyError {
     #[error("SCF energy term {term} is not finite: {value} Ha")]
     NonFinite { term: &'static str, value: f64 },
+}
+
+/// Invalid method-neutral energy input or incompatible regional density.
+#[derive(Debug, Error)]
+pub enum TotalEnergyError {
+    #[error("previous total energy is not finite: {0} Ha")]
+    NonFinitePreviousTotal(f64),
+    #[error(transparent)]
+    Energy(#[from] EnergyError),
+    #[error(transparent)]
+    Regional(#[from] crate::RegionalError),
 }
 
 /// Combine band, electrostatic, XC, and occupation terms once each.
@@ -89,6 +119,42 @@ pub fn assemble_scf_energy(
         exchange_correlation_potential,
         occupation,
         total: Hartree(total),
+    })
+}
+
+/// Evaluate the full-potential total energy without owning occupations or bands.
+pub fn evaluate_total_energy(
+    potential: &crate::ScfPotentialBuild,
+    output_density: &crate::RegionalDensity,
+    input: TotalEnergyInput,
+    previous_total: Option<Hartree>,
+) -> Result<TotalEnergyEvaluation, TotalEnergyError> {
+    if let Some(previous) = previous_total {
+        if !previous.get().is_finite() {
+            return Err(TotalEnergyError::NonFinitePreviousTotal(previous.get()));
+        }
+    }
+    let terms = potential.energy_terms;
+    let energy = assemble_scf_energy(
+        input.band_energy,
+        input.core_eigenvalue_sum,
+        terms.madelung,
+        terms.coulomb,
+        terms.exchange_correlation,
+        terms.exchange_correlation_potential,
+        OccupationEnergy::External {
+            correction: input.occupation_correction,
+        },
+    )?;
+    let density_rms = potential
+        .source_density()
+        .difference_rms(output_density)?;
+    let energy_change =
+        previous_total.map(|previous| Hartree((energy.total.get() - previous.get()).abs()));
+    Ok(TotalEnergyEvaluation {
+        energy,
+        density_rms,
+        energy_change,
     })
 }
 
