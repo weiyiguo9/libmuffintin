@@ -5,7 +5,7 @@
 //! `muffintin_recipes::lapw`. Both paths assemble through
 //! `assemble_compiled` / the shared operator layer.
 
-use muffintin_basis::{
+use muffintin_envelope::{
     ApwBoundaryBasis, ApwSiteAugmentation, BasisBlock, BasisSpec, LocalOrbitalLayout, Provenance,
     compile,
 };

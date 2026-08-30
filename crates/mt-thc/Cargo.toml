@@ -12,7 +12,7 @@ name = "muffintin_thc"
 
 [dependencies]
 faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
-libmuffintin-basis = { path = "../mt-basis" }
+libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-auxiliary-ir = { path = "../mt-auxiliary-ir" }
 num-complex.workspace = true

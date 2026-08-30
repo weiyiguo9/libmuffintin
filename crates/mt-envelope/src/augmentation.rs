@@ -5,7 +5,7 @@ use muffintin_core::{
     Bohr, InverseBohr, Kappa, Lm, RelativisticChannel, SpinProjection, VolumeBohr3, lm_count,
     spherical_bessel_j, spherical_bessel_j_derivative,
 };
-use muffintin_envelope::{PlaneWave, rayleigh_coefficient, site_translation_phase};
+use crate::{PlaneWave, rayleigh_coefficient, site_translation_phase};
 use muffintin_sphere::BoundaryData;
 use num_complex::Complex64;
 

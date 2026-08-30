@@ -26,7 +26,7 @@ use crate::{
     AuxiliaryIrError, AuxiliaryLayout, AuxiliaryPartition, ChannelSpectrum, CompiledAuxiliaryBasis,
     CoupledChannel, ProductOrbitalKind, RawInterstitialPairSupport, TransferQ,
 };
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::{ExponentialMesh, Kappa, RelativisticChannel, TwiceMu};
 use num_complex::Complex64;
 use std::collections::{BTreeSet, HashSet};

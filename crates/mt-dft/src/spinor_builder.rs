@@ -4,7 +4,7 @@ use crate::{
     FullSpinorDensitySiteBasis, FullSpinorSiteInput, LocalPauliPotential, RelativisticSpinorRoute,
     SolvedFullSpinorFirstVariation, SpinorFirstVariationError, solve_full_spinor_first_variation,
 };
-use muffintin_basis::{
+use muffintin_envelope::{
     BasisError, Provenance, SpinorBasisSite, SpinorBasisSpec, SpinorCompiledBasis,
     SpinorSiteLayout, compile_spinor,
 };

@@ -1,4 +1,4 @@
-use muffintin_basis::{
+use muffintin_envelope::{
     ApwSiteGeometry, BasisLayout, CompiledBasis, LocalOrbitalLayout, PlaneWaveAugmentation,
     Provenance, SpinorBasisLayout, SpinorCompiledBasis, SpinorPlaneWaveAugmentation,
     SpinorSiteLayout,

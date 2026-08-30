@@ -1,7 +1,7 @@
 //! Untruncated muffin-tin products, coupled channels, and raw pair support.
 
 use crate::{AuxiliaryIrError, AuxiliaryPartition, AuxiliarySource, ProductRadialId, TransferQ};
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::{GVector, InverseBohr, ReciprocalLattice};
 use std::collections::{BTreeMap, BTreeSet};
 

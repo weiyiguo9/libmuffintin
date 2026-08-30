@@ -1,6 +1,6 @@
 //! Full four-component first-variation magnetic and noncollinear route.
 
-use muffintin_basis::{SpinorCompiledBasis, SpinorSiteLayout};
+use muffintin_envelope::{SpinorCompiledBasis, SpinorSiteLayout};
 use muffintin_core::{
     ExponentialMesh, InterstitialGeometry, Lm, RelativisticChannel, SpinProjection, gaunt,
 };

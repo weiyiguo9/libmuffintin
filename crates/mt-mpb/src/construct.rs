@@ -7,7 +7,7 @@ use muffintin_auxiliary_ir::{
     CutoffRecord, MixedProductAuxiliary, PairChannel, ProductOrbitalKind, ProductRadial,
     ProductRadialId, RawProductSpace, RawRadialProduct, SiteAuxiliaryBlock, SiteRadialSet,
 };
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::{InverseBohr, ReciprocalLattice};
 use muffintin_sphere::RadialComponents;
 use std::collections::BTreeSet;

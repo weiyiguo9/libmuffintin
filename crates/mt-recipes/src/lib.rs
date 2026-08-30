@@ -8,7 +8,7 @@ mod spinor;
 pub use lapw::{LapwSiteInput, lapw};
 pub use spinor::spinor_lapw;
 
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 
 pub(crate) fn lapw_provenance() -> Provenance {
     Provenance {
@@ -27,7 +27,7 @@ pub(crate) fn spinor_provenance() -> Provenance {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use muffintin_basis::{
+    use muffintin_envelope::{
         ApwBoundaryBasis, ApwSiteAugmentation, BasisBlock, BasisSpec, LocalOrbitalLayout, compile,
     };
     use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, VolumeBohr3};

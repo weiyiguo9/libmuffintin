@@ -16,7 +16,7 @@ use muffintin_auxiliary_ir::{
     AuxiliaryPartition, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
     InterpolationPointAuxiliary, OrbitalPair, PairColumnLayout, PairVertex, TransferQ,
 };
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 
 /// q=0 versus worst finite-q diagnostics for one strategy.
 #[derive(Clone, Debug, PartialEq)]

@@ -20,7 +20,7 @@ use crate::structure::structure_constants;
 use muffintin_auxiliary_ir::{
     AuxiliaryInterstitialWave, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
 };
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, complex_spherical_harmonics, lm_index};
 use num_complex::Complex64;
 use std::f64::consts::PI;

@@ -5,7 +5,7 @@ use crate::{
     SpinorBasisLayout, SpinorPlaneWaveAugmentation, augmentation_coefficients, match_apw_boundary,
 };
 use muffintin_core::{Bohr, VolumeBohr3};
-use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
+use crate::{PlaneWave, PlaneWaveEnvelope};
 
 /// Provenance for a basis specification or compiled result.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

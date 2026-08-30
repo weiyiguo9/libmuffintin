@@ -1,7 +1,7 @@
 //! One-particle product input: partition, radials, transfer q, and pair support.
 
 use crate::{AuxiliaryIrError, AuxiliaryPartition, RawInterstitialPairSupport};
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::{ExponentialMesh, GVector, InverseBohr};
 use muffintin_sphere::RadialComponents;
 
@@ -122,7 +122,7 @@ pub struct SiteRadialSet {
 
 /// Minimal product-construction input.
 ///
-/// This does not own a one-particle [`muffintin_basis::CompiledBasis`].
+/// This does not own a one-particle [`muffintin_envelope::CompiledBasis`].
 /// Cell volume comes from [`AuxiliaryPartition::interstitial`].
 /// `interstitial_pair_support` is the finite raw orbital-pair reciprocal
 /// support supplied by the one-particle/pair capability, before MPB

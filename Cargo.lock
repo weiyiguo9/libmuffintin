@@ -956,17 +956,6 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 name = "libmuffintin-auxiliary-ir"
 version = "0.2.0"
 dependencies = [
- "libmuffintin-basis",
- "libmuffintin-core",
- "libmuffintin-sphere",
- "num-complex",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "libmuffintin-basis"
-version = "0.2.0"
-dependencies = [
  "libmuffintin-core",
  "libmuffintin-envelope",
  "libmuffintin-sphere",
@@ -990,8 +979,8 @@ version = "0.2.0"
 dependencies = [
  "faer 0.22.6",
  "libmuffintin-auxiliary-ir",
- "libmuffintin-basis",
  "libmuffintin-core",
+ "libmuffintin-envelope",
  "libmuffintin-mpb",
  "libmuffintin-thc",
  "num-complex",
@@ -1003,7 +992,6 @@ name = "libmuffintin-dft"
 version = "0.2.0"
 dependencies = [
  "libm",
- "libmuffintin-basis",
  "libmuffintin-core",
  "libmuffintin-coulomb",
  "libmuffintin-envelope",
@@ -1020,6 +1008,7 @@ name = "libmuffintin-envelope"
 version = "0.2.0"
 dependencies = [
  "libmuffintin-core",
+ "libmuffintin-sphere",
  "num-complex",
  "thiserror 2.0.20",
 ]
@@ -1039,7 +1028,6 @@ dependencies = [
 name = "libmuffintin-lapw"
 version = "0.2.0"
 dependencies = [
- "libmuffintin-basis",
  "libmuffintin-core",
  "libmuffintin-envelope",
  "libmuffintin-operators",
@@ -1055,7 +1043,6 @@ name = "libmuffintin-mpb"
 version = "0.2.0"
 dependencies = [
  "libmuffintin-auxiliary-ir",
- "libmuffintin-basis",
  "libmuffintin-core",
  "libmuffintin-envelope",
  "libmuffintin-operators",
@@ -1069,7 +1056,6 @@ name = "libmuffintin-operators"
 version = "0.2.0"
 dependencies = [
  "faer 0.22.6",
- "libmuffintin-basis",
  "libmuffintin-core",
  "libmuffintin-envelope",
  "libmuffintin-sphere",
@@ -1082,7 +1068,6 @@ dependencies = [
 name = "libmuffintin-recipes"
 version = "0.2.0"
 dependencies = [
- "libmuffintin-basis",
  "libmuffintin-core",
  "libmuffintin-envelope",
  "libmuffintin-sphere",
@@ -1138,8 +1123,8 @@ version = "0.2.0"
 dependencies = [
  "faer 0.22.6",
  "libmuffintin-auxiliary-ir",
- "libmuffintin-basis",
  "libmuffintin-core",
+ "libmuffintin-envelope",
  "num-complex",
  "thiserror 2.0.20",
 ]

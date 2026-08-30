@@ -7,7 +7,6 @@ members = [
     "crates/mt-sphere",
     "crates/mt-tensor",
     "crates/mt-envelope",
-    "crates/mt-basis",
     "crates/mt-operators",
     "crates/mt-recipes",
     "crates/mt-auxiliary-ir",

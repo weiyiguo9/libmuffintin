@@ -6,7 +6,7 @@ use muffintin_auxiliary_ir::{
     AuxiliaryPartition, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
     InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
 };
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::{Bohr, InterstitialGeometry, InverseBohr, Sphere, VolumeBohr3};
 use muffintin_coulomb::{
     CoulombError, CoulombRequest, EwaldScan, EwaldSummation, InterpolationProjection,

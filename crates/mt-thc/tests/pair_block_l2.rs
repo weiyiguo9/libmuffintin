@@ -1,7 +1,7 @@
 //! AllQL2 full L2 engines on already-evaluated pair blocks.
 
 use muffintin_auxiliary_ir::{InterpolationRegion, PairColumnLayout, TransferQ};
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::InverseBohr;
 use muffintin_thc::toy::mt_partition;
 use muffintin_thc::{

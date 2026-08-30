@@ -10,7 +10,7 @@ rust-version.workspace = true
 name = "muffintin_dft"
 
 [dependencies]
-libmuffintin-basis = { path = "../mt-basis" }
+libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-coulomb = { path = "../mt-coulomb" }
 libmuffintin-lapw = { path = "../mt-lapw" }
@@ -20,9 +20,6 @@ libmuffintin-tensor = { path = "../mt-tensor" }
 libm.workspace = true
 num-complex.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
-libmuffintin-envelope = { path = "../mt-envelope" }
 
 [lints]
 workspace = true

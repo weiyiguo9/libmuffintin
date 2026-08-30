@@ -3,7 +3,7 @@
 use crate::{
     InterstitialField, MuffinTinField, RegionalDensity, RegionalError, RegionalScalarField,
 };
-use muffintin_basis::{CompiledBasis, SpinorCompiledBasis};
+use muffintin_envelope::{CompiledBasis, SpinorCompiledBasis};
 use muffintin_core::{
     ExponentialMesh, FourierLayout, InterstitialGeometry, Lm, MeshError, RelativisticChannel,
 };
@@ -1177,7 +1177,7 @@ pub enum DensityError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use muffintin_basis::{
+    use muffintin_envelope::{
         ApwSiteGeometry, BasisLayout, LocalOrbitalLayout, Provenance, SpinorBasisLayout,
         SpinorCompiledBasis, SpinorSiteLayout,
     };

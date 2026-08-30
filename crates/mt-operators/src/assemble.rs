@@ -1,7 +1,7 @@
 //! Site projection $P^\dagger B P$ scattered into a global operator pair.
 
 use crate::{CompiledSiteProjection, OperatorError};
-use muffintin_basis::CompiledBasis;
+use muffintin_envelope::CompiledBasis;
 use muffintin_tensor::{Axis, DenseHermitianMatrix, TensorError};
 use num_complex::Complex64;
 

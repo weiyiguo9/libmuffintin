@@ -6,7 +6,7 @@ use muffintin_auxiliary_ir::{
     DiracRawRadialProduct, DiracSiteRadialSet, ProductOrbitalKind, RawInterstitialPairSupport,
     TransferQ,
 };
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::{
     Bohr, ExponentialMesh, InterstitialGeometry, InverseBohr, Kappa, Sphere, VolumeBohr3,
 };

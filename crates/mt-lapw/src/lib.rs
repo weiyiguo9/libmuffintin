@@ -7,7 +7,7 @@
 
 #![forbid(unsafe_code)]
 
-use muffintin_basis::BasisError;
+use muffintin_envelope::BasisError;
 use muffintin_core::{Bohr, Hartree, InterstitialGeometry, InverseBohr, KineticOperatorConvention};
 use muffintin_envelope::EnvelopeError;
 use muffintin_operators::{OperatorError, add_site_contributions, add_spinor_site_contributions};
@@ -16,8 +16,8 @@ use num_complex::Complex64;
 use std::collections::BTreeMap;
 use thiserror::Error;
 
-pub use muffintin_basis::BasisLayout as LapwBasisLayout;
-pub use muffintin_basis::{
+pub use muffintin_envelope::BasisLayout as LapwBasisLayout;
+pub use muffintin_envelope::{
     ApwBoundaryBasis, ApwMatch, ApwSiteAugmentation, ApwSiteGeometry, BasisBlock, BasisLayout,
     BasisSpec, CompiledBasis, LocalOrbitalLayout, PlaneWaveAugmentation, Provenance,
     SpinorApwMatch, SpinorBasisLayout, SpinorCompiledBasis, SpinorPlaneWaveAugmentation,
@@ -215,7 +215,7 @@ pub fn assemble_eigenproblem(
 /// Assemble `S` and `H` from a compiled basis and local site operator blocks.
 ///
 /// This is the shared LAPW interstitial + site-projection path used by both
-/// the facade and an explicit [`muffintin_basis::BasisSpec`] route. Every
+/// the facade and an explicit [`muffintin_envelope::BasisSpec`] route. Every
 /// compiled APW site position and radius is checked against
 /// [`InterstitialGeometry::spheres`].
 pub fn assemble_compiled(

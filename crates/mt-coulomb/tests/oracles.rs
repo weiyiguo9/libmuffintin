@@ -8,7 +8,7 @@ use muffintin_auxiliary_ir::{
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, MixedProductAuxiliary, SiteAuxiliaryBlock,
     TransferQ,
 };
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::{
     Bohr, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, VolumeBohr3,
     complex_spherical_harmonics, lm_index,

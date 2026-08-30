@@ -5,7 +5,7 @@ use muffintin_auxiliary_ir::{
     RadialSamples, RawInterstitialPairComponent, RawInterstitialPairSupport, SiteRadialSet,
     TransferQ,
 };
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::{
     Bohr, ExponentialMesh, GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere,
     VolumeBohr3,

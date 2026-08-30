@@ -5,7 +5,7 @@ use crate::{
     SpinorCompiledBasis, SpinorSiteLayout, match_apw_boundary, spinor_augmentation_coefficients,
 };
 use muffintin_core::{Bohr, VolumeBohr3};
-use muffintin_envelope::PlaneWaveEnvelope;
+use crate::PlaneWaveEnvelope;
 use muffintin_sphere::{RelativisticRole, ValenceDiracSolution};
 use std::collections::BTreeSet;
 
@@ -131,7 +131,7 @@ mod tests {
     use super::*;
     use muffintin_core::Kappa;
     use muffintin_core::{DiracAngularContract, Hartree, InverseBohr, ReciprocalLattice, TwiceMu};
-    use muffintin_envelope::PlaneWave;
+    use crate::PlaneWave;
     use muffintin_sphere::{
         DiracBoundaryTrace, DiracEnergyDerivative, DiracSecondEnergyDerivative,
     };

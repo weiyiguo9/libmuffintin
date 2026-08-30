@@ -8,7 +8,7 @@ use muffintin_auxiliary_ir::{
     DiracRawProductSpace, DiracRawRadialProduct, DiracSiteRadialSet, MixedProductAuxiliary,
     ProductOrbitalKind, SiteAuxiliaryBlock,
 };
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::{ExponentialMesh, InverseBohr, ReciprocalLattice};
 use std::collections::{BTreeMap, HashSet};
 

@@ -10,7 +10,6 @@ rust-version.workspace = true
 name = "muffintin_lapw"
 
 [dependencies]
-libmuffintin-basis = { path = "../mt-basis" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-operators = { path = "../mt-operators" }

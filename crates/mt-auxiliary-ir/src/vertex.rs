@@ -3,7 +3,7 @@
 use crate::{
     AuxiliaryIrError, AuxiliaryLayout, CompiledAuxiliaryBasis, ProductRadialId, TransferQ,
 };
-use muffintin_basis::Provenance;
+use muffintin_envelope::Provenance;
 use muffintin_core::GVector;
 use num_complex::Complex64;
 

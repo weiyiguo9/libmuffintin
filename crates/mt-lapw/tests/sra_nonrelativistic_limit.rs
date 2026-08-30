@@ -1,6 +1,6 @@
 //! Repository-local large-`c` SRA regression against a frozen synthetic scalar fixture.
 
-use muffintin_basis::{
+use muffintin_envelope::{
     ApwBoundaryBasis, ApwSiteAugmentation, ApwSiteGeometry, BasisBlock, BasisSpec, Provenance,
     SpinorApwMatch, SpinorBasisLayout, SpinorCompiledBasis, SpinorSiteLayout, compile,
     match_apw_boundary, spinor_augmentation_coefficients,

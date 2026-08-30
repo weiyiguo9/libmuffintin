@@ -1,14 +1,14 @@
 //! First-variation SRA spinor LAPW recipe.
 
 use crate::spinor_provenance;
-use muffintin_basis::{SpinorBasisSite, SpinorBasisSpec};
+use muffintin_envelope::{SpinorBasisSite, SpinorBasisSpec};
 use muffintin_core::VolumeBohr3;
 use muffintin_envelope::PlaneWaveEnvelope;
 
 /// Construct the typed two-component-interstitial/four-component-site recipe.
 ///
 /// Signed `kappa` radial solutions and local-orbital layouts pass through
-/// unchanged. [`muffintin_basis::compile_spinor`] performs canonical channel
+/// unchanged. [`muffintin_envelope::compile_spinor`] performs canonical channel
 /// ordering and boundary matching.
 pub fn spinor_lapw(
     envelope: PlaneWaveEnvelope,
@@ -26,7 +26,7 @@ pub fn spinor_lapw(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use muffintin_basis::{SpinorSiteLayout, compile_spinor};
+    use muffintin_envelope::{SpinorSiteLayout, compile_spinor};
     use muffintin_core::{Bohr, DiracAngularContract, GVector, Hartree, InverseBohr, Kappa};
     use muffintin_envelope::PlaneWave;
     use muffintin_sphere::{

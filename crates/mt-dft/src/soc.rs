@@ -5,7 +5,7 @@
 //! scalar approximation, and it does not claim four-component accuracy in the
 //! muffin-tin spheres.
 
-use muffintin_basis::CompiledBasis;
+use muffintin_envelope::CompiledBasis;
 use muffintin_core::Hartree;
 use muffintin_operators::{
     CompiledSiteProjection, OperatorError, SecondVariationMixing, SiteSpinOrbitBlock,
@@ -259,7 +259,7 @@ pub enum SecondVariationError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use muffintin_basis::{BasisLayout, Provenance};
+    use muffintin_envelope::{BasisLayout, Provenance};
 
     fn scalar_vectors() -> DenseEigenvectors {
         DenseEigenvectors::from_host_column_major(
