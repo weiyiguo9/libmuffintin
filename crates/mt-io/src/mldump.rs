@@ -294,7 +294,7 @@ pub struct MldumpFileV1 {
 /// `/orbitals/@representation` is the authoritative branch tag. Header-only
 /// files have all four payload groups absent. Scalar files have all four
 /// groups present: companion `/products`,`/thc`,`/coulomb` representation
-/// attrs are either all absent (published B1/B2) or all
+/// attrs are either all absent (earlier published scalar files) or all
 /// `scalar_koelling_harmon`. Spinor files require those three attrs present
 /// and equal to `spinor_full_first_variation`. The writer still emits all
 /// four tags.
@@ -794,7 +794,7 @@ fn scalar_companion_mixture_error(companions: &[(&str, Option<&str>); 3]) -> IoE
     ValidationError::InvalidValue {
         path: path.to_owned(),
         expected: format!(
-            "all three companion representation attrs absent (published B1/B2) or all present as {MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON}"
+            "all three companion representation attrs absent (earlier published scalar files) or all present as {MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON}"
         ),
         actual: format!(
             "products={} thc={} coulomb={}",
