@@ -216,6 +216,8 @@ impl FreeAtomControls {
         max_iterations,
         angular_points
     ))]
+    // The argument list is the Python-facing keyword signature.
+    #[allow(clippy::too_many_arguments)]
     fn new(
         mesh_first: f64,
         mesh_log_increment: f64,

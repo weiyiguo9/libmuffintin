@@ -349,7 +349,7 @@ fn record_unique_pair<'a>(
 }
 
 fn allowed_coupling(l: u32, l1: u32, l2: u32) -> bool {
-    (l + l1 + l2) % 2 == 0 && l >= l1.abs_diff(l2) && l <= l1 + l2
+    (l + l1 + l2).is_multiple_of(2) && l >= l1.abs_diff(l2) && l <= l1 + l2
 }
 
 fn sector_product(

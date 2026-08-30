@@ -204,7 +204,7 @@ fn site_id(
                 site,
                 kind: ProductOrbitalKind::Valence,
                 l: lm.l,
-                n: if coord % 2 == 0 {
+                n: if coord.is_multiple_of(2) {
                     SCALAR_RADIAL_U
                 } else {
                     SCALAR_RADIAL_UDOT

@@ -76,14 +76,14 @@ pub(crate) fn infer_output_axes(
         }
         for (index, label) in labels.iter().enumerate() {
             let axis = tensor.axes()[index];
-            if let Some(previous) = bound.insert(*label, axis) {
-                if previous != axis {
-                    return Err(TensorError::Axis {
-                        index,
-                        expected: previous,
-                        actual: axis,
-                    });
-                }
+            if let Some(previous) = bound.insert(*label, axis)
+                && previous != axis
+            {
+                return Err(TensorError::Axis {
+                    index,
+                    expected: previous,
+                    actual: axis,
+                });
             }
         }
     }

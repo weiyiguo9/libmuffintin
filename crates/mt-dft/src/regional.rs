@@ -22,13 +22,13 @@ pub struct MuffinTinField {
 
 impl MuffinTinField {
     pub fn new(mesh: ExponentialMesh, field: SphereField) -> Result<Self, RegionalError> {
-        if let Some(actual) = field.sample_count() {
-            if actual != mesh.len() {
-                return Err(RegionalError::MuffinTinSampleCount {
-                    expected: mesh.len(),
-                    actual,
-                });
-            }
+        if let Some(actual) = field.sample_count()
+            && actual != mesh.len()
+        {
+            return Err(RegionalError::MuffinTinSampleCount {
+                expected: mesh.len(),
+                actual,
+            });
         }
         field.validate_physical_reality(REALITY_TOLERANCE)?;
         Ok(Self { mesh, field })

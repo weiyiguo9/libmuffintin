@@ -58,13 +58,13 @@ impl PairColumnLayout {
 
     /// Reject a core index that cannot appear in any pair column.
     pub fn require_core_orbital(&self) -> Result<(), AuxiliaryIrError> {
-        if let Some(core) = self.core_orbital {
-            if core >= self.n_orb {
-                return Err(AuxiliaryIrError::InvalidCoreOrbital {
-                    index: core,
-                    n_orb: self.n_orb,
-                });
-            }
+        if let Some(core) = self.core_orbital
+            && core >= self.n_orb
+        {
+            return Err(AuxiliaryIrError::InvalidCoreOrbital {
+                index: core,
+                n_orb: self.n_orb,
+            });
         }
         Ok(())
     }

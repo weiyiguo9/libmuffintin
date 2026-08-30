@@ -356,12 +356,12 @@ fn q0_multi_plane_wave_support_and_row_basis_are_self_contained() {
             .iter()
             .any(|radial| radial.n == SCALAR_RADIAL_UDOT && radial.l == 0 && radial.spin == 0)
     );
-    if let Some(lo_range) = compiled.layout.site_local_orbital_range(0) {
-        if !lo_range.is_empty() {
-            let lo_row = lo_range.start;
-            assert!(lo_row >= compiled.layout.plane_wave_count());
-            assert!(compiled.layout.local_orbital_index(0, 0, 0, 0).is_some());
-        }
+    if let Some(lo_range) = compiled.layout.site_local_orbital_range(0)
+        && !lo_range.is_empty()
+    {
+        let lo_row = lo_range.start;
+        assert!(lo_row >= compiled.layout.plane_wave_count());
+        assert!(compiled.layout.local_orbital_index(0, 0, 0, 0).is_some());
     }
 }
 

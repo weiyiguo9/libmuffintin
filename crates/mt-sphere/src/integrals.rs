@@ -208,13 +208,12 @@ pub fn radial_integral<L: RadialComponents + ?Sized, R: RadialComponents + ?Size
         angular_m,
         ..
     } = kernel
+        && angular_m.unsigned_abs() > angular_l
     {
-        if angular_m.unsigned_abs() > angular_l {
-            return Err(RadialIntegralError::InvalidMultipole {
-                angular_l,
-                angular_m,
-            });
-        }
+        return Err(RadialIntegralError::InvalidMultipole {
+            angular_l,
+            angular_m,
+        });
     }
 
     let small_left = left.small_component();

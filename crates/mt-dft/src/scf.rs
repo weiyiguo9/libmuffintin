@@ -232,14 +232,14 @@ impl ScfConfig {
                 });
             }
             for (component, generated) in resolved.components.iter().enumerate() {
-                if let Some(seed) = generated.seed {
-                    if !seed.get().is_finite() {
-                        return Err(ScfConfigError::NonFiniteResolvedChannelComponentSeed {
-                            site: resolved.recipe.site.clone(),
-                            component,
-                            seed: seed.get(),
-                        });
-                    }
+                if let Some(seed) = generated.seed
+                    && !seed.get().is_finite()
+                {
+                    return Err(ScfConfigError::NonFiniteResolvedChannelComponentSeed {
+                        site: resolved.recipe.site.clone(),
+                        component,
+                        seed: seed.get(),
+                    });
                 }
                 if !generated.energy.get().is_finite() {
                     return Err(ScfConfigError::NonFiniteResolvedChannelComponent {
@@ -353,13 +353,13 @@ fn validate_channel_recipe(recipe: &ScfChannelRecipe) -> Result<(), ScfConfigErr
         }
         ScfChannelIdentity::ScalarL { .. } => {}
     }
-    if let Some(seed) = recipe.seed {
-        if !seed.get().is_finite() {
-            return Err(ScfConfigError::NonFiniteChannelSeed {
-                site: recipe.site.clone(),
-                seed: seed.get(),
-            });
-        }
+    if let Some(seed) = recipe.seed
+        && !seed.get().is_finite()
+    {
+        return Err(ScfConfigError::NonFiniteChannelSeed {
+            site: recipe.site.clone(),
+            seed: seed.get(),
+        });
     }
     Ok(())
 }

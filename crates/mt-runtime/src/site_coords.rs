@@ -23,7 +23,7 @@ pub(crate) fn site_coordinate(
         .map_or(0, |wave| wave.coefficients.len());
     if coord < 2 * n_lm {
         let lm = lm_from_index(coord / 2);
-        let n = if coord % 2 == 0 {
+        let n = if coord.is_multiple_of(2) {
             SCALAR_RADIAL_U
         } else {
             SCALAR_RADIAL_UDOT

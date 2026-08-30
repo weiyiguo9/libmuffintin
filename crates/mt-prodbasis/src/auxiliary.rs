@@ -480,10 +480,10 @@ impl CompiledAuxiliaryBasis {
             if point.weight.get() > 0.0 {
                 any_positive = true;
             }
-            if let InterpolationRegion::MuffinTin { site } = point.region {
-                if site >= self.partition.site_count() {
-                    return Err(AuxiliaryIrError::InterpolationPointSite { site });
-                }
+            if let InterpolationRegion::MuffinTin { site } = point.region
+                && site >= self.partition.site_count()
+            {
+                return Err(AuxiliaryIrError::InterpolationPointSite { site });
             }
         }
         if !any_positive {

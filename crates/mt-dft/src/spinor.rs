@@ -403,7 +403,11 @@ fn complex_matrix_gaunt(left: Lm, field: Lm, right: Lm) -> f64 {
 }
 
 fn magnetic_phase(m: i32) -> f64 {
-    if m.unsigned_abs() % 2 == 0 { 1.0 } else { -1.0 }
+    if m.unsigned_abs().is_multiple_of(2) {
+        1.0
+    } else {
+        -1.0
+    }
 }
 
 fn integrate_component(

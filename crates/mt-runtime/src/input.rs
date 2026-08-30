@@ -383,14 +383,14 @@ impl Mixing {
             }
         };
         fraction(format!("{path}.beta"), beta)?;
-        if let Some(history) = history {
-            if history < 2 {
-                return Err(InputValidationError::TooShort {
-                    path: format!("{path}.history"),
-                    minimum: 2,
-                    actual: history,
-                });
-            }
+        if let Some(history) = history
+            && history < 2
+        {
+            return Err(InputValidationError::TooShort {
+                path: format!("{path}.history"),
+                minimum: 2,
+                actual: history,
+            });
         }
         Ok(())
     }
@@ -410,14 +410,14 @@ pub enum Relativity {
 
 impl Relativity {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
-        if let Self::SocSecondVariation { band_window } = self {
-            if band_window[0] >= band_window[1] {
-                return Err(InputValidationError::InvalidRange {
-                    path: format!("{path}.band-window"),
-                    minimum: band_window[0] as f64,
-                    maximum: band_window[1] as f64,
-                });
-            }
+        if let Self::SocSecondVariation { band_window } = self
+            && band_window[0] >= band_window[1]
+        {
+            return Err(InputValidationError::InvalidRange {
+                path: format!("{path}.band-window"),
+                minimum: band_window[0] as f64,
+                maximum: band_window[1] as f64,
+            });
         }
         Ok(())
     }

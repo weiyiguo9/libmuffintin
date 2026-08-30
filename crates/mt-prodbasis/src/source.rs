@@ -183,14 +183,14 @@ impl AuxiliarySource {
                             actual: function.samples.large.len(),
                         });
                     }
-                    if let Some(small) = &function.samples.small {
-                        if small.len() != expected {
-                            return Err(AuxiliaryIrError::MeshLength {
-                                site,
-                                expected,
-                                actual: small.len(),
-                            });
-                        }
+                    if let Some(small) = &function.samples.small
+                        && small.len() != expected
+                    {
+                        return Err(AuxiliaryIrError::MeshLength {
+                            site,
+                            expected,
+                            actual: small.len(),
+                        });
                     }
                     let nonfinite = function
                         .samples

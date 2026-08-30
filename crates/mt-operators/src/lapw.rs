@@ -99,15 +99,15 @@ impl InterstitialPotential {
         let mut result = Self::default();
         for (g, value) in coefficients {
             let minus_g = g.map(|component| -component);
-            if let Some(previous) = result.coefficients.get(&g) {
-                if (*previous - value).norm() > 64.0 * f64::EPSILON * value.norm().max(1.0) {
-                    return Err(LapwError::NonHermitianPotential { g });
-                }
+            if let Some(previous) = result.coefficients.get(&g)
+                && (*previous - value).norm() > 64.0 * f64::EPSILON * value.norm().max(1.0)
+            {
+                return Err(LapwError::NonHermitianPotential { g });
             }
-            if let Some(previous) = result.coefficients.get(&minus_g) {
-                if (*previous - value.conj()).norm() > 64.0 * f64::EPSILON * value.norm().max(1.0) {
-                    return Err(LapwError::NonHermitianPotential { g });
-                }
+            if let Some(previous) = result.coefficients.get(&minus_g)
+                && (*previous - value.conj()).norm() > 64.0 * f64::EPSILON * value.norm().max(1.0)
+            {
+                return Err(LapwError::NonHermitianPotential { g });
             }
             if g == [0; 3] && value.im.abs() > 64.0 * f64::EPSILON * value.re.abs().max(1.0) {
                 return Err(LapwError::NonHermitianPotential { g });
@@ -226,10 +226,10 @@ pub fn assemble_compiled(
 ) -> Result<LapwEigenproblem, LapwError> {
     let plane_waves = &compiled.plane_waves;
     validate_plane_wave_norms(plane_waves)?;
-    if let Some(first) = plane_waves.first() {
-        if plane_waves.iter().any(|wave| wave.k != first.k) {
-            return Err(LapwError::MixedKPoints);
-        }
+    if let Some(first) = plane_waves.first()
+        && plane_waves.iter().any(|wave| wave.k != first.k)
+    {
+        return Err(LapwError::MixedKPoints);
     }
     validate_compiled_geometry(compiled, geometry)?;
     if sites.len() != geometry.spheres().len() {
@@ -293,10 +293,10 @@ pub fn assemble_sra_spinor_compiled(
 ) -> Result<LapwEigenproblem, LapwError> {
     let plane_waves = &compiled.plane_waves;
     validate_plane_wave_norms(plane_waves)?;
-    if let Some(first) = plane_waves.first() {
-        if plane_waves.iter().any(|wave| wave.k != first.k) {
-            return Err(LapwError::MixedKPoints);
-        }
+    if let Some(first) = plane_waves.first()
+        && plane_waves.iter().any(|wave| wave.k != first.k)
+    {
+        return Err(LapwError::MixedKPoints);
     }
     validate_spinor_compiled_geometry(compiled, geometry)?;
     if sites.len() != geometry.spheres().len() {

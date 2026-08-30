@@ -264,14 +264,14 @@ impl CheckpointPhysics {
                 },
             );
         }
-        if let Some(radius) = hard_radius {
-            if radius != site.radius() {
-                return Err(CheckpointPhysicsError::FrozenScalarRadialsHardRadius {
-                    site: site_id.to_owned(),
-                    requested: radius.get(),
-                    muffin_tin: site.radius().get(),
-                });
-            }
+        if let Some(radius) = hard_radius
+            && radius != site.radius()
+        {
+            return Err(CheckpointPhysicsError::FrozenScalarRadialsHardRadius {
+                site: site_id.to_owned(),
+                requested: radius.get(),
+                muffin_tin: site.radius().get(),
+            });
         }
         let equation = match site.up().route() {
             RadialRoute::Schroedinger => RadialEquation::Schroedinger,

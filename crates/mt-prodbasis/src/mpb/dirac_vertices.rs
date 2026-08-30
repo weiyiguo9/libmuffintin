@@ -373,5 +373,9 @@ fn density_angular(left: RelativisticChannel, l: u32, m: i32, right: Relativisti
 }
 
 fn magnetic_phase(m: i32) -> f64 {
-    if m.unsigned_abs() % 2 == 0 { 1.0 } else { -1.0 }
+    if m.unsigned_abs().is_multiple_of(2) {
+        1.0
+    } else {
+        -1.0
+    }
 }

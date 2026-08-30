@@ -135,10 +135,10 @@ pub fn evaluate_total_energy(
     input: TotalEnergyInput,
     previous_total: Option<Hartree>,
 ) -> Result<TotalEnergyEvaluation, TotalEnergyError> {
-    if let Some(previous) = previous_total {
-        if !previous.get().is_finite() {
-            return Err(TotalEnergyError::NonFinitePreviousTotal(previous.get()));
-        }
+    if let Some(previous) = previous_total
+        && !previous.get().is_finite()
+    {
+        return Err(TotalEnergyError::NonFinitePreviousTotal(previous.get()));
     }
     let terms = potential.energy_terms;
     let energy = assemble_scf_energy(
