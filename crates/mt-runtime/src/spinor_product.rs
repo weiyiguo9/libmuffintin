@@ -8,7 +8,7 @@ use muffintin_prodbasis::{
 use muffintin_core::{Hartree, Kappa, ReciprocalLattice, TwiceMu};
 use muffintin_dft::{
     ScfConfig, ScfRelativity, SpinorIterationBasis, SpinorRadialSite,
-    build_extended_snapshot_core_potentials,
+    build_extended_checkpoint_core_potentials,
 };
 use muffintin_operators::lapw::{Provenance, SpinorCompiledBasis};
 use muffintin_sphere::CorePotentialContinuationSpec;
@@ -17,8 +17,8 @@ use std::collections::BTreeSet;
 
 use crate::q_mesh::{canonical_transfer_q, map_k_minus_q};
 use crate::scalar_product::leading_bands;
-use crate::snapshot_dft::{
-    SnapshotBandSolution, SnapshotDftError, SnapshotDftPhysics, SnapshotKPointSolution,
+use crate::checkpoint_physics::{
+    CheckpointBandSolution, CheckpointPhysicsError, CheckpointPhysics, CheckpointKPointSolution,
     regular_k_points,
 };
 use crate::thc_grid::is_gamma_fractional;
@@ -94,7 +94,7 @@ pub struct SpinorProductInput {
     pub reciprocal: ReciprocalLattice,
 }
 
-impl SnapshotDftPhysics {
+impl CheckpointPhysics {
     /// Frozen full-first-variation one-particle solve and Dirac product input.
     ///
     /// `q_fractional` is the requested primitive-cell transfer $q_{\mathrm{in}}$.
@@ -107,19 +107,19 @@ impl SnapshotDftPhysics {
         &self,
         config: &ScfConfig,
         q_fractional: [f64; 3],
-    ) -> Result<SpinorProductInput, SnapshotDftError> {
+    ) -> Result<SpinorProductInput, CheckpointPhysicsError> {
         match config.relativity {
             ScfRelativity::SpinorFirstVariation => {}
             ScfRelativity::Scalar => {
-                return Err(SnapshotDftError::SpinorProductRejectsScalarRelativity);
+                return Err(CheckpointPhysicsError::SpinorProductRejectsScalarRelativity);
             }
             ScfRelativity::SocSecondVariation { .. } => {
-                return Err(SnapshotDftError::SpinorProductRejectsSocSecondVariation);
+                return Err(CheckpointPhysicsError::SpinorProductRejectsSocSecondVariation);
             }
         }
         let transfer = canonical_transfer_q(q_fractional, *self.reciprocal())?;
         let meshes = self.channel_meshes(&config.basis)?;
-        let extended = build_extended_snapshot_core_potentials(
+        let extended = build_extended_checkpoint_core_potentials(
             self.frozen_potential(),
             self.geometry(),
             self.nuclear_charges(),
@@ -288,10 +288,10 @@ impl SpinorProductInput {
         )
     }
 
-    pub(crate) fn validate(&self) -> Result<(), SnapshotDftError> {
+    pub(crate) fn validate(&self) -> Result<(), CheckpointPhysicsError> {
         self.source.validate()?;
         if self.source.q != self.source.interstitial_pair_support.q {
-            return Err(SnapshotDftError::SpinorProductTransferQMismatch);
+            return Err(CheckpointPhysicsError::SpinorProductTransferQMismatch);
         }
         let n_k = self.orbitals.k_fractional.len();
         if n_k == 0
@@ -302,16 +302,16 @@ impl SpinorProductInput {
             || self.k_minus_q.len() != n_k
             || self.pair_columns.n_k != n_k
         {
-            return Err(SnapshotDftError::SpinorProductKSliceMismatch);
+            return Err(CheckpointPhysicsError::SpinorProductKSliceMismatch);
         }
         if self.orbitals.band_window.start != 0
             || self.pair_columns.n_orb != self.orbitals.band_window.count
         {
-            return Err(SnapshotDftError::InconsistentBandCount);
+            return Err(CheckpointPhysicsError::InconsistentBandCount);
         }
         let n_orb = self.orbitals.band_window.count;
         if n_orb == 0 {
-            return Err(SnapshotDftError::EmptyKPointSet);
+            return Err(CheckpointPhysicsError::EmptyKPointSet);
         }
         let _ = self.pair_columns.n_columns()?;
         for k in 0..n_k {
@@ -324,7 +324,7 @@ impl SpinorProductInput {
                 || self.k_minus_q[k].k_index != k
                 || self.k_minus_q[k].kq_index >= n_k
             {
-                return Err(SnapshotDftError::SpinorProductKSliceMismatch);
+                return Err(CheckpointPhysicsError::SpinorProductKSliceMismatch);
             }
         }
         Ok(())
@@ -470,19 +470,19 @@ fn scale_aware_eq(left: f64, right: f64) -> bool {
 }
 
 fn emit_spinor_product_input(
-    physics: &SnapshotDftPhysics,
-    bands: &SnapshotBandSolution,
+    physics: &CheckpointPhysics,
+    bands: &CheckpointBandSolution,
     k_fractional: &[[f64; 3]],
     q: TransferQ,
     k_minus_q: Vec<SpinorKMinusQ>,
-) -> Result<SpinorProductInput, SnapshotDftError> {
+) -> Result<SpinorProductInput, CheckpointPhysicsError> {
     let n_k = k_fractional.len();
     let mut available_bands = Vec::with_capacity(n_k);
     let mut n_orb = None;
     let mut radials = None;
     for point in bands.points() {
         match &point.solution {
-            SnapshotKPointSolution::Spinor {
+            CheckpointKPointSolution::Spinor {
                 basis, solution, ..
             } => {
                 match &radials {
@@ -493,14 +493,14 @@ fn emit_spinor_product_input(
                 available_bands.push(bands_here);
                 n_orb = Some(n_orb.unwrap_or(bands_here).min(bands_here));
             }
-            SnapshotKPointSolution::Collinear { .. } => {
-                return Err(SnapshotDftError::InconsistentRelativityRoute);
+            CheckpointKPointSolution::Collinear { .. } => {
+                return Err(CheckpointPhysicsError::InconsistentRelativityRoute);
             }
         }
     }
     let n_orb = n_orb
         .filter(|&count| count > 0)
-        .ok_or(SnapshotDftError::EmptyKPointSet)?;
+        .ok_or(CheckpointPhysicsError::EmptyKPointSet)?;
     let pair_columns = PairColumnLayout::new(n_k, n_orb, None);
     let _ = pair_columns.n_columns()?;
 
@@ -508,11 +508,11 @@ fn emit_spinor_product_input(
     let mut energies = Vec::with_capacity(n_k);
     let mut bases = Vec::with_capacity(n_k);
     for point in bands.points() {
-        let SnapshotKPointSolution::Spinor {
+        let CheckpointKPointSolution::Spinor {
             basis, solution, ..
         } = &point.solution
         else {
-            return Err(SnapshotDftError::InconsistentRelativityRoute);
+            return Err(CheckpointPhysicsError::InconsistentRelativityRoute);
         };
         eigenvectors.push(leading_bands(&solution.eigenvectors, n_orb)?);
         let mut values = solution.eigenvalues.clone();
@@ -524,12 +524,12 @@ fn emit_spinor_product_input(
     let interstitial_pair_support = raw_pair_support(q, *physics.reciprocal(), &bases, &k_minus_q)?;
     let source = DiracProductSource::new(
         AuxiliaryPartition::from_interstitial(physics.geometry().clone()),
-        radials.ok_or(SnapshotDftError::EmptyKPointSet)?,
+        radials.ok_or(CheckpointPhysicsError::EmptyKPointSet)?,
         q,
         interstitial_pair_support,
         Provenance {
             recipe: None,
-            reference: Some("snapshot-dft-frozen-spinor-product-input".to_owned()),
+            reference: Some("checkpoint-dft-frozen-spinor-product-input".to_owned()),
         },
     )?;
     let input = SpinorProductInput {
@@ -558,7 +558,7 @@ fn raw_pair_support(
     reciprocal: ReciprocalLattice,
     bases: &[SpinorCompiledBasis],
     k_minus_q: &[SpinorKMinusQ],
-) -> Result<RawInterstitialPairSupport, SnapshotDftError> {
+) -> Result<RawInterstitialPairSupport, CheckpointPhysicsError> {
     let mut indices = BTreeSet::new();
     for mapped in k_minus_q {
         let right = &bases[mapped.k_index].plane_waves;
@@ -579,7 +579,7 @@ fn raw_pair_support(
     )?)
 }
 
-fn site_radials(basis: &SpinorIterationBasis) -> Result<Vec<DiracSiteRadialSet>, SnapshotDftError> {
+fn site_radials(basis: &SpinorIterationBasis) -> Result<Vec<DiracSiteRadialSet>, CheckpointPhysicsError> {
     basis
         .radial_sites
         .iter()
@@ -630,18 +630,18 @@ fn valence_radials(site: &SpinorRadialSite) -> Vec<DiracRadial> {
 fn require_same_radial_identity(
     expected: &[DiracSiteRadialSet],
     basis: &SpinorIterationBasis,
-) -> Result<(), SnapshotDftError> {
+) -> Result<(), CheckpointPhysicsError> {
     let actual = site_radials(basis)?;
     if expected.len() != actual.len() {
-        return Err(SnapshotDftError::InconsistentRelativityRoute);
+        return Err(CheckpointPhysicsError::InconsistentRelativityRoute);
     }
     for (left, right) in expected.iter().zip(&actual) {
         if left.valence.len() != right.valence.len() {
-            return Err(SnapshotDftError::InconsistentRelativityRoute);
+            return Err(CheckpointPhysicsError::InconsistentRelativityRoute);
         }
         for (lhs, rhs) in left.valence.iter().zip(&right.valence) {
             if lhs.kappa != rhs.kappa || lhs.n != rhs.n {
-                return Err(SnapshotDftError::InconsistentRelativityRoute);
+                return Err(CheckpointPhysicsError::InconsistentRelativityRoute);
             }
         }
     }

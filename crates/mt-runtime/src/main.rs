@@ -2,7 +2,7 @@ use std::env;
 use std::process::ExitCode;
 
 use muffintin::{
-    PreparedWorkflow, SnapshotDftPhysics, TaskResult, WorkflowResult, execute_prepared_with,
+    PreparedWorkflow, CheckpointPhysics, TaskResult, WorkflowResult, execute_prepared_with,
     load_input_path,
 };
 
@@ -29,10 +29,10 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut physics = match SnapshotDftPhysics::new(&prepared.snapshot) {
+    let mut physics = match CheckpointPhysics::new(&prepared.checkpoint) {
         Ok(physics) => physics,
         Err(error) => {
-            eprintln!("muffintin: could not construct snapshot DFT kernel: {error}");
+            eprintln!("muffintin: could not construct checkpoint DFT kernel: {error}");
             return ExitCode::FAILURE;
         }
     };

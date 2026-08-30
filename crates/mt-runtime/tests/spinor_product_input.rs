@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::PI;
 
 use muffintin::{
-    SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, SnapshotDftError, SnapshotDftPhysics,
+    SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, CheckpointPhysicsError, CheckpointPhysics,
 };
 use muffintin_prodbasis::{DiracRadial, ProductOrbitalKind};
 use muffintin_core::{Bohr, Hartree, InverseBohr, Kappa, ReciprocalLattice, TwiceMu};
@@ -19,13 +19,13 @@ use muffintin_io::{
     ExponentialMeshSpecV1, FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1,
     GeometryV1, InterstitialV1, InverseLengthUnitV1, LatticeV1, LengthUnitV1, LinearizationV1,
     MetaV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
+    RadialEquationTagV1, SiteSpinV1, SiteV1, CheckpointV1, CheckpointV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
 use muffintin_sphere::{SPEX_SPEED_OF_LIGHT, ValenceDiracSpec, solve_valence_dirac};
 use num_complex::Complex64;
 
-fn hydrogen_spinor_snapshot() -> SnapshotV2 {
+fn hydrogen_spinor_checkpoint() -> CheckpointV2 {
     let point_count = 61;
     let first: f64 = 1.0e-4;
     let radius: f64 = 1.0;
@@ -33,7 +33,7 @@ fn hydrogen_spinor_snapshot() -> SnapshotV2 {
     let radii = (0..point_count)
         .map(|index| first * (index as f64 * increment).exp())
         .collect::<Vec<_>>();
-    SnapshotV1::new(
+    CheckpointV1::new(
         MetaV1 {
             title: "spinor product-input hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
@@ -127,7 +127,7 @@ fn spinor_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 1, l: 0 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },
@@ -136,7 +136,7 @@ fn spinor_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 2, l: 1 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },
@@ -145,7 +145,7 @@ fn spinor_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     identity: ScfChannelIdentity::Kappa { n: 2, kappa: 1 },
                     treatment: ScfChannelTreatment::Hdlo,
                     derivative_order: 2,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: ScfChannelProvenance::Site,
                 },
@@ -236,11 +236,11 @@ fn find_radial(input: &muffintin::SpinorProductInput, kappa: i32, n: usize) -> &
         .unwrap()
 }
 
-fn spherical_potential(physics: &SnapshotDftPhysics) -> Vec<f64> {
+fn spherical_potential(physics: &CheckpointPhysics) -> Vec<f64> {
     let monopole = physics.frozen_potential().scalar().muffin_tins()[0]
         .field()
         .channel(0, 0)
-        .expect("snapshot monopole");
+        .expect("checkpoint monopole");
     monopole
         .iter()
         .map(|value| value.re / (4.0 * PI).sqrt())
@@ -257,19 +257,19 @@ fn samples_close(left: &[f64], right: &[f64]) -> bool {
 
 #[test]
 fn spinor_product_input_rejects_scalar_relativity() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let mut config = spinor_config([1, 1, 1], 0.5);
     config.relativity = ScfRelativity::Scalar;
     let error = physics.spinor_product_input(&config, [0.0; 3]).unwrap_err();
     assert!(matches!(
         error,
-        SnapshotDftError::SpinorProductRejectsScalarRelativity
+        CheckpointPhysicsError::SpinorProductRejectsScalarRelativity
     ));
 }
 
 #[test]
 fn spinor_product_input_rejects_soc_second_variation() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let mut config = spinor_config([1, 1, 1], 0.5);
     config.relativity = ScfRelativity::SocSecondVariation {
         window: FirstVariationWindow::new(0, 1).unwrap(),
@@ -277,19 +277,19 @@ fn spinor_product_input_rejects_soc_second_variation() {
     let error = physics.spinor_product_input(&config, [0.0; 3]).unwrap_err();
     assert!(matches!(
         error,
-        SnapshotDftError::SpinorProductRejectsSocSecondVariation
+        CheckpointPhysicsError::SpinorProductRejectsSocSecondVariation
     ));
 }
 
 #[test]
 fn q0_signed_kappa_lo_row_maps_to_dirac_radial_and_samples() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let config = spinor_config([1, 1, 1], 0.5);
     let input = physics.spinor_product_input(&config, [0.0; 3]).unwrap();
 
     assert_eq!(
         input.source.provenance.reference.as_deref(),
-        Some("snapshot-dft-frozen-spinor-product-input")
+        Some("checkpoint-dft-frozen-spinor-product-input")
     );
     assert!(input.source.radials[0].cores.is_empty());
     assert_eq!(input.orbitals.band_window.start, 0);
@@ -349,7 +349,7 @@ fn q0_signed_kappa_lo_row_maps_to_dirac_radial_and_samples() {
 
 #[test]
 fn q0_row_count_equals_two_pauli_pw_blocks_plus_site_lo() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let config = spinor_config([1, 1, 1], 1.0);
     let input = physics.spinor_product_input(&config, [0.0; 3]).unwrap();
     let compiled = &input.orbitals.bases[0];
@@ -385,7 +385,7 @@ fn q0_row_count_equals_two_pauli_pw_blocks_plus_site_lo() {
 
 #[test]
 fn physical_pq_matches_independent_dirac_materialization() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let config = spinor_config([1, 1, 1], 0.5);
     let input = physics.spinor_product_input(&config, [0.0; 3]).unwrap();
     let mesh = &input.source.radials[0].mesh;
@@ -434,7 +434,7 @@ fn physical_pq_matches_independent_dirac_materialization() {
 
 #[test]
 fn finite_q_wrap_and_off_mesh_transfer() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let config = spinor_config([2, 1, 1], 0.5);
     let q_fractional = [1.5, 0.0, 0.0];
     let input = physics.spinor_product_input(&config, q_fractional).unwrap();
@@ -483,7 +483,7 @@ fn finite_q_wrap_and_off_mesh_transfer() {
     assert!(
         matches!(
             error,
-            SnapshotDftError::OffMeshTransfer {
+            CheckpointPhysicsError::OffMeshTransfer {
                 q_in: [q0, 0.0, 0.0],
                 q_canonical: [qc, 0.0, 0.0],
                 folded: [folded, 0.0, 0.0],
@@ -498,7 +498,7 @@ fn finite_q_wrap_and_off_mesh_transfer() {
 
 #[test]
 fn differing_per_k_counts_keep_full_eigenvector_rows() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let config = spinor_config([2, 1, 1], 0.5);
     let input = physics.spinor_product_input(&config, [0.0; 3]).unwrap();
     assert_eq!(input.orbitals.band_window.start, 0);

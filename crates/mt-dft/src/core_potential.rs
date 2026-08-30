@@ -43,7 +43,7 @@ pub struct CorePotentialBuildSpec {
     pub xc_angular_point_count: usize,
 }
 
-/// Evidence for aligning a frozen snapshot's two potential representations.
+/// Evidence for aligning a frozen checkpoint's two potential representations.
 ///
 /// The correction is the unique cubic Hermite bridge that matches the MT
 /// value and slope at the inner endpoint and vanishes with zero slope at the
@@ -123,19 +123,19 @@ pub fn build_extended_core_potentials(
     )
 }
 
-/// Bootstrap extended core potentials directly from a frozen snapshot total potential.
+/// Bootstrap extended core potentials directly from a frozen checkpoint total potential.
 ///
 /// This path does not require a neutral valence-plus-core density or a Poisson
 /// solve. The physical MT monopole, including `-Z/r`, is copied unchanged. The
-/// snapshot interstitial Fourier field supplies the outer radial shape. Since
-/// independently stored snapshot representations need not join pointwise, a
+/// checkpoint interstitial Fourier field supplies the outer radial shape. Since
+/// independently stored checkpoint representations need not join pointwise, a
 /// compact cubic Hermite correction aligns value and slope at the MT boundary
 /// and vanishes with zero slope at the extended-mesh endpoint. Thus the raw
 /// periodic field, rather than a guessed atomic tail, controls the asymptote.
 /// Every join parameter and endpoint residual is returned as
 /// [`CorePotentialJoin`].
-pub fn build_extended_snapshot_core_potentials(
-    snapshot_total: &crate::RegionalPotential,
+pub fn build_extended_checkpoint_core_potentials(
+    checkpoint_total: &crate::RegionalPotential,
     geometry: &InterstitialGeometry,
     nuclear_charges: &[f64],
     extended_meshes: &[ExponentialMesh],
@@ -154,10 +154,10 @@ pub fn build_extended_snapshot_core_potentials(
             actual: extended_meshes.len(),
         });
     }
-    require_snapshot_site_count(snapshot_total.scalar().muffin_tins().len(), site_count)?;
-    build_snapshot_scalar(
-        snapshot_total.scalar().muffin_tins(),
-        snapshot_total.scalar().interstitial(),
+    require_checkpoint_site_count(checkpoint_total.scalar().muffin_tins().len(), site_count)?;
+    build_checkpoint_scalar(
+        checkpoint_total.scalar().muffin_tins(),
+        checkpoint_total.scalar().interstitial(),
         geometry,
         nuclear_charges,
         extended_meshes,
@@ -165,7 +165,7 @@ pub fn build_extended_snapshot_core_potentials(
     )
 }
 
-fn build_snapshot_scalar(
+fn build_checkpoint_scalar(
     muffin_tins: &[MuffinTinField],
     interstitial: &InterstitialField,
     geometry: &InterstitialGeometry,
@@ -191,8 +191,8 @@ fn build_snapshot_scalar(
                     tolerance: radius_tolerance,
                 });
             }
-            let monopole = physical_snapshot_monopole(site, "scalar", muffin_tin)?;
-            let modes = centered_snapshot_modes(interstitial, sphere.center.map(Bohr::get));
+            let monopole = physical_checkpoint_monopole(site, "scalar", muffin_tin)?;
+            let modes = centered_checkpoint_modes(interstitial, sphere.center.map(Bohr::get));
             let mut outer = extended_mesh.radii()[muffin_tin.mesh().len() - 1..]
                 .iter()
                 .enumerate()
@@ -424,7 +424,7 @@ fn physical_effective_monopole(
         .collect()
 }
 
-fn physical_snapshot_monopole(
+fn physical_checkpoint_monopole(
     site: usize,
     spin: &'static str,
     muffin_tin: &MuffinTinField,
@@ -436,7 +436,7 @@ fn physical_snapshot_monopole(
             .ok_or(CorePotentialBuildError::MissingMonopole {
                 site,
                 spin,
-                component: "frozen snapshot",
+                component: "frozen checkpoint",
             })?;
     let normalization = (4.0 * PI).sqrt();
     monopole
@@ -485,7 +485,7 @@ fn centered_electrostatic_modes(
         .collect()
 }
 
-fn centered_snapshot_modes(
+fn centered_checkpoint_modes(
     interstitial: &InterstitialField,
     center: [f64; 3],
 ) -> Vec<CenteredSphericalFourierMode> {
@@ -600,14 +600,14 @@ fn require_xc_site_count(actual: usize, expected: usize) -> Result<(), CorePoten
     }
 }
 
-fn require_snapshot_site_count(
+fn require_checkpoint_site_count(
     actual: usize,
     expected: usize,
 ) -> Result<(), CorePotentialBuildError> {
     if actual == expected {
         Ok(())
     } else {
-        Err(CorePotentialBuildError::SnapshotSiteCount { expected, actual })
+        Err(CorePotentialBuildError::CheckpointSiteCount { expected, actual })
     }
 }
 
@@ -624,8 +624,8 @@ pub enum CorePotentialBuildError {
     ExtendedMeshCount { expected: usize, actual: usize },
     #[error("scalar XC muffin-tin potential has {actual} sites, expected {expected}")]
     XcSiteCount { expected: usize, actual: usize },
-    #[error("scalar frozen snapshot muffin-tin potential has {actual} sites, expected {expected}")]
-    SnapshotSiteCount { expected: usize, actual: usize },
+    #[error("scalar frozen checkpoint muffin-tin potential has {actual} sites, expected {expected}")]
+    CheckpointSiteCount { expected: usize, actual: usize },
     #[error("charge/scalar-XC/raw-electrostatic interstitial layouts differ")]
     InterstitialLayout,
     #[error("site {site} scalar XC and raw electrostatic muffin-tin meshes differ")]
@@ -924,25 +924,25 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_bridge_preserves_mt_and_reports_compact_join() {
+    fn checkpoint_bridge_preserves_mt_and_reports_compact_join() {
         let radial = mesh(101);
         let extended = mesh(108);
         let charge = 3.0;
         let regular = 0.7;
-        let snapshot_mt = muffin_tin(&radial, |radius| -charge / radius + regular);
+        let checkpoint_mt = muffin_tin(&radial, |radius| -charge / radius + regular);
         let reciprocal_layout = layout();
         let outer_level = -1.25;
         let scalar = crate::RegionalScalarField::new(
             geometry(),
-            vec![snapshot_mt],
+            vec![checkpoint_mt],
             interstitial(&reciprocal_layout, outer_level),
         )
         .unwrap();
         let zero = scalar.zero_like();
-        let snapshot =
+        let checkpoint =
             crate::RegionalPotential::new(scalar, [zero.clone(), zero.clone(), zero]).unwrap();
-        let built = build_extended_snapshot_core_potentials(
-            &snapshot,
+        let built = build_extended_checkpoint_core_potentials(
+            &checkpoint,
             &geometry(),
             &[charge],
             &[extended],

@@ -7,7 +7,7 @@
 use muffintin_prodbasis::TransferQ;
 use muffintin_core::{GVector, InverseBohr, ReciprocalLattice};
 
-use crate::snapshot_dft::{SnapshotDftError, g_vector};
+use crate::checkpoint_physics::{CheckpointPhysicsError, g_vector};
 
 const MESH_COORD_TOLERANCE: f64 = 1.0e-12;
 
@@ -31,9 +31,9 @@ pub(crate) struct MeshKMinusQ {
 pub(crate) fn canonical_transfer_q(
     q_fractional: [f64; 3],
     reciprocal: ReciprocalLattice,
-) -> Result<CanonicalTransfer, SnapshotDftError> {
+) -> Result<CanonicalTransfer, CheckpointPhysicsError> {
     if q_fractional.iter().any(|value| !value.is_finite()) {
-        return Err(SnapshotDftError::NonFiniteKPoint(q_fractional));
+        return Err(CheckpointPhysicsError::NonFiniteKPoint(q_fractional));
     }
     let (q_canonical, q_wrap) = fold_to_unit_cell(q_fractional);
     let q_input = fractional_to_reciprocal(q_fractional, reciprocal.basis());
@@ -58,7 +58,7 @@ pub(crate) fn map_k_minus_q(
     transfer: CanonicalTransfer,
     points: &[[f64; 3]],
     reciprocal: ReciprocalLattice,
-) -> Result<MeshKMinusQ, SnapshotDftError> {
+) -> Result<MeshKMinusQ, CheckpointPhysicsError> {
     let mut folded = [0.0; 3];
     for axis in 0..3 {
         folded[axis] = (k_frac[axis] - transfer.q_canonical[axis]).rem_euclid(1.0);
@@ -66,7 +66,7 @@ pub(crate) fn map_k_minus_q(
     let kq_index = points
         .iter()
         .position(|point| coords_on_mesh(point, folded))
-        .ok_or(SnapshotDftError::OffMeshTransfer {
+        .ok_or(CheckpointPhysicsError::OffMeshTransfer {
             k: k_frac,
             q_in: transfer.q_in,
             q_canonical: transfer.q_canonical,

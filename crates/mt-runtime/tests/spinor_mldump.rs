@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 use std::path::PathBuf;
 
 use muffintin::{
-    SPINOR_COULOMB_EXACTNESS_FLOOR, SPINOR_RADIAL_LO0, SnapshotDftPhysics, SpinorCoulombError,
+    SPINOR_COULOMB_EXACTNESS_FLOOR, SPINOR_RADIAL_LO0, CheckpointPhysics, SpinorCoulombError,
     SpinorCoulombResult, SpinorCoulombSpec, SpinorMldumpError, SpinorProductInput,
     build_spinor_coulomb, build_spinor_thc, write_spinor_mldump,
 };
@@ -22,7 +22,7 @@ use num_complex::Complex64;
 mod spinor_hydrogen;
 
 use spinor_hydrogen::{
-    LATTICE, coulomb_spec, hydrogen_spinor_snapshot, parent_grid, spinor_config, thc_spec,
+    LATTICE, coulomb_spec, hydrogen_spinor_checkpoint, parent_grid, spinor_config, thc_spec,
 };
 
 fn fixture_path(name: &str) -> PathBuf {
@@ -142,7 +142,7 @@ fn build_path() -> (
     SpinorCoulombResult,
     muffintin::SpinorCoulombSpec,
 ) {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let q0 = physics
         .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();

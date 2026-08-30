@@ -1,8 +1,8 @@
 //! Strict `spex.snapshot_hdf` v1 reader for SPEX-owned frozen fields.
 //!
 //! Signed $\kappa$, rLO, and HDLO are not SPEX-owned. [`read_spex_snapshot_hdf`]
-//! returns [`SpexFrozenFieldsV1`]. [`materialize_snapshot_v2`] builds
-//! [`SnapshotV2`] only with an explicit caller-owned recipe. Missing groups
+//! returns [`SpexFrozenFieldsV1`]. [`materialize_checkpoint_v2`] builds
+//! [`CheckpointV2`] only with an explicit caller-owned recipe. Missing groups
 //! are typed blockers. All-zero $B_x$/$B_y$ require `@zero_source`. String
 //! attributes follow Hwrapper `hdf_rdwr_a_str`: `H5T_NATIVE_CHARACTER` of
 //! content length, scalar or length-1, trailing spaces/NULs trimmed. Dataset
@@ -23,15 +23,15 @@ use crate::mldump::{
     child_basename, create_dataset, require_finite_f64s, require_flat_len, require_len,
     require_numeric_dataset, require_shape, usize_as_i64, write_f64_attr, write_i64_attr,
 };
-use crate::snapshot::{
+use crate::checkpoint::{
     AngularBasisV1, BasisHintsV1, EnergyParameterV1, ExponentialMeshSpecV1, FourierNormalizationV1,
     FourierPhaseV1, LinearizationV1, MetaV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTagV1, SNAPSHOT_FORMAT, SphericalChannelConventionV1,
+    RadialEquationTagV1, CHECKPOINT_FORMAT, SphericalChannelConventionV1,
 };
-use crate::snapshot_v2::{
+use crate::checkpoint_v2::{
     Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2, FourierCoefficientV2, GeometryV2,
     InitialV2, InterstitialFieldV2, MuffinTinFieldV2, PotentialV2, RadialBasisSpinV2,
-    RegionalFieldV2, SNAPSHOT_VERSION_V2, SiteRadialBasisV2, SiteV2, SnapshotV2,
+    RegionalFieldV2, CHECKPOINT_VERSION_V2, SiteRadialBasisV2, SiteV2, CheckpointV2,
     SphericalChannelV2,
 };
 use crate::units::{EnergyUnitV1, InverseLengthUnitV1, LengthUnitV1};
@@ -42,13 +42,13 @@ pub const SPEX_SNAPSHOT_HDF_SCHEMA_NAME: &str = "spex.snapshot_hdf";
 pub const SPEX_SNAPSHOT_HDF_SCHEMA_VERSION: i64 = 1;
 /// Required `source_kind` token.
 pub const SPEX_SNAPSHOT_HDF_SOURCE_KIND: &str = "spex-generic-dft";
-/// Scale-aware Hermitian ingest gate used only at SPEX `materialize_snapshot_v2`.
+/// Scale-aware Hermitian ingest gate used only at SPEX `materialize_checkpoint_v2`.
 ///
-/// Live Sm fcc `snapshot.h5` (SHA-256 `9f060f74…`) has
+/// Live Sm fcc `checkpoint.h5` (SHA-256 `9f060f74…`) has
 /// \(V(\mathbf G)-V(-\mathbf G)^*\) of order \(10^{-20}\) to \(10^{-18}\).
 /// The gate is the project fractional tolerance
 /// [`crate::mldump::FRACTIONAL_EQ_TOLERANCE`] times
-/// \(\max(|c|,|c'|,1)\), the same scale used by `approx_eq`. Snapshot V2
+/// \(\max(|c|,|c'|,1)\), the same scale used by `approx_eq`. Checkpoint V2
 /// still requires exact equality after ingest.
 pub const SPEX_FOURIER_HERMITIAN_TOLERANCE: f64 = crate::mldump::FRACTIONAL_EQ_TOLERANCE;
 
@@ -121,7 +121,7 @@ pub enum SpexMaterialChannelKind {
     Hdlo,
 }
 
-/// One libmuffintin-owned channel used to materialize Snapshot V2.
+/// One libmuffintin-owned channel used to materialize Checkpoint V2.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpexMaterialChannelV1 {
     pub site_id: String,
@@ -141,10 +141,10 @@ pub struct SpexMaterialBasisRecipeV1 {
     pub channels: Vec<SpexMaterialChannelV1>,
 }
 
-/// SPEX-owned frozen fields. Not a completed material Snapshot V2.
+/// SPEX-owned frozen fields. Not a completed material Checkpoint V2.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpexFrozenFieldsV1 {
-    pub snapshot: SnapshotV2,
+    pub checkpoint: CheckpointV2,
     pub source_revision: String,
     pub source_kind: String,
     pub plane_wave_cutoff: f64,
@@ -155,15 +155,15 @@ pub struct SpexFrozenFieldsV1 {
     pub scalar_los: Vec<SpexScalarLoTableV1>,
 }
 
-/// Snapshot V2 after SPEX fields plus a hashed recipe pass compatibility.
+/// Checkpoint V2 after SPEX fields plus a hashed recipe pass compatibility.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpexMaterializedSnapshotV1 {
-    pub snapshot: SnapshotV2,
+    pub checkpoint: CheckpointV2,
     pub spex_hashes: Vec<SpexSnapshotHashV1>,
     pub recipe_sha256: String,
 }
 
-/// Read SPEX-owned frozen fields. Does not materialize Snapshot V2 as a
+/// Read SPEX-owned frozen fields. Does not materialize Checkpoint V2 as a
 /// signed-$\kappa$ material result.
 pub fn read_spex_snapshot_hdf(path: &Path) -> Result<SpexFrozenFieldsV1, IoError> {
     let file = File::open(path)?;
@@ -199,16 +199,16 @@ pub fn read_spex_snapshot_hdf(path: &Path) -> Result<SpexFrozenFieldsV1, IoError
             &geometry,
             meta.potential_convention.angular_basis,
         )?;
-    let snapshot = SnapshotV2 {
-        format: SNAPSHOT_FORMAT.to_owned(),
-        version: SNAPSHOT_VERSION_V2,
+    let checkpoint = CheckpointV2 {
+        format: CHECKPOINT_FORMAT.to_owned(),
+        version: CHECKPOINT_VERSION_V2,
         meta,
         geometry,
         initial,
     };
-    require_spherical_lm_pairs(&snapshot)?;
+    require_spherical_lm_pairs(&checkpoint)?;
     Ok(SpexFrozenFieldsV1 {
-        snapshot,
+        checkpoint,
         source_revision,
         source_kind,
         plane_wave_cutoff,
@@ -222,7 +222,7 @@ pub fn read_spex_snapshot_hdf(path: &Path) -> Result<SpexFrozenFieldsV1, IoError
 
 /// Write SPEX-owned frozen fields. Does not write signed $\kappa$.
 pub fn write_spex_snapshot_hdf(path: &Path, file: &SpexFrozenFieldsV1) -> Result<(), IoError> {
-    require_spherical_lm_pairs(&file.snapshot)?;
+    require_spherical_lm_pairs(&file.checkpoint)?;
     if file.source_kind != SPEX_SNAPSHOT_HDF_SOURCE_KIND {
         return Err(ValidationError::InvalidValue {
             path: "/meta/@source_kind".to_owned(),
@@ -239,15 +239,15 @@ pub fn write_spex_snapshot_hdf(path: &Path, file: &SpexFrozenFieldsV1) -> Result
     write_units(&hdf.create_group(GROUP_UNITS)?)?;
     write_meta(
         &hdf.create_group(GROUP_META)?,
-        &file.snapshot.meta,
+        &file.checkpoint.meta,
         &file.source_revision,
         &file.source_kind,
     )?;
     write_hashes(&hdf.create_group(GROUP_HASHES)?, &file.hashes)?;
-    write_geometry(&hdf.create_group(GROUP_GEOMETRY)?, &file.snapshot.geometry)?;
+    write_geometry(&hdf.create_group(GROUP_GEOMETRY)?, &file.checkpoint.geometry)?;
     write_radial_basis(
         &hdf.create_group(GROUP_RADIAL)?,
-        &file.snapshot.geometry,
+        &file.checkpoint.geometry,
         &file.scalar_los,
     )?;
     write_initial(&hdf.create_group(GROUP_INITIAL)?, file)
@@ -470,10 +470,10 @@ fn write_hashes(group: &Group, hashes: &[SpexSnapshotHashV1]) -> Result<(), IoEr
 }
 
 /// Geometry, finite samples, unique G labels, and the rest of
-/// [`SnapshotV2::validate`] are enforced field-by-field during HDF5 ingest.
+/// [`CheckpointV2::validate`] are enforced field-by-field during HDF5 ingest.
 /// Only m within [-l, l] and unique (l, m) pairs are checked here.
-fn require_spherical_lm_pairs(snapshot: &SnapshotV2) -> Result<(), IoError> {
-    match &snapshot.initial {
+fn require_spherical_lm_pairs(checkpoint: &CheckpointV2) -> Result<(), IoError> {
+    match &checkpoint.initial {
         InitialV2::FrozenPotential { potential } => require_potential_lm(potential),
         InitialV2::Restart { density, potential } => {
             require_density_lm(density)?;
@@ -521,7 +521,7 @@ fn require_regional_lm(path: &str, field: &RegionalFieldV2) -> Result<(), IoErro
 }
 
 struct GeometryScratch {
-    lattice: crate::snapshot::LatticeV1,
+    lattice: crate::checkpoint::LatticeV1,
     sites: Vec<SiteV2>,
 }
 
@@ -534,7 +534,7 @@ fn read_geometry(group: &Group) -> Result<GeometryScratch, IoError> {
             vectors[row][column] = lattice_flat[row * 3 + column];
         }
     }
-    let lattice = crate::snapshot::LatticeV1 {
+    let lattice = crate::checkpoint::LatticeV1 {
         unit: LengthUnitV1::Bohr,
         vectors,
     };
@@ -1046,7 +1046,7 @@ fn read_initial(
 }
 
 fn write_initial(group: &Group, file: &SpexFrozenFieldsV1) -> Result<(), IoError> {
-    let (kind, potential, density) = match &file.snapshot.initial {
+    let (kind, potential, density) = match &file.checkpoint.initial {
         InitialV2::FrozenPotential { potential } => ("frozen-potential", potential, None),
         InitialV2::Restart { density, potential } => ("restart", potential, Some(density)),
     };
@@ -1064,14 +1064,14 @@ fn write_initial(group: &Group, file: &SpexFrozenFieldsV1) -> Result<(), IoError
     write_potential(
         &group.create_group(GROUP_POTENTIAL)?,
         potential,
-        &file.snapshot.geometry,
+        &file.checkpoint.geometry,
         &file.spin_layout,
     )?;
     if let Some(density) = density {
         write_density(
             &group.create_group(GROUP_DENSITY)?,
             density,
-            &file.snapshot.geometry,
+            &file.checkpoint.geometry,
         )?;
     }
     Ok(())
@@ -2646,8 +2646,8 @@ fn symmetrize_regional_interstitial(
     symmetrize_interstitial_fourier(&mut field.interstitial, path)
 }
 
-fn symmetrize_snapshot_interstitial_fourier(snapshot: &mut SnapshotV2) -> Result<(), IoError> {
-    match &mut snapshot.initial {
+fn symmetrize_checkpoint_interstitial_fourier(checkpoint: &mut CheckpointV2) -> Result<(), IoError> {
+    match &mut checkpoint.initial {
         InitialV2::FrozenPotential { potential } => {
             symmetrize_regional_interstitial(&mut potential.v0, "/initial/potential/v0")?;
             symmetrize_regional_interstitial(&mut potential.bx, "/initial/potential/bx")?;
@@ -2669,7 +2669,7 @@ fn symmetrize_snapshot_interstitial_fourier(snapshot: &mut SnapshotV2) -> Result
 }
 
 /// Combine SPEX frozen fields with a caller-owned signed-$\kappa$ recipe.
-pub fn materialize_snapshot_v2(
+pub fn materialize_checkpoint_v2(
     fields: &SpexFrozenFieldsV1,
     recipe: &SpexMaterialBasisRecipeV1,
 ) -> Result<SpexMaterializedSnapshotV1, IoError> {
@@ -2684,7 +2684,7 @@ pub fn materialize_snapshot_v2(
     for channel in &recipe.channels {
         nonempty("material_basis_recipe.site_id", &channel.site_id)?;
         let site_ok = fields
-            .snapshot
+            .checkpoint
             .geometry
             .sites
             .iter()
@@ -2731,7 +2731,7 @@ pub fn materialize_snapshot_v2(
                     }
                     .into());
                 }
-                let matched = fields.snapshot.geometry.radial_basis.iter().any(|basis| {
+                let matched = fields.checkpoint.geometry.radial_basis.iter().any(|basis| {
                     basis.site_id == channel.site_id
                         && basis
                             .linearization
@@ -2750,27 +2750,27 @@ pub fn materialize_snapshot_v2(
             }
         }
     }
-    let mut snapshot = fields.snapshot.clone();
-    symmetrize_snapshot_interstitial_fourier(&mut snapshot)?;
-    snapshot.meta.annotations.insert(
+    let mut checkpoint = fields.checkpoint.clone();
+    symmetrize_checkpoint_interstitial_fourier(&mut checkpoint)?;
+    checkpoint.meta.annotations.insert(
         "spex.interstitial_phase".to_owned(),
         fields.interstitial_phase.clone(),
     );
-    snapshot
+    checkpoint
         .meta
         .annotations
         .insert("spex.spin_layout".to_owned(), fields.spin_layout.clone());
-    snapshot.meta.annotations.insert(
+    checkpoint.meta.annotations.insert(
         "material_basis.recipe_sha256".to_owned(),
         recipe.recipe_sha256.clone(),
     );
-    snapshot.meta.annotations.insert(
+    checkpoint.meta.annotations.insert(
         "material_basis.producer".to_owned(),
         recipe.producer.clone(),
     );
-    snapshot.validate()?;
+    checkpoint.validate()?;
     Ok(SpexMaterializedSnapshotV1 {
-        snapshot,
+        checkpoint,
         spex_hashes: fields.hashes.clone(),
         recipe_sha256: recipe.recipe_sha256.clone(),
     })

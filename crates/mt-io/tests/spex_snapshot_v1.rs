@@ -8,13 +8,13 @@ use muffintin_io::{
     FieldRepresentationV2, FieldUnitV2, FourierCoefficientV2, FourierNormalizationV1,
     FourierPhaseV1, GeometryV2, InitialV2, InterstitialFieldV2, IoError, LatticeV1,
     LinearizationV1, MetaV1, MuffinTinFieldV2, PotentialConventionV1, PotentialRadialQuantityV1,
-    PotentialV2, RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, SNAPSHOT_FORMAT,
-    SNAPSHOT_VERSION_V2, SPEX_FOURIER_HERMITIAN_TOLERANCE, SPEX_SNAPSHOT_HDF_SCHEMA_NAME,
+    PotentialV2, RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, CHECKPOINT_FORMAT,
+    CHECKPOINT_VERSION_V2, SPEX_FOURIER_HERMITIAN_TOLERANCE, SPEX_SNAPSHOT_HDF_SCHEMA_NAME,
     SPEX_SNAPSHOT_HDF_SCHEMA_VERSION, SPEX_SNAPSHOT_HDF_SOURCE_KIND, SiteRadialBasisV2, SiteV2,
-    SnapshotV2, SpexFrozenFieldsV1, SpexMaterialBasisRecipeV1, SpexMaterialChannelKind,
+    CheckpointV2, SpexFrozenFieldsV1, SpexMaterialBasisRecipeV1, SpexMaterialChannelKind,
     SpexMaterialChannelV1, SpexScalarLoKind, SpexScalarLoTableV1, SpexScalarLoV1,
     SpexSnapshotHashV1, SphericalChannelConventionV1, SphericalChannelV2, ValidationError,
-    materialize_snapshot_v2, read_spex_snapshot_hdf, write_spex_snapshot_hdf,
+    materialize_checkpoint_v2, read_spex_snapshot_hdf, write_spex_snapshot_hdf,
 };
 use muffintin_io::{EnergyUnitV1, InverseLengthUnitV1, LengthUnitV1};
 
@@ -81,11 +81,11 @@ fn sample_fields() -> SpexFrozenFieldsV1 {
     };
     let v0 = regional(site_id, &mesh, -1.0);
     let zero = regional(site_id, &mesh, 0.0);
-    let snapshot = SnapshotV2 {
-        format: SNAPSHOT_FORMAT.to_owned(),
-        version: SNAPSHOT_VERSION_V2,
+    let checkpoint = CheckpointV2 {
+        format: CHECKPOINT_FORMAT.to_owned(),
+        version: CHECKPOINT_VERSION_V2,
         meta: MetaV1 {
-            title: "spex snapshot hdf fixture".to_owned(),
+            title: "spex checkpoint hdf fixture".to_owned(),
             producer: "spex-test".to_owned(),
             producer_version: Some("06.00pre38".to_owned()),
             energy_zero: "SPEX absolute Hartree".to_owned(),
@@ -140,7 +140,7 @@ fn sample_fields() -> SpexFrozenFieldsV1 {
         },
     };
     SpexFrozenFieldsV1 {
-        snapshot,
+        checkpoint,
         source_revision: "89ff8f8c80711eb6ded36efba688c8a7fd640bf9".to_owned(),
         source_kind: SPEX_SNAPSHOT_HDF_SOURCE_KIND.to_owned(),
         plane_wave_cutoff: 3.5,
@@ -184,7 +184,7 @@ fn matching_recipe() -> SpexMaterialBasisRecipeV1 {
 
 #[test]
 fn spex_frozen_fields_roundtrip_without_kappa() {
-    let path = fixture_path("libmuffintin-spex-snapshot-hdf-v1-revised.h5");
+    let path = fixture_path("libmuffintin-spex-checkpoint-hdf-v1-revised.h5");
     let source = sample_fields();
     write_spex_snapshot_hdf(&path, &source).unwrap();
     let hdf = hdf5_metno::File::open(&path).unwrap();
@@ -214,10 +214,10 @@ fn spex_frozen_fields_roundtrip_without_kappa() {
     );
     drop(hdf);
     let read = read_spex_snapshot_hdf(&path).unwrap();
-    assert_eq!(read.snapshot.geometry, source.snapshot.geometry);
+    assert_eq!(read.checkpoint.geometry, source.checkpoint.geometry);
     assert_eq!(read.scalar_los, source.scalar_los);
     assert_eq!(read.spin_layout, "collinear-up-down");
-    match read.snapshot.geometry.radial_basis[0].radial_equation {
+    match read.checkpoint.geometry.radial_basis[0].radial_equation {
         RadialEquationTagV1::ScalarKoellingHarmon => {}
         other => panic!("expected KH, got {other:?}"),
     }
@@ -266,7 +266,7 @@ fn artifact_recipe(fields: &SpexFrozenFieldsV1) -> SpexMaterialBasisRecipeV1 {
 }
 
 fn v0_coeff(fields: &SpexFrozenFieldsV1, g: [i32; 3]) -> muffintin_io::Complex64V2 {
-    match &fields.snapshot.initial {
+    match &fields.checkpoint.initial {
         InitialV2::FrozenPotential { potential } => {
             potential
                 .v0
@@ -281,20 +281,20 @@ fn v0_coeff(fields: &SpexFrozenFieldsV1, g: [i32; 3]) -> muffintin_io::Complex64
     }
 }
 
-/// Live SPEX snapshot at `/tmp/spex-sm-artifact/snapshot.h5`.
+/// Live SPEX snapshot at `/tmp/spex-sm-artifact/checkpoint.h5`.
 ///
 /// Ordinary workspace tests skip this. Run:
-/// `cargo test -p libmuffintin-io --test spex_snapshot_v1 consume_wsl_b45d9b9_snapshot_h5 -- --ignored --exact --nocapture`
-#[ignore = "requires local SPEX artifact /tmp/spex-sm-artifact/snapshot.h5; run with --ignored"]
+/// `cargo test -p libmuffintin-io --test spex_snapshot_v1 consume_wsl_b45d9b9_checkpoint_h5 -- --ignored --exact --nocapture`
+#[ignore = "requires local SPEX artifact /tmp/spex-sm-artifact/checkpoint.h5; run with --ignored"]
 #[test]
-fn consume_wsl_b45d9b9_snapshot_h5() {
-    let path = std::path::Path::new("/tmp/spex-sm-artifact/snapshot.h5");
+fn consume_wsl_b45d9b9_checkpoint_h5() {
+    let path = std::path::Path::new("/tmp/spex-sm-artifact/checkpoint.h5");
     assert!(
         path.is_file(),
-        "authorized artifact missing at /tmp/spex-sm-artifact/snapshot.h5"
+        "authorized artifact missing at /tmp/spex-sm-artifact/checkpoint.h5"
     );
     let fields =
-        read_spex_snapshot_hdf(path).expect("frozen reader must accept b45d9b9 snapshot.h5");
+        read_spex_snapshot_hdf(path).expect("frozen reader must accept b45d9b9 checkpoint.h5");
     assert_eq!(fields.source_kind, SPEX_SNAPSHOT_HDF_SOURCE_KIND);
     assert_eq!(fields.spin_layout, "collinear-up-down");
     assert_eq!(fields.interstitial_phase, "positive-exponent");
@@ -309,20 +309,20 @@ fn consume_wsl_b45d9b9_snapshot_h5() {
     );
     assert_eq!(fields.scalar_los.len(), 2);
     assert_eq!(fields.scalar_los[0].orbitals.len(), 2);
-    match fields.snapshot.geometry.radial_basis[0].radial_equation {
+    match fields.checkpoint.geometry.radial_basis[0].radial_equation {
         RadialEquationTagV1::ScalarKoellingHarmon => {}
         other => panic!("expected KH, got {other:?}"),
     }
 }
 
-/// Live SPEX snapshot at `/tmp/spex-sm-artifact/snapshot.h5`.
+/// Live SPEX snapshot at `/tmp/spex-sm-artifact/checkpoint.h5`.
 ///
 /// Ordinary workspace tests skip this. Run:
 /// `cargo test -p libmuffintin-io --test spex_snapshot_v1 materialize_symmetrizes_live_ulp_and_rejects_large_hermitian_error -- --ignored --exact --nocapture`
-#[ignore = "requires local SPEX artifact /tmp/spex-sm-artifact/snapshot.h5; run with --ignored"]
+#[ignore = "requires local SPEX artifact /tmp/spex-sm-artifact/checkpoint.h5; run with --ignored"]
 #[test]
 fn materialize_symmetrizes_live_ulp_and_rejects_large_hermitian_error() {
-    let path = std::path::Path::new("/tmp/spex-sm-artifact/snapshot.h5");
+    let path = std::path::Path::new("/tmp/spex-sm-artifact/checkpoint.h5");
     assert!(path.is_file(), "authorized artifact missing");
     let fields = read_spex_snapshot_hdf(path).unwrap();
     let g = [-13, -7, -7];
@@ -343,8 +343,8 @@ fn materialize_symmetrizes_live_ulp_and_rejects_large_hermitian_error() {
         SPEX_FOURIER_HERMITIAN_TOLERANCE * scale
     );
     let recipe = artifact_recipe(&fields);
-    let done = materialize_snapshot_v2(&fields, &recipe).expect("ULP-scale pair must materialize");
-    let InitialV2::FrozenPotential { potential } = &done.snapshot.initial else {
+    let done = materialize_checkpoint_v2(&fields, &recipe).expect("ULP-scale pair must materialize");
+    let InitialV2::FrozenPotential { potential } = &done.checkpoint.initial else {
         panic!("frozen-potential");
     };
     let left = potential
@@ -376,7 +376,7 @@ fn materialize_symmetrizes_live_ulp_and_rejects_large_hermitian_error() {
     assert_eq!(zero.imaginary, 0.0);
 
     let mut perturbed = fields.clone();
-    match &mut perturbed.snapshot.initial {
+    match &mut perturbed.checkpoint.initial {
         InitialV2::FrozenPotential { potential } => {
             let coefficient = potential
                 .v0
@@ -389,7 +389,7 @@ fn materialize_symmetrizes_live_ulp_and_rejects_large_hermitian_error() {
         }
         InitialV2::Restart { .. } => panic!("frozen-potential"),
     }
-    match materialize_snapshot_v2(&perturbed, &recipe) {
+    match materialize_checkpoint_v2(&perturbed, &recipe) {
         Err(IoError::Validation(ValidationError::SpexFourierHermitian {
             g: failed,
             discrepancy,
@@ -408,10 +408,10 @@ fn materialize_symmetrizes_live_ulp_and_rejects_large_hermitian_error() {
 
 #[test]
 fn empty_lo_kind_table_is_allowed() {
-    let path = fixture_path("libmuffintin-spex-snapshot-hdf-v1-empty-lo.h5");
+    let path = fixture_path("libmuffintin-spex-checkpoint-hdf-v1-empty-lo.h5");
     let mut source = sample_fields();
     source.scalar_los[0].orbitals.clear();
-    source.snapshot.geometry.radial_basis[0]
+    source.checkpoint.geometry.radial_basis[0]
         .linearization
         .local_orbital_energies
         .clear();
@@ -422,7 +422,7 @@ fn empty_lo_kind_table_is_allowed() {
 
 #[test]
 fn missing_bx_is_a_typed_blocker() {
-    let path = fixture_path("libmuffintin-spex-snapshot-hdf-v1-missing-bx.h5");
+    let path = fixture_path("libmuffintin-spex-checkpoint-hdf-v1-missing-bx.h5");
     write_spex_snapshot_hdf(&path, &sample_fields()).unwrap();
     {
         let hdf = hdf5_metno::File::open_rw(&path).unwrap();
@@ -444,7 +444,7 @@ fn missing_bx_is_a_typed_blocker() {
 
 #[test]
 fn kappa_dataset_is_a_typed_blocker() {
-    let path = fixture_path("libmuffintin-spex-snapshot-hdf-v1-kappa.h5");
+    let path = fixture_path("libmuffintin-spex-checkpoint-hdf-v1-kappa.h5");
     write_spex_snapshot_hdf(&path, &sample_fields()).unwrap();
     {
         let hdf = hdf5_metno::File::open_rw(&path).unwrap();
@@ -474,18 +474,18 @@ fn kappa_dataset_is_a_typed_blocker() {
 
 #[test]
 fn materialize_requires_matching_recipe_not_spex_kappa() {
-    let path = fixture_path("libmuffintin-spex-snapshot-hdf-v1-materialize.h5");
+    let path = fixture_path("libmuffintin-spex-checkpoint-hdf-v1-materialize.h5");
     let fields = sample_fields();
     write_spex_snapshot_hdf(&path, &fields).unwrap();
     let fields = read_spex_snapshot_hdf(&path).unwrap();
-    let done = materialize_snapshot_v2(&fields, &matching_recipe()).unwrap();
+    let done = materialize_checkpoint_v2(&fields, &matching_recipe()).unwrap();
     assert_eq!(
-        done.snapshot.meta.annotations["material_basis.recipe_sha256"],
+        done.checkpoint.meta.annotations["material_basis.recipe_sha256"],
         matching_recipe().recipe_sha256
     );
     let mut bad = matching_recipe();
     bad.channels[0].l = 4;
-    match materialize_snapshot_v2(&fields, &bad) {
+    match materialize_checkpoint_v2(&fields, &bad) {
         Err(IoError::Validation(ValidationError::InvalidValue { path, .. })) => {
             assert!(path.contains("lo"), "{path}");
         }
@@ -497,7 +497,7 @@ fn materialize_requires_matching_recipe_not_spex_kappa() {
         recipe_sha256: matching_recipe().recipe_sha256,
         channels: Vec::new(),
     };
-    match materialize_snapshot_v2(&fields, &empty) {
+    match materialize_checkpoint_v2(&fields, &empty) {
         Err(IoError::Validation(ValidationError::Empty { .. })) => {}
         Err(other) => panic!("expected empty recipe, got {other:?}"),
         Ok(_) => panic!("empty recipe is not a material basis"),

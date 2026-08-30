@@ -5,15 +5,22 @@ use serde::{Deserialize, Serialize};
 use crate::error::{IoError, ValidationError, finite, nonempty, positive};
 use crate::units::{EnergyUnitV1, InverseLengthUnitV1, LengthUnitV1};
 
-/// Stable discriminator written at the start of every snapshot.
-pub const SNAPSHOT_FORMAT: &str = "libmuffintin-snapshot";
-/// Legacy V1 snapshot schema version.
-pub const SNAPSHOT_VERSION: u32 = 1;
+/// Stable discriminator written at the start of every checkpoint.
+pub const CHECKPOINT_FORMAT: &str = "libmuffintin-checkpoint";
+/// On-disk discriminator written before the checkpoint rename; still readable.
+pub const LEGACY_SNAPSHOT_FORMAT: &str = "libmuffintin-snapshot";
+/// Legacy V1 checkpoint schema version.
+pub const CHECKPOINT_VERSION: u32 = 1;
 
-/// A complete, canonical V1 muffin-tin input snapshot.
+/// Whether a header format string names this checkpoint family.
+pub(crate) fn is_checkpoint_format(format: &str) -> bool {
+    format == CHECKPOINT_FORMAT || format == LEGACY_SNAPSHOT_FORMAT
+}
+
+/// A complete, canonical V1 muffin-tin input checkpoint.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct SnapshotV1 {
+pub struct CheckpointV1 {
     pub format: String,
     pub version: u32,
     pub meta: MetaV1,
@@ -21,12 +28,12 @@ pub struct SnapshotV1 {
     pub interstitial: InterstitialV1,
 }
 
-impl SnapshotV1 {
-    /// Construct a snapshot with the required V1 header.
+impl CheckpointV1 {
+    /// Construct a checkpoint with the required V1 header.
     pub fn new(meta: MetaV1, geometry: GeometryV1, interstitial: InterstitialV1) -> Self {
         Self {
-            format: SNAPSHOT_FORMAT.to_owned(),
-            version: SNAPSHOT_VERSION,
+            format: CHECKPOINT_FORMAT.to_owned(),
+            version: CHECKPOINT_VERSION,
             meta,
             geometry,
             interstitial,
@@ -35,16 +42,16 @@ impl SnapshotV1 {
 
     /// Check the header and all cross-field invariants.
     pub fn validate(&self) -> Result<(), IoError> {
-        if self.format != SNAPSHOT_FORMAT {
+        if !is_checkpoint_format(&self.format) {
             return Err(IoError::InvalidFormat {
-                expected: SNAPSHOT_FORMAT,
+                expected: CHECKPOINT_FORMAT,
                 found: self.format.clone(),
             });
         }
-        if self.version != SNAPSHOT_VERSION {
+        if self.version != CHECKPOINT_VERSION {
             return Err(IoError::UnsupportedVersion {
-                format: SNAPSHOT_FORMAT,
-                supported: SNAPSHOT_VERSION,
+                format: CHECKPOINT_FORMAT,
+                supported: CHECKPOINT_VERSION,
                 found: self.version,
             });
         }
@@ -493,19 +500,19 @@ pub enum FourierPhaseV1 {
     NegativeExponent,
 }
 
-/// Serialize a validated V1 snapshot as deterministic pretty TOML.
-pub fn snapshot_to_toml(snapshot: &SnapshotV1) -> Result<String, IoError> {
-    snapshot.validate()?;
-    let mut text = toml::to_string_pretty(snapshot)?;
+/// Serialize a validated V1 checkpoint as deterministic pretty TOML.
+pub fn checkpoint_to_toml(checkpoint: &CheckpointV1) -> Result<String, IoError> {
+    checkpoint.validate()?;
+    let mut text = toml::to_string_pretty(checkpoint)?;
     if !text.ends_with('\n') {
         text.push('\n');
     }
     Ok(text)
 }
 
-/// Parse and validate a V1 snapshot.
-pub fn snapshot_from_toml(text: &str) -> Result<SnapshotV1, IoError> {
-    let snapshot: SnapshotV1 = toml::from_str(text)?;
-    snapshot.validate()?;
-    Ok(snapshot)
+/// Parse and validate a V1 checkpoint.
+pub fn checkpoint_from_toml(text: &str) -> Result<CheckpointV1, IoError> {
+    let checkpoint: CheckpointV1 = toml::from_str(text)?;
+    checkpoint.validate()?;
+    Ok(checkpoint)
 }

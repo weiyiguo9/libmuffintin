@@ -148,7 +148,7 @@ pub fn build_scalar_thc(
         spec.candidates.as_fit_indices(),
         Provenance {
             recipe: Some("scalar-thc-allq-l2".to_owned()),
-            reference: Some("snapshot-dft-frozen-scalar-thc".to_owned()),
+            reference: Some("checkpoint-dft-frozen-scalar-thc".to_owned()),
         },
     )?;
     let layout = first.pair_columns;

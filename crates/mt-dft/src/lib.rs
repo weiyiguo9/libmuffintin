@@ -38,7 +38,7 @@ pub use core_density::{
 };
 pub use core_potential::{
     BuiltExtendedCorePotential, CorePotentialBuildError, CorePotentialBuildSpec, CorePotentialJoin,
-    build_extended_core_potentials, build_extended_snapshot_core_potentials,
+    build_extended_core_potentials, build_extended_checkpoint_core_potentials,
 };
 pub use density::{
     CollinearKPoint, DensityError, FullSpinorDensitySiteBasis, FullSpinorKPoint, ScalarSiteBasis,
@@ -58,7 +58,7 @@ pub use linearization::{
     AtomicEnergyRequest, GeneratedLinearizationEnergy, LinearizationEnergyDiagnostic,
     LinearizationEnergyError, LinearizationEnergyGenerator, PdosEnergySample,
     generate_atomic_energy, generate_band_center_energy, generate_band_cog_energy,
-    generate_explicit_energy, generate_fermi_offset_energy, generate_frozen_snapshot_energy,
+    generate_explicit_energy, generate_fermi_offset_energy, generate_frozen_checkpoint_energy,
     generate_log_derivative_energy, kappa_degeneracy_average,
 };
 pub use mixing::{DensityMixer, MixAlgebraQuantity, MixRecord, MixStatus, MixStep, MixingError};

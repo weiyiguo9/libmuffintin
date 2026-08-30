@@ -37,7 +37,7 @@ fn cli_requires_exactly_one_input_path() {
 }
 
 #[test]
-fn cli_reports_parse_failures_and_executes_a_supported_snapshot() {
+fn cli_reports_parse_failures_and_executes_a_supported_checkpoint() {
     let binary = env!("CARGO_BIN_EXE_muffintin");
     let fixture = FixtureDirectory::new();
     let bad_path = fixture.root().join("bad.toml");

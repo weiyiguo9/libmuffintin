@@ -3,7 +3,7 @@
 use std::f64::consts::PI;
 
 use muffintin::{
-    SPINOR_COULOMB_EXACTNESS_FLOOR, SnapshotDftPhysics, SpinorCoulombError, SpinorCoulombPairMatch,
+    SPINOR_COULOMB_EXACTNESS_FLOOR, CheckpointPhysics, SpinorCoulombError, SpinorCoulombPairMatch,
     SpinorCoulombSpec, SpinorMpbSelection, SpinorMpbSpec, ThcParentGrid, build_spinor_coulomb,
     build_spinor_mpb, build_spinor_thc,
 };
@@ -21,7 +21,7 @@ use num_complex::Complex64;
 mod spinor_hydrogen;
 
 use spinor_hydrogen::{
-    coulomb_spec, hydrogen_spinor_snapshot, parent_grid, spinor_config, thc_spec,
+    coulomb_spec, hydrogen_spinor_checkpoint, parent_grid, spinor_config, thc_spec,
 };
 
 fn mpb_spec() -> SpinorMpbSpec {
@@ -72,7 +72,7 @@ fn dense_action_norm(matrix: &[Complex64], coefficients: &[Complex64]) -> f64 {
 
 #[test]
 fn gamma_sampled_coulomb_uses_full_parent_grid_and_keeps_head_as_metadata() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let input = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -123,7 +123,7 @@ fn gamma_sampled_coulomb_uses_full_parent_grid_and_keeps_head_as_metadata() {
 
 #[test]
 fn matched_pair_reports_quadratic_and_rejects_mismatch() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let input = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -203,7 +203,7 @@ fn matched_pair_reports_quadratic_and_rejects_mismatch() {
 
 #[test]
 fn matched_mpb_must_originate_from_the_frozen_input() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let input_a = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -250,7 +250,7 @@ fn matched_mpb_must_originate_from_the_frozen_input() {
 
 #[test]
 fn reciprocal_grid_and_bloch_mismatches_are_rejected() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let input = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -315,7 +315,7 @@ fn reciprocal_grid_and_bloch_mismatches_are_rejected() {
 
 #[test]
 fn finite_q_preserves_transfer_q() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let q0 = physics
         .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();

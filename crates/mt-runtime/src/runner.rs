@@ -12,7 +12,7 @@ use muffintin_dft::{
     ScfPhysics, ScfRelativity, ScfState, XcFunctional, fleur_default_atomic_configuration,
     run_band_path, run_dos, run_scf,
 };
-use muffintin_io::{SnapshotFile, SnapshotV2, snapshot_file_from_toml};
+use muffintin_io::{CheckpointFile, CheckpointV2, checkpoint_file_from_toml};
 
 use crate::input::parse_source;
 use crate::{
@@ -40,10 +40,10 @@ pub struct PreparedTask {
     pub channel_recipe: Option<CompiledChannelRecipe>,
 }
 
-/// A fully validated workflow and loaded immutable input snapshot.
+/// A fully validated workflow and loaded immutable input checkpoint.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreparedWorkflow {
-    pub snapshot: SnapshotV2,
+    pub checkpoint: CheckpointV2,
     pub tasks: Vec<PreparedTask>,
 }
 
@@ -70,34 +70,34 @@ pub struct WorkflowResult {
     pub tasks: Vec<TaskResult>,
 }
 
-/// Validate and resolve an already decoded input and snapshot without filesystem access.
+/// Validate and resolve an already decoded input and checkpoint without filesystem access.
 pub fn prepare_input(
     input: &Input,
-    snapshot: SnapshotFile,
+    checkpoint: CheckpointFile,
 ) -> Result<PreparedWorkflow, InputError> {
-    prepare_input_with_recipes(input, snapshot, &BTreeMap::new())
+    prepare_input_with_recipes(input, checkpoint, &BTreeMap::new())
 }
 
-/// Validate and resolve decoded input, snapshot, and preloaded recipe artifacts.
+/// Validate and resolve decoded input, checkpoint, and preloaded recipe artifacts.
 ///
 /// Recipe paths remain workflow-relative keys. This function performs no
 /// filesystem access; callers must supply every artifact named by an SCF task.
 pub fn prepare_input_with_recipes(
     input: &Input,
-    snapshot: SnapshotFile,
+    checkpoint: CheckpointFile,
     recipe_artifacts: &BTreeMap<PathBuf, ChannelRecipeArtifact>,
 ) -> Result<PreparedWorkflow, InputError> {
     input.validate()?;
-    let snapshot = snapshot
+    let checkpoint = checkpoint
         .into_v2_prevalidated()
-        .map_err(InputError::InvalidSnapshot)?;
+        .map_err(InputError::InvalidCheckpoint)?;
 
     let mut tasks = Vec::with_capacity(input.workflow.tasks.len());
     for id in &input.workflow.tasks {
         let task = input.task[id].clone();
         let channel_recipe = match &task {
             Task::DftScf { basis, .. } => {
-                let sites = recipe_sites(id, &snapshot)?;
+                let sites = recipe_sites(id, &checkpoint)?;
                 let external = match &basis.recipe {
                     Some(path) => {
                         let artifact = recipe_artifacts.get(path).ok_or_else(|| {
@@ -154,11 +154,11 @@ pub fn prepare_input_with_recipes(
             channel_recipe,
         });
     }
-    Ok(PreparedWorkflow { snapshot, tasks })
+    Ok(PreparedWorkflow { checkpoint, tasks })
 }
 
-fn recipe_sites(task_id: &str, snapshot: &SnapshotV2) -> Result<Vec<RecipeSite>, InputError> {
-    snapshot
+fn recipe_sites(task_id: &str, checkpoint: &CheckpointV2) -> Result<Vec<RecipeSite>, InputError> {
+    checkpoint
         .geometry
         .sites
         .iter()
@@ -179,7 +179,7 @@ fn recipe_sites(task_id: &str, snapshot: &SnapshotV2) -> Result<Vec<RecipeSite>,
         .collect()
 }
 
-/// Read one input and its relative snapshot, then prepare the workflow.
+/// Read one input and its relative checkpoint, then prepare the workflow.
 pub fn load_input_path(path: impl AsRef<Path>) -> Result<PreparedWorkflow, InputError> {
     let input_path = path.as_ref();
     let input_text = fs::read_to_string(input_path).map_err(|source| InputError::ReadInput {
@@ -187,15 +187,15 @@ pub fn load_input_path(path: impl AsRef<Path>) -> Result<PreparedWorkflow, Input
         source,
     })?;
     let input = parse_input_toml(&input_text)?;
-    let snapshot_path = resolve_snapshot_path(input_path, &input.snapshot);
-    let snapshot_text =
-        fs::read_to_string(&snapshot_path).map_err(|source| InputError::ReadSnapshot {
-            path: snapshot_path.clone(),
+    let checkpoint_path = resolve_checkpoint_path(input_path, &input.checkpoint);
+    let checkpoint_text =
+        fs::read_to_string(&checkpoint_path).map_err(|source| InputError::ReadCheckpoint {
+            path: checkpoint_path.clone(),
             source,
         })?;
-    let snapshot =
-        snapshot_file_from_toml(&snapshot_text).map_err(|source| InputError::Snapshot {
-            path: snapshot_path,
+    let checkpoint =
+        checkpoint_file_from_toml(&checkpoint_text).map_err(|source| InputError::Checkpoint {
+            path: checkpoint_path,
             source,
         })?;
     let mut recipe_artifacts = BTreeMap::new();
@@ -225,7 +225,7 @@ pub fn load_input_path(path: impl AsRef<Path>) -> Result<PreparedWorkflow, Input
         })?;
         recipe_artifacts.insert(recipe.clone(), artifact);
     }
-    prepare_input_with_recipes(&input, snapshot, &recipe_artifacts)
+    prepare_input_with_recipes(&input, checkpoint, &recipe_artifacts)
 }
 
 /// Execute a prepared workflow with one material kernel shared by every task.
@@ -241,7 +241,7 @@ pub fn execute_prepared_with<P: ScfPhysics>(
         let source = source_state(task, &results)?;
         let result = match &task.task {
             Task::DftScf { .. } => {
-                let config = scf_config(task, &workflow.snapshot)?;
+                let config = scf_config(task, &workflow.checkpoint)?;
                 let state = run_scf(physics, &config, source).map_err(|source| {
                     InputError::TaskExecution {
                         task_id: task.id.clone(),
@@ -320,7 +320,7 @@ fn source_state<'a>(
         })
 }
 
-fn scf_config(task: &PreparedTask, _snapshot: &SnapshotV2) -> Result<ScfConfig, InputError> {
+fn scf_config(task: &PreparedTask, _checkpoint: &CheckpointV2) -> Result<ScfConfig, InputError> {
     let Task::DftScf {
         electron_count,
         k_mesh,
@@ -550,7 +550,7 @@ const fn map_channel_energy_generator(
         ChannelEnergyGenerator::LogDerivative => LinearizationEnergyGenerator::LogDerivative,
         ChannelEnergyGenerator::BandCog => LinearizationEnergyGenerator::BandCog,
         ChannelEnergyGenerator::FermiOffset => LinearizationEnergyGenerator::FermiOffset,
-        ChannelEnergyGenerator::FrozenSnapshot => LinearizationEnergyGenerator::FrozenSnapshot,
+        ChannelEnergyGenerator::FrozenCheckpoint => LinearizationEnergyGenerator::FrozenCheckpoint,
     }
 }
 
@@ -654,8 +654,8 @@ fn uniform_edges(minimum: f64, maximum: f64, points: usize) -> Vec<Hartree> {
         .collect()
 }
 
-fn resolve_snapshot_path(input_path: &Path, snapshot: &Path) -> PathBuf {
-    resolve_input_relative_path(input_path, snapshot)
+fn resolve_checkpoint_path(input_path: &Path, checkpoint: &Path) -> PathBuf {
+    resolve_input_relative_path(input_path, checkpoint)
 }
 
 fn resolve_input_relative_path(input_path: &Path, relative: &Path) -> PathBuf {

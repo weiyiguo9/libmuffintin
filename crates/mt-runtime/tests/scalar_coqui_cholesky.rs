@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use muffintin::{
     SCALAR_COULOMB_EXACTNESS_FLOOR, ScalarCoquiCholeskyError, ScalarCoquiCholeskySpec,
-    ScalarCoulombError, ScalarCoulombResult, ScalarProductInput, SnapshotDftPhysics,
+    ScalarCoulombError, ScalarCoulombResult, ScalarProductInput, CheckpointPhysics,
     build_scalar_coulomb, build_scalar_thc, write_scalar_coqui_cholesky,
 };
 use muffintin_core::InverseBohr;
@@ -19,7 +19,7 @@ use num_complex::Complex64;
 #[path = "scalar_hydrogen.rs"]
 mod scalar_hydrogen;
 
-use scalar_hydrogen::{coulomb_spec, hydrogen_snapshot, parent_grid, scalar_config, thc_spec};
+use scalar_hydrogen::{coulomb_spec, hydrogen_checkpoint, parent_grid, scalar_config, thc_spec};
 
 fn fixture_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(name)
@@ -31,7 +31,7 @@ fn build_path() -> (
     ScalarCoulombResult,
     muffintin::ScalarCoulombSpec,
 ) {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let q0 = physics
         .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();

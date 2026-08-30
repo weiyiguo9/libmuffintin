@@ -1,12 +1,12 @@
 //! Explicit, versioned, human-diffable interchange formats.
 //!
-//! [`SnapshotFile`] dispatches legacy scalar/collinear [`SnapshotV1`] and
-//! noncollinear Pauli-field [`SnapshotV2`] files. [`GridArtifactV1`] is
+//! [`CheckpointFile`] dispatches legacy scalar/collinear [`CheckpointV1`] and
+//! noncollinear Pauli-field [`CheckpointV2`] files. [`GridArtifactV1`] is
 //! deliberately a separate format for materialized integration grids and is
-//! never embedded in a snapshot. [`MldumpFileV1`] is the libmuffintin-owned
+//! never embedded in a checkpoint. [`MldumpFileV1`] is the libmuffintin-owned
 //! MLDUMP v1 HDF5 schema; it is not CoQui-native or SPEX-native.
 //! [`read_spex_snapshot_hdf`] reads SPEX-owned `spex.snapshot_hdf` v1
-//! frozen fields; [`materialize_snapshot_v2`] builds [`SnapshotV2`] only
+//! frozen fields; [`materialize_checkpoint_v2`] builds [`CheckpointV2`] only
 //! with an explicit signed-$\kappa$ recipe and a tight Hermitian ingest of
 //! interstitial Fourier pairs. Populated
 //! files are written through [`ScalarMldumpStreamV1`] or
@@ -17,8 +17,8 @@ mod coqui_cholesky;
 mod error;
 mod grid;
 mod mldump;
-mod snapshot;
-mod snapshot_v2;
+mod checkpoint;
+mod checkpoint_v2;
 mod spex_snapshot;
 mod units;
 
@@ -59,25 +59,25 @@ pub use mldump::{
     SpinorProductsBeginV1, SpinorProductsV1, SpinorProjectionCoordV1, SpinorSiteMatchRefV1,
     SpinorSiteMatchV1, read_mldump_v1,
 };
-pub use snapshot::{
+pub use checkpoint::{
     AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, ExponentialMeshSpecV1,
     FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1, GeometryV1, InterstitialV1,
     LatticeV1, LinearizationV1, MetaV1, PotentialChannelV1, PotentialConventionV1,
-    PotentialRadialQuantityV1, RadialEquationTagV1, SNAPSHOT_FORMAT, SNAPSHOT_VERSION, SiteSpinV1,
-    SiteV1, SnapshotV1, SphericalChannelConventionV1, SpinTagV1, snapshot_from_toml,
-    snapshot_to_toml,
+    PotentialRadialQuantityV1, RadialEquationTagV1, CHECKPOINT_FORMAT, CHECKPOINT_VERSION, SiteSpinV1,
+    SiteV1, CheckpointV1, SphericalChannelConventionV1, SpinTagV1, checkpoint_from_toml,
+    checkpoint_to_toml,
 };
-pub use snapshot_v2::{
+pub use checkpoint_v2::{
     Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2, FourierCoefficientV2, GeometryV2,
     InitialV2, InterstitialFieldV2, MuffinTinFieldV2, PotentialV2, RadialBasisSpinV2,
-    RegionalFieldV2, SNAPSHOT_VERSION_V2, SiteRadialBasisV2, SiteV2, SnapshotFile, SnapshotV2,
-    SphericalChannelV2, snapshot_file_from_toml, snapshot_file_to_toml,
+    RegionalFieldV2, CHECKPOINT_VERSION_V2, SiteRadialBasisV2, SiteV2, CheckpointFile, CheckpointV2,
+    SphericalChannelV2, checkpoint_file_from_toml, checkpoint_file_to_toml,
 };
 pub use spex_snapshot::{
     SPEX_FOURIER_HERMITIAN_TOLERANCE, SPEX_SNAPSHOT_HDF_SCHEMA_NAME,
     SPEX_SNAPSHOT_HDF_SCHEMA_VERSION, SPEX_SNAPSHOT_HDF_SOURCE_KIND, SpexFrozenFieldsV1,
     SpexMaterialBasisRecipeV1, SpexMaterialChannelKind, SpexMaterialChannelV1,
     SpexMaterializedSnapshotV1, SpexScalarLoKind, SpexScalarLoTableV1, SpexScalarLoV1,
-    SpexSnapshotHashV1, materialize_snapshot_v2, read_spex_snapshot_hdf, write_spex_snapshot_hdf,
+    SpexSnapshotHashV1, materialize_checkpoint_v2, read_spex_snapshot_hdf, write_spex_snapshot_hdf,
 };
 pub use units::{EnergyUnitV1, InverseLengthUnitV1, LengthUnitV1, VolumeUnitV1};

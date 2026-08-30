@@ -6,7 +6,7 @@
 //! is the second local backend behind the same subscripts, enabled later
 //! when it satisfies the workspace MSRV and dependency gate.
 //!
-//! Backend tensor handles stay private. Host snapshots remain ordinary
+//! Backend tensor handles stay private. Host checkpoints remain ordinary
 //! `Vec<Complex64>` buffers with an explicit row- or column-major contract.
 //! There is no scalar fallback runtime.
 

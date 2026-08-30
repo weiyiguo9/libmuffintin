@@ -9,10 +9,10 @@ use crate::{ChannelEnergyGenerator, ChannelIdentity, ChannelRecipeError, TaskKin
 /// A syntactically valid input whose values violate the workflow contract.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum InputValidationError {
-    #[error("snapshot path must not be empty")]
-    EmptySnapshotPath,
-    #[error("snapshot path must be relative to the input file, got {path:?}")]
-    AbsoluteSnapshotPath { path: PathBuf },
+    #[error("checkpoint path must not be empty")]
+    EmptyCheckpointPath,
+    #[error("checkpoint path must be relative to the input file, got {path:?}")]
+    AbsoluteCheckpointPath { path: PathBuf },
     #[error("basis recipe path must not be empty")]
     EmptyRecipePath,
     #[error("basis recipe path must be relative to the input file, got {path:?}")]
@@ -101,20 +101,20 @@ pub enum InputError {
         #[source]
         source: std::io::Error,
     },
-    #[error("could not read snapshot file {path:?}: {source}")]
-    ReadSnapshot {
+    #[error("could not read checkpoint file {path:?}: {source}")]
+    ReadCheckpoint {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("invalid snapshot file {path:?}: {source}")]
-    Snapshot {
+    #[error("invalid checkpoint file {path:?}: {source}")]
+    Checkpoint {
         path: PathBuf,
         #[source]
         source: IoError,
     },
-    #[error("invalid in-memory snapshot: {0}")]
-    InvalidSnapshot(#[source] IoError),
+    #[error("invalid in-memory checkpoint: {0}")]
+    InvalidCheckpoint(#[source] IoError),
     #[error("task {task_id:?} requires preloaded channel recipe artifact {path:?}")]
     MissingRecipeArtifact { task_id: String, path: PathBuf },
     #[error("task {task_id:?} could not read channel recipe file {path:?}: {source}")]

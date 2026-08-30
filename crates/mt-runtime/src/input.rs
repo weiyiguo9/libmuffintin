@@ -18,18 +18,20 @@ pub const INPUT_VERSION: u32 = 2;
 pub struct Input {
     pub format: String,
     pub version: u32,
-    /// Snapshot path relative to the input file that names this workflow.
-    pub snapshot: PathBuf,
+    /// Checkpoint path relative to the input file that names this workflow.
+    /// The pre-rename `snapshot` key is still accepted on read.
+    #[serde(alias = "snapshot")]
+    pub checkpoint: PathBuf,
     pub workflow: Workflow,
     pub task: BTreeMap<String, Task>,
 }
 
 impl Input {
-    pub fn new(snapshot: PathBuf, workflow: Workflow, task: BTreeMap<String, Task>) -> Self {
+    pub fn new(checkpoint: PathBuf, workflow: Workflow, task: BTreeMap<String, Task>) -> Self {
         Self {
             format: INPUT_FORMAT.to_owned(),
             version: INPUT_VERSION,
-            snapshot,
+            checkpoint,
             workflow,
             task,
         }
@@ -53,7 +55,7 @@ impl Input {
                 found: self.version,
             });
         }
-        validate_snapshot_path(&self.snapshot)?;
+        validate_checkpoint_path(&self.checkpoint)?;
         validate_task_sets(self)?;
 
         let positions: BTreeMap<&str, usize> = self
@@ -437,7 +439,7 @@ impl BandPathPoint {
     }
 }
 
-/// DOS sampling window in Hartree relative to the snapshot energy zero.
+/// DOS sampling window in Hartree relative to the checkpoint energy zero.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct EnergyWindow {
@@ -500,12 +502,12 @@ pub fn input_to_toml(input: &Input) -> Result<String, InputError> {
     Ok(text)
 }
 
-fn validate_snapshot_path(path: &std::path::Path) -> Result<(), InputValidationError> {
+fn validate_checkpoint_path(path: &std::path::Path) -> Result<(), InputValidationError> {
     if path.as_os_str().is_empty() {
-        return Err(InputValidationError::EmptySnapshotPath);
+        return Err(InputValidationError::EmptyCheckpointPath);
     }
     if path.is_absolute() {
-        return Err(InputValidationError::AbsoluteSnapshotPath {
+        return Err(InputValidationError::AbsoluteCheckpointPath {
             path: path.to_owned(),
         });
     }

@@ -11,16 +11,16 @@ use muffintin::{
     load_input_path, parse_input_toml, prepare_input, prepare_input_with_recipes,
 };
 use muffintin_core::Hartree;
-use muffintin_io::SnapshotFile;
+use muffintin_io::CheckpointFile;
 
-use common::{FixtureDirectory, sample_input, sample_snapshot};
+use common::{FixtureDirectory, sample_input, sample_checkpoint};
 
 #[test]
 fn input_round_trips_deterministically_with_header_first() {
     let input = sample_input();
     let encoded = input_to_toml(&input).unwrap();
     assert!(encoded.starts_with(
-        "format = \"libmuffintin-input\"\nversion = 2\nsnapshot = \"data/snapshot.toml\"\n"
+        "format = \"libmuffintin-input\"\nversion = 2\ncheckpoint = \"data/checkpoint.toml\"\n"
     ));
     let decoded = parse_input_toml(&encoded).unwrap();
     assert_eq!(decoded, input);
@@ -169,7 +169,7 @@ fn complete_v1_body_gets_the_dedicated_migration_error() {
     let v1 = r#"
 format = "libmuffintin-input"
 version = 1
-snapshot = "data/snapshot.toml"
+checkpoint = "data/checkpoint.toml"
 
 [workflow]
 tasks = ["scf"]
@@ -480,7 +480,7 @@ fn prepare_is_filesystem_free_and_resolves_sources() {
         },
     )]);
     let prepared =
-        prepare_input_with_recipes(&input, SnapshotFile::V1(sample_snapshot()), &recipes).unwrap();
+        prepare_input_with_recipes(&input, CheckpointFile::V1(sample_checkpoint()), &recipes).unwrap();
     assert_eq!(prepared.tasks.len(), 3);
     let recipe = prepared.tasks[0].channel_recipe.as_ref().unwrap();
     assert_eq!(recipe.sites.len(), 1);
@@ -516,28 +516,28 @@ fn prepare_is_filesystem_free_and_resolves_sources() {
 #[test]
 fn filesystem_free_prepare_requires_each_named_recipe_artifact() {
     assert!(matches!(
-        prepare_input(&sample_input(), SnapshotFile::V1(sample_snapshot())),
+        prepare_input(&sample_input(), CheckpointFile::V1(sample_checkpoint())),
         Err(InputError::MissingRecipeArtifact { task_id, path })
             if task_id == "scf" && path == Path::new("recipes/si.toml")
     ));
 }
 
 #[test]
-fn path_loader_resolves_snapshot_relative_to_input_parent() {
+fn path_loader_resolves_checkpoint_relative_to_input_parent() {
     let fixture = FixtureDirectory::new();
     let input_path = fixture.write_workflow();
     assert_eq!(input_path.parent(), Some(fixture.root()));
     let prepared = load_input_path(&input_path).unwrap();
-    assert_eq!(prepared.snapshot, sample_snapshot().normalize_v2().unwrap());
+    assert_eq!(prepared.checkpoint, sample_checkpoint().normalize_v2().unwrap());
     assert_eq!(prepared.tasks[0].id, "scf");
     assert!(prepared.tasks[0].channel_recipe.is_some());
 
     let mut absolute = sample_input();
-    absolute.snapshot = PathBuf::from("/tmp/snapshot.toml");
+    absolute.checkpoint = PathBuf::from("/tmp/checkpoint.toml");
     assert!(matches!(
         absolute.validate(),
         Err(InputError::Validation(
-            InputValidationError::AbsoluteSnapshotPath { .. }
+            InputValidationError::AbsoluteCheckpointPath { .. }
         ))
     ));
 }

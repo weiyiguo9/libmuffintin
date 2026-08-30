@@ -7,11 +7,11 @@ use muffintin_io::{
     BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1, ExponentialMeshSpecV1,
     FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1, GeometryV1, InterstitialV1,
     InverseLengthUnitV1, LatticeV1, LengthUnitV1, LinearizationV1, MetaV1, PotentialChannelV1,
-    PotentialConventionV1, PotentialRadialQuantityV1, SiteSpinV1, SiteV1, SnapshotFile, SnapshotV1,
-    SphericalChannelConventionV1, SpinTagV1, snapshot_file_from_toml, snapshot_file_to_toml,
+    PotentialConventionV1, PotentialRadialQuantityV1, SiteSpinV1, SiteV1, CheckpointFile, CheckpointV1,
+    SphericalChannelConventionV1, SpinTagV1, checkpoint_file_from_toml, checkpoint_file_to_toml,
 };
 
-fn snapshot_v1() -> muffintin_io::SnapshotV1 {
+fn checkpoint_v1() -> muffintin_io::CheckpointV1 {
     let point_count = 61;
     let first: f64 = 1.0e-4;
     let radius: f64 = 1.0;
@@ -19,9 +19,9 @@ fn snapshot_v1() -> muffintin_io::SnapshotV1 {
     let radii = (0..point_count)
         .map(|index| first * (index as f64 * increment).exp())
         .collect::<Vec<_>>();
-    SnapshotV1::new(
+    CheckpointV1::new(
         MetaV1 {
-            title: "snapshot kernel hydrogen smoke".to_owned(),
+            title: "checkpoint kernel hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,
             energy_zero: "zero interstitial Fourier mean".to_owned(),
@@ -95,8 +95,8 @@ fn snapshot_v1() -> muffintin_io::SnapshotV1 {
     )
 }
 
-fn snapshot() -> SnapshotV2 {
-    snapshot_v1().normalize_v2().unwrap()
+fn checkpoint() -> CheckpointV2 {
+    checkpoint_v1().normalize_v2().unwrap()
 }
 
 fn config(relativity: ScfRelativity) -> ScfConfig {
@@ -115,7 +115,7 @@ fn config(relativity: ScfRelativity) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 1, l: 0 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: muffintin_dft::ScfChannelProvenance::BuiltIn,
                 },
@@ -124,7 +124,7 @@ fn config(relativity: ScfRelativity) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 2, l: 1 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: muffintin_dft::ScfChannelProvenance::BuiltIn,
                 },
@@ -152,16 +152,16 @@ fn config(relativity: ScfRelativity) -> ScfConfig {
     }
 }
 
-fn core_snapshot_and_config() -> (SnapshotV2, ScfConfig) {
-    let mut snapshot = snapshot_v1();
+fn core_checkpoint_and_config() -> (CheckpointV2, ScfConfig) {
+    let mut checkpoint = checkpoint_v1();
     let first: f64 = 1.0e-5;
     let radius: f64 = 3.0;
     let point_count = 121;
     let increment = (radius / first).ln() / (point_count - 1) as f64;
-    snapshot.geometry.lattice.vectors = [[12.0, 0.0, 0.0], [0.0, 12.0, 0.0], [0.0, 0.0, 12.0]];
-    snapshot.geometry.sites[0].atomic_number = 2;
-    snapshot.geometry.sites[0].muffin_tin_radius = radius;
-    let spin = &mut snapshot.geometry.sites[0].spins[0];
+    checkpoint.geometry.lattice.vectors = [[12.0, 0.0, 0.0], [0.0, 12.0, 0.0], [0.0, 0.0, 12.0]];
+    checkpoint.geometry.sites[0].atomic_number = 2;
+    checkpoint.geometry.sites[0].muffin_tin_radius = radius;
+    let spin = &mut checkpoint.geometry.sites[0].spins[0];
     spin.mesh = ExponentialMeshSpecV1 {
         radius_unit: LengthUnitV1::Bohr,
         first,
@@ -185,17 +185,17 @@ fn core_snapshot_and_config() -> (SnapshotV2, ScfConfig) {
         kappa: -1,
         occupation: 1.0,
     });
-    (snapshot.normalize_v2().unwrap(), config)
+    (checkpoint.normalize_v2().unwrap(), config)
 }
 
 #[test]
-fn snapshot_conversion_normalizes_monopole_and_wraps_cartesian_site() {
-    let physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+fn checkpoint_conversion_normalizes_monopole_and_wraps_cartesian_site() {
+    let physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     assert_eq!(
         physics.geometry.spheres()[0].center,
         [Bohr(2.0), Bohr(4.0), Bohr(4.0)]
     );
-    let physical = snapshot_v1().geometry.sites[0].spins[0].potential_channels[0].real[17];
+    let physical = checkpoint_v1().geometry.sites[0].spins[0].potential_channels[0].real[17];
     let normalized = physics.frozen_potential.scalar().muffin_tins()[0]
         .field()
         .channel(0, 0)
@@ -213,8 +213,8 @@ fn v2_interstitial_components_are_keyed_independently_of_input_order() {
         }
     }
 
-    let mut snapshot = snapshot();
-    let InitialV2::FrozenPotential { potential } = &mut snapshot.initial else {
+    let mut checkpoint = checkpoint();
+    let InitialV2::FrozenPotential { potential } = &mut checkpoint.initial else {
         unreachable!()
     };
     potential.v0.interstitial.coefficients = vec![
@@ -238,7 +238,7 @@ fn v2_interstitial_components_are_keyed_independently_of_input_order() {
         coefficient([1, 0, 0], 7.0, 8.0),
     ];
 
-    let physics = SnapshotDftPhysics::new(&snapshot).unwrap();
+    let physics = CheckpointPhysics::new(&checkpoint).unwrap();
     let potential = physics.frozen_potential();
     for field in potential.magnetic() {
         assert_eq!(
@@ -263,11 +263,11 @@ fn v2_interstitial_components_are_keyed_independently_of_input_order() {
 }
 
 #[test]
-fn frozen_snapshot_produces_initial_density_without_fake_atomic_g_zero() {
-    let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+fn frozen_checkpoint_produces_initial_density_without_fake_atomic_g_zero() {
+    let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let config = config(ScfRelativity::Scalar);
     let meshes = physics.channel_meshes(&config.basis).unwrap();
-    let extended = build_extended_snapshot_core_potentials(
+    let extended = build_extended_checkpoint_core_potentials(
         &physics.frozen_potential,
         &physics.geometry,
         &physics.nuclear_charges,
@@ -299,19 +299,19 @@ fn frozen_snapshot_produces_initial_density_without_fake_atomic_g_zero() {
 }
 
 #[test]
-fn magnetic_frozen_snapshot_does_not_turn_spin_splitting_into_kappa_splitting() {
-    let mut snapshot = snapshot_v1();
-    let mut up = snapshot.geometry.sites[0].spins[0].clone();
+fn magnetic_frozen_checkpoint_does_not_turn_spin_splitting_into_kappa_splitting() {
+    let mut checkpoint = checkpoint_v1();
+    let mut up = checkpoint.geometry.sites[0].spins[0].clone();
     up.spin = SpinTagV1::Up;
     up.linearization.linearization_energies[1].energy = -0.14;
     let mut down = up.clone();
     down.spin = SpinTagV1::Down;
     down.linearization.linearization_energies[1].energy = -0.16;
-    snapshot.geometry.sites[0].spins = vec![up, down];
-    let physics = SnapshotDftPhysics::new(&snapshot.normalize_v2().unwrap()).unwrap();
+    checkpoint.geometry.sites[0].spins = vec![up, down];
+    let physics = CheckpointPhysics::new(&checkpoint.normalize_v2().unwrap()).unwrap();
     let basis = config(ScfRelativity::SpinorFirstVariation).basis;
     let meshes = physics.channel_meshes(&basis).unwrap();
-    let extended = build_extended_snapshot_core_potentials(
+    let extended = build_extended_checkpoint_core_potentials(
         &physics.frozen_potential,
         &physics.geometry,
         &physics.nuclear_charges,
@@ -353,7 +353,7 @@ fn magnetic_frozen_snapshot_does_not_turn_spin_splitting_into_kappa_splitting() 
 
 #[test]
 fn atomic_recipe_materializes_from_the_current_extended_potential() {
-    let physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let mut config = config(ScfRelativity::Scalar);
     for channel in &mut config.basis.channels {
         if channel_l(channel.identity) == 0 {
@@ -361,7 +361,7 @@ fn atomic_recipe_materializes_from_the_current_extended_potential() {
         }
     }
     let meshes = physics.channel_meshes(&config.basis).unwrap();
-    let extended = build_extended_snapshot_core_potentials(
+    let extended = build_extended_checkpoint_core_potentials(
         &physics.frozen_potential,
         &physics.geometry,
         &physics.nuclear_charges,
@@ -385,8 +385,8 @@ fn atomic_recipe_materializes_from_the_current_extended_potential() {
 }
 
 #[test]
-fn seeded_radial_search_does_not_require_a_snapshot_lo_anchor() {
-    let physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+fn seeded_radial_search_does_not_require_a_checkpoint_lo_anchor() {
+    let physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     for generator in [
         LinearizationEnergyGenerator::BandCenter,
         LinearizationEnergyGenerator::LogDerivative,
@@ -402,7 +402,7 @@ fn seeded_radial_search_does_not_require_a_snapshot_lo_anchor() {
             provenance: muffintin_dft::ScfChannelProvenance::Site,
         });
         let meshes = physics.channel_meshes(&basis).unwrap();
-        let extended = build_extended_snapshot_core_potentials(
+        let extended = build_extended_checkpoint_core_potentials(
             &physics.frozen_potential,
             &physics.geometry,
             &physics.nuclear_charges,
@@ -417,7 +417,7 @@ fn seeded_radial_search_does_not_require_a_snapshot_lo_anchor() {
                     .iter()
                     .any(|resolved| resolved.recipe.generator == generator)
             ),
-            Err(SnapshotDftError::ChannelGenerator {
+            Err(CheckpointPhysicsError::ChannelGenerator {
                 generator: actual, ..
             }) => assert_eq!(actual, generator),
             Err(error) => panic!("seeded {generator:?} failed before its generator: {error}"),
@@ -426,8 +426,8 @@ fn seeded_radial_search_does_not_require_a_snapshot_lo_anchor() {
 }
 
 #[test]
-fn scalar_single_site_snapshot_runs_two_iteration_scf_smoke() {
-    let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+fn scalar_single_site_checkpoint_runs_two_iteration_scf_smoke() {
+    let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let state = run_scf(&mut physics, &config(ScfRelativity::Scalar), None).unwrap();
     assert_eq!(state.iterations(), 2);
     assert_eq!(state.relativity, ScfRelativity::Scalar);
@@ -435,7 +435,7 @@ fn scalar_single_site_snapshot_runs_two_iteration_scf_smoke() {
 
 #[test]
 fn fermi_offset_refines_inside_each_scf_iteration() {
-    let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+    let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let mut config = config(ScfRelativity::Scalar);
     let channel = &mut config.basis.channels[0];
     channel.generator = LinearizationEnergyGenerator::FermiOffset;
@@ -454,7 +454,7 @@ fn fermi_offset_refines_inside_each_scf_iteration() {
 
 #[test]
 fn band_cog_uses_physical_projection_inside_the_scf_iteration() {
-    let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+    let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let mut config = config(ScfRelativity::Scalar);
     config.basis.channels[0].generator = LinearizationEnergyGenerator::BandCog;
     let state = run_scf(&mut physics, &config, None).unwrap();
@@ -471,7 +471,7 @@ fn band_cog_uses_physical_projection_inside_the_scf_iteration() {
 
 #[test]
 fn spinor_band_cog_rejects_distinct_channels_with_the_same_kappa_projection() {
-    let physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let mut first = config(ScfRelativity::SpinorFirstVariation).basis.channels[0].clone();
     first.identity = ScfChannelIdentity::Kappa { n: 2, kappa: -1 };
     first.treatment = ScfChannelTreatment::Lo;
@@ -485,31 +485,31 @@ fn spinor_band_cog_rejects_distinct_channels_with_the_same_kappa_projection() {
             &[&first, &second],
             ScfRelativity::SpinorFirstVariation,
         ),
-        Err(SnapshotDftError::AmbiguousBandCogProjection { .. })
+        Err(CheckpointPhysicsError::AmbiguousBandCogProjection { .. })
     ));
 }
 
 #[test]
 fn second_variation_is_routed_and_full_spinor_never_falls_back_to_scalar() {
-    let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+    let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let sv = config(ScfRelativity::SocSecondVariation {
         window: FirstVariationWindow::new(0, 1).unwrap(),
     });
     assert!(physics.initial_density(&sv).is_ok());
 
-    let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+    let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     assert!(matches!(
         physics.initial_density(&config(ScfRelativity::SpinorFirstVariation)),
-        Err(SnapshotDftError::SpinorRadialEquation { .. })
+        Err(CheckpointPhysicsError::SpinorRadialEquation { .. })
     ));
 }
 
 #[test]
-fn fully_relativistic_snapshot_uses_full_spinor_solve_and_density() {
-    let mut snapshot = snapshot_v1();
-    snapshot.geometry.sites[0].spins[0].radial_equation =
+fn fully_relativistic_checkpoint_uses_full_spinor_solve_and_density() {
+    let mut checkpoint = checkpoint_v1();
+    checkpoint.geometry.sites[0].spins[0].radial_equation =
         RadialEquationTagV1::FullyRelativisticDirac;
-    let mut physics = SnapshotDftPhysics::new(&snapshot.normalize_v2().unwrap()).unwrap();
+    let mut physics = CheckpointPhysics::new(&checkpoint.normalize_v2().unwrap()).unwrap();
     let density = physics
         .initial_density(&config(ScfRelativity::SpinorFirstVariation))
         .unwrap();
@@ -518,11 +518,11 @@ fn fully_relativistic_snapshot_uses_full_spinor_solve_and_density() {
 
 #[test]
 fn full_spinor_scf_retains_transverse_magnetization_for_two_iterations() {
-    let mut snapshot = snapshot_v1();
-    snapshot.geometry.sites[0].spins[0].radial_equation =
+    let mut checkpoint = checkpoint_v1();
+    checkpoint.geometry.sites[0].spins[0].radial_equation =
         RadialEquationTagV1::FullyRelativisticDirac;
     let config = config(ScfRelativity::SpinorFirstVariation);
-    let mut physics = SnapshotDftPhysics::new(&snapshot.normalize_v2().unwrap()).unwrap();
+    let mut physics = CheckpointPhysics::new(&checkpoint.normalize_v2().unwrap()).unwrap();
     let mut source = run_scf(&mut physics, &config, None).unwrap();
     let charge = source.density.charge().clone();
     let mut transverse = charge.zero_like();
@@ -534,12 +534,12 @@ fn full_spinor_scf_retains_transverse_magnetization_for_two_iterations() {
     assert_eq!(state.iterations(), 2);
     assert!(state.density.magnetization()[0].residual_rms().unwrap() > 1.0e-8);
 
-    let restart = physics.restart_snapshot(&state).unwrap();
-    let encoded = snapshot_file_to_toml(&SnapshotFile::V2(restart)).unwrap();
-    let SnapshotFile::V2(reloaded) = snapshot_file_from_toml(&encoded).unwrap() else {
+    let restart = physics.restart_checkpoint(&state).unwrap();
+    let encoded = checkpoint_file_to_toml(&CheckpointFile::V2(restart)).unwrap();
+    let CheckpointFile::V2(reloaded) = checkpoint_file_from_toml(&encoded).unwrap() else {
         unreachable!()
     };
-    let mut restarted_physics = SnapshotDftPhysics::new(&reloaded).unwrap();
+    let mut restarted_physics = CheckpointPhysics::new(&reloaded).unwrap();
     assert!(
         restarted_physics
             .frozen_potential()
@@ -562,7 +562,7 @@ fn full_spinor_scf_retains_transverse_magnetization_for_two_iterations() {
 
 #[test]
 fn scalar_route_rejects_a_transverse_potential() {
-    let physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let scalar = physics.frozen_potential.scalar().clone();
     let mut transverse = scalar.zero_like();
     transverse.add_scaled(0.01, &scalar).unwrap();
@@ -575,16 +575,16 @@ fn scalar_route_rejects_a_transverse_potential() {
             &[[0.0; 3]],
             ScfRelativity::Scalar,
         ),
-        Err(SnapshotDftError::TransversePotentialUnsupported { .. })
+        Err(CheckpointPhysicsError::TransversePotentialUnsupported { .. })
     ));
 }
 
 #[test]
 fn signed_kappa_recipe_keeps_multiple_spinor_local_orbitals() {
-    let mut snapshot = snapshot_v1();
-    let spin = &mut snapshot.geometry.sites[0].spins[0];
+    let mut checkpoint = checkpoint_v1();
+    let spin = &mut checkpoint.geometry.sites[0].spins[0];
     spin.radial_equation = RadialEquationTagV1::FullyRelativisticDirac;
-    let physics = SnapshotDftPhysics::new(&snapshot.normalize_v2().unwrap()).unwrap();
+    let physics = CheckpointPhysics::new(&checkpoint.normalize_v2().unwrap()).unwrap();
     let mut basis = config(ScfRelativity::SpinorFirstVariation).basis;
     for (n, energy) in [(2, -0.1), (3, -0.05)] {
         basis.channels.push(ScfChannelRecipe {
@@ -598,7 +598,7 @@ fn signed_kappa_recipe_keeps_multiple_spinor_local_orbitals() {
         });
     }
     let meshes = physics.channel_meshes(&basis).unwrap();
-    let extended = build_extended_snapshot_core_potentials(
+    let extended = build_extended_checkpoint_core_potentials(
         &physics.frozen_potential,
         &physics.geometry,
         &physics.nuclear_charges,
@@ -629,7 +629,7 @@ fn signed_kappa_recipe_keeps_multiple_spinor_local_orbitals() {
 
 #[test]
 fn scalar_route_omits_signed_kappa_local_orbitals() {
-    let physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let mut basis = config(ScfRelativity::Scalar).basis;
     basis.channels.push(ScfChannelRecipe {
         site: "H-1".to_owned(),
@@ -641,7 +641,7 @@ fn scalar_route_omits_signed_kappa_local_orbitals() {
         provenance: muffintin_dft::ScfChannelProvenance::Site,
     });
     let meshes = physics.channel_meshes(&basis).unwrap();
-    let extended = build_extended_snapshot_core_potentials(
+    let extended = build_extended_checkpoint_core_potentials(
         &physics.frozen_potential,
         &physics.geometry,
         &physics.nuclear_charges,
@@ -661,8 +661,8 @@ fn scalar_route_omits_signed_kappa_local_orbitals() {
 
 #[test]
 fn nonempty_core_is_present_initially_and_in_the_scf_iteration() {
-    let (snapshot, config) = core_snapshot_and_config();
-    let mut physics = SnapshotDftPhysics::new(&snapshot).unwrap();
+    let (checkpoint, config) = core_checkpoint_and_config();
+    let mut physics = CheckpointPhysics::new(&checkpoint).unwrap();
     let initial = physics.initial_density(&config).unwrap();
     let initial_count = muffintin_dft::electron_count(&initial).unwrap();
     assert!(
@@ -670,14 +670,14 @@ fn nonempty_core_is_present_initially_and_in_the_scf_iteration() {
         "initial core+valence electron count was {initial_count}"
     );
 
-    let mut physics = SnapshotDftPhysics::new(&snapshot).unwrap();
+    let mut physics = CheckpointPhysics::new(&checkpoint).unwrap();
     let state = run_scf(&mut physics, &config, None).unwrap();
     assert_eq!(state.iterations(), 2);
 }
 
 #[test]
 fn frozen_consumers_use_their_source_states_basis_after_a_later_scf() {
-    let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+    let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let first_config = config(ScfRelativity::Scalar);
     let first = run_scf(&mut physics, &first_config, None).unwrap();
     let mut later_config = first_config.clone();
@@ -704,12 +704,12 @@ fn frozen_consumers_use_their_source_states_basis_after_a_later_scf() {
 
 #[test]
 fn second_variation_rejects_a_window_that_would_drop_lower_scalar_bands() {
-    let mut physics = SnapshotDftPhysics::new(&snapshot()).unwrap();
+    let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let config = config(ScfRelativity::SocSecondVariation {
         window: FirstVariationWindow::new(1, 2).unwrap(),
     });
     assert!(matches!(
         physics.initial_density(&config),
-        Err(SnapshotDftError::SecondVariationDropsLowerBands { start: 1 })
+        Err(CheckpointPhysicsError::SecondVariationDropsLowerBands { start: 1 })
     ));
 }

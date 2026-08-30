@@ -11,16 +11,16 @@ use muffintin_io::{
     AngularBasisV1, EnergyParameterV1, EnergyUnitV1, ExponentialMeshSpecV1, GeometryV2, InitialV2,
     LatticeV1, LengthUnitV1, LinearizationV1, MetaV1, PotentialConventionV1,
     PotentialRadialQuantityV1, RadialBasisSpinV2, RadialEquationTagV1, SiteRadialBasisV2, SiteV2,
-    SnapshotFile, SphericalChannelConventionV1, snapshot_file_from_toml, snapshot_file_to_toml,
+    CheckpointFile, SphericalChannelConventionV1, checkpoint_file_from_toml, checkpoint_file_to_toml,
 };
 
 use super::{
-    AtomicSnapshotRequest, SnapshotDftPhysics, materialize_atomic_snapshot_v2,
+    AtomicCheckpointRequest, CheckpointPhysics, materialize_atomic_checkpoint_v2,
     production_density_layout,
 };
 
 #[test]
-fn neutral_atomic_snapshot_enters_the_native_restart_and_potential_path() {
+fn neutral_atomic_checkpoint_enters_the_native_restart_and_potential_path() {
     let first = 1.0e-4_f64;
     let radius = 1.5_f64;
     let point_count = 61;
@@ -57,7 +57,7 @@ fn neutral_atomic_snapshot_enters_the_native_restart_and_potential_path() {
         }],
     };
     let meta = MetaV1 {
-        title: "neutral atomic snapshot production test".to_owned(),
+        title: "neutral atomic checkpoint production test".to_owned(),
         producer: "libmuffintin-runtime".to_owned(),
         producer_version: None,
         energy_zero: "periodic crystal electrostatic reference".to_owned(),
@@ -108,7 +108,7 @@ fn neutral_atomic_snapshot_enters_the_native_restart_and_potential_path() {
         }],
     };
     let free_atom_mesh = ExponentialMesh::new(Bohr(1.0e-6), 0.01, 1683).unwrap();
-    let generated = materialize_atomic_snapshot_v2(AtomicSnapshotRequest {
+    let generated = materialize_atomic_checkpoint_v2(AtomicCheckpointRequest {
         meta,
         geometry,
         scf: config.clone(),
@@ -123,16 +123,16 @@ fn neutral_atomic_snapshot_enters_the_native_restart_and_potential_path() {
     })
     .unwrap();
 
-    generated.snapshot.validate().unwrap();
-    let text = snapshot_file_to_toml(&SnapshotFile::V2(generated.snapshot.clone())).unwrap();
+    generated.checkpoint.validate().unwrap();
+    let text = checkpoint_file_to_toml(&CheckpointFile::V2(generated.checkpoint.clone())).unwrap();
     assert_eq!(
-        snapshot_file_from_toml(&text).unwrap(),
-        SnapshotFile::V2(generated.snapshot.clone())
+        checkpoint_file_from_toml(&text).unwrap(),
+        CheckpointFile::V2(generated.checkpoint.clone())
     );
-    let InitialV2::Restart { density, potential } = &generated.snapshot.initial else {
-        panic!("atomic materialization must produce a restart snapshot");
+    let InitialV2::Restart { density, potential } = &generated.checkpoint.initial else {
+        panic!("atomic materialization must produce a restart checkpoint");
     };
-    let mut physics = SnapshotDftPhysics::new(&generated.snapshot).unwrap();
+    let mut physics = CheckpointPhysics::new(&generated.checkpoint).unwrap();
     let expected_layout = production_density_layout(
         *physics.reciprocal(),
         config.k_mesh,

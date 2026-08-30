@@ -20,7 +20,7 @@ mod scalar_mpb;
 mod scalar_product;
 mod scalar_thc;
 mod site_coords;
-mod snapshot_dft;
+mod checkpoint_physics;
 mod spinor_coulomb;
 mod spinor_mldump;
 mod spinor_mpb;
@@ -67,9 +67,9 @@ pub use scalar_product::{
     ScalarKMinusQ, ScalarProductInput, ScalarSpinChannel,
 };
 pub use scalar_thc::{ScalarThcError, ScalarThcResult, ScalarThcSpec, build_scalar_thc};
-pub use snapshot_dft::{
-    AtomicSnapshotError, AtomicSnapshotRequest, AtomicSnapshotResult, SnapshotDftError,
-    SnapshotDftPhysics, materialize_atomic_snapshot_v2, snapshot_v2_from_state,
+pub use checkpoint_physics::{
+    AtomicCheckpointError, AtomicCheckpointRequest, AtomicCheckpointResult, CheckpointPhysicsError,
+    CheckpointPhysics, materialize_atomic_checkpoint_v2, checkpoint_v2_from_state,
 };
 pub use spinor_coulomb::{
     SPINOR_COULOMB_EXACTNESS_FLOOR, SpinorCoulombDiscrepancy, SpinorCoulombError,

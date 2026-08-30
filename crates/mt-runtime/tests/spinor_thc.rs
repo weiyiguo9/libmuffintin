@@ -1,7 +1,7 @@
 //! Public spinor AllQL2 THC tests on frozen spinor product input.
 
 use muffintin::{
-    RankPolicy, SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, SnapshotDftPhysics,
+    RankPolicy, SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, CheckpointPhysics,
     SpinorProductInput, SpinorThcError, SpinorThcSpec, ThcCandidates, ThcEngine, ThcParentGrid,
     ThcRegion, build_spinor_thc,
 };
@@ -15,7 +15,7 @@ use num_complex::Complex64;
 #[path = "spinor_hydrogen.rs"]
 mod spinor_hydrogen;
 
-use spinor_hydrogen::{hydrogen_spinor_snapshot, parent_grid, spinor_config};
+use spinor_hydrogen::{hydrogen_spinor_checkpoint, parent_grid, spinor_config};
 
 fn spec_all(n_mu: usize) -> SpinorThcSpec {
     spec_all_engine(n_mu, ThcEngine::FullColumnPivotedQr)
@@ -345,7 +345,7 @@ fn default_pair(
 
 #[test]
 fn q0_mt_pp_qq_oracle_and_interstitial_two_pauli() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let input = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -527,7 +527,7 @@ fn q0_mt_pp_qq_oracle_and_interstitial_two_pauli() {
 
 #[test]
 fn finite_q_uses_cell_periodic_k_phase_and_stored_wrap() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let q0 = physics
         .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();
@@ -779,7 +779,7 @@ fn finite_q_uses_cell_periodic_k_phase_and_stored_wrap() {
 
 #[test]
 fn build_spinor_thc_rejects_forged_finite_q_wrap_and_canonical_q() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let q0 = physics
         .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();
@@ -810,7 +810,7 @@ fn build_spinor_thc_rejects_forged_finite_q_wrap_and_canonical_q() {
 
 #[test]
 fn multi_q_engines_keep_zero_weight_zeta_row() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let q0 = physics
         .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();

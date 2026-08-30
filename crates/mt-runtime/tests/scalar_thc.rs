@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use muffintin::{
     RankPolicy, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarProductInput, ScalarThcError,
-    ScalarThcSpec, SnapshotDftPhysics, ThcCandidates, ThcEngine, ThcParentGrid, ThcRegion,
+    ScalarThcSpec, CheckpointPhysics, ThcCandidates, ThcEngine, ThcParentGrid, ThcRegion,
     build_scalar_thc,
 };
 use muffintin_prodbasis::{AuxiliaryPartition, ProductOrbitalKind, ProductRadialId, TransferQ};
@@ -22,7 +22,7 @@ use muffintin_io::{
     ExponentialMeshSpecV1, FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1,
     GeometryV1, InterstitialV1, InverseLengthUnitV1, LatticeV1, LengthUnitV1, LinearizationV1,
     MetaV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
+    RadialEquationTagV1, SiteSpinV1, SiteV1, CheckpointV1, CheckpointV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
 use muffintin_operators::lapw::{CompiledBasis, Provenance};
@@ -35,7 +35,7 @@ mod thc_fixture_common;
 
 use thc_fixture_common::{on_shell, scalar_parent_grid as parent_grid};
 
-fn hydrogen_snapshot() -> SnapshotV2 {
+fn hydrogen_checkpoint() -> CheckpointV2 {
     let point_count = 61;
     let first: f64 = 1.0e-4;
     let radius: f64 = 1.0;
@@ -43,7 +43,7 @@ fn hydrogen_snapshot() -> SnapshotV2 {
     let radii = (0..point_count)
         .map(|index| first * (index as f64 * increment).exp())
         .collect::<Vec<_>>();
-    SnapshotV1::new(
+    CheckpointV1::new(
         MetaV1 {
             title: "scalar THC hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
@@ -137,7 +137,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 1, l: 0 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },
@@ -146,7 +146,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 2, l: 1 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },
@@ -408,7 +408,7 @@ fn selected_pair(
 
 #[test]
 fn q0_mt_and_interstitial_orbitals_match_independent_pp_qq_oracle() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -525,7 +525,7 @@ fn q0_mt_and_interstitial_orbitals_match_independent_pp_qq_oracle() {
 
 #[test]
 fn finite_q_pair_density_uses_stored_positive_wrap_not_global_umklapp() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let q0 = physics
         .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();
@@ -629,7 +629,7 @@ fn finite_q_pair_density_uses_stored_positive_wrap_not_global_umklapp() {
 
 #[test]
 fn multi_q_allq_l2_fits_heterogeneous_weights_with_independent_residual() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let q0 = physics
         .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();
@@ -784,7 +784,7 @@ fn weighted_frobenius(
 
 #[test]
 fn parent_grid_construction_identity_binds_q_fits() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -806,7 +806,7 @@ fn parent_grid_construction_identity_binds_q_fits() {
 
 #[test]
 fn scalar_thc_rejects_empty_slice_or_partition_mismatch() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 0.5), [0.0; 3])
         .unwrap();

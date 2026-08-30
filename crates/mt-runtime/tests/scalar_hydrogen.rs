@@ -18,7 +18,7 @@ use muffintin_io::{
     ExponentialMeshSpecV1, FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1,
     GeometryV1, InterstitialV1, InverseLengthUnitV1, LatticeV1, LengthUnitV1, LinearizationV1,
     MetaV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
+    RadialEquationTagV1, SiteSpinV1, SiteV1, CheckpointV1, CheckpointV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
 use muffintin_prodbasis::thc::RankPolicy;
@@ -28,7 +28,7 @@ mod thc_fixture_common;
 
 pub use thc_fixture_common::scalar_parent_grid as parent_grid;
 
-pub fn hydrogen_snapshot() -> SnapshotV2 {
+pub fn hydrogen_checkpoint() -> CheckpointV2 {
     let point_count = 61;
     let first: f64 = 1.0e-4;
     let radius: f64 = 1.0;
@@ -36,7 +36,7 @@ pub fn hydrogen_snapshot() -> SnapshotV2 {
     let radii = (0..point_count)
         .map(|index| first * (index as f64 * increment).exp())
         .collect::<Vec<_>>();
-    SnapshotV1::new(
+    CheckpointV1::new(
         MetaV1 {
             title: "scalar MLDUMP hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
@@ -130,7 +130,7 @@ pub fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 1, l: 0 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },
@@ -139,7 +139,7 @@ pub fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 2, l: 1 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },

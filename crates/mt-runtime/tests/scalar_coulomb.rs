@@ -5,7 +5,7 @@ use std::f64::consts::PI;
 
 use muffintin::{
     RankPolicy, SCALAR_COULOMB_EXACTNESS_FLOOR, ScalarCoulombError, ScalarCoulombPairMatch,
-    ScalarCoulombSpec, ScalarMpbSelection, ScalarMpbSpec, ScalarThcSpec, SnapshotDftPhysics,
+    ScalarCoulombSpec, ScalarMpbSelection, ScalarMpbSpec, ScalarThcSpec, CheckpointPhysics,
     ThcCandidates, ThcEngine, ThcParentGrid, build_scalar_coulomb, build_scalar_mpb,
     build_scalar_thc,
 };
@@ -27,7 +27,7 @@ use muffintin_io::{
     ExponentialMeshSpecV1, FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1,
     GeometryV1, InterstitialV1, InverseLengthUnitV1, LatticeV1, LengthUnitV1, LinearizationV1,
     MetaV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
+    RadialEquationTagV1, SiteSpinV1, SiteV1, CheckpointV1, CheckpointV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
 use muffintin_operators::lapw::Provenance;
@@ -39,7 +39,7 @@ mod thc_fixture_common;
 
 use thc_fixture_common::scalar_parent_grid as parent_grid;
 
-fn hydrogen_snapshot() -> SnapshotV2 {
+fn hydrogen_checkpoint() -> CheckpointV2 {
     let point_count = 61;
     let first: f64 = 1.0e-4;
     let radius: f64 = 1.0;
@@ -47,7 +47,7 @@ fn hydrogen_snapshot() -> SnapshotV2 {
     let radii = (0..point_count)
         .map(|index| first * (index as f64 * increment).exp())
         .collect::<Vec<_>>();
-    SnapshotV1::new(
+    CheckpointV1::new(
         MetaV1 {
             title: "scalar Coulomb hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
@@ -141,7 +141,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 1, l: 0 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },
@@ -150,7 +150,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 2, l: 1 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },
@@ -245,7 +245,7 @@ fn mpb_spec(lattice: muffintin_core::ReciprocalLattice) -> ScalarMpbSpec {
 
 #[test]
 fn gamma_sampled_coulomb_uses_full_parent_grid_and_keeps_head_as_metadata() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -297,7 +297,7 @@ fn gamma_sampled_coulomb_uses_full_parent_grid_and_keeps_head_as_metadata() {
 
 #[test]
 fn finite_q_preserves_transfer_q_and_rejects_dropped_umklapp() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let q0 = physics
         .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [0.0; 3])
         .unwrap();
@@ -334,7 +334,7 @@ fn finite_q_preserves_transfer_q_and_rejects_dropped_umklapp() {
 
 #[test]
 fn matched_pair_reports_quadratic_and_action_and_rejects_mismatch() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -448,7 +448,7 @@ fn matched_pair_reports_quadratic_and_action_and_rejects_mismatch() {
 
 #[test]
 fn selected_nodes_or_permuted_parent_rows_fail_context_or_oracle() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -539,7 +539,7 @@ fn selected_nodes_or_permuted_parent_rows_fail_context_or_oracle() {
 
 #[test]
 fn same_volume_skew_reciprocal_is_rejected_before_assembly() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -571,7 +571,7 @@ fn same_volume_skew_reciprocal_is_rejected_before_assembly() {
 
 #[test]
 fn tampered_vertex_layout_or_order_is_rejected() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -599,7 +599,7 @@ fn tampered_vertex_layout_or_order_is_rejected() {
 
 #[test]
 fn tampered_vertex_provenance_is_rejected() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -640,7 +640,7 @@ fn tampered_vertex_provenance_is_rejected() {
 
 #[test]
 fn malformed_bloch_index_is_rejected_without_encode() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();

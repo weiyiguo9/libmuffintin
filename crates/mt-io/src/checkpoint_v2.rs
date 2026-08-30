@@ -3,20 +3,20 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{IoError, ValidationError, finite, nonempty, positive};
-use crate::snapshot::{
+use crate::checkpoint::{
     AngularBasisV1, BasisHintsV1, Complex64V1, ExponentialMeshSpecV1, FourierCoefficientV1,
     GeometryV1, LatticeV1, LinearizationV1, MetaV1, PotentialChannelV1, RadialEquationTagV1,
-    SNAPSHOT_FORMAT, SiteSpinV1, SnapshotV1, SpinTagV1,
+    CHECKPOINT_FORMAT, SiteSpinV1, CheckpointV1, SpinTagV1,
 };
 use crate::units::LengthUnitV1;
 
-/// Schema version for noncollinear Pauli-field snapshots.
-pub const SNAPSHOT_VERSION_V2: u32 = 2;
+/// Schema version for noncollinear Pauli-field checkpoints.
+pub const CHECKPOINT_VERSION_V2: u32 = 2;
 
-/// A complete V2 snapshot with a frozen potential or restart state.
+/// A complete V2 checkpoint with a frozen potential or restart state.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct SnapshotV2 {
+pub struct CheckpointV2 {
     pub format: String,
     pub version: u32,
     pub meta: MetaV1,
@@ -24,11 +24,11 @@ pub struct SnapshotV2 {
     pub initial: InitialV2,
 }
 
-impl SnapshotV2 {
+impl CheckpointV2 {
     pub fn new(meta: MetaV1, geometry: GeometryV2, initial: InitialV2) -> Self {
         Self {
-            format: SNAPSHOT_FORMAT.to_owned(),
-            version: SNAPSHOT_VERSION_V2,
+            format: CHECKPOINT_FORMAT.to_owned(),
+            version: CHECKPOINT_VERSION_V2,
             meta,
             geometry,
             initial,
@@ -37,16 +37,16 @@ impl SnapshotV2 {
 
     /// Check the V2 header, geometry/basis identity, and all Pauli-field layouts.
     pub fn validate(&self) -> Result<(), IoError> {
-        if self.format != SNAPSHOT_FORMAT {
+        if !crate::checkpoint::is_checkpoint_format(&self.format) {
             return Err(IoError::InvalidFormat {
-                expected: SNAPSHOT_FORMAT,
+                expected: CHECKPOINT_FORMAT,
                 found: self.format.clone(),
             });
         }
-        if self.version != SNAPSHOT_VERSION_V2 {
+        if self.version != CHECKPOINT_VERSION_V2 {
             return Err(IoError::UnsupportedVersion {
-                format: SNAPSHOT_FORMAT,
-                supported: SNAPSHOT_VERSION_V2,
+                format: CHECKPOINT_FORMAT,
+                supported: CHECKPOINT_VERSION_V2,
                 found: self.version,
             });
         }
@@ -58,31 +58,31 @@ impl SnapshotV2 {
     }
 }
 
-/// Version-dispatched snapshot file.
+/// Version-dispatched checkpoint file.
 #[derive(Clone, Debug, PartialEq)]
-// Snapshot DTOs intentionally expose owned variants without Box in the public schema API.
+// Checkpoint DTOs intentionally expose owned variants without Box in the public schema API.
 #[allow(clippy::large_enum_variant)]
-pub enum SnapshotFile {
-    V1(SnapshotV1),
-    V2(SnapshotV2),
+pub enum CheckpointFile {
+    V1(CheckpointV1),
+    V2(CheckpointV2),
 }
 
-impl SnapshotFile {
+impl CheckpointFile {
     pub fn validate(&self) -> Result<(), IoError> {
         match self {
-            Self::V1(snapshot) => snapshot.validate(),
-            Self::V2(snapshot) => snapshot.validate(),
+            Self::V1(checkpoint) => checkpoint.validate(),
+            Self::V2(checkpoint) => checkpoint.validate(),
         }
     }
 
-    /// Convert to [`SnapshotV2`] without repeating [`Self::validate`].
+    /// Convert to [`CheckpointV2`] without repeating [`Self::validate`].
     ///
     /// Callers must have validated `self` immediately before, as
-    /// [`snapshot_file_from_toml`] does.
-    pub fn into_v2_prevalidated(self) -> Result<SnapshotV2, IoError> {
+    /// [`checkpoint_file_from_toml`] does.
+    pub fn into_v2_prevalidated(self) -> Result<CheckpointV2, IoError> {
         match self {
-            Self::V1(snapshot) => snapshot.convert_validated_v1_to_v2(),
-            Self::V2(snapshot) => Ok(snapshot),
+            Self::V1(checkpoint) => checkpoint.convert_validated_v1_to_v2(),
+            Self::V2(checkpoint) => Ok(checkpoint),
         }
     }
 }
@@ -618,27 +618,27 @@ impl InitialV2 {
 }
 
 #[derive(Deserialize)]
-struct SnapshotHeader {
+struct CheckpointHeader {
     format: String,
     version: u32,
 }
 
 /// Parse the header first, dispatch to the exact schema, and validate the result.
-pub fn snapshot_file_from_toml(text: &str) -> Result<SnapshotFile, IoError> {
-    let header: SnapshotHeader = toml::from_str(text)?;
-    if header.format != SNAPSHOT_FORMAT {
+pub fn checkpoint_file_from_toml(text: &str) -> Result<CheckpointFile, IoError> {
+    let header: CheckpointHeader = toml::from_str(text)?;
+    if !crate::checkpoint::is_checkpoint_format(&header.format) {
         return Err(IoError::InvalidFormat {
-            expected: SNAPSHOT_FORMAT,
+            expected: CHECKPOINT_FORMAT,
             found: header.format,
         });
     }
     let file = match header.version {
-        1 => SnapshotFile::V1(toml::from_str(text)?),
-        SNAPSHOT_VERSION_V2 => SnapshotFile::V2(toml::from_str(text)?),
+        1 => CheckpointFile::V1(toml::from_str(text)?),
+        CHECKPOINT_VERSION_V2 => CheckpointFile::V2(toml::from_str(text)?),
         found => {
             return Err(IoError::UnsupportedVersion {
-                format: SNAPSHOT_FORMAT,
-                supported: SNAPSHOT_VERSION_V2,
+                format: CHECKPOINT_FORMAT,
+                supported: CHECKPOINT_VERSION_V2,
                 found,
             });
         }
@@ -647,12 +647,12 @@ pub fn snapshot_file_from_toml(text: &str) -> Result<SnapshotFile, IoError> {
     Ok(file)
 }
 
-/// Serialize either supported snapshot schema as deterministic pretty TOML.
-pub fn snapshot_file_to_toml(file: &SnapshotFile) -> Result<String, IoError> {
+/// Serialize either supported checkpoint schema as deterministic pretty TOML.
+pub fn checkpoint_file_to_toml(file: &CheckpointFile) -> Result<String, IoError> {
     file.validate()?;
     let mut text = match file {
-        SnapshotFile::V1(snapshot) => toml::to_string_pretty(snapshot)?,
-        SnapshotFile::V2(snapshot) => toml::to_string_pretty(snapshot)?,
+        CheckpointFile::V1(checkpoint) => toml::to_string_pretty(checkpoint)?,
+        CheckpointFile::V2(checkpoint) => toml::to_string_pretty(checkpoint)?,
     };
     if !text.ends_with('\n') {
         text.push('\n');
@@ -660,18 +660,18 @@ pub fn snapshot_file_to_toml(file: &SnapshotFile) -> Result<String, IoError> {
     Ok(text)
 }
 
-impl SnapshotV1 {
+impl CheckpointV1 {
     /// Normalize legacy scalar/up-down potentials into the V2 Pauli convention.
     ///
     /// Scalar data maps to `V0` with zero `B`. For an up/down pair,
     /// `V0 = (Vup + Vdown)/2` and `Bz = (Vup - Vdown)/2` exactly, while
     /// `Bx = By = 0`. V1 has no density payload, so the result is frozen-potential.
-    pub fn normalize_v2(&self) -> Result<SnapshotV2, IoError> {
+    pub fn normalize_v2(&self) -> Result<CheckpointV2, IoError> {
         self.validate()?;
         self.convert_validated_v1_to_v2()
     }
 
-    fn convert_validated_v1_to_v2(&self) -> Result<SnapshotV2, IoError> {
+    fn convert_validated_v1_to_v2(&self) -> Result<CheckpointV2, IoError> {
         let geometry = GeometryV2 {
             lattice: self.geometry.lattice,
             sites: self
@@ -707,19 +707,19 @@ impl SnapshotV1 {
         };
 
         let potential = potential_from_v1(&self.geometry, &self.interstitial, &self.meta)?;
-        let snapshot = SnapshotV2::new(
+        let checkpoint = CheckpointV2::new(
             self.meta.clone(),
             geometry,
             InitialV2::FrozenPotential { potential },
         );
-        snapshot.validate()?;
-        Ok(snapshot)
+        checkpoint.validate()?;
+        Ok(checkpoint)
     }
 }
 
 fn potential_from_v1(
     geometry: &GeometryV1,
-    interstitial: &crate::snapshot::InterstitialV1,
+    interstitial: &crate::checkpoint::InterstitialV1,
     meta: &MetaV1,
 ) -> Result<PotentialV2, ValidationError> {
     let mut v0_sites = Vec::with_capacity(geometry.sites.len());

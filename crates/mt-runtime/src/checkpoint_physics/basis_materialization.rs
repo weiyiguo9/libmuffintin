@@ -1,12 +1,12 @@
 use super::*;
 
-impl SnapshotDftPhysics {
+impl CheckpointPhysics {
     pub(super) fn scalar_linearization_energies(
         &self,
         basis: &ScfBasis,
         site: &str,
         spin: usize,
-    ) -> Result<Vec<Hartree>, SnapshotDftError> {
+    ) -> Result<Vec<Hartree>, CheckpointPhysicsError> {
         (0..=basis.l_max)
             .map(|l| {
                 let channels = basis
@@ -34,7 +34,7 @@ impl SnapshotDftPhysics {
                         .iter()
                         .any(|resolved| channel_n(resolved.recipe.identity) != n)
                     {
-                        return Err(SnapshotDftError::AmbiguousBaseChannel {
+                        return Err(CheckpointPhysicsError::AmbiguousBaseChannel {
                             site: site.to_owned(),
                             l,
                         });
@@ -47,9 +47,9 @@ impl SnapshotDftPhysics {
                             }
                             ScfChannelIdentity::ScalarL { .. } => unreachable!(),
                         })
-                        .collect::<Result<Vec<_>, SnapshotDftError>>()?;
+                        .collect::<Result<Vec<_>, CheckpointPhysicsError>>()?;
                     return kappa_degeneracy_average(l, &partners).map_err(|source| {
-                        SnapshotDftError::ScalarKappaAverage {
+                        CheckpointPhysicsError::ScalarKappaAverage {
                             site: site.to_owned(),
                             l,
                             source,
@@ -57,12 +57,12 @@ impl SnapshotDftPhysics {
                     });
                 }
                 if channels.is_empty() {
-                    Err(SnapshotDftError::MissingMaterializedBaseChannel {
+                    Err(CheckpointPhysicsError::MissingMaterializedBaseChannel {
                         site: site.to_owned(),
                         l,
                     })
                 } else {
-                    Err(SnapshotDftError::AmbiguousBaseChannel {
+                    Err(CheckpointPhysicsError::AmbiguousBaseChannel {
                         site: site.to_owned(),
                         l,
                     })
@@ -76,7 +76,7 @@ impl SnapshotDftPhysics {
         basis: &ScfBasis,
         site: &str,
         spin: usize,
-    ) -> Result<Vec<ScalarLocalOrbitalRequest>, SnapshotDftError> {
+    ) -> Result<Vec<ScalarLocalOrbitalRequest>, CheckpointPhysicsError> {
         basis
             .resolved_channels
             .iter()
@@ -106,7 +106,7 @@ impl SnapshotDftPhysics {
         &self,
         basis: &ScfBasis,
         site: &str,
-    ) -> Result<Vec<SpinorLinearizationEnergy>, SnapshotDftError> {
+    ) -> Result<Vec<SpinorLinearizationEnergy>, CheckpointPhysicsError> {
         let mut energies = Vec::new();
         for l in 0..=basis.l_max {
             let channels = basis
@@ -150,7 +150,7 @@ impl SnapshotDftPhysics {
                         .copied()
                         .collect::<Vec<_>>();
                     if matches.len() != 1 {
-                        return Err(SnapshotDftError::MissingSpinorBaseChannel {
+                        return Err(CheckpointPhysicsError::MissingSpinorBaseChannel {
                             site: site.to_owned(),
                             l,
                             kappa: kappa.get(),
@@ -164,12 +164,12 @@ impl SnapshotDftPhysics {
                 continue;
             }
             return Err(if channels.is_empty() {
-                SnapshotDftError::MissingMaterializedBaseChannel {
+                CheckpointPhysicsError::MissingMaterializedBaseChannel {
                     site: site.to_owned(),
                     l,
                 }
             } else {
-                SnapshotDftError::AmbiguousBaseChannel {
+                CheckpointPhysicsError::AmbiguousBaseChannel {
                     site: site.to_owned(),
                     l,
                 }
@@ -182,7 +182,7 @@ impl SnapshotDftPhysics {
         &self,
         basis: &ScfBasis,
         site: &str,
-    ) -> Result<Vec<SpinorLocalOrbitalRequest>, SnapshotDftError> {
+    ) -> Result<Vec<SpinorLocalOrbitalRequest>, CheckpointPhysicsError> {
         let mut orbitals = Vec::new();
         for resolved in basis.resolved_channels.iter().filter(|resolved| {
             resolved.recipe.site == site
@@ -214,11 +214,11 @@ impl SnapshotDftPhysics {
         iteration: usize,
         potential: &RegionalPotential,
         basis: &ScfBasis,
-    ) -> Result<ScfBasis, SnapshotDftError> {
+    ) -> Result<ScfBasis, CheckpointPhysicsError> {
         let context = self
             .core_potentials
             .get(&iteration)
-            .ok_or(SnapshotDftError::MissingCoreContinuation(iteration))?;
+            .ok_or(CheckpointPhysicsError::MissingCoreContinuation(iteration))?;
         let meshes = self.channel_meshes(basis)?;
         let extended = build_extended_core_potentials(
             &context.electrostatic,
@@ -235,7 +235,7 @@ impl SnapshotDftPhysics {
         potential: &RegionalPotential,
         requested: &ScfBasis,
         extended: &[muffintin_dft::BuiltExtendedCorePotential],
-    ) -> Result<ScfBasis, SnapshotDftError> {
+    ) -> Result<ScfBasis, CheckpointPhysicsError> {
         self.require_potential_site_count(potential)?;
         self.validate_spex_requested_basis(requested)?;
         let mut basis = requested.clone();
@@ -285,7 +285,7 @@ impl SnapshotDftPhysics {
         potential: &RegionalPotential,
         extended: &ExtendedCorePotential,
         lo_ordinal: Option<usize>,
-    ) -> Result<ScfResolvedChannelEnergy, SnapshotDftError> {
+    ) -> Result<ScfResolvedChannelEnergy, CheckpointPhysicsError> {
         let site = &self.sites[site_index];
         let l = channel_l(recipe.identity);
         let one = |generated: GeneratedLinearizationEnergy| ScfResolvedChannelEnergy {
@@ -297,7 +297,7 @@ impl SnapshotDftPhysics {
             LinearizationEnergyGenerator::Explicit => {
                 let seed = recipe
                     .seed
-                    .ok_or_else(|| SnapshotDftError::MissingChannelSeed {
+                    .ok_or_else(|| CheckpointPhysicsError::MissingChannelSeed {
                         site: recipe.site.clone(),
                         identity: recipe.identity,
                         generator: recipe.generator,
@@ -306,18 +306,18 @@ impl SnapshotDftPhysics {
                     .map(one)
                     .map_err(|source| channel_generator_error(recipe, source));
             }
-            LinearizationEnergyGenerator::FrozenSnapshot => {
-                let up = self.snapshot_anchor_spin(recipe, lo_ordinal, 0)?;
-                let down = self.snapshot_anchor_spin(recipe, lo_ordinal, 1)?;
+            LinearizationEnergyGenerator::FrozenCheckpoint => {
+                let up = self.checkpoint_anchor_spin(recipe, lo_ordinal, 0)?;
+                let down = self.checkpoint_anchor_spin(recipe, lo_ordinal, 1)?;
                 let mut components = vec![
-                    generate_frozen_snapshot_energy(up)
+                    generate_frozen_checkpoint_energy(up)
                         .map_err(|source| channel_generator_error(recipe, source))?,
                 ];
                 let energy = if site.nonmagnetic_scalar {
                     up
                 } else {
                     components.push(
-                        generate_frozen_snapshot_energy(down)
+                        generate_frozen_checkpoint_energy(down)
                             .map_err(|source| channel_generator_error(recipe, source))?,
                     );
                     Hartree(0.5 * (up.get() + down.get()))
@@ -363,7 +363,7 @@ impl SnapshotDftPhysics {
             LinearizationEnergyGenerator::BandCenter
             | LinearizationEnergyGenerator::LogDerivative => {
                 if matches!(recipe.identity, ScfChannelIdentity::Kappa { .. }) {
-                    return Err(SnapshotDftError::ScalarGeneratorRequiresLIdentity {
+                    return Err(CheckpointPhysicsError::ScalarGeneratorRequiresLIdentity {
                         site: recipe.site.clone(),
                         identity: recipe.identity,
                         generator: recipe.generator,
@@ -371,7 +371,7 @@ impl SnapshotDftPhysics {
                 }
                 let seed = match recipe.seed {
                     Some(seed) => seed,
-                    None => self.snapshot_anchor(recipe, lo_ordinal)?,
+                    None => self.checkpoint_anchor(recipe, lo_ordinal)?,
                 };
                 let spherical = spherical_scalar_potential(potential, site_index, &site.id)?;
                 if recipe.generator == LinearizationEnergyGenerator::BandCenter {
@@ -407,8 +407,8 @@ impl SnapshotDftPhysics {
         &self,
         recipe: &ScfChannelRecipe,
         lo_ordinal: Option<usize>,
-    ) -> Result<ScfResolvedChannelEnergy, SnapshotDftError> {
-        let energy = self.snapshot_anchor(recipe, lo_ordinal)?;
+    ) -> Result<ScfResolvedChannelEnergy, CheckpointPhysicsError> {
+        let energy = self.checkpoint_anchor(recipe, lo_ordinal)?;
         Ok(ScfResolvedChannelEnergy {
             recipe: recipe.clone(),
             energy,
@@ -421,14 +421,14 @@ impl SnapshotDftPhysics {
         })
     }
 
-    fn snapshot_anchor(
+    fn checkpoint_anchor(
         &self,
         recipe: &ScfChannelRecipe,
         lo_ordinal: Option<usize>,
-    ) -> Result<Hartree, SnapshotDftError> {
+    ) -> Result<Hartree, CheckpointPhysicsError> {
         let site_index = self.site_index(&recipe.site)?;
-        let up = self.snapshot_anchor_spin(recipe, lo_ordinal, 0)?;
-        let down = self.snapshot_anchor_spin(recipe, lo_ordinal, 1)?;
+        let up = self.checkpoint_anchor_spin(recipe, lo_ordinal, 0)?;
+        let down = self.checkpoint_anchor_spin(recipe, lo_ordinal, 1)?;
         Ok(if self.sites[site_index].nonmagnetic_scalar {
             up
         } else {
@@ -436,12 +436,12 @@ impl SnapshotDftPhysics {
         })
     }
 
-    fn snapshot_anchor_spin(
+    fn checkpoint_anchor_spin(
         &self,
         recipe: &ScfChannelRecipe,
         lo_ordinal: Option<usize>,
         spin: usize,
-    ) -> Result<Hartree, SnapshotDftError> {
+    ) -> Result<Hartree, CheckpointPhysicsError> {
         let site_index = self.site_index(&recipe.site)?;
         let site = &self.sites[site_index];
         let l = channel_l(recipe.identity);
@@ -449,7 +449,7 @@ impl SnapshotDftPhysics {
         match recipe.treatment {
             ScfChannelTreatment::Lo => {
                 let ordinal =
-                    lo_ordinal.ok_or_else(|| SnapshotDftError::MissingFrozenSnapshotAnchor {
+                    lo_ordinal.ok_or_else(|| CheckpointPhysicsError::MissingFrozenCheckpointAnchor {
                         site: recipe.site.clone(),
                         identity: recipe.identity,
                         treatment: recipe.treatment,
@@ -460,7 +460,7 @@ impl SnapshotDftPhysics {
                     .filter(|(candidate_l, _)| *candidate_l == l)
                     .nth(ordinal)
                     .map(|(_, energy)| *energy)
-                    .ok_or_else(|| SnapshotDftError::MissingFrozenSnapshotLo {
+                    .ok_or_else(|| CheckpointPhysicsError::MissingFrozenCheckpointLo {
                         site: site.id.clone(),
                         l,
                         ordinal,
@@ -470,7 +470,7 @@ impl SnapshotDftPhysics {
             ScfChannelTreatment::Core
             | ScfChannelTreatment::Valence
             | ScfChannelTreatment::Hdlo => radial.linearization.get(&l).copied().ok_or_else(|| {
-                SnapshotDftError::MissingFrozenSnapshotBase {
+                CheckpointPhysicsError::MissingFrozenCheckpointBase {
                     site: site.id.clone(),
                     l,
                     spin,
@@ -482,7 +482,7 @@ impl SnapshotDftPhysics {
     pub(crate) fn channel_meshes(
         &self,
         basis: &ScfBasis,
-    ) -> Result<Vec<ExponentialMesh>, SnapshotDftError> {
+    ) -> Result<Vec<ExponentialMesh>, CheckpointPhysicsError> {
         self.sites
             .iter()
             .enumerate()

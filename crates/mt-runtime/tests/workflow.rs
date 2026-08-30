@@ -21,10 +21,10 @@ use muffintin_dft::{
     ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfPhysics, ScfRelativity, ScfState,
     XcFunctional,
 };
-use muffintin_io::SnapshotFile;
+use muffintin_io::CheckpointFile;
 use num_complex::Complex64;
 
-use common::{sample_input, sample_snapshot, supported_input, supported_snapshot};
+use common::{sample_input, sample_checkpoint, supported_input, supported_checkpoint};
 
 struct WorkflowKernel {
     template: RegionalDensity,
@@ -246,10 +246,10 @@ fn workflow_executes_scf_bands_dos_in_order_with_exact_state_reuse() {
     let Task::DftScf { basis, .. } = input.task.get_mut("scf").unwrap() else {
         panic!("scf task changed kind");
     };
-    basis.energy_generator = Some(ChannelEnergyGenerator::FrozenSnapshot);
+    basis.energy_generator = Some(ChannelEnergyGenerator::FrozenCheckpoint);
     basis.recipe = None;
     basis.channels.clear();
-    let prepared = prepare_input(&input, SnapshotFile::V1(sample_snapshot())).unwrap();
+    let prepared = prepare_input(&input, CheckpointFile::V1(sample_checkpoint())).unwrap();
     let mut kernel = WorkflowKernel::new();
     let result = execute_prepared_with(&prepared, &mut kernel).unwrap();
     assert_eq!(result.tasks.len(), 3);
@@ -310,7 +310,7 @@ fn schema_rich_orbital_config_reaches_execution() {
     )]);
     let prepared = prepare_input_with_recipes(
         &sample_input(),
-        SnapshotFile::V1(sample_snapshot()),
+        CheckpointFile::V1(sample_checkpoint()),
         &recipes,
     )
     .unwrap();
@@ -347,7 +347,7 @@ fn derivative_order_three_prepares_but_fails_at_execution_boundary() {
         },
     )]);
     let prepared =
-        prepare_input_with_recipes(&input, SnapshotFile::V1(supported_snapshot()), &recipes)
+        prepare_input_with_recipes(&input, CheckpointFile::V1(supported_checkpoint()), &recipes)
             .unwrap();
     assert_eq!(
         prepared.tasks[0].channel_recipe.as_ref().unwrap().sites[0].channels[0].derivative_order,

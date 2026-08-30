@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use muffintin::{
     SCALAR_MPB_NSPIN, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarMpbError, ScalarMpbSelection,
-    ScalarMpbSpec, SnapshotDftPhysics, build_scalar_mpb,
+    ScalarMpbSpec, CheckpointPhysics, build_scalar_mpb,
 };
 use muffintin_prodbasis::{CompiledAuxiliaryBasis, OrbitalPair};
 use muffintin_core::{Hartree, InverseBohr};
@@ -19,13 +19,13 @@ use muffintin_io::{
     ExponentialMeshSpecV1, FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1,
     GeometryV1, InterstitialV1, InverseLengthUnitV1, LatticeV1, LengthUnitV1, LinearizationV1,
     MetaV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
+    RadialEquationTagV1, SiteSpinV1, SiteV1, CheckpointV1, CheckpointV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
 use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
 use num_complex::Complex64;
 
-fn hydrogen_snapshot() -> SnapshotV2 {
+fn hydrogen_checkpoint() -> CheckpointV2 {
     let point_count = 61;
     let first: f64 = 1.0e-4;
     let radius: f64 = 1.0;
@@ -33,7 +33,7 @@ fn hydrogen_snapshot() -> SnapshotV2 {
     let radii = (0..point_count)
         .map(|index| first * (index as f64 * increment).exp())
         .collect::<Vec<_>>();
-    SnapshotV1::new(
+    CheckpointV1::new(
         MetaV1 {
             title: "scalar MPB hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
@@ -127,7 +127,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 1, l: 0 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },
@@ -136,7 +136,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
                     identity: ScfChannelIdentity::ScalarL { n: 2, l: 1 },
                     treatment: ScfChannelTreatment::Valence,
                     derivative_order: 0,
-                    generator: LinearizationEnergyGenerator::FrozenSnapshot,
+                    generator: LinearizationEnergyGenerator::FrozenCheckpoint,
                     seed: None,
                     provenance: ScfChannelProvenance::BuiltIn,
                 },
@@ -281,7 +281,7 @@ fn max_abs_diff(left: &[Complex64], right: &[Complex64]) -> f64 {
 
 #[test]
 fn q0_scalar_mpb_bridge_emits_raw_retained_and_real_vertex() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -359,7 +359,7 @@ fn q0_scalar_mpb_bridge_emits_raw_retained_and_real_vertex() {
 
 #[test]
 fn finite_q_scalar_mpb_uses_canonical_q_and_wraps() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [1.5, 0.0, 0.0])
         .unwrap();
@@ -416,7 +416,7 @@ fn finite_q_scalar_mpb_uses_canonical_q_and_wraps() {
 
 #[test]
 fn selected_vertex_plane_wave_theta_sum_matches_independent_oracle() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([2, 1, 1], 1.0), [1.5, 0.0, 0.0])
         .unwrap();
@@ -479,7 +479,7 @@ fn selected_vertex_plane_wave_theta_sum_matches_independent_oracle() {
 
 #[test]
 fn scalar_mpb_rejects_empty_or_incompatible_selection() {
-    let physics = SnapshotDftPhysics::new(&hydrogen_snapshot()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 0.5), [0.0; 3])
         .unwrap();

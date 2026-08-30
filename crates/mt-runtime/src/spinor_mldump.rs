@@ -464,7 +464,7 @@ fn write_products(
         .provenance
         .reference
         .as_deref()
-        .unwrap_or("snapshot-dft-frozen-spinor-product-input");
+        .unwrap_or("checkpoint-dft-frozen-spinor-product-input");
     stream.begin_products(&SpinorProductsBeginV1 {
         n_k: first.orbitals.k_fractional.len(),
         n_orb: first.orbitals.band_window.count,
@@ -720,7 +720,7 @@ mod export_oracles {
     use std::f64::consts::PI;
 
     use super::*;
-    use crate::{SnapshotDftPhysics, SpinorCoulombSpec, build_spinor_coulomb, build_spinor_thc};
+    use crate::{CheckpointPhysics, SpinorCoulombSpec, build_spinor_coulomb, build_spinor_thc};
     use muffintin_coulomb::{AuxiliaryKind, assemble_point_charge_oracle};
     use muffintin_io::{
         MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION, MldumpGeometryV1, MldumpKMinusQV1,
@@ -729,7 +729,7 @@ mod export_oracles {
     };
 
     use super::spinor_hydrogen::{
-        LATTICE, coulomb_spec, hydrogen_spinor_snapshot, parent_grid, spinor_config, thc_spec,
+        LATTICE, coulomb_spec, hydrogen_spinor_checkpoint, parent_grid, spinor_config, thc_spec,
     };
 
     fn header_from_inputs(inputs: &[SpinorProductInput]) -> MldumpHeaderV1 {
@@ -829,7 +829,7 @@ mod export_oracles {
         crate::SpinorCoulombResult,
         SpinorCoulombSpec,
     ) {
-        let physics = SnapshotDftPhysics::new(&hydrogen_spinor_snapshot()).unwrap();
+        let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
         let q0 = physics
             .spinor_product_input(&spinor_config([2, 1, 1], 0.5), [0.0; 3])
             .unwrap();

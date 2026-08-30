@@ -1,4 +1,4 @@
-//! Concrete production DFT kernel reconstructed from a V1 snapshot.
+//! Concrete production DFT kernel reconstructed from a V1 checkpoint.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::PI;
@@ -25,10 +25,10 @@ use muffintin_dft::{
     SpinorFirstVariationError, SpinorIterationBasis, SpinorLinearizationEnergy,
     SpinorLocalOrbitalRequest, SpinorSiteInput, TetrahedronError, XcFieldSpec,
     build_collinear_scalar_iteration_bases, build_extended_core_potentials,
-    build_extended_snapshot_core_potentials, build_regional_core_contribution,
+    build_extended_checkpoint_core_potentials, build_regional_core_contribution,
     build_spinor_iteration_basis, evaluate_regional_electrostatics, evaluate_regional_xc,
     generate_atomic_energy, generate_band_center_energy, generate_band_cog_energy,
-    generate_explicit_energy, generate_fermi_offset_energy, generate_frozen_snapshot_energy,
+    generate_explicit_energy, generate_fermi_offset_energy, generate_frozen_checkpoint_energy,
     generate_log_derivative_energy, kappa_degeneracy_average, physical_site_band_projections,
     solve_fermi_dirac, solve_gaussian, solve_soc_second_variation, solve_spinor_k_point,
     synthesize_collinear_valence_density, synthesize_full_spinor_valence_density,
@@ -37,7 +37,7 @@ use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_io::{
     AngularBasisV1, Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2,
     FourierCoefficientV2, GeometryV2, InitialV2, InterstitialFieldV2, IoError, MuffinTinFieldV2,
-    PotentialV2, RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, SnapshotV2,
+    PotentialV2, RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, CheckpointV2,
     SpexMaterialBasisRecipeV1, SpexMaterialChannelKind, SphericalChannelV2,
 };
 use muffintin_operators::lapw::{Collinear, GeneralizedEigensolution, InterstitialPotential, LapwError};
@@ -56,36 +56,36 @@ use muffintin_tensor::{DenseEigenvectors, TensorError};
 use num_complex::Complex64;
 use thiserror::Error;
 
-mod atomic_snapshot;
+mod atomic_checkpoint;
 mod basis_materialization;
 mod convert_v2;
 
-pub use atomic_snapshot::{
-    AtomicSnapshotError, AtomicSnapshotRequest, AtomicSnapshotResult,
-    materialize_atomic_snapshot_v2,
+pub use atomic_checkpoint::{
+    AtomicCheckpointError, AtomicCheckpointRequest, AtomicCheckpointResult,
+    materialize_atomic_checkpoint_v2,
 };
-pub use convert_v2::snapshot_v2_from_state;
+pub use convert_v2::checkpoint_v2_from_state;
 use convert_v2::{convert_v2_site_bases, regional_density_from_v2, regional_potential_from_v2};
 
 const OVERLAP_THRESHOLD: f64 = 1.0e-10;
 const OCCUPATION_TOLERANCE: f64 = 1.0e-12;
 const OCCUPATION_ITERATIONS: usize = 256;
-const SNAPSHOT_RADIUS_TOLERANCE: f64 = 1.0e-10;
+const CHECKPOINT_RADIUS_TOLERANCE: f64 = 1.0e-10;
 const TRANSVERSE_FIELD_TOLERANCE: f64 = 1.0e-10;
 const SPECTRAL_REFINEMENT_TOLERANCE: f64 = 1.0e-10;
 const DEFAULT_FERMI_OFFSET_HARTREE: f64 = -0.1;
 
-/// Snapshot-backed material kernel shared by SCF, bands, and DOS tasks.
+/// Checkpoint-backed material kernel shared by SCF, bands, and DOS tasks.
 ///
 /// Construction performs only convention conversion and topology validation.
-/// The initial density is obtained by a frozen-snapshot one-particle solve;
+/// The initial density is obtained by a frozen-checkpoint one-particle solve;
 /// no atomic-density or artificial `G=0` guess is installed.
 #[derive(Debug)]
-pub struct SnapshotDftPhysics {
-    snapshot_template: SnapshotV2,
+pub struct CheckpointPhysics {
+    checkpoint_template: CheckpointV2,
     reciprocal: ReciprocalLattice,
     geometry: InterstitialGeometry,
-    sites: Vec<SnapshotSite>,
+    sites: Vec<CheckpointSite>,
     frozen_potential: RegionalPotential,
     restart_density: Option<RegionalDensity>,
     nuclear_charges: Vec<f64>,
@@ -116,20 +116,20 @@ struct CorePotentialContext {
 }
 
 #[derive(Clone, Debug)]
-struct SnapshotSite {
+struct CheckpointSite {
     id: String,
     position: [Bohr; 3],
     radius: Bohr,
-    up: SnapshotSpin,
-    down: SnapshotSpin,
+    up: CheckpointSpin,
+    down: CheckpointSpin,
     nonmagnetic_scalar: bool,
 }
 
-struct ConvertedSnapshotGeometry {
+struct ConvertedCheckpointGeometry {
     direct: [[Bohr; 3]; 3],
     reciprocal: ReciprocalLattice,
     geometry: InterstitialGeometry,
-    sites: Vec<SnapshotSite>,
+    sites: Vec<CheckpointSite>,
     nuclear_charges: Vec<f64>,
 }
 
@@ -142,7 +142,7 @@ struct ProductionPotentialBuild {
 }
 
 #[derive(Clone, Debug)]
-struct SnapshotSpin {
+struct CheckpointSpin {
     equation: RadialEquationTagV1,
     mesh: ExponentialMesh,
     linearization: BTreeMap<u32, Hartree>,
@@ -152,33 +152,33 @@ struct SnapshotSpin {
 /// One iteration's potential and basis-neutral controls. Concrete k-dependent
 /// APW matching is intentionally deferred until the requested k points exist.
 #[derive(Clone, Debug)]
-pub struct SnapshotOneParticle {
+pub struct CheckpointOneParticle {
     potential: RegionalPotential,
     basis: ScfBasis,
 }
 
 /// Concrete regular-mesh solutions retained for occupations and density synthesis.
 #[derive(Clone, Debug)]
-pub struct SnapshotBandSolution {
-    points: Vec<SnapshotKPoint>,
+pub struct CheckpointBandSolution {
+    points: Vec<CheckpointKPoint>,
     states: Vec<BandState>,
 }
 
-impl SnapshotBandSolution {
-    pub(crate) fn points(&self) -> &[SnapshotKPoint] {
+impl CheckpointBandSolution {
+    pub(crate) fn points(&self) -> &[CheckpointKPoint] {
         &self.points
     }
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct SnapshotKPoint {
+pub(crate) struct CheckpointKPoint {
     weight: f64,
-    pub(crate) solution: SnapshotKPointSolution,
+    pub(crate) solution: CheckpointKPointSolution,
     energies: Vec<Hartree>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum SnapshotKPointSolution {
+pub(crate) enum CheckpointKPointSolution {
     Collinear {
         bases: Box<Collinear<ScalarIterationBasis>>,
         solutions: Collinear<GeneralizedEigensolution>,
@@ -193,16 +193,16 @@ pub(crate) enum SnapshotKPointSolution {
     },
 }
 
-impl SnapshotDftPhysics {
-    /// Convert a validated V2 snapshot into exact internal units and conventions.
-    pub fn new(snapshot: &SnapshotV2) -> Result<Self, SnapshotDftError> {
-        snapshot.validate()?;
-        let converted = convert_snapshot_geometry(&snapshot.geometry)?;
-        let restart_density = match &snapshot.initial {
+impl CheckpointPhysics {
+    /// Convert a validated V2 checkpoint into exact internal units and conventions.
+    pub fn new(checkpoint: &CheckpointV2) -> Result<Self, CheckpointPhysicsError> {
+        checkpoint.validate()?;
+        let converted = convert_checkpoint_geometry(&checkpoint.geometry)?;
+        let restart_density = match &checkpoint.initial {
             InitialV2::FrozenPotential { .. } => None,
             InitialV2::Restart { density, .. } => Some(density),
         };
-        let potential = match &snapshot.initial {
+        let potential = match &checkpoint.initial {
             InitialV2::FrozenPotential { potential } | InitialV2::Restart { potential, .. } => {
                 potential
             }
@@ -224,7 +224,7 @@ impl SnapshotDftPhysics {
             })
             .transpose()?;
         Ok(Self {
-            snapshot_template: snapshot.clone(),
+            checkpoint_template: checkpoint.clone(),
             reciprocal: converted.reciprocal,
             geometry: converted.geometry,
             sites: converted.sites,
@@ -243,28 +243,28 @@ impl SnapshotDftPhysics {
     /// The SPEX snapshot remains scalar Koelling-Harmon source provenance.
     /// This constructor authorizes a target full-Dirac solve only after every
     /// recipe channel binds exactly to a runtime request and its resolved
-    /// energy. The Dirac radial functions are then solved from the snapshot
+    /// energy. The Dirac radial functions are then solved from the checkpoint
     /// `V0` monopole; they are not imported from SPEX.
     pub fn new_spex_material(
-        snapshot: &SnapshotV2,
+        checkpoint: &CheckpointV2,
         recipe: &SpexMaterialBasisRecipeV1,
         basis: &ScfBasis,
-    ) -> Result<Self, SnapshotDftError> {
-        let mut physics = Self::new(snapshot)?;
-        let recorded_sha256 = snapshot
+    ) -> Result<Self, CheckpointPhysicsError> {
+        let mut physics = Self::new(checkpoint)?;
+        let recorded_sha256 = checkpoint
             .meta
             .annotations
             .get("material_basis.recipe_sha256");
-        let recorded_producer = snapshot.meta.annotations.get("material_basis.producer");
+        let recorded_producer = checkpoint.meta.annotations.get("material_basis.producer");
         if recorded_sha256 != Some(&recipe.recipe_sha256)
             || recorded_producer != Some(&recipe.producer)
         {
-            return Err(SnapshotDftError::SpexMaterialProvenanceMismatch);
+            return Err(CheckpointPhysicsError::SpexMaterialProvenanceMismatch);
         }
         for site in &physics.sites {
             for (spin, source) in [&site.up, &site.down].into_iter().enumerate() {
                 if source.equation != RadialEquationTagV1::ScalarKoellingHarmon {
-                    return Err(SnapshotDftError::SpexMaterialSourceRadialEquation {
+                    return Err(CheckpointPhysicsError::SpexMaterialSourceRadialEquation {
                         site: site.id.clone(),
                         spin,
                         equation: source.equation,
@@ -306,14 +306,14 @@ impl SnapshotDftPhysics {
                         && requested.identity == identity
                         && requested.treatment == treatment
                         && requested.derivative_order == channel.derivative_order
-                        && requested.generator == LinearizationEnergyGenerator::FrozenSnapshot
+                        && requested.generator == LinearizationEnergyGenerator::FrozenCheckpoint
                 })
                 .collect::<Vec<_>>();
             if channel_l(identity) != channel.l || !keys.insert(key) || matches.len() != 1 {
                 return Err(spex_material_channel_mismatch(channel, treatment));
             }
             let requested = matches[0].clone();
-            let generated = generate_frozen_snapshot_energy(Hartree(channel.energy))
+            let generated = generate_frozen_checkpoint_energy(Hartree(channel.energy))
                 .map_err(|source| channel_generator_error(&requested, source))?;
             channels.push(SpexBoundSpinorChannel {
                 l: channel.l,
@@ -330,7 +330,7 @@ impl SnapshotDftPhysics {
         Ok(physics)
     }
 
-    fn validate_spex_requested_basis(&self, basis: &ScfBasis) -> Result<(), SnapshotDftError> {
+    fn validate_spex_requested_basis(&self, basis: &ScfBasis) -> Result<(), CheckpointPhysicsError> {
         let Some(binding) = &self.spex_spinor_binding else {
             return Ok(());
         };
@@ -348,7 +348,7 @@ impl SnapshotDftPhysics {
         Ok(())
     }
 
-    fn validate_spex_resolved_basis(&self, basis: &ScfBasis) -> Result<(), SnapshotDftError> {
+    fn validate_spex_resolved_basis(&self, basis: &ScfBasis) -> Result<(), CheckpointPhysicsError> {
         let Some(binding) = &self.spex_spinor_binding else {
             return Ok(());
         };
@@ -394,8 +394,8 @@ impl SnapshotDftPhysics {
 
     /// Serialize a converged state as a V2 restart while preserving this
     /// kernel's immutable geometry and radial-basis identity.
-    pub fn restart_snapshot(&self, state: &ScfState) -> Result<SnapshotV2, SnapshotDftError> {
-        snapshot_v2_from_state(&self.snapshot_template, state)
+    pub fn restart_checkpoint(&self, state: &ScfState) -> Result<CheckpointV2, CheckpointPhysicsError> {
+        checkpoint_v2_from_state(&self.checkpoint_template, state)
     }
 
     pub(crate) fn solve_points(
@@ -404,9 +404,9 @@ impl SnapshotDftPhysics {
         basis: &ScfBasis,
         points: &[[f64; 3]],
         relativity: ScfRelativity,
-    ) -> Result<SnapshotBandSolution, SnapshotDftError> {
+    ) -> Result<CheckpointBandSolution, CheckpointPhysicsError> {
         if points.is_empty() {
-            return Err(SnapshotDftError::EmptyKPointSet);
+            return Err(CheckpointPhysicsError::EmptyKPointSet);
         }
         if relativity == ScfRelativity::SpinorFirstVariation {
             return self.solve_spinor_points(potential, basis, points);
@@ -474,7 +474,7 @@ impl SnapshotDftPhysics {
                 ScfRelativity::SocSecondVariation { window } => {
                     self.require_second_variation_route(potential)?;
                     if window.start() != 0 {
-                        return Err(SnapshotDftError::SecondVariationDropsLowerBands {
+                        return Err(CheckpointPhysicsError::SecondVariationDropsLowerBands {
                             start: window.start(),
                         });
                     }
@@ -505,9 +505,9 @@ impl SnapshotDftPhysics {
                 ScfRelativity::SpinorFirstVariation => unreachable!(),
             };
             debug_assert!(states.len() > state_start);
-            solved_points.push(SnapshotKPoint {
+            solved_points.push(CheckpointKPoint {
                 weight,
-                solution: SnapshotKPointSolution::Collinear {
+                solution: CheckpointKPointSolution::Collinear {
                     bases: Box::new(bases),
                     solutions,
                     up_occupations,
@@ -516,7 +516,7 @@ impl SnapshotDftPhysics {
                 energies,
             });
         }
-        Ok(SnapshotBandSolution {
+        Ok(CheckpointBandSolution {
             points: solved_points,
             states,
         })
@@ -527,7 +527,7 @@ impl SnapshotDftPhysics {
         potential: &RegionalPotential,
         basis: &ScfBasis,
         points: &[[f64; 3]],
-    ) -> Result<SnapshotBandSolution, SnapshotDftError> {
+    ) -> Result<CheckpointBandSolution, CheckpointPhysicsError> {
         let site_inputs = self.spinor_site_inputs(potential, basis)?;
         let interstitial = potential.to_lapw_interstitial()?;
         let weight = 1.0 / points.len() as f64;
@@ -553,10 +553,10 @@ impl SnapshotDftPhysics {
                     .map(|energy| BandState::new(energy, weight, 1)),
             );
             let end = states.len();
-            solved_points.push(SnapshotKPoint {
+            solved_points.push(CheckpointKPoint {
                 weight,
                 energies: solved.solution.eigenvalues.clone(),
-                solution: SnapshotKPointSolution::Spinor {
+                solution: CheckpointKPointSolution::Spinor {
                     basis: spinor_basis,
                     site_blocks: solved.site_blocks,
                     solution: solved.solution,
@@ -564,7 +564,7 @@ impl SnapshotDftPhysics {
                 },
             });
         }
-        Ok(SnapshotBandSolution {
+        Ok(CheckpointBandSolution {
             points: solved_points,
             states,
         })
@@ -574,7 +574,7 @@ impl SnapshotDftPhysics {
         &self,
         potential: &RegionalPotential,
         basis: &ScfBasis,
-    ) -> Result<Collinear<Vec<ScalarSiteInput>>, SnapshotDftError> {
+    ) -> Result<Collinear<Vec<ScalarSiteInput>>, CheckpointPhysicsError> {
         self.require_potential_site_count(potential)?;
         let build_spin = |spin: usize| {
             self.sites
@@ -583,7 +583,7 @@ impl SnapshotDftPhysics {
                 .map(|(site_index, site)| {
                     let template = if spin == 0 { &site.up } else { &site.down };
                     if template.equation != RadialEquationTagV1::ScalarKoellingHarmon {
-                        return Err(SnapshotDftError::ScalarRadialEquation {
+                        return Err(CheckpointPhysicsError::ScalarRadialEquation {
                             site: site.id.clone(),
                             spin,
                             equation: template.equation,
@@ -598,7 +598,7 @@ impl SnapshotDftPhysics {
                     let monopole = field
                         .field()
                         .channel(0, 0)
-                        .ok_or_else(|| SnapshotDftError::MissingMonopole(site.id.clone()))?;
+                        .ok_or_else(|| CheckpointPhysicsError::MissingMonopole(site.id.clone()))?;
                     let spherical_potential = monopole
                         .iter()
                         .map(|value| value.re / (4.0 * PI).sqrt())
@@ -616,7 +616,7 @@ impl SnapshotDftPhysics {
                         local_orbitals,
                     })
                 })
-                .collect::<Result<Vec<_>, SnapshotDftError>>()
+                .collect::<Result<Vec<_>, CheckpointPhysicsError>>()
         };
         Ok(Collinear::new(build_spin(0)?, build_spin(1)?))
     }
@@ -625,7 +625,7 @@ impl SnapshotDftPhysics {
         &self,
         potential: &RegionalPotential,
         basis: &ScfBasis,
-    ) -> Result<Vec<SpinorSiteInput>, SnapshotDftError> {
+    ) -> Result<Vec<SpinorSiteInput>, CheckpointPhysicsError> {
         self.require_potential_site_count(potential)?;
         let source_is_dirac = self.sites.iter().all(|site| {
             [&site.up, &site.down]
@@ -642,7 +642,7 @@ impl SnapshotDftPhysics {
                 if !source_is_dirac && self.spex_spinor_binding.is_none() {
                     for (spin, template) in [&site.up, &site.down].into_iter().enumerate() {
                         if template.equation != RadialEquationTagV1::FullyRelativisticDirac {
-                            return Err(SnapshotDftError::SpinorRadialEquation {
+                            return Err(CheckpointPhysicsError::SpinorRadialEquation {
                                 site: site.id.clone(),
                                 spin,
                                 equation: template.equation,
@@ -657,7 +657,7 @@ impl SnapshotDftPhysics {
                     .map(|component| component.muffin_tins()[site_index].field().clone());
                 let monopole = scalar
                     .channel(0, 0)
-                    .ok_or_else(|| SnapshotDftError::MissingMonopole(site.id.clone()))?;
+                    .ok_or_else(|| CheckpointPhysicsError::MissingMonopole(site.id.clone()))?;
                 let spherical_potential = monopole
                     .iter()
                     .map(|value| value.re / (4.0 * PI).sqrt())
@@ -678,22 +678,22 @@ impl SnapshotDftPhysics {
             .collect()
     }
 
-    fn site_index(&self, site: &str) -> Result<usize, SnapshotDftError> {
+    fn site_index(&self, site: &str) -> Result<usize, CheckpointPhysicsError> {
         self.sites
             .iter()
             .position(|candidate| candidate.id == site)
-            .ok_or_else(|| SnapshotDftError::UnknownCoreSite(site.to_owned()))
+            .ok_or_else(|| CheckpointPhysicsError::UnknownCoreSite(site.to_owned()))
     }
 
     fn refine_spectral_basis(
         &self,
         requested: &ScfBasis,
-        one_particle: &SnapshotOneParticle,
-        bands: &SnapshotBandSolution,
+        one_particle: &CheckpointOneParticle,
+        bands: &CheckpointBandSolution,
         occupations: &[f64],
         chemical_potential: Hartree,
         relativity: ScfRelativity,
-    ) -> Result<Option<SnapshotOneParticle>, SnapshotDftError> {
+    ) -> Result<Option<CheckpointOneParticle>, CheckpointPhysicsError> {
         let spectral = requested
             .channels
             .iter()
@@ -776,7 +776,7 @@ impl SnapshotDftPhysics {
                 .resolved_channels
                 .iter()
                 .position(|candidate| candidate.recipe == *recipe)
-                .ok_or_else(|| SnapshotDftError::MissingProvisionalChannel {
+                .ok_or_else(|| CheckpointPhysicsError::MissingProvisionalChannel {
                     site: recipe.site.clone(),
                     identity: recipe.identity,
                     generator: recipe.generator,
@@ -797,7 +797,7 @@ impl SnapshotDftPhysics {
                     > SPECTRAL_REFINEMENT_TOLERANCE * scale;
             basis.resolved_channels[old] = resolved;
         }
-        Ok(changed.then(|| SnapshotOneParticle {
+        Ok(changed.then(|| CheckpointOneParticle {
             potential: one_particle.potential.clone(),
             basis,
         }))
@@ -807,7 +807,7 @@ impl SnapshotDftPhysics {
         &self,
         spectral: &[&ScfChannelRecipe],
         relativity: ScfRelativity,
-    ) -> Result<(), SnapshotDftError> {
+    ) -> Result<(), CheckpointPhysicsError> {
         let band_cog = spectral
             .iter()
             .copied()
@@ -832,7 +832,7 @@ impl SnapshotDftPhysics {
                     }
                 };
                 if projections_overlap {
-                    return Err(SnapshotDftError::AmbiguousBandCogProjection {
+                    return Err(CheckpointPhysicsError::AmbiguousBandCogProjection {
                         site: recipe.site.clone(),
                         identity: recipe.identity,
                     });
@@ -844,13 +844,13 @@ impl SnapshotDftPhysics {
 
     fn band_cog_samples(
         &self,
-        bands: &SnapshotBandSolution,
+        bands: &CheckpointBandSolution,
         occupations: &[f64],
         recipe: &ScfChannelRecipe,
         relativity: ScfRelativity,
-    ) -> Result<Vec<PdosEnergySample>, SnapshotDftError> {
+    ) -> Result<Vec<PdosEnergySample>, CheckpointPhysicsError> {
         if occupations.len() != bands.states.len() {
-            return Err(SnapshotDftError::OccupationCount {
+            return Err(CheckpointPhysicsError::OccupationCount {
                 expected: bands.states.len(),
                 actual: occupations.len(),
             });
@@ -860,14 +860,14 @@ impl SnapshotDftPhysics {
         let mut samples = Vec::new();
         for point in &bands.points {
             match &point.solution {
-                SnapshotKPointSolution::Collinear {
+                CheckpointKPointSolution::Collinear {
                     bases,
                     solutions,
                     up_occupations,
                     down_occupations,
                 } => {
                     if matches!(recipe.identity, ScfChannelIdentity::Kappa { .. }) {
-                        return Err(SnapshotDftError::KappaBandCogUnavailableInScalar {
+                        return Err(CheckpointPhysicsError::KappaBandCogUnavailableInScalar {
                             site: recipe.site.clone(),
                             identity: recipe.identity,
                         });
@@ -886,7 +886,7 @@ impl SnapshotDftPhysics {
                     )?;
                     if matches!(relativity, ScfRelativity::SocSecondVariation { .. }) {
                         if up_occupations != down_occupations || up.len() != down.len() {
-                            return Err(SnapshotDftError::InconsistentRelativityRoute);
+                            return Err(CheckpointPhysicsError::InconsistentRelativityRoute);
                         }
                         for band in 0..up.len() {
                             let global = up_occupations.start + band;
@@ -913,7 +913,7 @@ impl SnapshotDftPhysics {
                         )?;
                     }
                 }
-                SnapshotKPointSolution::Spinor {
+                CheckpointKPointSolution::Spinor {
                     basis,
                     site_blocks,
                     solution,
@@ -959,14 +959,14 @@ impl SnapshotDftPhysics {
         &self,
         fractional_k: [f64; 3],
         cutoff: f64,
-    ) -> Result<PlaneWaveEnvelope, SnapshotDftError> {
+    ) -> Result<PlaneWaveEnvelope, CheckpointPhysicsError> {
         production_plane_wave_envelope(self.reciprocal, fractional_k, cutoff)
     }
 
     fn require_potential_site_count(
         &self,
         potential: &RegionalPotential,
-    ) -> Result<(), SnapshotDftError> {
+    ) -> Result<(), CheckpointPhysicsError> {
         let expected = self.sites.len();
         for (component, actual) in
             std::iter::once(("scalar", potential.scalar().muffin_tins().len())).chain(
@@ -978,7 +978,7 @@ impl SnapshotDftPhysics {
             )
         {
             if actual != expected {
-                return Err(SnapshotDftError::PotentialComponentSiteCount {
+                return Err(CheckpointPhysicsError::PotentialComponentSiteCount {
                     component,
                     expected,
                     actual,
@@ -991,7 +991,7 @@ impl SnapshotDftPhysics {
     fn require_collinear_route(
         &self,
         potential: &RegionalPotential,
-    ) -> Result<(), SnapshotDftError> {
+    ) -> Result<(), CheckpointPhysicsError> {
         let transverse_rms = [
             potential.magnetic()[0].residual_rms()?,
             potential.magnetic()[1].residual_rms()?,
@@ -1000,7 +1000,7 @@ impl SnapshotDftPhysics {
             .iter()
             .any(|&rms| rms > TRANSVERSE_FIELD_TOLERANCE)
         {
-            return Err(SnapshotDftError::TransversePotentialUnsupported {
+            return Err(CheckpointPhysicsError::TransversePotentialUnsupported {
                 x_rms: transverse_rms[0],
                 y_rms: transverse_rms[1],
                 tolerance: TRANSVERSE_FIELD_TOLERANCE,
@@ -1012,7 +1012,7 @@ impl SnapshotDftPhysics {
     fn require_second_variation_route(
         &self,
         potential: &RegionalPotential,
-    ) -> Result<(), SnapshotDftError> {
+    ) -> Result<(), CheckpointPhysicsError> {
         self.require_collinear_route(potential)?;
         let magnetic = potential
             .magnetic()
@@ -1022,30 +1022,30 @@ impl SnapshotDftPhysics {
         if self.sites.iter().any(|site| !site.nonmagnetic_scalar)
             || magnetic.iter().any(|&rms| rms > TRANSVERSE_FIELD_TOLERANCE)
         {
-            return Err(SnapshotDftError::SecondVariationRequiresNonmagneticScalar);
+            return Err(CheckpointPhysicsError::SecondVariationRequiresNonmagneticScalar);
         }
         Ok(())
     }
 
     fn synthesize(
         &self,
-        bands: &SnapshotBandSolution,
+        bands: &CheckpointBandSolution,
         occupations: &[f64],
-    ) -> Result<RegionalDensity, SnapshotDftError> {
+    ) -> Result<RegionalDensity, CheckpointPhysicsError> {
         if occupations.len() != bands.states.len() {
-            return Err(SnapshotDftError::OccupationCount {
+            return Err(CheckpointPhysicsError::OccupationCount {
                 expected: bands.states.len(),
                 actual: occupations.len(),
             });
         }
         let density_layout = self.density_layout(&bands.points)?;
         match &bands.points[0].solution {
-            SnapshotKPointSolution::Collinear { bases, .. } => {
+            CheckpointKPointSolution::Collinear { bases, .. } => {
                 let up_points = bands
                     .points
                     .iter()
                     .map(|point| match &point.solution {
-                        SnapshotKPointSolution::Collinear {
+                        CheckpointKPointSolution::Collinear {
                             bases,
                             solutions,
                             up_occupations,
@@ -1061,8 +1061,8 @@ impl SnapshotDftPhysics {
                                 &occupations[up_occupations.clone()],
                             ),
                         }),
-                        SnapshotKPointSolution::Spinor { .. } => {
-                            Err(SnapshotDftError::InconsistentRelativityRoute)
+                        CheckpointKPointSolution::Spinor { .. } => {
+                            Err(CheckpointPhysicsError::InconsistentRelativityRoute)
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -1070,7 +1070,7 @@ impl SnapshotDftPhysics {
                     .points
                     .iter()
                     .map(|point| match &point.solution {
-                        SnapshotKPointSolution::Collinear {
+                        CheckpointKPointSolution::Collinear {
                             bases,
                             solutions,
                             down_occupations,
@@ -1084,8 +1084,8 @@ impl SnapshotDftPhysics {
                                 &occupations[down_occupations.clone()],
                             ),
                         }),
-                        SnapshotKPointSolution::Spinor { .. } => {
-                            Err(SnapshotDftError::InconsistentRelativityRoute)
+                        CheckpointKPointSolution::Spinor { .. } => {
+                            Err(CheckpointPhysicsError::InconsistentRelativityRoute)
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -1109,12 +1109,12 @@ impl SnapshotDftPhysics {
                     [zero.clone(), zero, longitudinal],
                 )?)
             }
-            SnapshotKPointSolution::Spinor { basis, .. } => {
+            CheckpointKPointSolution::Spinor { basis, .. } => {
                 let spinor_points = bands
                     .points
                     .iter()
                     .map(|point| match &point.solution {
-                        SnapshotKPointSolution::Spinor {
+                        CheckpointKPointSolution::Spinor {
                             basis,
                             solution,
                             occupations: band_occupations,
@@ -1125,8 +1125,8 @@ impl SnapshotDftPhysics {
                             solution,
                             occupations: &occupations[band_occupations.clone()],
                         }),
-                        SnapshotKPointSolution::Collinear { .. } => {
-                            Err(SnapshotDftError::InconsistentRelativityRoute)
+                        CheckpointKPointSolution::Collinear { .. } => {
+                            Err(CheckpointPhysicsError::InconsistentRelativityRoute)
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -1145,12 +1145,12 @@ impl SnapshotDftPhysics {
         site: &ScfCoreSite,
         extended: &ExtendedCorePotential,
         template: &RegionalDensity,
-    ) -> Result<CoreContribution, SnapshotDftError> {
+    ) -> Result<CoreContribution, CheckpointPhysicsError> {
         let site_index = self
             .sites
             .iter()
             .position(|candidate| candidate.id == site.id)
-            .ok_or_else(|| SnapshotDftError::UnknownCoreSite(site.id.clone()))?;
+            .ok_or_else(|| CheckpointPhysicsError::UnknownCoreSite(site.id.clone()))?;
         if site.states.is_empty() {
             return Ok(CoreContribution {
                 site_id: site.id.clone(),
@@ -1196,7 +1196,7 @@ impl SnapshotDftPhysics {
         principal_quantum_number: u32,
         kappa: i32,
         extended: &ExtendedCorePotential,
-    ) -> Result<muffintin_sphere::CoreDiracSolution, SnapshotDftError> {
+    ) -> Result<muffintin_sphere::CoreDiracSolution, CheckpointPhysicsError> {
         let state = CoreState::new(principal_quantum_number, Kappa::new(kappa)?)?;
         let charge = self.nuclear_charges[site_index];
         let converted = &self.sites[site_index];
@@ -1226,7 +1226,7 @@ impl SnapshotDftPhysics {
         &self,
         requested_site: usize,
         states: &[muffintin_dft::ScfCoreState],
-    ) -> Result<Vec<ExponentialMesh>, SnapshotDftError> {
+    ) -> Result<Vec<ExponentialMesh>, CheckpointPhysicsError> {
         self.sites
             .iter()
             .enumerate()
@@ -1250,17 +1250,17 @@ impl SnapshotDftPhysics {
             .collect()
     }
 
-    fn density_layout(&self, points: &[SnapshotKPoint]) -> Result<FourierLayout, SnapshotDftError> {
+    fn density_layout(&self, points: &[CheckpointKPoint]) -> Result<FourierLayout, CheckpointPhysicsError> {
         let mut indices = BTreeSet::new();
         for point in points {
             let compiled = match &point.solution {
-                SnapshotKPointSolution::Collinear { bases, .. } => {
+                CheckpointKPointSolution::Collinear { bases, .. } => {
                     vec![
                         &bases.up.compiled.plane_waves,
                         &bases.down.compiled.plane_waves,
                     ]
                 }
-                SnapshotKPointSolution::Spinor { basis, .. } => {
+                CheckpointKPointSolution::Spinor { basis, .. } => {
                     vec![&basis.compiled.plane_waves]
                 }
             };
@@ -1280,7 +1280,7 @@ fn build_production_potential(
     density: &RegionalDensity,
     nuclear_charges: &[f64],
     exchange_correlation: ScfExchangeCorrelation,
-) -> Result<ProductionPotentialBuild, SnapshotDftError> {
+) -> Result<ProductionPotentialBuild, CheckpointPhysicsError> {
     let electrostatic = evaluate_regional_electrostatics(
         density.charge(),
         &ElectrostaticSpec::new(
@@ -1326,10 +1326,10 @@ fn build_production_potential(
     })
 }
 
-impl ScfPhysics for SnapshotDftPhysics {
-    type Error = SnapshotDftError;
-    type OneParticle = SnapshotOneParticle;
-    type BandSolution = SnapshotBandSolution;
+impl ScfPhysics for CheckpointPhysics {
+    type Error = CheckpointPhysicsError;
+    type OneParticle = CheckpointOneParticle;
+    type BandSolution = CheckpointBandSolution;
 
     fn initial_density(&mut self, config: &ScfConfig) -> Result<RegionalDensity, Self::Error> {
         if let Some(density) = &self.restart_density {
@@ -1337,7 +1337,7 @@ impl ScfPhysics for SnapshotDftPhysics {
             return Ok(density.clone());
         }
         let meshes = self.channel_meshes(&config.basis)?;
-        let initial_extended = build_extended_snapshot_core_potentials(
+        let initial_extended = build_extended_checkpoint_core_potentials(
             &self.frozen_potential,
             &self.geometry,
             &self.nuclear_charges,
@@ -1349,7 +1349,7 @@ impl ScfPhysics for SnapshotDftPhysics {
             &config.basis,
             &initial_extended,
         )?;
-        let mut one_particle = SnapshotOneParticle {
+        let mut one_particle = CheckpointOneParticle {
             potential: self.frozen_potential.clone(),
             basis,
         };
@@ -1375,7 +1375,7 @@ impl ScfPhysics for SnapshotDftPhysics {
                 )? {
                     None => break (bands, occupation.occupations),
                     Some(_) if passes == 16 => {
-                        return Err(SnapshotDftError::InitialBasisRefinementNotConverged {
+                        return Err(CheckpointPhysicsError::InitialBasisRefinementNotConverged {
                             passes,
                         });
                     }
@@ -1393,7 +1393,7 @@ impl ScfPhysics for SnapshotDftPhysics {
                     .sites
                     .iter()
                     .position(|candidate| candidate.id == site.id)
-                    .ok_or_else(|| SnapshotDftError::UnknownCoreSite(site.id.clone()))?;
+                    .ok_or_else(|| CheckpointPhysicsError::UnknownCoreSite(site.id.clone()))?;
                 let contribution = self.core_contribution(
                     site,
                     &initial_extended[site_index].potential,
@@ -1439,18 +1439,18 @@ impl ScfPhysics for SnapshotDftPhysics {
         let template = self
             .density_template
             .as_ref()
-            .ok_or(SnapshotDftError::MissingDensityTemplate)?
+            .ok_or(CheckpointPhysicsError::MissingDensityTemplate)?
             .clone();
         let context = self
             .core_potentials
             .get(&iteration)
-            .ok_or(SnapshotDftError::MissingCoreContinuation(iteration))?
+            .ok_or(CheckpointPhysicsError::MissingCoreContinuation(iteration))?
             .clone();
         let site_index = self
             .sites
             .iter()
             .position(|candidate| candidate.id == site.id)
-            .ok_or_else(|| SnapshotDftError::UnknownCoreSite(site.id.clone()))?;
+            .ok_or_else(|| CheckpointPhysicsError::UnknownCoreSite(site.id.clone()))?;
         if site.states.is_empty() {
             return Ok(CoreContribution {
                 site_id: site.id.clone(),
@@ -1477,7 +1477,7 @@ impl ScfPhysics for SnapshotDftPhysics {
         _relativity: ScfRelativity,
     ) -> Result<Self::OneParticle, Self::Error> {
         let basis = self.materialize_current_basis(iteration, potential, basis)?;
-        Ok(SnapshotOneParticle {
+        Ok(CheckpointOneParticle {
             potential: potential.clone(),
             basis,
         })
@@ -1543,7 +1543,7 @@ impl ScfPhysics for SnapshotDftPhysics {
         self.energy_terms
             .get(&context.iteration)
             .copied()
-            .ok_or(SnapshotDftError::MissingEnergyTerms(context.iteration))
+            .ok_or(CheckpointPhysicsError::MissingEnergyTerms(context.iteration))
     }
 
     fn solve_band_path(
@@ -1565,7 +1565,7 @@ impl ScfPhysics for SnapshotDftPhysics {
                 let mut energies = point.energies;
                 energies.sort_by(|left, right| left.get().total_cmp(&right.get()));
                 if energies.len() < request.bands {
-                    return Err(SnapshotDftError::TooFewBands {
+                    return Err(CheckpointPhysicsError::TooFewBands {
                         requested: request.bands,
                         available: energies.len(),
                     });
@@ -1591,13 +1591,13 @@ impl ScfPhysics for SnapshotDftPhysics {
             .points
             .first()
             .map(|point| point.energies.len())
-            .ok_or(SnapshotDftError::EmptyKPointSet)?;
+            .ok_or(CheckpointPhysicsError::EmptyKPointSet)?;
         if solved
             .points
             .iter()
             .any(|point| point.energies.len() != band_count)
         {
-            return Err(SnapshotDftError::InconsistentBandCount);
+            return Err(CheckpointPhysicsError::InconsistentBandCount);
         }
         let mut energies = Vec::with_capacity(band_count * solved.points.len());
         for band in 0..band_count {
@@ -1617,7 +1617,7 @@ impl ScfPhysics for SnapshotDftPhysics {
 fn second_variation_blocks(
     basis: &ScalarIterationBasis,
     inputs: &[ScalarSiteInput],
-) -> Result<Vec<SiteSpinOrbitBlock>, SnapshotDftError> {
+) -> Result<Vec<SiteSpinOrbitBlock>, CheckpointPhysicsError> {
     basis
         .radial_sites
         .iter()
@@ -1647,10 +1647,10 @@ fn second_variation_blocks(
 
 fn split_second_variation(
     solution: &muffintin_dft::SecondVariationResult,
-) -> Result<Collinear<GeneralizedEigensolution>, SnapshotDftError> {
+) -> Result<Collinear<GeneralizedEigensolution>, CheckpointPhysicsError> {
     let rows = solution.eigenvectors.rows() / 2;
     let columns = solution.eigenvectors.columns();
-    let split = |spin: usize| -> Result<GeneralizedEigensolution, SnapshotDftError> {
+    let split = |spin: usize| -> Result<GeneralizedEigensolution, CheckpointPhysicsError> {
         let mut values = Vec::with_capacity(rows * columns);
         for band in 0..columns {
             for row in 0..rows {
@@ -1673,7 +1673,7 @@ fn combine_muffin_tin_fields(
     left_scale: f64,
     right: &MuffinTinField,
     right_scale: f64,
-) -> Result<MuffinTinField, SnapshotDftError> {
+) -> Result<MuffinTinField, CheckpointPhysicsError> {
     let mut result = left.zero_like();
     result.add_scaled(left_scale, left)?;
     result.add_scaled(right_scale, right)?;
@@ -1685,7 +1685,7 @@ fn combine_interstitial_fields(
     left_scale: f64,
     right: &InterstitialField,
     right_scale: f64,
-) -> Result<InterstitialField, SnapshotDftError> {
+) -> Result<InterstitialField, CheckpointPhysicsError> {
     let mut result = left.zero_like();
     result.add_scaled(left_scale, left)?;
     result.add_scaled(right_scale, right)?;
@@ -1697,7 +1697,7 @@ fn combine_scalar_fields(
     left_scale: f64,
     right: &RegionalScalarField,
     right_scale: f64,
-) -> Result<RegionalScalarField, SnapshotDftError> {
+) -> Result<RegionalScalarField, CheckpointPhysicsError> {
     let mut result = left.zero_like();
     result.add_scaled(left_scale, left)?;
     result.add_scaled(right_scale, right)?;
@@ -1706,7 +1706,7 @@ fn combine_scalar_fields(
 
 fn collinear_interstitial_potential(
     potential: &RegionalPotential,
-) -> Result<Collinear<InterstitialPotential>, SnapshotDftError> {
+) -> Result<Collinear<InterstitialPotential>, CheckpointPhysicsError> {
     let up = combine_interstitial_fields(
         potential.scalar().interstitial(),
         1.0,
@@ -1728,13 +1728,13 @@ fn collinear_interstitial_potential(
 fn extend_mesh(
     muffin_tin: &ExponentialMesh,
     target_radius: f64,
-) -> Result<ExponentialMesh, SnapshotDftError> {
+) -> Result<ExponentialMesh, CheckpointPhysicsError> {
     let extra = (target_radius / muffin_tin.last().get()).ln().max(0.0) / muffin_tin.increment();
     let count = muffin_tin
         .len()
         .checked_add(extra.ceil() as usize)
         .and_then(|count| count.checked_add(1))
-        .ok_or(SnapshotDftError::CoreMeshCountOverflow)?;
+        .ok_or(CheckpointPhysicsError::CoreMeshCountOverflow)?;
     Ok(ExponentialMesh::new(
         muffin_tin.first(),
         muffin_tin.increment(),
@@ -1742,12 +1742,12 @@ fn extend_mesh(
     )?)
 }
 
-fn spinor_kappas_for_l(l: u32) -> Result<Vec<Kappa>, SnapshotDftError> {
-    let l = i32::try_from(l).map_err(|_| SnapshotDftError::AngularMomentumOverflow)?;
+fn spinor_kappas_for_l(l: u32) -> Result<Vec<Kappa>, CheckpointPhysicsError> {
+    let l = i32::try_from(l).map_err(|_| CheckpointPhysicsError::AngularMomentumOverflow)?;
     let negative = l
         .checked_add(1)
         .and_then(i32::checked_neg)
-        .ok_or(SnapshotDftError::AngularMomentumOverflow)?;
+        .ok_or(CheckpointPhysicsError::AngularMomentumOverflow)?;
     let mut kappas = vec![Kappa::new(negative)?];
     if l != 0 {
         kappas.push(Kappa::new(l)?);
@@ -1769,7 +1769,7 @@ fn channel_n(identity: ScfChannelIdentity) -> u32 {
     }
 }
 
-fn channel_kappas(identity: ScfChannelIdentity) -> Result<Vec<Kappa>, SnapshotDftError> {
+fn channel_kappas(identity: ScfChannelIdentity) -> Result<Vec<Kappa>, CheckpointPhysicsError> {
     match identity {
         ScfChannelIdentity::ScalarL { l, .. } => spinor_kappas_for_l(l),
         ScfChannelIdentity::Kappa { kappa, .. } => Ok(vec![Kappa::new(kappa)?]),
@@ -1802,7 +1802,7 @@ fn scalar_component_energy(resolved: &ScfResolvedChannelEnergy, kappa: Kappa) ->
 }
 
 fn spin_resolved_energy(resolved: &ScfResolvedChannelEnergy, spin: usize) -> Hartree {
-    if resolved.recipe.generator == LinearizationEnergyGenerator::FrozenSnapshot
+    if resolved.recipe.generator == LinearizationEnergyGenerator::FrozenCheckpoint
         && resolved.components.len() == 2
     {
         resolved.components[spin].energy
@@ -1814,8 +1814,8 @@ fn spin_resolved_energy(resolved: &ScfResolvedChannelEnergy, spin: usize) -> Har
 fn spex_material_channel_mismatch(
     channel: &muffintin_io::SpexMaterialChannelV1,
     treatment: ScfChannelTreatment,
-) -> SnapshotDftError {
-    SnapshotDftError::SpexMaterialChannelMismatch {
+) -> CheckpointPhysicsError {
+    CheckpointPhysicsError::SpexMaterialChannelMismatch {
         site: channel.site_id.clone(),
         n: channel.n,
         l: channel.l,
@@ -1826,12 +1826,12 @@ fn spex_material_channel_mismatch(
     }
 }
 
-fn spex_bound_channel_mismatch(bound: &SpexBoundSpinorChannel) -> SnapshotDftError {
+fn spex_bound_channel_mismatch(bound: &SpexBoundSpinorChannel) -> CheckpointPhysicsError {
     let (n, kappa) = match bound.requested.identity {
         ScfChannelIdentity::Kappa { n, kappa } => (n, kappa),
         ScfChannelIdentity::ScalarL { .. } => unreachable!("SPEX material binding is signed kappa"),
     };
-    SnapshotDftError::SpexMaterialChannelMismatch {
+    CheckpointPhysicsError::SpexMaterialChannelMismatch {
         site: bound.requested.site.clone(),
         n,
         l: bound.l,
@@ -1845,8 +1845,8 @@ fn spex_bound_channel_mismatch(bound: &SpexBoundSpinorChannel) -> SnapshotDftErr
 fn channel_generator_error(
     recipe: &ScfChannelRecipe,
     source: LinearizationEnergyError,
-) -> SnapshotDftError {
-    SnapshotDftError::ChannelGenerator {
+) -> CheckpointPhysicsError {
+    CheckpointPhysicsError::ChannelGenerator {
         site: recipe.site.clone(),
         identity: recipe.identity,
         treatment: recipe.treatment,
@@ -1859,17 +1859,17 @@ fn spherical_scalar_potential(
     potential: &RegionalPotential,
     site_index: usize,
     site: &str,
-) -> Result<Vec<f64>, SnapshotDftError> {
+) -> Result<Vec<f64>, CheckpointPhysicsError> {
     let monopole = potential.scalar().muffin_tins()[site_index]
         .field()
         .channel(0, 0)
-        .ok_or_else(|| SnapshotDftError::MissingMonopole(site.to_owned()))?;
+        .ok_or_else(|| CheckpointPhysicsError::MissingMonopole(site.to_owned()))?;
     monopole
         .iter()
         .enumerate()
         .map(|(radial, value)| {
             if value.im.abs() > TRANSVERSE_FIELD_TOLERANCE * (1.0 + value.re.abs()) {
-                return Err(SnapshotDftError::NonRealMonopole {
+                return Err(CheckpointPhysicsError::NonRealMonopole {
                     site: site.to_owned(),
                     radial,
                     value: *value,
@@ -1885,7 +1885,7 @@ fn scalar_channel_band_weights(
     eigenvectors: &DenseEigenvectors,
     site: usize,
     l: u32,
-) -> Result<Vec<f64>, SnapshotDftError> {
+) -> Result<Vec<f64>, CheckpointPhysicsError> {
     let coordinates = basis.density_sites[site]
         .orbitals
         .iter()
@@ -1908,10 +1908,10 @@ fn append_pdos_samples(
     occupations: &[f64],
     range: &Range<usize>,
     projections: &[f64],
-) -> Result<(), SnapshotDftError> {
+) -> Result<(), CheckpointPhysicsError> {
     if range.len() != projections.len() || range.end > states.len() || range.end > occupations.len()
     {
-        return Err(SnapshotDftError::BandProjectionCount {
+        return Err(CheckpointPhysicsError::BandProjectionCount {
             states: range.len(),
             projections: projections.len(),
         });
@@ -1935,7 +1935,7 @@ struct InitialOccupationSolution {
 fn solve_initial_occupations(
     states: &[BandState],
     config: &ScfConfig,
-) -> Result<InitialOccupationSolution, SnapshotDftError> {
+) -> Result<InitialOccupationSolution, CheckpointPhysicsError> {
     let core: f64 = config
         .core_sites
         .iter()
@@ -1971,12 +1971,12 @@ fn solve_initial_occupations(
     })
 }
 
-pub(crate) fn regular_k_points(mesh: ScfKMesh) -> Result<Vec<[f64; 3]>, SnapshotDftError> {
+pub(crate) fn regular_k_points(mesh: ScfKMesh) -> Result<Vec<[f64; 3]>, CheckpointPhysicsError> {
     let count = mesh
         .divisions
         .into_iter()
         .try_fold(1_usize, usize::checked_mul)
-        .ok_or(SnapshotDftError::KPointCountOverflow)?;
+        .ok_or(CheckpointPhysicsError::KPointCountOverflow)?;
     let mut points = Vec::with_capacity(count);
     for k3 in 0..mesh.divisions[2] {
         for k2 in 0..mesh.divisions[1] {
@@ -1996,9 +1996,9 @@ fn production_plane_wave_envelope(
     reciprocal: ReciprocalLattice,
     fractional_k: [f64; 3],
     cutoff: f64,
-) -> Result<PlaneWaveEnvelope, SnapshotDftError> {
+) -> Result<PlaneWaveEnvelope, CheckpointPhysicsError> {
     if fractional_k.iter().any(|value| !value.is_finite()) {
-        return Err(SnapshotDftError::NonFiniteKPoint(fractional_k));
+        return Err(CheckpointPhysicsError::NonFiniteKPoint(fractional_k));
     }
     let k = fractional_to_reciprocal(fractional_k, reciprocal.basis());
     let k_norm = squared_norm(k.map(InverseBohr::get)).sqrt();
@@ -2012,7 +2012,7 @@ fn production_plane_wave_envelope(
         .map(|g| PlaneWave::new(k, g))
         .collect::<Vec<_>>();
     if waves.is_empty() {
-        return Err(SnapshotDftError::EmptyPlaneWaveBasis {
+        return Err(CheckpointPhysicsError::EmptyPlaneWaveBasis {
             k: fractional_k,
             cutoff,
         });
@@ -2024,10 +2024,10 @@ fn production_density_layout(
     reciprocal: ReciprocalLattice,
     k_mesh: ScfKMesh,
     cutoff: f64,
-) -> Result<FourierLayout, SnapshotDftError> {
+) -> Result<FourierLayout, CheckpointPhysicsError> {
     let points = regular_k_points(k_mesh)?;
     if points.is_empty() {
-        return Err(SnapshotDftError::EmptyKPointSet);
+        return Err(CheckpointPhysicsError::EmptyKPointSet);
     }
     let mut indices = BTreeSet::new();
     for point in points {
@@ -2077,18 +2077,18 @@ fn xc_spec(
     }
 }
 
-fn convert_snapshot_geometry(
-    snapshot: &GeometryV2,
-) -> Result<ConvertedSnapshotGeometry, SnapshotDftError> {
-    let direct = snapshot.lattice.vectors.map(|vector| vector.map(Bohr));
+fn convert_checkpoint_geometry(
+    checkpoint: &GeometryV2,
+) -> Result<ConvertedCheckpointGeometry, CheckpointPhysicsError> {
+    let direct = checkpoint.lattice.vectors.map(|vector| vector.map(Bohr));
     let reciprocal = ReciprocalLattice::from_direct(direct)?;
-    let mut sites = Vec::with_capacity(snapshot.sites.len());
-    for site in &snapshot.sites {
+    let mut sites = Vec::with_capacity(checkpoint.sites.len());
+    for site in &checkpoint.sites {
         let position = fractional_to_cartesian(site.fractional_position, direct);
         let (up, down, nonmagnetic_scalar) =
-            convert_v2_site_bases(&site.id, &snapshot.radial_basis)?;
+            convert_v2_site_bases(&site.id, &checkpoint.radial_basis)?;
         if up.mesh != down.mesh {
-            return Err(SnapshotDftError::SpinMeshMismatch {
+            return Err(CheckpointPhysicsError::SpinMeshMismatch {
                 site: site.id.clone(),
             });
         }
@@ -2098,14 +2098,14 @@ fn convert_snapshot_geometry(
             .abs()
             .max(radius.get().abs())
             .max(1.0);
-        if (site.muffin_tin_radius - radius.get()).abs() > SNAPSHOT_RADIUS_TOLERANCE * scale {
-            return Err(SnapshotDftError::MuffinTinMeshRadius {
+        if (site.muffin_tin_radius - radius.get()).abs() > CHECKPOINT_RADIUS_TOLERANCE * scale {
+            return Err(CheckpointPhysicsError::MuffinTinMeshRadius {
                 site: site.id.clone(),
                 declared: site.muffin_tin_radius,
                 mesh: radius.get(),
             });
         }
-        sites.push(SnapshotSite {
+        sites.push(CheckpointSite {
             id: site.id.clone(),
             position,
             radius,
@@ -2115,7 +2115,7 @@ fn convert_snapshot_geometry(
         });
     }
     let geometry = InterstitialGeometry::new(
-        VolumeBohr3(determinant(snapshot.lattice.vectors)),
+        VolumeBohr3(determinant(checkpoint.lattice.vectors)),
         sites
             .iter()
             .map(|site| Sphere {
@@ -2124,12 +2124,12 @@ fn convert_snapshot_geometry(
             })
             .collect::<Vec<_>>(),
     )?;
-    Ok(ConvertedSnapshotGeometry {
+    Ok(ConvertedCheckpointGeometry {
         direct,
         reciprocal,
         geometry,
         sites,
-        nuclear_charges: snapshot
+        nuclear_charges: checkpoint
             .sites
             .iter()
             .map(|site| f64::from(site.atomic_number))
@@ -2184,11 +2184,11 @@ fn squared_norm(vector: [f64; 3]) -> f64 {
     vector.into_iter().map(|value| value * value).sum()
 }
 
-/// Snapshot conversion or concrete DFT-kernel failure.
+/// Checkpoint conversion or concrete DFT-kernel failure.
 #[derive(Debug, Error)]
-pub enum SnapshotDftError {
+pub enum CheckpointPhysicsError {
     #[error(transparent)]
-    Snapshot(#[from] IoError),
+    Checkpoint(#[from] IoError),
     #[error(transparent)]
     Lattice(#[from] LatticeError),
     #[error(transparent)]
@@ -2243,7 +2243,7 @@ pub enum SnapshotDftError {
     InvalidRadialBasisSpins { site: String },
     #[error("V2 regional field is missing site {0:?}")]
     MissingV2FieldSite(String),
-    #[error("cannot export {actual} muffin-tin fields against {expected} snapshot sites")]
+    #[error("cannot export {actual} muffin-tin fields against {expected} checkpoint sites")]
     ExportSiteCount { expected: usize, actual: usize },
     #[error("cannot export {from:?} spherical fields as {target:?} fields")]
     UnsupportedAngularConversion {
@@ -2260,7 +2260,7 @@ pub enum SnapshotDftError {
         declared: f64,
         mesh: f64,
     },
-    #[error("snapshot interstitial potential must contain G=0")]
+    #[error("checkpoint interstitial potential must contain G=0")]
     MissingInterstitialZero,
     #[error("potential component {component} has {actual} sites, expected {expected}")]
     PotentialComponentSiteCount {
@@ -2284,7 +2284,7 @@ pub enum SnapshotDftError {
         spin: usize,
         equation: RadialEquationTagV1,
     },
-    #[error("SPEX material snapshot annotations do not match the caller-owned recipe")]
+    #[error("SPEX material checkpoint annotations do not match the caller-owned recipe")]
     SpexMaterialProvenanceMismatch,
     #[error(
         "SPEX material source at site {site:?}, spin {spin} must remain scalar Koelling-Harmon; got {equation:?}"
@@ -2353,19 +2353,19 @@ pub enum SnapshotDftError {
     #[error("site {site:?} is missing the spinor base l={l}, kappa={kappa}")]
     MissingSpinorBaseChannel { site: String, l: u32, kappa: i32 },
     #[error(
-        "site {site:?} channel {identity:?} ({treatment:?}) has no matching frozen-snapshot anchor"
+        "site {site:?} channel {identity:?} ({treatment:?}) has no matching frozen-checkpoint anchor"
     )]
-    MissingFrozenSnapshotAnchor {
+    MissingFrozenCheckpointAnchor {
         site: String,
         identity: ScfChannelIdentity,
         treatment: ScfChannelTreatment,
     },
-    #[error("site {site:?}, spin {spin} has no frozen-snapshot base anchor for l={l}")]
-    MissingFrozenSnapshotBase { site: String, l: u32, spin: usize },
+    #[error("site {site:?}, spin {spin} has no frozen-checkpoint base anchor for l={l}")]
+    MissingFrozenCheckpointBase { site: String, l: u32, spin: usize },
     #[error(
-        "site {site:?}, spin {spin} has no frozen-snapshot LO anchor for l={l}, ordinal={ordinal}"
+        "site {site:?}, spin {spin} has no frozen-checkpoint LO anchor for l={l}, ordinal={ordinal}"
     )]
-    MissingFrozenSnapshotLo {
+    MissingFrozenCheckpointLo {
         site: String,
         l: u32,
         ordinal: usize,
@@ -2432,7 +2432,7 @@ pub enum SnapshotDftError {
     CollinearBandCount { up: usize, down: usize },
     #[error(transparent)]
     Product(#[from] muffintin_prodbasis::AuxiliaryIrError),
-    #[error("second variation requires a nonmagnetic scalar snapshot and potential")]
+    #[error("second variation requires a nonmagnetic scalar checkpoint and potential")]
     SecondVariationRequiresNonmagneticScalar,
     #[error(
         "second-variation window starts at {start}; runtime requires start=0 so occupied lower scalar bands are not dropped"
@@ -2450,7 +2450,7 @@ pub enum SnapshotDftError {
         y_rms: f64,
         tolerance: f64,
     },
-    #[error("core site {0:?} is not present in the snapshot")]
+    #[error("core site {0:?} is not present in the checkpoint")]
     UnknownCoreSite(String),
     #[error("extended core mesh point count overflows usize")]
     CoreMeshCountOverflow,
@@ -2469,6 +2469,6 @@ pub enum SnapshotDftError {
 }
 
 #[cfg(test)]
-mod atomic_snapshot_test;
+mod atomic_checkpoint_test;
 #[cfg(test)]
 mod tests;

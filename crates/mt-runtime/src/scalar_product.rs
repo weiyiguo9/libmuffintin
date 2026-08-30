@@ -7,7 +7,7 @@ use muffintin_prodbasis::{
 use muffintin_core::ReciprocalLattice;
 use muffintin_dft::{
     ScalarIterationBasis, ScalarRadialSite, ScfConfig, ScfRelativity,
-    build_extended_snapshot_core_potentials,
+    build_extended_checkpoint_core_potentials,
 };
 use muffintin_operators::lapw::{CompiledBasis, Provenance};
 use muffintin_operators::Collinear;
@@ -16,8 +16,8 @@ use muffintin_tensor::DenseEigenvectors;
 use std::collections::BTreeSet;
 
 use crate::q_mesh::{canonical_transfer_q, map_k_minus_q};
-use crate::snapshot_dft::{
-    SnapshotBandSolution, SnapshotDftError, SnapshotDftPhysics, SnapshotKPointSolution,
+use crate::checkpoint_physics::{
+    CheckpointBandSolution, CheckpointPhysicsError, CheckpointPhysics, CheckpointKPointSolution,
     regular_k_points,
 };
 
@@ -96,7 +96,7 @@ pub struct ScalarProductInput {
     pub reciprocal: ReciprocalLattice,
 }
 
-impl SnapshotDftPhysics {
+impl CheckpointPhysics {
     /// Frozen scalar one-particle solve and product input at `q_fractional`.
     ///
     /// `q_fractional` is the requested primitive-cell transfer $q_{\mathrm{in}}$.
@@ -108,13 +108,13 @@ impl SnapshotDftPhysics {
         &self,
         config: &ScfConfig,
         q_fractional: [f64; 3],
-    ) -> Result<ScalarProductInput, SnapshotDftError> {
+    ) -> Result<ScalarProductInput, CheckpointPhysicsError> {
         if config.relativity != ScfRelativity::Scalar {
-            return Err(SnapshotDftError::ScalarProductRequiresScalarRelativity);
+            return Err(CheckpointPhysicsError::ScalarProductRequiresScalarRelativity);
         }
         let transfer = canonical_transfer_q(q_fractional, *self.reciprocal())?;
         let meshes = self.channel_meshes(&config.basis)?;
-        let extended = build_extended_snapshot_core_potentials(
+        let extended = build_extended_checkpoint_core_potentials(
             self.frozen_potential(),
             self.geometry(),
             self.nuclear_charges(),
@@ -145,12 +145,12 @@ impl SnapshotDftPhysics {
 }
 
 fn emit_scalar_product_input(
-    physics: &SnapshotDftPhysics,
-    bands: &SnapshotBandSolution,
+    physics: &CheckpointPhysics,
+    bands: &CheckpointBandSolution,
     k_fractional: &[[f64; 3]],
     q: TransferQ,
     k_minus_q: Vec<ScalarKMinusQ>,
-) -> Result<ScalarProductInput, SnapshotDftError> {
+) -> Result<ScalarProductInput, CheckpointPhysicsError> {
     let n_k = k_fractional.len();
     let mut channels = Vec::with_capacity(2);
     let mut radials = None;
@@ -158,7 +158,7 @@ fn emit_scalar_product_input(
     let mut available = [Vec::new(), Vec::new()];
     for point in bands.points() {
         match &point.solution {
-            SnapshotKPointSolution::Collinear {
+            CheckpointKPointSolution::Collinear {
                 bases, solutions, ..
             } => {
                 if radials.is_none() {
@@ -167,7 +167,7 @@ fn emit_scalar_product_input(
                 let up_bands = solutions.up.eigenvectors.columns();
                 let down_bands = solutions.down.eigenvectors.columns();
                 if up_bands != down_bands {
-                    return Err(SnapshotDftError::CollinearBandCount {
+                    return Err(CheckpointPhysicsError::CollinearBandCount {
                         up: up_bands,
                         down: down_bands,
                     });
@@ -176,14 +176,14 @@ fn emit_scalar_product_input(
                 available[1].push(down_bands);
                 n_orb = Some(n_orb.unwrap_or(up_bands).min(up_bands));
             }
-            SnapshotKPointSolution::Spinor { .. } => {
-                return Err(SnapshotDftError::InconsistentRelativityRoute);
+            CheckpointKPointSolution::Spinor { .. } => {
+                return Err(CheckpointPhysicsError::InconsistentRelativityRoute);
             }
         }
     }
     let n_orb = n_orb
         .filter(|&count| count > 0)
-        .ok_or(SnapshotDftError::EmptyKPointSet)?;
+        .ok_or(CheckpointPhysicsError::EmptyKPointSet)?;
     let pair_columns = PairColumnLayout::new(n_k, n_orb, None);
     let _ = pair_columns.n_columns()?;
 
@@ -192,13 +192,13 @@ fn emit_scalar_product_input(
         let mut energies = Vec::with_capacity(n_k);
         let mut bases = Vec::with_capacity(n_k);
         for point in bands.points() {
-            let SnapshotKPointSolution::Collinear {
+            let CheckpointKPointSolution::Collinear {
                 bases: iteration,
                 solutions,
                 ..
             } = &point.solution
             else {
-                return Err(SnapshotDftError::InconsistentRelativityRoute);
+                return Err(CheckpointPhysicsError::InconsistentRelativityRoute);
             };
             let (solution, compiled) = if spin == 0 {
                 (&solutions.up, &iteration.up.compiled)
@@ -224,12 +224,12 @@ fn emit_scalar_product_input(
         raw_pair_support(q, *physics.reciprocal(), &channels, &k_minus_q)?;
     let source = AuxiliarySource::new(
         AuxiliaryPartition::from_interstitial(physics.geometry().clone()),
-        radials.ok_or(SnapshotDftError::EmptyKPointSet)?,
+        radials.ok_or(CheckpointPhysicsError::EmptyKPointSet)?,
         q,
         interstitial_pair_support,
         Provenance {
             recipe: None,
-            reference: Some("snapshot-dft-frozen-scalar-product-input".to_owned()),
+            reference: Some("checkpoint-dft-frozen-scalar-product-input".to_owned()),
         },
     )?;
     Ok(ScalarProductInput {
@@ -253,7 +253,7 @@ fn raw_pair_support(
     reciprocal: ReciprocalLattice,
     channels: &[ScalarSpinChannel],
     k_minus_q: &[ScalarKMinusQ],
-) -> Result<RawInterstitialPairSupport, SnapshotDftError> {
+) -> Result<RawInterstitialPairSupport, CheckpointPhysicsError> {
     let mut indices = BTreeSet::new();
     for channel in channels {
         for mapped in k_minus_q {
@@ -278,9 +278,9 @@ fn raw_pair_support(
 
 fn site_radials(
     bases: &Collinear<ScalarIterationBasis>,
-) -> Result<Vec<SiteRadialSet>, SnapshotDftError> {
+) -> Result<Vec<SiteRadialSet>, CheckpointPhysicsError> {
     if bases.up.radial_sites.len() != bases.down.radial_sites.len() {
-        return Err(SnapshotDftError::InconsistentRelativityRoute);
+        return Err(CheckpointPhysicsError::InconsistentRelativityRoute);
     }
     bases
         .up
@@ -300,10 +300,10 @@ fn site_radials(
         .collect()
 }
 
-fn spin_radials(spin: u8, site: &ScalarRadialSite) -> Result<Vec<ProductRadial>, SnapshotDftError> {
+fn spin_radials(spin: u8, site: &ScalarRadialSite) -> Result<Vec<ProductRadial>, CheckpointPhysicsError> {
     let mut valence = Vec::new();
     for (l, linearized) in site.linearized.iter().enumerate() {
-        let l = u32::try_from(l).map_err(|_| SnapshotDftError::AngularMomentumOverflow)?;
+        let l = u32::try_from(l).map_err(|_| CheckpointPhysicsError::AngularMomentumOverflow)?;
         valence.push(ProductRadial {
             l,
             n: SCALAR_RADIAL_U,
@@ -339,11 +339,11 @@ fn spin_radials(spin: u8, site: &ScalarRadialSite) -> Result<Vec<ProductRadial>,
 pub(crate) fn leading_bands(
     eigenvectors: &DenseEigenvectors,
     n_orb: usize,
-) -> Result<DenseEigenvectors, SnapshotDftError> {
+) -> Result<DenseEigenvectors, CheckpointPhysicsError> {
     let rows = eigenvectors.rows();
     let columns = eigenvectors.columns();
     if columns < n_orb {
-        return Err(SnapshotDftError::InconsistentBandCount);
+        return Err(CheckpointPhysicsError::InconsistentBandCount);
     }
     if columns == n_orb {
         return Ok(eigenvectors.clone());

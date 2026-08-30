@@ -9,7 +9,7 @@ pub const GRID_ARTIFACT_FORMAT: &str = "libmuffintin-grid-artifact";
 /// Only grid-artifact schema version currently supported.
 pub const GRID_ARTIFACT_VERSION: u32 = 1;
 
-/// A materialized Cartesian quadrature grid, independently versioned from snapshots.
+/// A materialized Cartesian quadrature grid, independently versioned from checkpoints.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GridArtifactV1 {

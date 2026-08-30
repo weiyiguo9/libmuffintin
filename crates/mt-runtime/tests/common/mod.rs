@@ -15,13 +15,13 @@ use muffintin_io::{
     ExponentialMeshSpecV1, FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1,
     GeometryV1, InterstitialV1, InverseLengthUnitV1, LatticeV1, LengthUnitV1, LinearizationV1,
     MetaV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SphericalChannelConventionV1, SpinTagV1,
-    snapshot_to_toml,
+    RadialEquationTagV1, SiteSpinV1, SiteV1, CheckpointV1, SphericalChannelConventionV1, SpinTagV1,
+    checkpoint_to_toml,
 };
 
 pub fn sample_input() -> Input {
     Input::new(
-        PathBuf::from("data/snapshot.toml"),
+        PathBuf::from("data/checkpoint.toml"),
         Workflow {
             tasks: vec!["scf".to_owned(), "bands".to_owned(), "dos".to_owned()],
         },
@@ -115,11 +115,11 @@ pub fn sample_input() -> Input {
     )
 }
 
-pub fn sample_snapshot() -> SnapshotV1 {
+pub fn sample_checkpoint() -> CheckpointV1 {
     let point_count = 7;
     let first = 0.1;
     let increment = 0.2;
-    SnapshotV1::new(
+    CheckpointV1::new(
         MetaV1 {
             title: "runtime fixture".to_owned(),
             producer: "mt-runtime test".to_owned(),
@@ -191,7 +191,7 @@ pub fn sample_snapshot() -> SnapshotV1 {
 
 pub fn supported_input() -> Input {
     Input::new(
-        PathBuf::from("data/snapshot.toml"),
+        PathBuf::from("data/checkpoint.toml"),
         Workflow {
             tasks: vec!["scf".to_owned()],
         },
@@ -206,7 +206,7 @@ pub fn supported_input() -> Input {
                 },
                 basis: Basis {
                     l_max: 1,
-                    energy_generator: Some(ChannelEnergyGenerator::FrozenSnapshot),
+                    energy_generator: Some(ChannelEnergyGenerator::FrozenCheckpoint),
                     recipe: None,
                     envelope: BasisEnvelope {
                         kind: BasisEnvelopeKind::PlaneWave,
@@ -230,7 +230,7 @@ pub fn supported_input() -> Input {
     )
 }
 
-pub fn supported_snapshot() -> SnapshotV1 {
+pub fn supported_checkpoint() -> CheckpointV1 {
     let point_count = 61;
     let first: f64 = 1.0e-4;
     let radius: f64 = 1.0;
@@ -238,7 +238,7 @@ pub fn supported_snapshot() -> SnapshotV1 {
     let radii = (0..point_count)
         .map(|index| first * (index as f64 * increment).exp())
         .collect::<Vec<_>>();
-    SnapshotV1::new(
+    CheckpointV1::new(
         MetaV1 {
             title: "supported runtime hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
@@ -342,8 +342,8 @@ impl FixtureDirectory {
         )
         .unwrap();
         fs::write(
-            self.root.join("data/snapshot.toml"),
-            snapshot_to_toml(&sample_snapshot()).unwrap(),
+            self.root.join("data/checkpoint.toml"),
+            checkpoint_to_toml(&sample_checkpoint()).unwrap(),
         )
         .unwrap();
         input_path
@@ -353,8 +353,8 @@ impl FixtureDirectory {
         let input_path = self.root.join("supported.toml");
         fs::write(&input_path, input_to_toml(&supported_input()).unwrap()).unwrap();
         fs::write(
-            self.root.join("data/snapshot.toml"),
-            snapshot_to_toml(&supported_snapshot()).unwrap(),
+            self.root.join("data/checkpoint.toml"),
+            checkpoint_to_toml(&supported_checkpoint()).unwrap(),
         )
         .unwrap();
         input_path

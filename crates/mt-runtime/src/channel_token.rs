@@ -47,7 +47,7 @@ pub enum ChannelEnergyGenerator {
     LogDerivative,
     BandCog,
     FermiOffset,
-    FrozenSnapshot,
+    FrozenCheckpoint,
 }
 
 impl ChannelEnergyGenerator {
@@ -59,7 +59,7 @@ impl ChannelEnergyGenerator {
             "log-derivative" => Some(Self::LogDerivative),
             "band-cog" => Some(Self::BandCog),
             "fermi-offset" => Some(Self::FermiOffset),
-            "frozen-snapshot" | "frozen" => Some(Self::FrozenSnapshot),
+            "frozen-checkpoint" | "frozen" => Some(Self::FrozenCheckpoint),
             _ => None,
         }
     }
@@ -520,8 +520,8 @@ mod tests {
             ("log-derivative", ChannelEnergyGenerator::LogDerivative),
             ("band-cog", ChannelEnergyGenerator::BandCog),
             ("fermi-offset", ChannelEnergyGenerator::FermiOffset),
-            ("frozen-snapshot", ChannelEnergyGenerator::FrozenSnapshot),
-            ("frozen", ChannelEnergyGenerator::FrozenSnapshot),
+            ("frozen-checkpoint", ChannelEnergyGenerator::FrozenCheckpoint),
+            ("frozen", ChannelEnergyGenerator::FrozenCheckpoint),
         ];
         for (suffix, expected) in cases {
             let record = defined_record(&format!("5d@{suffix}"));

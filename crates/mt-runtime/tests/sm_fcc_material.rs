@@ -1,11 +1,11 @@
-//! Sm fcc catalogue and bounded SPEX-snapshot lane.
+//! Sm fcc catalogue and bounded SPEX-checkpoint lane.
 
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Instant;
 
 use muffintin::{
-    ChannelIdentity, ChannelTreatment, RecipeSite, SnapshotDftPhysics, SpinorCoulombSpec,
+    ChannelIdentity, ChannelTreatment, RecipeSite, CheckpointPhysics, SpinorCoulombSpec,
     SpinorMpbSelection, SpinorMpbSpec, ThcCandidates, ThcParentGrid, ThcPoint, ThcRegion,
     build_spinor_coulomb, build_spinor_mpb, compile_channel_recipe, write_spinor_mldump,
 };
@@ -23,7 +23,7 @@ use muffintin_io::{
     MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1, MldumpPayloadV1, MldumpQEntryV1,
     MldumpRadialMeshV1, MldumpSiteV1, RadialBasisSpinV2, RadialEquationTagV1,
     SpexMaterialBasisRecipeV1, SpexMaterialChannelKind, SpexMaterialChannelV1,
-    materialize_snapshot_v2, read_mldump_v1, read_spex_snapshot_hdf,
+    materialize_checkpoint_v2, read_mldump_v1, read_spex_snapshot_hdf,
 };
 use muffintin_operators::lapw::Provenance;
 use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
@@ -135,7 +135,7 @@ fn sm_built_in_recipe_keeps_5p12_as_lo_and_does_not_invent_hdlo() {
     );
 }
 
-const ARTIFACT: &str = "/tmp/spex-sm-artifact/snapshot.h5";
+const ARTIFACT: &str = "/tmp/spex-sm-artifact/checkpoint.h5";
 const ARTIFACT_SHA256: &str = "9f060f742e9078ec3dc8ee24d8945d38ec74a729e5dee85acfbffd345e132a59";
 
 fn bounded_parent_grid(input: &muffintin::SpinorProductInput) -> ThcParentGrid {
@@ -212,7 +212,7 @@ fn sm_runtime_channels(recipe: &SpexMaterialBasisRecipeV1) -> Vec<ScfChannelReci
             identity: ScfChannelIdentity::ScalarL { n, l },
             treatment: ScfChannelTreatment::Valence,
             derivative_order: 0,
-            generator: LinearizationEnergyGenerator::FrozenSnapshot,
+            generator: LinearizationEnergyGenerator::FrozenCheckpoint,
             seed: None,
             provenance: ScfChannelProvenance::BuiltIn,
         })
@@ -228,7 +228,7 @@ fn sm_runtime_channels(recipe: &SpexMaterialBasisRecipeV1) -> Vec<ScfChannelReci
             SpexMaterialChannelKind::Hdlo => ScfChannelTreatment::Hdlo,
         },
         derivative_order: record.derivative_order,
-        generator: LinearizationEnergyGenerator::FrozenSnapshot,
+        generator: LinearizationEnergyGenerator::FrozenCheckpoint,
         seed: None,
         provenance: ScfChannelProvenance::ExternalRecipe {
             source: Some(recipe.producer.clone()),
@@ -237,11 +237,11 @@ fn sm_runtime_channels(recipe: &SpexMaterialBasisRecipeV1) -> Vec<ScfChannelReci
     channels
 }
 
-/// Bounded Sm fcc SPEX snapshot lane at `/tmp/spex-sm-artifact/snapshot.h5`.
+/// Bounded Sm fcc SPEX snapshot lane at `/tmp/spex-sm-artifact/checkpoint.h5`.
 ///
 /// Ordinary workspace tests skip this. Run:
 /// `cargo test -p libmuffintin-runtime --test sm_fcc_material consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane -- --ignored --exact --nocapture`
-#[ignore = "requires local SPEX artifact /tmp/spex-sm-artifact/snapshot.h5; run with --ignored"]
+#[ignore = "requires local SPEX artifact /tmp/spex-sm-artifact/checkpoint.h5; run with --ignored"]
 #[test]
 fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
     let path = Path::new(ARTIFACT);
@@ -249,7 +249,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
         panic!("authorized artifact missing at {ARTIFACT}");
     }
     let started = Instant::now();
-    let fields = read_spex_snapshot_hdf(path).expect("frozen reader must load b45d9b9 snapshot.h5");
+    let fields = read_spex_snapshot_hdf(path).expect("frozen reader must load b45d9b9 checkpoint.h5");
     assert_eq!(fields.spin_layout, "collinear-up-down");
     assert_eq!(fields.interstitial_phase, "positive-exponent");
     assert_eq!(
@@ -295,11 +295,11 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
         channels: recipe_channels,
     };
     let materialized =
-        materialize_snapshot_v2(&fields, &recipe).expect("recipe must match SPEX scalar LOs");
+        materialize_checkpoint_v2(&fields, &recipe).expect("recipe must match SPEX scalar LOs");
     assert_eq!(materialized.recipe_sha256, recipe.recipe_sha256);
     assert!(
         materialized
-            .snapshot
+            .checkpoint
             .geometry
             .radial_basis
             .iter()
@@ -343,19 +343,19 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
         .expect("bound Sm local orbital")
         .derivative_order = 1;
     assert!(matches!(
-        SnapshotDftPhysics::new_spex_material(&materialized.snapshot, &recipe, &mismatched_basis),
-        Err(muffintin::SnapshotDftError::SpexMaterialChannelMismatch { .. })
+        CheckpointPhysics::new_spex_material(&materialized.checkpoint, &recipe, &mismatched_basis),
+        Err(muffintin::CheckpointPhysicsError::SpexMaterialChannelMismatch { .. })
     ));
     let physics =
-        SnapshotDftPhysics::new_spex_material(&materialized.snapshot, &recipe, &config.basis)
+        CheckpointPhysics::new_spex_material(&materialized.checkpoint, &recipe, &config.basis)
             .expect("typed SPEX recipe must bind to the target Dirac basis");
     let fixture = material_lane_common::MaterialFixture {
-        snapshot: materialized.snapshot,
+        checkpoint: materialized.checkpoint,
         config,
         physics,
         provenance: material_lane_common::MaterialProvenance {
-            snapshot_path: path.to_path_buf(),
-            snapshot_sha256: ARTIFACT_SHA256.to_owned(),
+            checkpoint_path: path.to_path_buf(),
+            checkpoint_sha256: ARTIFACT_SHA256.to_owned(),
             producer: "b45d9b9e1505d25236c3e78674418b011a471666".to_owned(),
         },
     };
@@ -406,7 +406,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
     .expect("bounded MPB pair");
     assert_eq!(mpb.vertices.len(), 1);
     let cell = Cell::new(std::array::from_fn(|row| {
-        std::array::from_fn(|axis| Bohr(fixture.snapshot.geometry.lattice.vectors[row][axis]))
+        std::array::from_fn(|axis| Bohr(fixture.checkpoint.geometry.lattice.vectors[row][axis]))
     }))
     .unwrap();
     let coulomb = build_spinor_coulomb(
@@ -432,7 +432,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
             request: CoulombRequest::new(
                 Cell::new(std::array::from_fn(|row| {
                     std::array::from_fn(|axis| {
-                        Bohr(fixture.snapshot.geometry.lattice.vectors[row][axis])
+                        Bohr(fixture.checkpoint.geometry.lattice.vectors[row][axis])
                     })
                 }))
                 .unwrap(),
@@ -490,7 +490,7 @@ fn header_from_inputs(
         })
         .collect();
     let cell = Cell::new(std::array::from_fn(|row| {
-        std::array::from_fn(|axis| Bohr(fixture.snapshot.geometry.lattice.vectors[row][axis]))
+        std::array::from_fn(|axis| Bohr(fixture.checkpoint.geometry.lattice.vectors[row][axis]))
     }))
     .unwrap();
     MldumpHeaderV1::new(

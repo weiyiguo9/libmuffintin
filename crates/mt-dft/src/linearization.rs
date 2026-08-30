@@ -18,7 +18,7 @@ pub enum LinearizationEnergyGenerator {
     LogDerivative,
     BandCog,
     FermiOffset,
-    FrozenSnapshot,
+    FrozenCheckpoint,
 }
 
 /// Method-specific evidence retained with one generated energy.
@@ -111,11 +111,11 @@ pub fn generate_explicit_energy(
     stored_energy(LinearizationEnergyGenerator::Explicit, energy)
 }
 
-/// Preserve a snapshot energy exactly while retaining its distinct provenance.
-pub fn generate_frozen_snapshot_energy(
+/// Preserve a checkpoint energy exactly while retaining its distinct provenance.
+pub fn generate_frozen_checkpoint_energy(
     energy: Hartree,
 ) -> Result<GeneratedLinearizationEnergy, LinearizationEnergyError> {
-    stored_energy(LinearizationEnergyGenerator::FrozenSnapshot, energy)
+    stored_energy(LinearizationEnergyGenerator::FrozenCheckpoint, energy)
 }
 
 /// Solve a signed-kappa bound state on an extended current spherical potential.
@@ -487,12 +487,12 @@ mod tests {
     #[test]
     fn stored_spectral_and_fermi_generators_preserve_distinct_semantics() {
         let explicit = generate_explicit_energy(Hartree(-0.4)).unwrap();
-        let frozen = generate_frozen_snapshot_energy(Hartree(-0.4)).unwrap();
+        let frozen = generate_frozen_checkpoint_energy(Hartree(-0.4)).unwrap();
         assert_eq!(explicit.energy, frozen.energy);
         assert_eq!(explicit.generator, LinearizationEnergyGenerator::Explicit);
         assert_eq!(
             frozen.generator,
-            LinearizationEnergyGenerator::FrozenSnapshot
+            LinearizationEnergyGenerator::FrozenCheckpoint
         );
 
         let cog = generate_band_cog_energy(&[

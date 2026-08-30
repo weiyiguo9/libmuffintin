@@ -224,7 +224,7 @@ fn write_products(
         .provenance
         .reference
         .as_deref()
-        .unwrap_or("snapshot-dft-frozen-scalar-product-input");
+        .unwrap_or("checkpoint-dft-frozen-scalar-product-input");
     stream.begin_products(&ScalarProductsBeginV1 {
         n_k: first.orbitals.k_fractional.len(),
         n_orb: first.orbitals.band_window.count,

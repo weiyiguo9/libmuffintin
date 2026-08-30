@@ -1,7 +1,7 @@
 //! Dy bcc catalogue and producer-blocker checks.
 //!
 //! These tests do **not** run a Dy material MPB/THC/`c^\dagger V c` lane.
-//! No honest libmuffintin-consumable Dy bcc Snapshot V2 was found. They only
+//! No honest libmuffintin-consumable Dy bcc Checkpoint V2 was found. They only
 //! record the FLEUR `default.econfig` signed-$\kappa$ catalogue for $Z=66$
 //! and the compiled built-in recipe. HDLO is a FLEUR inpgen basis hint, not
 //! an occupation, and is therefore absent from the built-in records.

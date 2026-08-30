@@ -1,38 +1,38 @@
 //! Shared Sm/Dy material harness.
 //!
 //! Dy and Sm lanes include this file with `#[path = "material_lane_common.rs"]`.
-//! Do not copy it. SPEX HDF is frozen fields only; Snapshot V2 comes from
-//! `materialize_snapshot_v2` plus a caller-owned signed-kappa recipe.
+//! Do not copy it. SPEX HDF is frozen fields only; Checkpoint V2 comes from
+//! `materialize_checkpoint_v2` plus a caller-owned signed-kappa recipe.
 
 #![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 
 use muffintin::{
-    SnapshotDftError, SnapshotDftPhysics, SpinorProductInput, SpinorThcError, SpinorThcSpec,
+    CheckpointPhysicsError, CheckpointPhysics, SpinorProductInput, SpinorThcError, SpinorThcSpec,
     ThcCandidates, ThcEngine, ThcParentGrid, build_spinor_thc,
 };
 use muffintin_dft::{ScfConfig, ScfRelativity};
 use muffintin_io::{
-    SnapshotFile, SnapshotV2, SpexMaterialBasisRecipeV1, materialize_snapshot_v2,
-    read_spex_snapshot_hdf, snapshot_file_from_toml,
+    CheckpointFile, CheckpointV2, SpexMaterialBasisRecipeV1, materialize_checkpoint_v2,
+    read_spex_snapshot_hdf, checkpoint_file_from_toml,
 };
 use muffintin_prodbasis::thc::RankPolicy;
 
-/// Provenance for one honest Snapshot V2 consumed by a material lane.
+/// Provenance for one honest Checkpoint V2 consumed by a material lane.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MaterialProvenance {
-    pub snapshot_path: PathBuf,
-    pub snapshot_sha256: String,
+    pub checkpoint_path: PathBuf,
+    pub checkpoint_sha256: String,
     pub producer: String,
 }
 
 /// Frozen full-first-variation material fixture.
 #[allow(missing_debug_implementations)]
 pub struct MaterialFixture {
-    pub snapshot: SnapshotV2,
+    pub checkpoint: CheckpointV2,
     pub config: ScfConfig,
-    pub physics: SnapshotDftPhysics,
+    pub physics: CheckpointPhysics,
     pub provenance: MaterialProvenance,
 }
 
@@ -40,9 +40,9 @@ pub struct MaterialFixture {
 #[derive(Debug)]
 pub enum MaterialLaneError {
     Io(std::io::Error),
-    Snapshot(muffintin_io::IoError),
-    SnapshotDft(SnapshotDftError),
-    MissingSnapshot(PathBuf),
+    Checkpoint(muffintin_io::IoError),
+    CheckpointPhysics(CheckpointPhysicsError),
+    MissingCheckpoint(PathBuf),
     NotV2,
     Relativity,
 }
@@ -55,13 +55,13 @@ impl From<std::io::Error> for MaterialLaneError {
 
 impl From<muffintin_io::IoError> for MaterialLaneError {
     fn from(error: muffintin_io::IoError) -> Self {
-        Self::Snapshot(error)
+        Self::Checkpoint(error)
     }
 }
 
-impl From<SnapshotDftError> for MaterialLaneError {
-    fn from(error: SnapshotDftError) -> Self {
-        Self::SnapshotDft(error)
+impl From<CheckpointPhysicsError> for MaterialLaneError {
+    fn from(error: CheckpointPhysicsError) -> Self {
+        Self::CheckpointPhysics(error)
     }
 }
 
@@ -75,25 +75,25 @@ pub fn require_spinor_first_variation(config: &ScfConfig) -> Result<(), Material
     }
 }
 
-/// Load a Snapshot V2 and bind a spinor-first-variation config.
+/// Load a Checkpoint V2 and bind a spinor-first-variation config.
 ///
-/// `snapshot_sha256` is caller-recorded; this helper does not hash the file.
-pub fn load_spinor_snapshot_v2(
+/// `checkpoint_sha256` is caller-recorded; this helper does not hash the file.
+pub fn load_spinor_checkpoint_v2(
     path: &Path,
     config: ScfConfig,
     provenance: MaterialProvenance,
 ) -> Result<MaterialFixture, MaterialLaneError> {
     require_spinor_first_variation(&config)?;
     if !path.is_file() {
-        return Err(MaterialLaneError::MissingSnapshot(path.to_path_buf()));
+        return Err(MaterialLaneError::MissingCheckpoint(path.to_path_buf()));
     }
     let text = std::fs::read_to_string(path)?;
-    let SnapshotFile::V2(snapshot) = snapshot_file_from_toml(&text)? else {
+    let CheckpointFile::V2(checkpoint) = checkpoint_file_from_toml(&text)? else {
         return Err(MaterialLaneError::NotV2);
     };
-    let physics = SnapshotDftPhysics::new(&snapshot)?;
+    let physics = CheckpointPhysics::new(&checkpoint)?;
     Ok(MaterialFixture {
-        snapshot,
+        checkpoint,
         config,
         physics,
         provenance,
@@ -109,14 +109,14 @@ pub fn load_spex_material(
 ) -> Result<MaterialFixture, MaterialLaneError> {
     require_spinor_first_variation(&config)?;
     if !spex_path.is_file() {
-        return Err(MaterialLaneError::MissingSnapshot(spex_path.to_path_buf()));
+        return Err(MaterialLaneError::MissingCheckpoint(spex_path.to_path_buf()));
     }
     let fields = read_spex_snapshot_hdf(spex_path)?;
-    let materialized = materialize_snapshot_v2(&fields, recipe)?;
+    let materialized = materialize_checkpoint_v2(&fields, recipe)?;
     let physics =
-        SnapshotDftPhysics::new_spex_material(&materialized.snapshot, recipe, &config.basis)?;
+        CheckpointPhysics::new_spex_material(&materialized.checkpoint, recipe, &config.basis)?;
     Ok(MaterialFixture {
-        snapshot: materialized.snapshot,
+        checkpoint: materialized.checkpoint,
         config,
         physics,
         provenance,
@@ -129,7 +129,7 @@ pub fn load_spex_material(
 /// Finite-q wrap lives on [`muffintin::SpinorKMinusQ`], not `TransferQ::umklapp`.
 pub fn ordered_q_slice(
     fixture: &MaterialFixture,
-) -> Result<Vec<SpinorProductInput>, SnapshotDftError> {
+) -> Result<Vec<SpinorProductInput>, CheckpointPhysicsError> {
     let seed = fixture
         .physics
         .spinor_product_input(&fixture.config, [0.0; 3])?;
@@ -217,33 +217,33 @@ mod tests {
     }
 
     #[test]
-    fn load_rejects_missing_snapshot() {
-        let path = Path::new("/no/such/sm-fcc-snapshot.toml");
+    fn load_rejects_missing_checkpoint() {
+        let path = Path::new("/no/such/sm-fcc-checkpoint.toml");
         let provenance = MaterialProvenance {
-            snapshot_path: path.to_path_buf(),
-            snapshot_sha256: String::new(),
+            checkpoint_path: path.to_path_buf(),
+            checkpoint_sha256: String::new(),
             producer: "absent".to_owned(),
         };
-        match load_spinor_snapshot_v2(
+        match load_spinor_checkpoint_v2(
             path,
             dummy_config(ScfRelativity::SpinorFirstVariation),
             provenance,
         ) {
-            Err(MaterialLaneError::MissingSnapshot(missing)) => assert_eq!(missing, path),
-            Err(_) => panic!("expected missing snapshot"),
-            Ok(_) => panic!("missing snapshot path must not load"),
+            Err(MaterialLaneError::MissingCheckpoint(missing)) => assert_eq!(missing, path),
+            Err(_) => panic!("expected missing checkpoint"),
+            Ok(_) => panic!("missing checkpoint path must not load"),
         }
     }
 
     #[test]
     fn load_rejects_scalar_relativity_before_io() {
-        let path = Path::new("/no/such/sm-fcc-snapshot.toml");
+        let path = Path::new("/no/such/sm-fcc-checkpoint.toml");
         let provenance = MaterialProvenance {
-            snapshot_path: path.to_path_buf(),
-            snapshot_sha256: String::new(),
+            checkpoint_path: path.to_path_buf(),
+            checkpoint_sha256: String::new(),
             producer: "absent".to_owned(),
         };
-        match load_spinor_snapshot_v2(path, dummy_config(ScfRelativity::Scalar), provenance) {
+        match load_spinor_checkpoint_v2(path, dummy_config(ScfRelativity::Scalar), provenance) {
             Err(MaterialLaneError::Relativity) => {}
             Err(_) => panic!("expected relativity reject"),
             Ok(_) => panic!("scalar relativity must not load"),

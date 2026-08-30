@@ -1,14 +1,14 @@
 use super::*;
 
-/// Build a validated V2 restart snapshot from a converged SCF state.
+/// Build a validated V2 restart checkpoint from a converged SCF state.
 ///
 /// `template` supplies the immutable cell, sites, radial equations, and
 /// linearization metadata. The state supplies the complete noncollinear
 /// density and potential without reducing their Cartesian Pauli components.
-pub fn snapshot_v2_from_state(
-    template: &SnapshotV2,
+pub fn checkpoint_v2_from_state(
+    template: &CheckpointV2,
     state: &ScfState,
-) -> Result<SnapshotV2, SnapshotDftError> {
+) -> Result<CheckpointV2, CheckpointPhysicsError> {
     template.validate()?;
     let template_potential = match &template.initial {
         InitialV2::FrozenPotential { potential } | InitialV2::Restart { potential, .. } => {
@@ -75,19 +75,19 @@ pub fn snapshot_v2_from_state(
             angular_basis,
         )?,
     };
-    let snapshot = SnapshotV2::new(
+    let checkpoint = CheckpointV2::new(
         template.meta.clone(),
         template.geometry.clone(),
         InitialV2::Restart { density, potential },
     );
-    snapshot.validate()?;
-    Ok(snapshot)
+    checkpoint.validate()?;
+    Ok(checkpoint)
 }
 
 pub(super) fn convert_v2_site_bases(
     site_id: &str,
     bases: &[muffintin_io::SiteRadialBasisV2],
-) -> Result<(SnapshotSpin, SnapshotSpin, bool), SnapshotDftError> {
+) -> Result<(CheckpointSpin, CheckpointSpin, bool), CheckpointPhysicsError> {
     let scalar = bases
         .iter()
         .find(|basis| basis.site_id == site_id && basis.spin == RadialBasisSpinV2::Scalar);
@@ -107,7 +107,7 @@ pub(super) fn convert_v2_site_bases(
             convert_v2_radial_basis(down)?,
             false,
         )),
-        _ => Err(SnapshotDftError::InvalidRadialBasisSpins {
+        _ => Err(CheckpointPhysicsError::InvalidRadialBasisSpins {
             site: site_id.to_owned(),
         }),
     }
@@ -115,13 +115,13 @@ pub(super) fn convert_v2_site_bases(
 
 fn convert_v2_radial_basis(
     basis: &muffintin_io::SiteRadialBasisV2,
-) -> Result<SnapshotSpin, SnapshotDftError> {
+) -> Result<CheckpointSpin, CheckpointPhysicsError> {
     let mesh = ExponentialMesh::new(
         Bohr(basis.mesh.first),
         basis.mesh.log_increment,
         basis.mesh.point_count,
     )?;
-    Ok(SnapshotSpin {
+    Ok(CheckpointSpin {
         equation: basis.radial_equation,
         mesh,
         linearization: basis
@@ -142,9 +142,9 @@ fn convert_v2_radial_basis(
 pub(super) fn regional_potential_from_v2(
     potential: &PotentialV2,
     geometry: &InterstitialGeometry,
-    sites: &[SnapshotSite],
+    sites: &[CheckpointSite],
     reciprocal: ReciprocalLattice,
-) -> Result<RegionalPotential, SnapshotDftError> {
+) -> Result<RegionalPotential, CheckpointPhysicsError> {
     let scalar = regional_scalar_from_v2(
         &potential.v0,
         potential.angular_basis,
@@ -166,9 +166,9 @@ pub(super) fn regional_potential_from_v2(
 pub(super) fn regional_density_from_v2(
     density: &DensityV2,
     geometry: &InterstitialGeometry,
-    sites: &[SnapshotSite],
+    sites: &[CheckpointSite],
     reciprocal: ReciprocalLattice,
-) -> Result<RegionalDensity, SnapshotDftError> {
+) -> Result<RegionalDensity, CheckpointPhysicsError> {
     let charge = regional_scalar_from_v2(
         &density.n,
         density.angular_basis,
@@ -191,9 +191,9 @@ fn regional_scalar_from_v2(
     field: &RegionalFieldV2,
     angular_basis: AngularBasisV1,
     geometry: &InterstitialGeometry,
-    sites: &[SnapshotSite],
+    sites: &[CheckpointSite],
     reciprocal: ReciprocalLattice,
-) -> Result<RegionalScalarField, SnapshotDftError> {
+) -> Result<RegionalScalarField, CheckpointPhysicsError> {
     let convention = match angular_basis {
         AngularBasisV1::ComplexCondonShortley => HarmonicConvention::Complex,
         AngularBasisV1::RealTesseralCondonShortley => HarmonicConvention::Real,
@@ -208,7 +208,7 @@ fn regional_scalar_from_v2(
         .map(|site| {
             let source = by_site
                 .get(site.id.as_str())
-                .ok_or_else(|| SnapshotDftError::MissingV2FieldSite(site.id.clone()))?;
+                .ok_or_else(|| CheckpointPhysicsError::MissingV2FieldSite(site.id.clone()))?;
             let channels = source.channels.iter().map(|channel| {
                 let scale = if (channel.l, channel.m) == (0, 0) {
                     (4.0 * PI).sqrt()
@@ -233,7 +233,7 @@ fn regional_scalar_from_v2(
                 SphereField::new(convention, channels)?,
             )?)
         })
-        .collect::<Result<Vec<_>, SnapshotDftError>>()?;
+        .collect::<Result<Vec<_>, CheckpointPhysicsError>>()?;
     let mut coefficients = field.interstitial.coefficients.clone();
     coefficients.sort_by_key(|coefficient| coefficient.g);
     let vectors = coefficients
@@ -242,7 +242,7 @@ fn regional_scalar_from_v2(
         .collect();
     let layout = FourierLayout::new(reciprocal, vectors)?;
     if layout.index([0; 3]).is_none() {
-        return Err(SnapshotDftError::MissingInterstitialZero);
+        return Err(CheckpointPhysicsError::MissingInterstitialZero);
     }
     let values = coefficients
         .iter()
@@ -261,9 +261,9 @@ pub(super) fn regional_scalar_to_v2(
     field: &RegionalScalarField,
     sites: &[muffintin_io::SiteV2],
     angular_basis: AngularBasisV1,
-) -> Result<RegionalFieldV2, SnapshotDftError> {
+) -> Result<RegionalFieldV2, CheckpointPhysicsError> {
     if field.muffin_tins().len() != sites.len() {
-        return Err(SnapshotDftError::ExportSiteCount {
+        return Err(CheckpointPhysicsError::ExportSiteCount {
             expected: sites.len(),
             actual: field.muffin_tins().len(),
         });
@@ -277,7 +277,7 @@ pub(super) fn regional_scalar_to_v2(
                 channels: sphere_channels_to_v2(field.field(), angular_basis)?,
             })
         })
-        .collect::<Result<Vec<_>, SnapshotDftError>>()?;
+        .collect::<Result<Vec<_>, CheckpointPhysicsError>>()?;
     let coefficients = field
         .interstitial()
         .field()
@@ -299,7 +299,7 @@ pub(super) fn regional_scalar_to_v2(
 fn sphere_channels_to_v2(
     field: &SphereField,
     angular_basis: AngularBasisV1,
-) -> Result<Vec<SphericalChannelV2>, SnapshotDftError> {
+) -> Result<Vec<SphericalChannelV2>, CheckpointPhysicsError> {
     let target = match angular_basis {
         AngularBasisV1::ComplexCondonShortley => HarmonicConvention::Complex,
         AngularBasisV1::RealTesseralCondonShortley => HarmonicConvention::Real,
@@ -311,7 +311,7 @@ fn sphere_channels_to_v2(
             .collect());
     }
     if field.convention() == HarmonicConvention::Complex {
-        return Err(SnapshotDftError::UnsupportedAngularConversion {
+        return Err(CheckpointPhysicsError::UnsupportedAngularConversion {
             from: HarmonicConvention::Complex,
             target,
         });
@@ -331,12 +331,12 @@ fn sphere_channels_to_v2(
             let q = i32::try_from(q).expect("u32 angular momentum fits stored i32 m");
             let Some(positive) = by_channel.get(&(l, q)) else {
                 if by_channel.contains_key(&(l, -q)) {
-                    return Err(SnapshotDftError::UnpairedRealTesseralChannel { l, m: -q });
+                    return Err(CheckpointPhysicsError::UnpairedRealTesseralChannel { l, m: -q });
                 }
                 continue;
             };
             let Some(negative) = by_channel.get(&(l, -q)) else {
-                return Err(SnapshotDftError::UnpairedRealTesseralChannel { l, m: q });
+                return Err(CheckpointPhysicsError::UnpairedRealTesseralChannel { l, m: q });
             };
             let phase = if q.unsigned_abs() % 2 == 0 { 1.0 } else { -1.0 };
             let scale = 1.0 / 2.0_f64.sqrt();
