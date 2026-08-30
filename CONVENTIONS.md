@@ -120,9 +120,9 @@ factor times
 
 ## Versioned-artifact convention
 
-The physical-input `SnapshotV1` and the derived `GridArtifactV1` have separate
+The physical-input `CheckpointV1` and the derived `GridArtifactV1` have separate
 format discriminators and version numbers. A grid-layout change does not bump
-the snapshot schema. Both formats explicitly label units and harmonic/Fourier
+the checkpoint schema. Both formats explicitly label units and harmonic/Fourier
 conventions. RSTSR conversion is an optional grid consumer boundary; it is not
 canonical storage and is not serialized.
 
@@ -222,7 +222,7 @@ The forms coincide on the diagonal but are not interchangeable off diagonal.
 The SPEX-named enum variant records the production reference; the gradient
 variant records the formula written in the v0.1 plan. Surface-discontinuity
 handling remains private to the LAPW assembly strategy as required by A7.
-The `libmuffintin-lapw` Hamiltonian assembler explicitly selects the SPEX symmetric-Laplacian
+The `muffintin_operators::lapw` Hamiltonian assembler explicitly selects the SPEX symmetric-Laplacian
 form and combines it only with the matching SPEX radial Hamiltonian identity.
 
 ## LAPW radial Hamiltonian and overlap filtering
@@ -264,7 +264,7 @@ The einsum layer may run on RSTSR+TBLIS or, later, tenferro-rs; the subscripts
 are the contract. Interstitial terms occupy only the plane-wave corner. An APW
 coefficient already contains $\exp(i\mathbf q\cdot\mathbf R_a)$; APW–LO terms
 inherit its conjugate from $P^*$ and must not receive a second site phase.
-LO–LO terms have no interstitial contribution. Host snapshots and `libmuffintin-io`
+LO–LO terms have no interstitial contribution. Host checkpoints and `libmuffintin-io`
 artifacts stay backend-neutral.
 
 Collinear spin without SOC is two independent generalized eigenproblems that
