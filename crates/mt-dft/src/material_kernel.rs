@@ -7,7 +7,6 @@ use std::ops::Range;
 use muffintin_core::{
     Bohr, ExponentialMesh, FourierFieldError, FourierLayout, GVector, Hartree,
     InterstitialGeometry, InverseBohr, Kappa, LatticeError, MeshError, ReciprocalLattice,
-    StepFunctionError,
 };
 use crate::{
     AtomicEnergyRequest, BandPathRequest, BandState, ChannelKappaError, CollinearKPoint,
@@ -16,9 +15,9 @@ use crate::{
     GeneratedLinearizationEnergy, InterstitialField, LinearizationEnergyDiagnostic,
     LinearizationEnergyError, LinearizationEnergyGenerator, LocalPauliPotential, MuffinTinField,
     OccupationError, PdosEnergySample, RegionalCoreShellInput, RegionalDensity,
-    RegionalElectrostaticError, RegionalElectrostaticResult, RegionalPotential,
-    RegionalScalarField, RegionalXcError, RegionalXcResult, RegularSpectrum, ScalarBuilderError,
-    ScalarIterationBasis, ScalarLocalOrbitalRequest, ScalarSiteInput, ScfBasis, ScfChannelIdentity,
+    RegionalElectrostaticResult, RegionalPotential, RegionalScalarField, RegionalXcResult,
+    RegularSpectrum, ScalarBuilderError, ScalarIterationBasis, ScalarLocalOrbitalRequest,
+    ScalarSiteInput, ScfBasis, ScfChannelIdentity,
     ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfCoreSite, ScfEnergyContext,
     ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfOccupations, ScfPhysics,
     ScfPotentialBuildError, ScfRelativity, ScfResolvedChannelEnergy, ScfState,
@@ -42,7 +41,6 @@ use muffintin_operators::{
     CompiledSiteProjection, OperatorError, SiteSpinOrbitBlock, SocOperatorError,
     SpinorSiteOperatorBlocks,
 };
-use muffintin_sphere::SphereFieldError;
 use muffintin_sphere::{
     CoreBracketSearch, CoreDiracSpec, CorePotentialContinuationSpec, CoreState, DiracError,
     EnergyBracket, ExtendedCorePotential, RadialEquation, SpexSpinOrbitPotential,
@@ -1959,11 +1957,7 @@ pub enum MaterialKernelError {
     #[error(transparent)]
     Mesh(#[from] MeshError),
     #[error(transparent)]
-    StepFunction(#[from] StepFunctionError),
-    #[error(transparent)]
     Fourier(#[from] FourierFieldError),
-    #[error(transparent)]
-    Sphere(#[from] SphereFieldError),
     #[error(transparent)]
     Regional(#[from] crate::RegionalError),
     #[error(transparent)]
@@ -1976,10 +1970,6 @@ pub enum MaterialKernelError {
     Density(#[from] DensityError),
     #[error(transparent)]
     Occupation(#[from] OccupationError),
-    #[error(transparent)]
-    Electrostatic(#[from] RegionalElectrostaticError),
-    #[error(transparent)]
-    Xc(#[from] RegionalXcError),
     #[error(transparent)]
     SecondVariation(#[from] SecondVariationError),
     #[error(transparent)]
@@ -1996,8 +1986,6 @@ pub enum MaterialKernelError {
     Kappa(#[from] muffintin_core::KappaError),
     #[error(transparent)]
     Tetrahedron(#[from] TetrahedronError),
-    #[error(transparent)]
-    Hartree(#[from] muffintin_coulomb::HartreeError),
     #[error(transparent)]
     Dirac(#[from] DiracError),
     #[error(transparent)]
