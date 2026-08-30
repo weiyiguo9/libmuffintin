@@ -4,7 +4,7 @@ use crate::scalar_mpb::ScalarMpbResult;
 use crate::scalar_product::{ScalarProductInput, ScalarQSliceError, require_scalar_q_slice};
 use crate::scalar_thc::ScalarThcResult;
 use crate::thc_grid::{ThcParentGrid, ThcQRecord, ThcRegion, records_match_parent_grid};
-use muffintin_auxiliary_ir::{
+use muffintin_prodbasis::{
     AuxiliarySource, OrbitalPair, PairColumnLayout, PairVertex, TransferQ,
 };
 use muffintin_core::{ExponentialMesh, VolumeBohr3};
@@ -12,7 +12,7 @@ use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, InterpolationProjection,
     SampledAuxiliaryFunctions, SampledPointSupport, assemble_coulomb, assemble_sampled_coulomb,
 };
-use muffintin_thc::{L2Engine, SelectorStrategy};
+use muffintin_prodbasis::thc::{L2Engine, SelectorStrategy};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -47,7 +47,7 @@ pub struct ScalarCoulombQRecord {
     pub spin: u8,
     pub layout: PairColumnLayout,
     /// Interpolation-point auxiliary copied from the matching scalar-THC record.
-    pub auxiliary: muffintin_auxiliary_ir::CompiledAuxiliaryBasis,
+    pub auxiliary: muffintin_prodbasis::CompiledAuxiliaryBasis,
     /// Semantic pair vertices in [`PairColumnLayout`] order, copied from scalar THC.
     pub vertices: Vec<PairVertex>,
     /// Parent-grid sampled $\zeta$ used to assemble this operator.
@@ -101,7 +101,7 @@ pub enum ScalarCoulombError {
     #[error(transparent)]
     Coulomb(#[from] CoulombError),
     #[error(transparent)]
-    Product(#[from] muffintin_auxiliary_ir::AuxiliaryIrError),
+    Product(#[from] muffintin_prodbasis::AuxiliaryIrError),
     #[error("scalar Coulomb q-slice must be nonempty")]
     EmptySlice,
     #[error("scalar Coulomb q-slice has {actual} bundles, expected {expected} k-mesh transfers")]

@@ -2,7 +2,7 @@
 
 mod common;
 
-use muffintin_auxiliary_ir::TransferQ;
+use muffintin_prodbasis::TransferQ;
 use muffintin_core::{Bohr, ExponentialMesh, InverseBohr, ReciprocalLattice};
 use muffintin_coulomb::{
     CoulombError, CoulombRequest, DEFAULT_LEXP, assemble_coulomb, brute_force_structure_constant,
@@ -311,7 +311,7 @@ fn finite_q_pw_diagonal_contains_four_pi_over_q_squared() {
     for (index, region) in operator.regions().iter().enumerate() {
         if matches!(
             region,
-            muffintin_auxiliary_ir::AuxiliaryRegion::Interstitial { .. }
+            muffintin_prodbasis::AuxiliaryRegion::Interstitial { .. }
         ) {
             let diagonal = operator.element(index, index).unwrap();
             assert!(diagonal.re.is_finite());

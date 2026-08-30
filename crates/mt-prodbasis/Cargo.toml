@@ -1,0 +1,23 @@
+[package]
+name = "libmuffintin-prodbasis"
+description = "Method-neutral product-basis IR with mixed-product and THC producers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "muffintin_prodbasis"
+
+[dependencies]
+faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
+libmuffintin-core = { path = "../mt-core" }
+libmuffintin-envelope = { path = "../mt-envelope" }
+libmuffintin-operators = { path = "../mt-operators" }
+libmuffintin-sphere = { path = "../mt-sphere" }
+num-complex.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -44,7 +44,7 @@ pub use input::{
     ExchangeCorrelation, INPUT_FORMAT, INPUT_VERSION, Input, KMesh, Mixing, NoncollinearXcRoute,
     Occupations, Relativity, Task, TaskKind, Workflow, input_to_toml, parse_input_toml,
 };
-pub use muffintin_thc::RankPolicy;
+pub use muffintin_prodbasis::thc::RankPolicy;
 pub use runner::{
     PreparedSource, PreparedTask, PreparedWorkflow, TaskResult, WorkflowResult,
     execute_prepared_with, load_input_path, prepare_input, prepare_input_with_recipes,

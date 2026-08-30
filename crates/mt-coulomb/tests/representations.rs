@@ -2,18 +2,18 @@
 
 mod common;
 
-use muffintin_auxiliary_ir::{AuxiliaryLayout, InterpolationRegion, TransferQ};
+use muffintin_prodbasis::{AuxiliaryLayout, InterpolationRegion, TransferQ};
 use muffintin_core::{Bohr, ExponentialMesh, InverseBohr, VolumeBohr3};
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombRequest, InterpolationProjection,
     SampledAuxiliaryFunctions, SampledPointSupport, assemble_coulomb, assemble_point_charge_oracle,
     assemble_sampled_coulomb,
 };
-use muffintin_thc::toy::{
+use muffintin_prodbasis::thc::toy::{
     mt_adaptive_grid, mt_bloch_orbitals, mt_kmesh, mt_orbital_norms, mt_partition,
     mt_reference_grid,
 };
-use muffintin_thc::{
+use muffintin_prodbasis::thc::{
     GridPath, HEADLINE_SEED, L2Engine, RankPolicy, SelectionRequest, SelectorStrategy, run_thc,
 };
 use num_complex::Complex64;
@@ -140,7 +140,7 @@ fn sampled_mt_projection_uses_declared_shells_without_coordinate_snapping() {
 
 #[test]
 fn thc_zeta_assembles_and_rejects_layout_mismatch() {
-    assert_eq!(muffintin_thc::DEFAULT_SELECTOR, SelectorStrategy::AllQL2);
+    assert_eq!(muffintin_prodbasis::thc::DEFAULT_SELECTOR, SelectorStrategy::AllQL2);
     let mesh = mt_kmesh();
     let partition = mt_partition();
     let nrad = 73;
@@ -179,7 +179,7 @@ fn thc_zeta_assembles_and_rejects_layout_mismatch() {
     assert_eq!(fit.n_points, grid.len());
     assert_eq!(fit.q, auxiliary.q);
     let first_radius: f64 = 2.0e-3;
-    let increment = (muffintin_thc::toy::MT_RADIUS / first_radius).ln() / (nrad - 1) as f64;
+    let increment = (muffintin_prodbasis::thc::toy::MT_RADIUS / first_radius).ln() / (nrad - 1) as f64;
     let radial_mesh = ExponentialMesh::new(Bohr(first_radius), increment, nrad).unwrap();
     let mut mt_counts = vec![0usize; partition.site_count()];
     let sampled_supports = grid
@@ -210,7 +210,7 @@ fn thc_zeta_assembles_and_rejects_layout_mismatch() {
         fit.zeta.clone(),
     )
     .unwrap();
-    let request = CoulombRequest::cubic(muffintin_thc::toy::MT_LATTICE, 2)
+    let request = CoulombRequest::cubic(muffintin_prodbasis::thc::toy::MT_LATTICE, 2)
         .unwrap()
         .with_interpolation(InterpolationProjection::new(InverseBohr(1.8), 1).unwrap())
         .unwrap();

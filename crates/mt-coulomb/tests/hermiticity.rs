@@ -3,7 +3,7 @@
 mod common;
 
 use faer::{Mat, Side};
-use muffintin_auxiliary_ir::TransferQ;
+use muffintin_prodbasis::TransferQ;
 use muffintin_core::InverseBohr;
 use muffintin_coulomb::{
     CoulombRequest, InterpolationProjection, assemble_coulomb, assemble_sampled_coulomb,

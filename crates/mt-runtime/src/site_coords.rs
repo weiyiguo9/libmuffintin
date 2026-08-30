@@ -1,7 +1,7 @@
 //! Shared APW/LO site-coordinate identity used by scalar MPB and THC.
 
 use crate::scalar_product::{SCALAR_RADIAL_LO0, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT};
-use muffintin_auxiliary_ir::{ProductOrbitalKind, ProductRadialId};
+use muffintin_prodbasis::{ProductOrbitalKind, ProductRadialId};
 use muffintin_core::lm_from_index;
 use muffintin_operators::lapw::{CompiledBasis, LocalOrbitalLayout};
 

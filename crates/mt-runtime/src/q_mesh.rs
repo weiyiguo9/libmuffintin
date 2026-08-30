@@ -4,7 +4,7 @@
 //! wrap, and off-mesh rejection. This module owns those semantics; it does
 //! not forward a later Coulomb or MPB $q$.
 
-use muffintin_auxiliary_ir::TransferQ;
+use muffintin_prodbasis::TransferQ;
 use muffintin_core::{GVector, InverseBohr, ReciprocalLattice};
 
 use crate::snapshot_dft::{SnapshotDftError, g_vector};

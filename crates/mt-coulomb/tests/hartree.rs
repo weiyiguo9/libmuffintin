@@ -1,6 +1,6 @@
 //! Production density-to-Hartree gates for the basis-neutral Weinert path.
 
-use muffintin_auxiliary_ir::TransferQ;
+use muffintin_prodbasis::TransferQ;
 use muffintin_core::{
     Bohr, ExponentialMesh, FourierLayout, HermitianFourierField, InterstitialGeometry, InverseBohr,
     ReciprocalLattice, Sphere, VolumeBohr3, complex_spherical_harmonics, lm_count, lm_index,

@@ -9,7 +9,7 @@ use muffintin_core::{
     Bohr, InverseBohr, RelativisticChannel, SpinProjection, complex_spherical_harmonics, lm_index,
 };
 use muffintin_operators::CompiledSiteProjection;
-use muffintin_thc::{GridPath, L2Engine, SelectorStrategy};
+use muffintin_prodbasis::thc::{GridPath, L2Engine, SelectorStrategy};
 use num_complex::Complex64;
 
 #[path = "spinor_hydrogen.rs"]

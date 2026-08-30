@@ -2,7 +2,7 @@
 
 use std::f64::consts::PI;
 
-use muffintin_auxiliary_ir::{
+use muffintin_prodbasis::{
     AuxiliaryPartition, CompiledAuxiliaryBasis, DiracSiteRadialSet, OrbitalPair, PartitionSite,
     SiteRadialSet, TransferQ,
 };
@@ -19,7 +19,7 @@ use muffintin_io::{
 };
 use muffintin_operators::lapw::Provenance;
 use muffintin_tensor::DenseEigenvectors;
-use muffintin_thc::{L2Engine, RankPolicy, Selection, SelectorStrategy};
+use muffintin_prodbasis::thc::{L2Engine, RankPolicy, Selection, SelectorStrategy};
 use num_complex::Complex64;
 
 use crate::mldump_header::{

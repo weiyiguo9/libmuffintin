@@ -7,7 +7,7 @@ use muffintin::{
     ScalarThcSpec, SnapshotDftPhysics, ThcCandidates, ThcEngine, ThcParentGrid, ThcRegion,
     build_scalar_thc,
 };
-use muffintin_auxiliary_ir::{AuxiliaryPartition, ProductOrbitalKind, ProductRadialId, TransferQ};
+use muffintin_prodbasis::{AuxiliaryPartition, ProductOrbitalKind, ProductRadialId, TransferQ};
 use muffintin_core::{
     Bohr, Hartree, VolumeBohr3, complex_spherical_harmonics, lm_from_index, lm_index,
 };
@@ -27,7 +27,7 @@ use muffintin_io::{
 };
 use muffintin_operators::lapw::{CompiledBasis, Provenance};
 use muffintin_operators::CompiledSiteProjection;
-use muffintin_thc::{GridPath, L2Engine, SelectorStrategy, ThcError};
+use muffintin_prodbasis::thc::{GridPath, L2Engine, SelectorStrategy, ThcError};
 use num_complex::Complex64;
 
 #[path = "thc_fixture_common.rs"]

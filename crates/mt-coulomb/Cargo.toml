@@ -13,14 +13,12 @@ name = "muffintin_coulomb"
 [dependencies]
 libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-core = { path = "../mt-core" }
-libmuffintin-auxiliary-ir = { path = "../mt-auxiliary-ir" }
+libmuffintin-prodbasis = { path = "../mt-prodbasis" }
 num-complex.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
-libmuffintin-mpb = { path = "../mt-mpb" }
-libmuffintin-thc = { path = "../mt-thc" }
 
 [lints]
 workspace = true

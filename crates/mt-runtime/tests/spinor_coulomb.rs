@@ -7,14 +7,14 @@ use muffintin::{
     SpinorCoulombSpec, SpinorMpbSelection, SpinorMpbSpec, ThcParentGrid, build_spinor_coulomb,
     build_spinor_mpb, build_spinor_thc,
 };
-use muffintin_auxiliary_ir::{AuxiliaryLayout, OrbitalPair, PairVertex, TransferQ};
+use muffintin_prodbasis::{AuxiliaryLayout, OrbitalPair, PairVertex, TransferQ};
 use muffintin_core::{Bohr, InverseBohr};
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombRequest, InterpolationProjection, SampledPointSupport,
     assemble_coulomb,
 };
 use muffintin_core::Cell;
-use muffintin_mpb::DEFAULT_TOLERANCE;
+use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
 use num_complex::Complex64;
 
 #[path = "spinor_hydrogen.rs"]

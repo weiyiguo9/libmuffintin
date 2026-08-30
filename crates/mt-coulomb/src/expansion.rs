@@ -2,7 +2,7 @@
 
 use crate::CoulombError;
 use crate::spec::{CoulombRequest, InterpolationProjection};
-use muffintin_auxiliary_ir::{
+use muffintin_prodbasis::{
     AuxiliaryInterstitialWave, AuxiliaryLayout, AuxiliaryRegion, CompiledAuxiliaryBasis,
     InterpolationRegion, MixedProductAuxiliary, TransferQ,
 };
@@ -278,7 +278,7 @@ pub(crate) fn mixed_product_densities(
             }
             AuxiliaryRegion::InterpolationPoint { .. } => {
                 return Err(CoulombError::Product(
-                    muffintin_auxiliary_ir::AuxiliaryIrError::ExpectedMixedProduct,
+                    muffintin_prodbasis::AuxiliaryIrError::ExpectedMixedProduct,
                 ));
             }
         }

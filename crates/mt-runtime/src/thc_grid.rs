@@ -1,12 +1,12 @@
 //! Representation-neutral parent grid, candidates, engines, and q-record context.
 
-use muffintin_auxiliary_ir::{
+use muffintin_prodbasis::{
     AuxiliaryPartition, CompiledAuxiliaryBasis, InterpolationRegion, PairColumnLayout, PairVertex,
     TransferQ,
 };
 use muffintin_core::{Bohr, ExponentialMesh};
 use muffintin_operators::lapw::Provenance;
-use muffintin_thc::{L2Engine, PerQFit, ThcError, validate_quadrature_weights};
+use muffintin_prodbasis::thc::{L2Engine, PerQFit, ThcError, validate_quadrature_weights};
 use thiserror::Error;
 
 pub(crate) const Q_SLICE_TOLERANCE: f64 = 1.0e-12;

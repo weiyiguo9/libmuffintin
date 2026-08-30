@@ -21,7 +21,7 @@ use muffintin_io::{
     RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
-use muffintin_thc::RankPolicy;
+use muffintin_prodbasis::thc::RankPolicy;
 
 #[path = "thc_fixture_common.rs"]
 mod thc_fixture_common;

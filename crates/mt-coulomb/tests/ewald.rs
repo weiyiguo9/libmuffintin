@@ -2,7 +2,7 @@
 
 mod common;
 
-use muffintin_auxiliary_ir::{
+use muffintin_prodbasis::{
     AuxiliaryPartition, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
     InterpolationAuxiliaryPoint, InterpolationPointAuxiliary, InterpolationRegion,
 };
@@ -20,7 +20,7 @@ const EWALD_SUCCESSIVE_TOLERANCE: f64 = 1.0e-6;
 /// Recorded relative error $1.7\times 10^{-7}$ on cubic $a=8$, $q=2\pi\hat y/a$.
 const WEINERT_VS_EWALD_TOLERANCE: f64 = 1.0e-6;
 
-fn two_site_unit_charges(q: muffintin_auxiliary_ir::TransferQ) -> CompiledAuxiliaryBasis {
+fn two_site_unit_charges(q: muffintin_prodbasis::TransferQ) -> CompiledAuxiliaryBasis {
     let r1 = [Bohr(2.0), Bohr(2.0), Bohr(2.0)];
     let r2 = [Bohr(6.0), Bohr(2.0), Bohr(2.0)];
     let partition = AuxiliaryPartition::from_interstitial(
@@ -53,7 +53,7 @@ fn two_site_unit_charges(q: muffintin_auxiliary_ir::TransferQ) -> CompiledAuxili
             region: InterpolationRegion::MuffinTin { site: 1 },
         },
     ];
-    muffintin_auxiliary_ir::sort_interpolation_points(&mut points);
+    muffintin_prodbasis::sort_interpolation_points(&mut points);
     let auxiliary = CompiledAuxiliaryBasis {
         partition,
         q,
@@ -156,7 +156,7 @@ fn ewald_kernel_reports_successive_residual_and_rejects_tight_unmet_tolerance() 
 #[test]
 fn coincident_gamma_kernel_includes_the_regular_ewald_self_limit() {
     let request = CoulombRequest::cubic(1.0, 0).unwrap();
-    let q = muffintin_auxiliary_ir::TransferQ::from_cartesian([InverseBohr(0.0); 3]).unwrap();
+    let q = muffintin_prodbasis::TransferQ::from_cartesian([InverseBohr(0.0); 3]).unwrap();
     let origin = [Bohr(0.0); 3];
     let value = ewald_point_kernel(
         request.cell(),

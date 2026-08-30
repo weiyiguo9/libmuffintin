@@ -7,7 +7,7 @@
 #![allow(dead_code)]
 
 use muffintin::{ScalarProductInput, SpinorProductInput, ThcParentGrid, ThcPoint, ThcRegion};
-use muffintin_auxiliary_ir::AuxiliaryPartition;
+use muffintin_prodbasis::AuxiliaryPartition;
 use muffintin_core::{Bohr, ExponentialMesh};
 use muffintin_operators::lapw::Provenance;
 

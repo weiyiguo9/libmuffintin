@@ -6,7 +6,7 @@ use muffintin::{
     SCALAR_MPB_NSPIN, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarMpbError, ScalarMpbSelection,
     ScalarMpbSpec, SnapshotDftPhysics, build_scalar_mpb,
 };
-use muffintin_auxiliary_ir::{CompiledAuxiliaryBasis, OrbitalPair};
+use muffintin_prodbasis::{CompiledAuxiliaryBasis, OrbitalPair};
 use muffintin_core::{Hartree, InverseBohr};
 use muffintin_dft::{
     LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
@@ -22,7 +22,7 @@ use muffintin_io::{
     RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
-use muffintin_mpb::DEFAULT_TOLERANCE;
+use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
 use num_complex::Complex64;
 
 fn hydrogen_snapshot() -> SnapshotV2 {

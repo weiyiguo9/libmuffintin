@@ -1,6 +1,6 @@
 //! Frozen scalar LAPW product input for one requested transfer $q$.
 
-use muffintin_auxiliary_ir::{
+use muffintin_prodbasis::{
     AuxiliaryPartition, AuxiliarySource, PairColumnLayout, ProductRadial, RadialSamples,
     RawInterstitialPairSupport, SiteRadialSet, TransferQ,
 };

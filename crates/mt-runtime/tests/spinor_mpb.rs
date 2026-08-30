@@ -6,7 +6,7 @@ use muffintin::{
     SPINOR_MPB_NSPIN, SPINOR_RADIAL_LO0, SnapshotDftPhysics, SpinorMpbError, SpinorMpbSelection,
     SpinorMpbSpec, build_spinor_mpb,
 };
-use muffintin_auxiliary_ir::{
+use muffintin_prodbasis::{
     CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, OrbitalPair,
 };
 use muffintin_core::{Hartree, InverseBohr, Kappa};
@@ -25,7 +25,7 @@ use muffintin_io::{
     RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
-use muffintin_mpb::{DEFAULT_TOLERANCE, DiracBlochVertexAccumulator};
+use muffintin_prodbasis::mpb::{DEFAULT_TOLERANCE, DiracBlochVertexAccumulator};
 use muffintin_operators::CompiledSiteProjection;
 use num_complex::Complex64;
 
@@ -291,7 +291,7 @@ fn independent_pauli_theta(
 
 fn independent_mt_sector(
     input: &muffintin::SpinorProductInput,
-    raw: &muffintin_auxiliary_ir::DiracRawProductSpace,
+    raw: &muffintin_prodbasis::DiracRawProductSpace,
     auxiliary: &CompiledAuxiliaryBasis,
     selection: SpinorMpbSelection,
     sector: DiracChargeSector,

@@ -26,8 +26,8 @@ use muffintin_io::{
     materialize_snapshot_v2, read_mldump_v1, read_spex_snapshot_hdf,
 };
 use muffintin_operators::lapw::Provenance;
-use muffintin_mpb::DEFAULT_TOLERANCE;
-use muffintin_thc::RankPolicy;
+use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
+use muffintin_prodbasis::thc::RankPolicy;
 
 #[path = "material_lane_common.rs"]
 mod material_lane_common;

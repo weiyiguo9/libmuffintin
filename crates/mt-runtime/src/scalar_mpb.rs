@@ -2,14 +2,14 @@
 
 use crate::scalar_product::{ScalarProductInput, ScalarSpinChannel};
 use crate::site_coords::site_coordinate;
-use muffintin_auxiliary_ir::{
+use muffintin_prodbasis::{
     CompiledAuxiliaryBasis, InterstitialPairSpec, MtPairSpec, OrbitalPair, PairVertex,
     ProductRadialId, RawProductSpace,
 };
 use muffintin_core::{InverseBohr, ReciprocalLattice};
 use muffintin_envelope::site_translation_phase;
 use muffintin_operators::lapw::CompiledBasis;
-use muffintin_mpb::{
+use muffintin_prodbasis::mpb::{
     MpbError, PairVertexAccumulator, apply_overlap_cutoff, spex_mixed_product_basis,
 };
 use muffintin_operators::{CompiledSiteProjection, OperatorError};
@@ -23,7 +23,7 @@ pub const SCALAR_MPB_NSPIN: f64 = 2.0;
 /// Explicit mixed-product construction and same-spin band-pair selection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarMpbSpec {
-    /// Reciprocal lattice used by [`muffintin_mpb::spex_mixed_product_basis`].
+    /// Reciprocal lattice used by [`muffintin_prodbasis::mpb::spex_mixed_product_basis`].
     pub lattice: ReciprocalLattice,
     /// Maximum coupled muffin-tin $L$ of the raw mixed-product space.
     pub product_l_max: u32,

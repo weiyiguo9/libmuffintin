@@ -3,7 +3,7 @@
 use crate::CoulombError;
 use crate::math::plane_wave_phase;
 
-use muffintin_auxiliary_ir::TransferQ;
+use muffintin_prodbasis::TransferQ;
 use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice};
 use muffintin_core::Cell;
 use num_complex::Complex64;

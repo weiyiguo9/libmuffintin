@@ -13,7 +13,7 @@ use muffintin::{
 use muffintin_core::InverseBohr;
 use muffintin_coulomb::InterpolationProjection;
 use muffintin_io::read_coqui_cholesky;
-use muffintin_thc::{L2Engine, SelectorStrategy};
+use muffintin_prodbasis::thc::{L2Engine, SelectorStrategy};
 use num_complex::Complex64;
 
 #[path = "scalar_hydrogen.rs"]

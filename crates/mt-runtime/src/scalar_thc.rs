@@ -8,12 +8,12 @@ use crate::thc_grid::{
     ThcCandidates, ThcEngine, ThcGridError, ThcParentGrid, ThcQRecord, ThcRegion,
     records_match_parent_grid, require_parent_grid_radials,
 };
-use muffintin_auxiliary_ir::{ProductOrbitalKind, ProductRadial, ProductRadialId, SiteRadialSet};
+use muffintin_prodbasis::{ProductOrbitalKind, ProductRadial, ProductRadialId, SiteRadialSet};
 use muffintin_core::{Bohr, GVector, InverseBohr, complex_spherical_harmonics, lm_index};
 use muffintin_operators::lapw::{CompiledBasis, Provenance};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
 use muffintin_tensor::DenseEigenvectors;
-use muffintin_thc::{PairBlock, RankPolicy, Selection, ThcError, fit_allq_l2_pair_blocks};
+use muffintin_prodbasis::thc::{PairBlock, RankPolicy, Selection, ThcError, fit_allq_l2_pair_blocks};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -43,7 +43,7 @@ pub struct ScalarThcResult {
     /// Collinear spin selected by [`ScalarThcSpec`] (`0` up, `1` down).
     ///
     /// Every per-$q$ record in this result uses this spin. Bloch pair vertices
-    /// ([`muffintin_auxiliary_ir::OrbitalPair::Bloch`]) do not carry a spin
+    /// ([`muffintin_prodbasis::OrbitalPair::Bloch`]) do not carry a spin
     /// label.
     pub spin: u8,
     pub records: Vec<ThcQRecord>,
@@ -111,7 +111,7 @@ impl From<ThcGridError> for ScalarThcError {
 /// the cell-periodic representation by $\exp(-i k\cdot r)$ at the Cartesian
 /// point, using the stored plane-wave Cartesian $k$. Pair density is
 /// $\exp(+i G_{\mathrm{wrap}}\cdot r)\,(P_{k-q}^*P_k+Q_{k-q}^*Q_k)$ with the
-/// stored per-column wrap. Global [`muffintin_auxiliary_ir::TransferQ::umklapp`]
+/// stored per-column wrap. Global [`muffintin_prodbasis::TransferQ::umklapp`]
 /// is not applied again. Auxiliaries are created with scalar THC provenance
 /// before Bloch pair vertices.
 pub fn build_scalar_thc(

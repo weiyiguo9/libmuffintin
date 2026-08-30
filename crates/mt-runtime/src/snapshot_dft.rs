@@ -2418,7 +2418,7 @@ pub enum SnapshotDftError {
     #[error("spinor product source transfer q does not match the frozen q-slice")]
     SpinorProductTransferQMismatch,
     #[error(transparent)]
-    DiracProduct(#[from] muffintin_auxiliary_ir::DiracProductError),
+    DiracProduct(#[from] muffintin_prodbasis::DiracProductError),
     #[error(
         "folded k-q {folded:?} from k={k:?} q_in={q_in:?} q_canonical={q_canonical:?} is not on the regular mesh"
     )]
@@ -2431,7 +2431,7 @@ pub enum SnapshotDftError {
     #[error("collinear product input needs equal up/down band counts, got {up} and {down}")]
     CollinearBandCount { up: usize, down: usize },
     #[error(transparent)]
-    Product(#[from] muffintin_auxiliary_ir::AuxiliaryIrError),
+    Product(#[from] muffintin_prodbasis::AuxiliaryIrError),
     #[error("second variation requires a nonmagnetic scalar snapshot and potential")]
     SecondVariationRequiresNonmagneticScalar,
     #[error(

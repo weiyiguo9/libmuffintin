@@ -16,15 +16,13 @@ name = "muffintin"
 path = "src/main.rs"
 
 [dependencies]
-libmuffintin-auxiliary-ir = { path = "../mt-auxiliary-ir" }
+libmuffintin-prodbasis = { path = "../mt-prodbasis" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-coulomb = { path = "../mt-coulomb" }
 libmuffintin-dft = { path = "../mt-dft" }
 libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-io = { path = "../mt-io" }
-libmuffintin-mpb = { path = "../mt-mpb" }
 libmuffintin-operators = { path = "../mt-operators" }
-libmuffintin-thc = { path = "../mt-thc" }
 libmuffintin-sphere = { path = "../mt-sphere" }
 libmuffintin-tensor = { path = "../mt-tensor" }
 num-complex.workspace = true
@@ -35,7 +33,6 @@ toml = "0.8.20"
 [dev-dependencies]
 libmuffintin-io = { path = "../mt-io" }
 libmuffintin-operators = { path = "../mt-operators" }
-libmuffintin-thc = { path = "../mt-thc" }
 num-complex.workspace = true
 
 [lints]

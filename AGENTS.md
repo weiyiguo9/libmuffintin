@@ -38,10 +38,13 @@
 - Keep Unix artifacts single-prefixed, for example `libmuffintin_core.rlib`.
   If a system-facing aggregate library is added, name its target `muffintin`
   so Linux produces `libmuffintin.so` or `libmuffintin.a`.
-- Name the method-neutral auxiliary/product-space IR crate
-  `crates/mt-auxiliary-ir`, its Cargo package and dependency key
-  `libmuffintin-auxiliary-ir`, and its Rust library target and import
-  `muffintin_auxiliary_ir`. Do not reintroduce the former `mt-product` names.
+- The product-basis crate is `crates/mt-prodbasis`, Cargo package and
+  dependency key `libmuffintin-prodbasis`, Rust library target and import
+  `muffintin_prodbasis`. Its root holds the method-neutral product-space IR;
+  the mixed-product and THC producers live under `mpb::` and `thc::`.
+  Coulomb assembly consumes only the root IR types; `mpb::`/`thc::` types
+  must not become `libmuffintin-coulomb` public inputs (a documented
+  convention, no longer compiler-enforced).
 
 ## Repository documentation mathematics
 

@@ -17,7 +17,7 @@ use muffintin_io::{
     SnapshotFile, SnapshotV2, SpexMaterialBasisRecipeV1, materialize_snapshot_v2,
     read_spex_snapshot_hdf, snapshot_file_from_toml,
 };
-use muffintin_thc::RankPolicy;
+use muffintin_prodbasis::thc::RankPolicy;
 
 /// Provenance for one honest Snapshot V2 consumed by a material lane.
 #[derive(Clone, Debug, Eq, PartialEq)]

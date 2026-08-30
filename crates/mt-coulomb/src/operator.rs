@@ -1,7 +1,7 @@
 //! Finite-$q$ Coulomb operator over a compiled auxiliary basis.
 
 use crate::CoulombError;
-use muffintin_auxiliary_ir::{AuxiliaryLayout, AuxiliaryRegion, PairVertex, TransferQ};
+use muffintin_prodbasis::{AuxiliaryLayout, AuxiliaryRegion, PairVertex, TransferQ};
 use muffintin_envelope::Provenance;
 use muffintin_core::ReciprocalLattice;
 use muffintin_core::Cell;
@@ -9,7 +9,7 @@ use num_complex::Complex64;
 
 /// Typed auxiliary representation stored with $V^q$. Neither mixed-product nor
 /// interpolation points is a privileged public input type; both are assembled
-/// from [`muffintin_auxiliary_ir::CompiledAuxiliaryBasis`].
+/// from [`muffintin_prodbasis::CompiledAuxiliaryBasis`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AuxiliaryKind {
     /// SPEX-style mixed product basis.

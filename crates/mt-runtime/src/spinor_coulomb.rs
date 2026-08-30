@@ -8,13 +8,13 @@ use crate::spinor_mpb::SpinorMpbResult;
 use crate::spinor_product::{SpinorProductInput, SpinorQSliceError, require_spinor_q_slice};
 use crate::spinor_thc::SpinorThcResult;
 use crate::thc_grid::{ThcQRecord, records_match_parent_grid};
-use muffintin_auxiliary_ir::{OrbitalPair, PairColumnLayout, PairVertex, TransferQ};
+use muffintin_prodbasis::{OrbitalPair, PairColumnLayout, PairVertex, TransferQ};
 use muffintin_core::ExponentialMesh;
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, InterpolationProjection,
     SampledAuxiliaryFunctions, assemble_coulomb, assemble_sampled_coulomb,
 };
-use muffintin_thc::{L2Engine, SelectorStrategy};
+use muffintin_prodbasis::thc::{L2Engine, SelectorStrategy};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -48,7 +48,7 @@ pub struct SpinorCoulombQRecord {
     pub q: TransferQ,
     pub layout: PairColumnLayout,
     /// Interpolation-point auxiliary copied from the matching spinor-THC record.
-    pub auxiliary: muffintin_auxiliary_ir::CompiledAuxiliaryBasis,
+    pub auxiliary: muffintin_prodbasis::CompiledAuxiliaryBasis,
     /// Semantic pair vertices in [`PairColumnLayout`] order, copied from spinor THC.
     pub vertices: Vec<PairVertex>,
     /// Parent-grid sampled $\zeta$ used to assemble this operator.
@@ -110,7 +110,7 @@ pub enum SpinorCoulombError {
     #[error(transparent)]
     Coulomb(#[from] CoulombError),
     #[error(transparent)]
-    Product(#[from] muffintin_auxiliary_ir::AuxiliaryIrError),
+    Product(#[from] muffintin_prodbasis::AuxiliaryIrError),
     #[error("spinor Coulomb q-slice must be nonempty")]
     EmptySlice,
     #[error("spinor Coulomb q-slice has {actual} bundles, expected {expected} k-mesh transfers")]

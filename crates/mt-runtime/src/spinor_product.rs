@@ -1,6 +1,6 @@
 //! Frozen full-first-variation spinor product input for one requested transfer $q$.
 
-use muffintin_auxiliary_ir::{
+use muffintin_prodbasis::{
     AuxiliaryPartition, DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples,
     DiracSiteRadialSet, PairColumnLayout, ProductOrbitalKind, RawInterstitialPairSupport,
     TransferQ,

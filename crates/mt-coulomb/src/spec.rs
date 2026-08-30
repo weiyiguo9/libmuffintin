@@ -35,7 +35,7 @@ impl InterpolationProjection {
 
 /// Finite-$q$ Coulomb assembly request.
 ///
-/// The public assembler consumes [`muffintin_auxiliary_ir::CompiledAuxiliaryBasis`].
+/// The public assembler consumes [`muffintin_prodbasis::CompiledAuxiliaryBasis`].
 /// Mixed-product auxiliaries use [`crate::assemble_coulomb`]. Interpolation-point
 /// auxiliaries use [`crate::assemble_sampled_coulomb`] with sampled $\zeta$.
 /// [`InterpolationProjection`] supplies the Weinert $L$ and $|q+G|$ cutoffs
@@ -87,7 +87,7 @@ impl CoulombRequest {
     }
 
     /// Attach the interpolation-point projection used when the auxiliary is
-    /// [`muffintin_auxiliary_ir::AuxiliaryRepresentation::InterpolationPoints`].
+    /// [`muffintin_prodbasis::AuxiliaryRepresentation::InterpolationPoints`].
     pub fn with_interpolation(
         mut self,
         projection: InterpolationProjection,

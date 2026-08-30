@@ -1,6 +1,6 @@
 //! Representation-neutral finite-$q$ Weinert/SPEX Coulomb operator.
 //!
-//! Production code consumes [`muffintin_auxiliary_ir::CompiledAuxiliaryBasis`]
+//! Production code consumes [`muffintin_prodbasis::CompiledAuxiliaryBasis`]
 //! plus, for interpolation points, [`SampledAuxiliaryFunctions`] carrying
 //! parent-grid $\zeta^q$ samples. Mixed-product and interpolation-point
 //! payloads share one muffin-tin radial $\times Y_{LM}$ plus interstitial

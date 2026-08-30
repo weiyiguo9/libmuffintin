@@ -5,7 +5,7 @@ use crate::thc_grid::{
     ThcCandidates, ThcEngine, ThcGridError, ThcParentGrid, ThcQRecord, ThcRegion,
     records_match_parent_grid, require_parent_grid_radials,
 };
-use muffintin_auxiliary_ir::{DiracRadial, DiracRadialId, DiracSiteRadialSet, ProductOrbitalKind};
+use muffintin_prodbasis::{DiracRadial, DiracRadialId, DiracSiteRadialSet, ProductOrbitalKind};
 use muffintin_core::{
     Bohr, GVector, InverseBohr, RelativisticChannel, SpinProjection, complex_spherical_harmonics,
     lm_index,
@@ -13,7 +13,7 @@ use muffintin_core::{
 use muffintin_operators::lapw::{Provenance, SpinorCompiledBasis};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
 use muffintin_tensor::DenseEigenvectors;
-use muffintin_thc::{PairBlock, RankPolicy, Selection, ThcError, fit_allq_l2_pair_blocks};
+use muffintin_prodbasis::thc::{PairBlock, RankPolicy, Selection, ThcError, fit_allq_l2_pair_blocks};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -134,7 +134,7 @@ impl From<SpinorQSliceError> for SpinorThcError {
 /// $\Omega_{-\kappa\mu}$. Pair density is the same-Pauli PP plus QQ sum; there
 /// is no PQ/QP and no $cQ$. Bloch samples are converted to cell-periodic form
 /// by one $\exp(-i k\cdot r)$, then the stored per-$k$ $+G_{\mathrm{wrap}}$
-/// pair phase. Global [`muffintin_auxiliary_ir::TransferQ::umklapp`] is not
+/// pair phase. Global [`muffintin_prodbasis::TransferQ::umklapp`] is not
 /// applied again. Interstitial evaluation uses the two Pauli plane-wave blocks
 /// with G-only cell-periodic phases. Auxiliaries are created with spinor THC
 /// provenance before Bloch pair vertices.

@@ -3,7 +3,7 @@
 
 mod common;
 
-use muffintin_auxiliary_ir::{
+use muffintin_prodbasis::{
     AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryPartition,
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, MixedProductAuxiliary, SiteAuxiliaryBlock,
     TransferQ,

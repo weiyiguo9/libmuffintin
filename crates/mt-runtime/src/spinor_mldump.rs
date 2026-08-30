@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use muffintin_auxiliary_ir::{DiracRadial, PartitionSite};
+use muffintin_prodbasis::{DiracRadial, PartitionSite};
 use muffintin_core::{Bohr, RelativisticChannel};
 use muffintin_io::{
     IoError, MLDUMP_RADIAL_KIND_VALENCE, MldumpHeaderV1, MldumpSiteV1, MldumpWriterV1,
@@ -11,7 +11,7 @@ use muffintin_io::{
     SpinorProductsBeginV1, SpinorSiteMatchRefV1, ValidationError,
 };
 use muffintin_operators::lapw::SpinorCompiledBasis;
-use muffintin_thc::L2Engine;
+use muffintin_prodbasis::thc::L2Engine;
 use thiserror::Error;
 
 use crate::mldump_header::{HeaderBindError, PREFLIGHT_TOLERANCE};

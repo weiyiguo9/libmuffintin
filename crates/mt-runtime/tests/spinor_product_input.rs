@@ -6,7 +6,7 @@ use std::f64::consts::PI;
 use muffintin::{
     SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, SnapshotDftError, SnapshotDftPhysics,
 };
-use muffintin_auxiliary_ir::{DiracRadial, ProductOrbitalKind};
+use muffintin_prodbasis::{DiracRadial, ProductOrbitalKind};
 use muffintin_core::{Bohr, Hartree, InverseBohr, Kappa, ReciprocalLattice, TwiceMu};
 use muffintin_dft::{
     FirstVariationWindow, LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis,
@@ -299,7 +299,7 @@ fn q0_signed_kappa_lo_row_maps_to_dirac_radial_and_samples() {
     assert!(
         input
             .source
-            .find_radial(muffintin_auxiliary_ir::DiracRadialId {
+            .find_radial(muffintin_prodbasis::DiracRadialId {
                 site: 0,
                 kind: ProductOrbitalKind::Valence,
                 kappa,

@@ -9,7 +9,7 @@ use muffintin::{
     ThcCandidates, ThcEngine, ThcParentGrid, build_scalar_coulomb, build_scalar_mpb,
     build_scalar_thc,
 };
-use muffintin_auxiliary_ir::{AuxiliaryLayout, OrbitalPair, PairVertex, TransferQ};
+use muffintin_prodbasis::{AuxiliaryLayout, OrbitalPair, PairVertex, TransferQ};
 use muffintin_core::{Bohr, Hartree, InverseBohr};
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombRequest, InterpolationProjection, SampledPointSupport,
@@ -31,7 +31,7 @@ use muffintin_io::{
     SpinTagV1,
 };
 use muffintin_operators::lapw::Provenance;
-use muffintin_mpb::DEFAULT_TOLERANCE;
+use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
 use num_complex::Complex64;
 
 #[path = "thc_fixture_common.rs"]

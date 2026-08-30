@@ -2,7 +2,7 @@
 
 mod common;
 
-use muffintin_auxiliary_ir::{
+use muffintin_prodbasis::{
     AuxiliaryLayout, AuxiliaryRegion, OrbitalPair, PairVertex, TransferQ,
 };
 use muffintin_core::InverseBohr;

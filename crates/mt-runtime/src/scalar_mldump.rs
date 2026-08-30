@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use muffintin_auxiliary_ir::ProductRadial;
+use muffintin_prodbasis::ProductRadial;
 use muffintin_core::lm_from_index;
 use muffintin_io::{
     IoError, MLDUMP_RADIAL_KIND_VALENCE, MldumpHeaderV1, MldumpWriterV1, ScalarApwSiteMatchRefV1,
@@ -10,7 +10,7 @@ use muffintin_io::{
     ScalarProductQRecordRefV1, ScalarProductSiteRefV1, ScalarProductsBeginV1, ValidationError,
 };
 use muffintin_operators::lapw::CompiledBasis;
-use muffintin_thc::L2Engine;
+use muffintin_prodbasis::thc::L2Engine;
 use thiserror::Error;
 
 use crate::mldump_header::HeaderBindError;
