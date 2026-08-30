@@ -11,6 +11,7 @@ members = [
     "crates/mt-coulomb",
     "crates/mt-dft",
     "crates/mt-runtime",
+    "crates/mt-python",
 ]
 exclude = ["vendor/tblis-src"]
 

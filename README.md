@@ -99,6 +99,10 @@ requires rustc 1.96. Leave the workspace at 1.85 unless you enable that
 feature; if you do, raise `rust-version` to 1.96 in the root `Cargo.toml` or
 the tenferro backend will not compile.
 
+`libmuffintin-python` pins `pyo3` 0.27.2 and `numpy` 0.27.1; both have MSRV
+1.74, so the workspace remains at Rust 1.85. The extension uses `abi3-py310`
+and is built locally with `maturin develop`; no wheel is published.
+
 ```sh
 cargo test -p libmuffintin-tensor --features backend-tenferro
 ```

@@ -20,6 +20,7 @@ mod scalar_mldump;
 mod scalar_mpb;
 mod scalar_product;
 mod scalar_thc;
+mod single_dft_scf;
 mod site_coords;
 mod spinor_coulomb;
 mod spinor_mldump;
@@ -72,6 +73,7 @@ pub use scalar_product::{
     ScalarKMinusQ, ScalarProductInput, ScalarSpinChannel,
 };
 pub use scalar_thc::{ScalarThcError, ScalarThcResult, ScalarThcSpec, build_scalar_thc};
+pub use single_dft_scf::{SingleDftScfConfigError, single_dft_scf_config};
 pub use spinor_coulomb::{
     SPINOR_COULOMB_EXACTNESS_FLOOR, SpinorCoulombDiscrepancy, SpinorCoulombError,
     SpinorCoulombPairDiagnostic, SpinorCoulombPairMatch, SpinorCoulombQRecord, SpinorCoulombResult,

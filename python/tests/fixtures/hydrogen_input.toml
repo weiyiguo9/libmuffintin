@@ -1,0 +1,42 @@
+format = "libmuffintin-input"
+version = 2
+checkpoint = "hydrogen_checkpoint.toml"
+
+[workflow]
+tasks = ["scf"]
+
+[task.scf]
+kind = "dft-scf"
+electron-count = 1.0
+
+[task.scf.k-mesh]
+mesh = [2, 1, 1]
+shift = [0.0, 0.0, 0.0]
+
+[task.scf.basis]
+l-max = 1
+energy-generator = "frozen-checkpoint"
+
+[task.scf.basis.envelope]
+kind = "plane-wave"
+cutoff = 0.5
+
+[task.scf.occupations]
+kind = "fermi-dirac"
+temperature = 0.02
+
+[task.scf.xc]
+kind = "lda-pw92"
+noncollinear-route = "local-spin-frame"
+
+[task.scf.mixing]
+kind = "linear"
+beta = 1.0
+
+[task.scf.relativity]
+kind = "scalar"
+
+[task.scf.convergence]
+energy-tolerance = 1.0e100
+density-tolerance = 1.0e100
+max-iterations = 2

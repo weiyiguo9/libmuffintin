@@ -320,7 +320,10 @@ fn source_state<'a>(
         })
 }
 
-fn scf_config(task: &PreparedTask, _checkpoint: &CheckpointV2) -> Result<ScfConfig, InputError> {
+pub(crate) fn scf_config(
+    task: &PreparedTask,
+    _checkpoint: &CheckpointV2,
+) -> Result<ScfConfig, InputError> {
     let Task::DftScf {
         electron_count,
         k_mesh,
