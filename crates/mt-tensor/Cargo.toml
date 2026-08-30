@@ -14,7 +14,7 @@ name = "muffintin_tensor"
 default = ["backend-rstsr"]
 backend-rstsr = ["dep:rstsr", "dep:tblis-src"]
 # Second local einsum engine. tenferro-einsum 0.3.0 needs rustc 1.96; the
-# workspace MSRV stays 1.85. Enable only after raising rust-version locally.
+# workspace MSRV stays 1.89. Enable only after raising rust-version locally.
 backend-tenferro = [
     "backend-rstsr",
     "dep:tenferro-einsum",

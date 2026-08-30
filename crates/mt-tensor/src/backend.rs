@@ -45,7 +45,7 @@ pub fn active_backend_name() -> &'static str {
 /// Same subscripts as [`einsum`], evaluated by tenferro-rs.
 ///
 /// Requires rustc 1.96 and the `backend-tenferro` feature. The workspace
-/// MSRV remains 1.85; raise `rust-version` locally to compile this path.
+/// MSRV remains 1.89; raise `rust-version` locally to compile this path.
 #[cfg(feature = "backend-tenferro")]
 pub fn einsum_tenferro(
     subscripts: &str,

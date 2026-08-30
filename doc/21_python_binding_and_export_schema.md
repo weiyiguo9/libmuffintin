@@ -80,8 +80,8 @@ Constraints:
   expand to `unsafe`, which the workspace `forbid(unsafe_code)` would
   reject. The crate carries a local lints table and a comment stating
   this exception.
-- The workspace MSRV stays 1.85. PyO3 and rust-numpy are pinned to
-  releases whose MSRV is at most 1.85; the pin is recorded in
+- The workspace MSRV stays 1.89. PyO3 and rust-numpy are pinned to
+  releases whose MSRV is at most 1.89; the pin is recorded in
   `README.md` the same way the tenferro exception is.
 - abi3 is enabled so a venv Python upgrade does not force a rebuild.
 - Build environment: the local venv, `TBLIS_DIR` for the system TBLIS,

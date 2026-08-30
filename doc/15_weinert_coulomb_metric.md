@@ -335,4 +335,4 @@ elementwise $V^{\mathrm{MPB}}=V^{\mathrm{THC}}$.
   interpolation points requires sampled $\zeta$, not the node list.
 - `LEXP` is capped at 12 in this crate. Default toy `LEXP` is 4.
   `LEXP`$>12$ is rejected.
-- Workspace `rust-version` remains 1.85. Optional tenferro remains 1.96.
+- Workspace `rust-version` remains 1.89. Optional tenferro remains 1.96.

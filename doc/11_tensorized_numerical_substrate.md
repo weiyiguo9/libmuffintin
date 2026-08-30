@@ -43,7 +43,7 @@ The einsum layer is backend-neutral. Two local backends are in scope:
   einsum requires. faer remains the Hermitian EVD, not the einsum engine.
 - **tenferro-rs** (`backend-tenferro`). The same subscripts are the contract
   for `tenferro-einsum` on a CPU/faer provider, without AD, GPU, or a graph
-  runtime. The workspace MSRV stays 1.85. `tenferro-einsum` 0.3.0 needs rustc
+  runtime. The workspace MSRV stays 1.89. `tenferro-einsum` 0.3.0 needs rustc
   1.96, so that feature is a local rust-version bump, not a workspace MSRV
   change.
 
@@ -122,7 +122,7 @@ for the eigenvalue scale, and `ib,ib->b` for the squared column norms.
   storage kind; the old unnamed `Vec<Complex64>` buffers are gone.
 - The optional tenferro backend adds `einsum_tenferro` behind `backend-tenferro` using
   tenferro-einsum on CPU/faer, without AD, GPU, or XLA. Compiling that
-  feature requires rustc 1.96; the workspace MSRV remains 1.85. RSTSR+TBLIS
+  feature requires rustc 1.96; the workspace MSRV remains 1.89. RSTSR+TBLIS
   stays the default `einsum` path.
 
 ## 6. Acceptance

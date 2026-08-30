@@ -1,0 +1,20 @@
+[package]
+name = "libmuffintin-symmetry"
+description = "Method-neutral crystal symmetry dataset with a moyo detection backend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "muffintin_symmetry"
+
+[dependencies]
+libmuffintin-core = { path = "../mt-core" }
+moyo = "0.17"
+nalgebra = "0.35"
+thiserror.workspace = true
+
+[lints]
+workspace = true

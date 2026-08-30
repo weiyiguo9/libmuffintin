@@ -6,11 +6,12 @@
 
 ## Rust MSRV
 
-- Keep the workspace `rust-version` at 1.85 (the edition 2024 floor).
+- Keep the workspace `rust-version` at 1.89 (the floor set by
+  `libmuffintin-symmetry`'s moyo dependency, which pins `nalgebra` 0.35).
 - Do not raise it for an optional backend.
 - `tenferro-einsum` 0.3.0 needs rustc 1.96. Document that in `README.md`.
   Anyone enabling `backend-tenferro` raises `rust-version` locally to 1.96;
-  the default RSTSR+TBLIS path stays 1.85.
+  the default RSTSR+TBLIS path stays 1.89.
 
 ## Test scope
 

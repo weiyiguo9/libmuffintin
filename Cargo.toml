@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/mt-core",
+    "crates/mt-symmetry",
     "crates/mt-io",
     "crates/mt-sphere",
     "crates/mt-tensor",
@@ -20,7 +21,7 @@ version = "0.2.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/weiyiguo9/libmuffintin"
-rust-version = "1.85"
+rust-version = "1.89"
 
 [workspace.dependencies]
 libm = "0.2.16"

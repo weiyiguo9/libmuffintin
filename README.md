@@ -22,6 +22,12 @@ exact contracts and derivations.
   step-function Fourier coefficients, the Dirac `Kappa`, `TwiceMu`, and
   spinor-harmonic contracts, and typed atom-centred, uniform, interstitial,
   and composite quadrature grids (optional `rstsr` conversion feature).
+- `libmuffintin-symmetry`: the method-neutral crystal symmetry dataset
+  (integer fractional-basis operations, orbit representatives, space-group
+  classification) with a moyo detection backend under `moyo_backend::`;
+  importers from external codes populate the same IR instead of
+  re-detecting. The Python-side mirror lives in `pymuffintin.symmetry`
+  over spglib and spgrep.
 - `libmuffintin-tensor`: backend-neutral `einsum` over dense complex tensors:
   RSTSR linked with TBLIS by default, `tenferro` as an optional second engine,
   faer as the Hermitian eigensolver, and column-major `[basis, band]`
@@ -87,7 +93,9 @@ cargo test -p libmuffintin-tensor
 cargo test -p libmuffintin-operators
 ```
 
-The workspace MSRV is Rust 1.85. `libmuffintin-tensor` links TBLIS through `tblis-src`.
+The workspace MSRV is Rust 1.89, set by `libmuffintin-symmetry`'s moyo
+dependency (which pins `nalgebra` 0.35).
+`libmuffintin-tensor` links TBLIS through `tblis-src`.
 By default, `tblis-src` builds TBLIS from source; first builds need a TBLIS git
 tree, supplied with `TBLIS_SRC` as a clone with submodules or as
 `https://github.com/MatthewsResearchGroup/tblis.git`. To use an existing
@@ -95,12 +103,12 @@ system installation instead, set `TBLIS_DIR` to its installation prefix. This
 selection is environment-local and does not change the default source build.
 
 The optional `backend-tenferro` feature uses `tenferro-einsum` 0.3.0, which
-requires rustc 1.96. Leave the workspace at 1.85 unless you enable that
+requires rustc 1.96. Leave the workspace at 1.89 unless you enable that
 feature; if you do, raise `rust-version` to 1.96 in the root `Cargo.toml` or
 the tenferro backend will not compile.
 
 `libmuffintin-python` pins `pyo3` 0.27.2 and `numpy` 0.27.1; both have MSRV
-1.74, so the workspace remains at Rust 1.85. The extension uses `abi3-py310`
+1.74, comfortably under the workspace floor. The extension uses `abi3-py310`
 and is built locally with `maturin develop`; no wheel is published.
 
 ```sh
@@ -133,4 +141,8 @@ product/THC/Coulomb boundaries as versioned NumPy structures and exposes the
 production DFT-SCF loop through one global entry plus linear staged handles.
 The separate backend-neutral `pymuffintin` research package consumes those
 exports; it is not part of this workspace. Neither package is published, and
-this work adds no symmetry, importer, wheel, or material-accuracy claim.
+this work adds no importer, wheel, or material-accuracy claim.
+
+Crystal symmetry is currently detection and classification only: the
+`libmuffintin-symmetry` dataset is not yet consumed by the SCF loop, and no
+k-point reduction, irrep projection, or symmetrization claim is made.
