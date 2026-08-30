@@ -5,35 +5,32 @@ bridge, the scalar AllQL2 interpolation-point seam, the sampled $\zeta$ Coulomb 
 scalar objects into MLDUMP v1. Core–valence products and SPEX/material
 comparison remain out of scope. The on-disk schema is [19](19_versioned_mldump_interchange.md).
 
-Product kinematics remain [13](13_product_space_and_lapw_mpb.md). The toy
-canonical $q$ / Umklapp pair gauge remains [14](14_toy_kpoint_isdf_thc.md).
-The DFT checkpoint kernel remains [17](17_minimal_lda_scf.md).
+Product kinematics remain [13](13_product_space_and_lapw_mpb.md). The
+canonical $q$ / Umklapp pair gauge remains [14](14_kpoint_isdf_thc.md).
+The DFT checkpoint kernel remains [17](17_minimal_dft_scf.md).
 
 ## 1. Packages
 
 | Directory | Package |
 |---|---|
 | `crates/mt-runtime` | `libmuffintin-runtime` (`muffintin`) |
-| `crates/mt-auxiliary-ir` | `libmuffintin-auxiliary-ir` (`muffintin_auxiliary_ir`) |
-| `crates/mt-mpb` | `libmuffintin-mpb` (`muffintin_mpb`) |
-| `crates/mt-thc` | `libmuffintin-thc` (`muffintin_thc`) |
+| `crates/mt-prodbasis` | `libmuffintin-prodbasis` (root IR plus `mpb::` and `thc::`) |
 | `crates/mt-coulomb` | `libmuffintin-coulomb` (`muffintin_coulomb`) |
 
-`CheckpointPhysics::scalar_product_input` owns the scalar product-input capability. It
-depends on `libmuffintin-auxiliary-ir` for [`ProductSource`] and
-[`PairColumnLayout`]. It does not depend on `libmuffintin-thc`.
-`build_scalar_mpb` owns the scalar mixed-product capability and depends on
-`libmuffintin-mpb`. `build_scalar_thc` owns the scalar AllQL2 THC capability and depends
-on `libmuffintin-thc`. `build_scalar_coulomb` owns the sampled $\zeta$ Coulomb capability and
-depends on `libmuffintin-coulomb`. `CheckpointPhysics::spinor_product_input`
-owns the spinor product-input capability and consumes `DiracProductSource` from
-`libmuffintin-auxiliary-ir`. `build_spinor_mpb` owns the spinor mixed-product capability
-and depends on `libmuffintin-mpb`; MPB does not depend on runtime, THC, or
-Coulomb. Production dependencies: `libmuffintin-mpb`, `libmuffintin-thc`, and
-`libmuffintin-coulomb` do not depend on runtime. THC does not depend on
-MPB or Coulomb, and Coulomb does not depend on MPB or THC. Coulomb's
-dev-dependencies include MPB and THC for representation and vertex tests;
-those are not production DAG edges.
+`CheckpointPhysics::scalar_product_input` owns the scalar product-input
+capability; it consumes [`ProductSource`] and [`PairColumnLayout`] from
+the `libmuffintin-prodbasis` root IR. `build_scalar_mpb` owns the scalar
+mixed-product capability over `muffintin_prodbasis::mpb`.
+`build_scalar_thc` owns the scalar AllQL2 THC capability over
+`muffintin_prodbasis::thc`. `build_scalar_coulomb` owns the sampled
+$\zeta$ Coulomb capability and depends on `libmuffintin-coulomb`.
+`CheckpointPhysics::spinor_product_input` owns the spinor product-input
+capability and consumes `DiracProductSource` from the root IR;
+`build_spinor_mpb` owns the spinor mixed-product capability. Neither
+`libmuffintin-prodbasis` nor `libmuffintin-coulomb` depends on runtime,
+and Coulomb takes only root IR types as public inputs; keeping
+`mpb::`/`thc::` types out of the Coulomb surface is a documented
+convention now that the three product-space crates share one package.
 
 ## 2. Implemented boundary
 
@@ -56,11 +53,11 @@ regular mesh, solves the regular full-BZ scalar eigenproblem, and returns
 - `k_minus_q`: folded $k-q_{\mathrm{canonical}}$ mesh index and the
   per-column [`ReciprocalLattice`] wrap $G_{\mathrm{wrap}}$.
 - `pair_columns`: `PairColumnLayout::new(n_k, n_orb, None)` from
-  `muffintin_auxiliary_ir`, with
+  `muffintin_prodbasis`, with
   $k\cdot N_{\mathrm{orb}}^2+i\cdot N_{\mathrm{orb}}+j$. The old packed
   $12\times 12$ experiment flattening is not used.
 - `reciprocal`: the exact [`ReciprocalLattice`] used to fold $q_{\mathrm{in}}$
-  and $G_{\mathrm{wrap}}$. sampled $\zeta$ Coulomb requires `CoulombRequest` to carry this lattice;
+  and $G_{\mathrm{wrap}}$. Sampled $\zeta$ Coulomb requires `CoulombRequest` to carry this lattice;
   a same-volume sheared cell is rejected.
 - `orbitals.band_window`: common leading window `{start: 0, count: n_orb}`.
   Each spin channel also stores `available_bands[k]`, the untruncated
@@ -121,7 +118,7 @@ whose $G\cdot R$ is not a multiple of $\pi$.
 This is the production $k-q$ gauge. There is no second $k+q$ convention in
 scalar product-input.
 
-## 4. Scalar scalar mixed-product mixed-product bridge
+## 4. Scalar mixed-product bridge
 
 `build_scalar_mpb(&ScalarProductInput, &ScalarMpbSpec)` consumes the published
 scalar product-input bundle and an explicit spec: the reciprocal lattice required by
@@ -263,9 +260,9 @@ into checkpoint solver internals.
 
 ## 8. Dirac PP/QQ IR and MPB primitive
 
-The Dirac PP/QQ IR and MPB primitive lives in `libmuffintin-auxiliary-ir` (`DiracProductSource`, physical
+The Dirac PP/QQ IR and MPB primitive lives in `libmuffintin-prodbasis` (`DiracProductSource`, physical
 $P$ and $Q$, explicit `DiracChargeSector::{LargeLarge, SmallSmall}`) and
-`libmuffintin-mpb` (untruncated PP/QQ raw products and the checked muffin-tin
+`libmuffintin-prodbasis` (untruncated PP/QQ raw products and the checked muffin-tin
 vertex primitive). The spinor product-input path consumes those public types and does not
 redefine them. Scalar `ProductRadialId` / `ProductSource` / `RawProductSpace`
 stay unchanged. The spinor mixed-product bridge adds Dirac overlap cutoff, retained scalar-charge
@@ -387,7 +384,7 @@ and `PairColumnLayout`. `SpinorThcSpec` requires an explicit `RankPolicy`,
 is no collinear spin tag: one spinor band manifold, with the two Pauli
 components summed inside each physical density. The shared parent-grid
 fingerprint, candidate policy, and full engines are the same objects as
-scalar scalar AllQL2 THC. Zero-weight parent rows remain in $\zeta$ and cannot be
+scalar AllQL2 THC. Zero-weight parent rows remain in $\zeta$ and cannot be
 candidates.
 
 Muffin-tin reconstruction uses [`CompiledSiteProjection::spinor`] and
@@ -407,7 +404,7 @@ C_{\mathrm{right}}[s,G_{\mathrm{right}}]/\Omega
 ```
 
 with G-only cell-periodic phases; there is no interstitial small component.
-Selection and $\zeta$ reuse `mt-thc::fit_allq_l2_pair_blocks`. Auxiliaries
+Selection and $\zeta$ reuse `muffintin_prodbasis::thc::fit_allq_l2_pair_blocks`. Auxiliaries
 are created with the intended provenance before Bloch pair vertices.
 
 `build_spinor_coulomb` builds `SampledAuxiliaryFunctions` on the full

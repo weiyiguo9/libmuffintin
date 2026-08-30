@@ -16,21 +16,14 @@ the platform-supplied `lib` prefix and use `muffintin_*`.
 
 | Directory | Cargo package | Rust crate target |
 |---|---|---|
-| `crates/mt-core` | `libmuffintin-core` | `muffintin_core` |
-| `crates/mt-radial` | `libmuffintin-radial` | `muffintin_radial` |
-| `crates/mt-sphere` | `libmuffintin-sphere` | `muffintin_sphere` |
-| `crates/mt-grid` | `libmuffintin-grid` | `muffintin_grid` |
-| `crates/mt-io` | `libmuffintin-io` | `muffintin_io` |
+| `crates/mt-core` | `libmuffintin-core` | `muffintin_core` (conventions, primitives, grids) |
 | `crates/mt-tensor` | `libmuffintin-tensor` | `muffintin_tensor` |
-| `crates/mt-envelope` | `libmuffintin-envelope` | `muffintin_envelope` |
-| `crates/mt-basis` | `libmuffintin-basis` | `muffintin_basis` |
-| `crates/mt-operators` | `libmuffintin-operators` | `muffintin_operators` |
-| `crates/mt-recipes` | `libmuffintin-recipes` | `muffintin_recipes` |
-| `crates/mt-lapw` | `libmuffintin-lapw` | `muffintin_lapw` |
-| `crates/mt-auxiliary-ir` | `libmuffintin-auxiliary-ir` | `muffintin_auxiliary_ir` |
-| `crates/mt-mpb` | `libmuffintin-mpb` | `muffintin_mpb` |
-| `crates/mt-thc` | `libmuffintin-thc` | `muffintin_thc` |
+| `crates/mt-sphere` | `libmuffintin-sphere` | `muffintin_sphere` (radial solvers, sphere algebra) |
+| `crates/mt-envelope` | `libmuffintin-envelope` | `muffintin_envelope` (envelope plus anonymous basis) |
+| `crates/mt-operators` | `libmuffintin-operators` | `muffintin_operators` (operators; `recipes::`, `lapw::`) |
+| `crates/mt-prodbasis` | `libmuffintin-prodbasis` | `muffintin_prodbasis` (product IR; `mpb::`, `thc::`) |
 | `crates/mt-coulomb` | `libmuffintin-coulomb` | `muffintin_coulomb` |
+| `crates/mt-io` | `libmuffintin-io` | `muffintin_io` |
 
 There is no compatibility package named `mt-*`. Rust imports use underscores,
 for example `muffintin_core`. Rust artifacts therefore start with a single
@@ -43,22 +36,19 @@ Linux.
 ```text
 core
 tensor
-radial            → core
-sphere            → core, radial
-grid              → core
-io                → grid
-envelope          → core
-basis             → core, envelope, radial
-operators         → core, tensor, basis, faer
-recipes           → core, basis, envelope
-lapw              → recipes, operators, basis, envelope, core, radial, tensor
-auxiliary-ir      → core, radial, basis
-mpb               → auxiliary-ir, operators, core, radial, basis, envelope
+sphere            → core
+io                → core
+envelope          → core, sphere
+operators         → core, envelope, sphere, tensor, faer
+prodbasis         → core, envelope, operators, sphere, faer
+coulomb           → prodbasis, core, envelope
 ```
 
-`libmuffintin-basis` stores host augmentation coefficients only. Backend
-tensor handles stay inside `libmuffintin-tensor`. `recipes::lapw` never
-depends on `libmuffintin-lapw`.
+The envelope crate stores host augmentation coefficients only. Backend
+tensor handles stay inside `libmuffintin-tensor`. Inside
+`libmuffintin-operators`, `recipes::` builds specifications and the
+`lapw::` facade compiles them; the recipe constructors do not call the
+operator assembly.
 
 ## 3. Envelope, spec, compile, assemble
 
@@ -103,7 +93,7 @@ confined-site blocks are an error. `compile` performs SPEX APW matching and
 Rayleigh $\times$ site-phase augmentation, and keeps APW site geometry on
 the compiled result. `assemble_compiled` checks that geometry against
 `InterstitialGeometry` spheres on both the facade and explicit-spec routes,
-fills the interstitial plane-wave block in `libmuffintin-lapw`, and then
+fills the interstitial plane-wave block in `libmuffintin-operators`, and then
 calls `libmuffintin-operators::add_site_contributions` for every
 $P^\dagger B P$ site congruence. The filtered generalized solver is
 `libmuffintin-operators::solve_generalized_hermitian`.

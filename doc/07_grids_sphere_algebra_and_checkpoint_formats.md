@@ -74,7 +74,7 @@ the field matrix element is
 ```
 
 `libmuffintin-sphere` evaluates the angular factor with the `libmuffintin-core` complex or real
-Gaunt convention and the radial factor with `libmuffintin-radial::radial_integral`.
+Gaunt convention and the radial factor with `libmuffintin-sphere::radial_integral`.
 This is the common primitive for non-spherical muffin-tin potentials, density
 synthesis, and later Coulomb multipoles.  SPEX performs the same separation in
 `src/hamilton.f:461-488`.
@@ -116,9 +116,9 @@ consumes; no producer-specific parser is part of the grid and checkpoint contrac
 ## 5. Optional tensor boundary
 
 The canonical grid storage is the typed Rust point sequence above.  With the
-`libmuffintin-grid/rstsr` feature, callers may materialize positions as an $(N,3)$
+`libmuffintin-core/rstsr` feature, callers may materialize positions as an $(N,3)$
 RSTSR tensor and weights as a vector of length $N$.  This conversion is an optional
-consumer boundary only: `libmuffintin-core`, `libmuffintin-radial`, `libmuffintin-sphere`, and `libmuffintin-io` do not
+consumer boundary only: `libmuffintin-core`, `libmuffintin-sphere`, and `libmuffintin-io` do not
 depend on a tensor implementation.  LAPW dense linear algebra uses `faer`
 directly.  A later tensor backend can consequently replace RSTSR without
 changing the physical or grid schemas.

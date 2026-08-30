@@ -1,8 +1,8 @@
 # 15. Weinert/SPEX finite $q$ Coulomb metric
 
 This note records the Weinert Coulomb public contract. Product kinematics remain
-[13](13_product_space_and_lapw_mpb.md). Toy k-point ISDF/THC remains
-[14](14_toy_kpoint_isdf_thc.md). There is no DFT/SCF driver, no GW/ERI
+[13](13_product_space_and_lapw_mpb.md). The k-point ISDF/THC kernels remain
+[14](14_kpoint_isdf_thc.md). There is no DFT/SCF driver, no GW/ERI
 production consumer, no live SPEX $V^q$ dump, and no umbrella crate.
 
 ## 1. Scope
@@ -17,7 +17,7 @@ M_I^{q*}(r)\,\frac{1}{\lvert r-r'\rvert}\,M_J^q(r')
 over the common product IR `CompiledAuxiliaryBasis`. $M_I$ is either a
 SPEX mixed-product function or an interpolation-point function after
 projection onto the same physical charge expansion. Neither mixed-product
-nor interpolation-point types from `libmuffintin-mpb` / `libmuffintin-thc`
+nor interpolation-point types from `muffintin_prodbasis::mpb` / `muffintin_prodbasis::thc`
 are public inputs.
 
 Analytic-source tests lock SPEX `coulombmatrix.f` formulas. The direct
@@ -29,18 +29,19 @@ Ewald kernel is an independent toy oracle, not production assembly.
 |---|---|
 | `crates/mt-coulomb` | `libmuffintin-coulomb` |
 
-Production dependencies: `libmuffintin-auxiliary-ir`, `libmuffintin-core`,
-`libmuffintin-basis`, `libmuffintin-grid`.
-`libmuffintin-mpb` and `libmuffintin-thc` are **dev-dependencies** for
-integration fixtures only. There is no production `libmuffintin-envelope`
-or `libmuffintin-thc` dependency.
+Production dependencies: `libmuffintin-prodbasis`, `libmuffintin-core`,
+and `libmuffintin-envelope`.
 
 ```text
-coulomb → auxiliary-ir, core, basis, grid
-coulomb (dev) → mpb, thc
+coulomb → prodbasis, core, envelope
 ```
 
-The DAG stays acyclic. The toy k-point THC path still injects toy Grams; its production L2
+The DAG stays acyclic. With mixed-product and THC producers merged
+into `libmuffintin-prodbasis` as its `mpb::` and `thc::` modules, the
+rule that Coulomb assembly consumes only the root product-basis IR
+types is a documented convention rather than a Cargo dependency
+boundary; `mpb::`/`thc::` types must not become public inputs here.
+The toy k-point THC path still injects toy Grams; its production L2
 default remains `allq_l2`.
 
 ## 3. Public types
@@ -101,7 +102,7 @@ $w_p\zeta_\mu(r_p)e^{-i(q+G)\cdot r_p}/\sqrt{\Omega}$. This is not a
 delta at the interpolation *node*. Use `assemble_sampled_coulomb`.
 $q$, point/order, and dimension mismatches are rejected.
 
-Toy k-point THC integration feeds `ThcResult.fits[iq].zeta` on the matching parent
+Runtime THC integration feeds `ThcResult.fits[iq].zeta` on the matching parent
 grid. Spans differ from mixed product; tests do **not** claim elementwise
 $V^{\mathrm{MPB}}=V^{\mathrm{THC}}$.
 

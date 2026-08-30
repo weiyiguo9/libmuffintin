@@ -6,7 +6,7 @@ Hamiltonian and numerical comparison machinery.  It does not claim a Cu
 cross-code result unless a complete external reference fixture is supplied.
 Generic operator containers and the filtered eigensolver now live in
 `libmuffintin-operators`; the LAPW interstitial kinetic convention stays in
-the `libmuffintin-lapw` facade. See
+the `libmuffintin-operators` facade. See
 [12](12_anonymous_basis_and_lapw_facade.md).
 
 ## 1. One kinetic convention

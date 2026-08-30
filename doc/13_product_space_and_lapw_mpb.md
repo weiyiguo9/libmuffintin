@@ -1,6 +1,6 @@
 # 13. Product-space IR and the SPEX mixed product basis
 
-This note records the product-space IR public contract. Toy k-point ISDF/THC is [14](14_toy_kpoint_isdf_thc.md).
+This note records the product-space IR public contract. The k-point ISDF/THC kernels are [14](14_kpoint_isdf_thc.md).
 The finite $q$ Weinert/SPEX Coulomb operator is [15](15_weinert_coulomb_metric.md).
 It does not add SCF, an umbrella crate, or a
 distributed tensor runtime. The one-particle facade remains
@@ -13,25 +13,22 @@ and [03](03_exponential_mesh_and_radial_quadrature.md).
 
 | Directory | Package |
 |---|---|
-| `crates/mt-auxiliary-ir` | `libmuffintin-auxiliary-ir` |
-| `crates/mt-mpb` | `libmuffintin-mpb` |
-| `crates/mt-thc` | `libmuffintin-thc` (toy k-point THC; interpolation-point payload) |
+| `crates/mt-prodbasis` | `libmuffintin-prodbasis`: the root product-space IR plus the `mpb::` and `thc::` producers |
 
-There is no `libmuffintin-mbp` alias. `libmuffintin-auxiliary-ir` and
-`libmuffintin-mpb` do not depend on `libmuffintin-lapw`, THC, or Coulomb.
-`libmuffintin-auxiliary-ir` does not own `CompiledBasis`.
+There is no `libmuffintin-mbp` alias. The root IR does not depend on
+`mpb::`, `thc::`, or Coulomb, and does not own `CompiledBasis`.
 
 ## 2. Dependency DAG
 
 ```text
-auxiliary-ir  → core, radial, basis
-mpb           → auxiliary-ir, operators, core, radial, basis, envelope
-thc           → auxiliary-ir, core, basis, faer
-coulomb       → auxiliary-ir, core, basis, grid
-              (dev: mpb, thc)
+prodbasis  → core, envelope, operators, sphere
+coulomb    → prodbasis, core, envelope
 ```
 
-`libmuffintin-auxiliary-ir` owns no solver. Channel overlap diagonalization uses
+Within `libmuffintin-prodbasis` the `mpb::` and `thc::` modules build on
+the root IR; the root IR never imports them.
+
+`libmuffintin-prodbasis` owns no solver. Channel overlap diagonalization uses
 `libmuffintin-operators::solve_real_symmetric`.
 
 ## 3. Product IR
@@ -104,7 +101,7 @@ These are distinct objects:
   deterministic list of those labels. It is not an enumeration of every
   reciprocal vector, and it is not filtered by MPB `product_g_max`.
 - **MPB auxiliary interstitial plane-wave support** is constructed in
-  `libmuffintin-mpb` from the lattice, canonical $q$, and `product_g_max`
+  `libmuffintin-prodbasis` from the lattice, canonical $q$, and `product_g_max`
   by the SPEX membership test $|q+G|\le g_{\mathrm{cut}}$. That set is stored
   only on `CompiledAuxiliaryBasis`.
 
@@ -120,7 +117,7 @@ untruncated dump of orbital-pair reciprocal support.
 
 ## 4. SPEX mixed-product constructor
 
-`libmuffintin-mpb` follows `mixedbasis.f` (SPEX 06.00pre36):
+`libmuffintin-prodbasis` follows `mixedbasis.f` (SPEX 06.00pre36):
 
 1. unordered valence–valence pairs and selected core–valence pairs;
 2. triangle $|l_1-l_2|\le L\le l_1+l_2$ and parity $L+l_1+l_2$ even
