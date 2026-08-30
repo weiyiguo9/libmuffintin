@@ -1,4 +1,4 @@
-//! Runtime-internal material kernel reconstructed from a V2 checkpoint.
+//! Basis-neutral material kernel reconstructed from converted checkpoint state.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::PI;
@@ -9,7 +9,7 @@ use muffintin_core::{
     InterstitialGeometry, InverseBohr, Kappa, LatticeError, MeshError, ReciprocalLattice,
     StepFunctionError,
 };
-use muffintin_dft::{
+use crate::{
     AtomicEnergyRequest, BandPathRequest, BandState, ChannelKappaError, CollinearKPoint,
     CoreContribution, CoreDensityError, CorePotentialBuildError, CorePotentialBuildSpec,
     CoreSpinPartition, DensityError, FirstVariationRoute, FirstVariationSubspace, FullSpinorKPoint,
@@ -53,7 +53,6 @@ use muffintin_tensor::{DenseEigenvectors, TensorError};
 use num_complex::Complex64;
 use thiserror::Error;
 
-#[path = "basis_materialization.rs"]
 mod basis_materialization;
 
 const OVERLAP_THRESHOLD: f64 = 1.0e-10;
@@ -83,15 +82,15 @@ pub struct MaterialKernel {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct SpexSpinorMaterialBinding {
-    pub(super) channels: Vec<SpexBoundSpinorChannel>,
+pub struct SpexSpinorMaterialBinding {
+    channels: Vec<SpexBoundSpinorChannel>,
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct SpexBoundSpinorChannel {
-    pub(super) l: u32,
-    pub(super) requested: ScfChannelRecipe,
-    pub(super) resolved: ScfResolvedChannelEnergy,
+pub struct SpexBoundSpinorChannel {
+    l: u32,
+    requested: ScfChannelRecipe,
+    resolved: ScfResolvedChannelEnergy,
 }
 
 #[derive(Clone, Debug)]
@@ -103,28 +102,112 @@ struct CorePotentialContext {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct CheckpointSite {
-    pub(super) id: String,
-    pub(super) position: [Bohr; 3],
-    pub(super) radius: Bohr,
-    pub(super) up: CheckpointSpin,
-    pub(super) down: CheckpointSpin,
-    pub(super) nonmagnetic_scalar: bool,
+pub struct CheckpointSite {
+    id: String,
+    position: [Bohr; 3],
+    radius: Bohr,
+    up: CheckpointSpin,
+    down: CheckpointSpin,
+    nonmagnetic_scalar: bool,
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct CheckpointSpin {
-    pub(super) route: RadialRoute,
-    pub(super) mesh: ExponentialMesh,
-    pub(super) linearization: BTreeMap<u32, Hartree>,
-    pub(super) local_orbitals: Vec<(u32, Hartree)>,
+pub struct CheckpointSpin {
+    route: RadialRoute,
+    mesh: ExponentialMesh,
+    linearization: BTreeMap<u32, Hartree>,
+    local_orbitals: Vec<(u32, Hartree)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum RadialRoute {
+pub enum RadialRoute {
     Schroedinger,
     ScalarKoellingHarmon,
     Dirac,
+}
+
+impl CheckpointSpin {
+    pub fn new(
+        route: RadialRoute,
+        mesh: ExponentialMesh,
+        linearization: BTreeMap<u32, Hartree>,
+        local_orbitals: Vec<(u32, Hartree)>,
+    ) -> Self {
+        Self {
+            route,
+            mesh,
+            linearization,
+            local_orbitals,
+        }
+    }
+
+    pub const fn route(&self) -> RadialRoute {
+        self.route
+    }
+
+    pub const fn mesh(&self) -> &ExponentialMesh {
+        &self.mesh
+    }
+}
+
+impl CheckpointSite {
+    pub fn new(
+        id: String,
+        position: [Bohr; 3],
+        radius: Bohr,
+        up: CheckpointSpin,
+        down: CheckpointSpin,
+        nonmagnetic_scalar: bool,
+    ) -> Self {
+        Self {
+            id,
+            position,
+            radius,
+            up,
+            down,
+            nonmagnetic_scalar,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub const fn position(&self) -> [Bohr; 3] {
+        self.position
+    }
+
+    pub const fn radius(&self) -> Bohr {
+        self.radius
+    }
+
+    pub const fn up(&self) -> &CheckpointSpin {
+        &self.up
+    }
+
+    pub const fn down(&self) -> &CheckpointSpin {
+        &self.down
+    }
+}
+
+impl SpexBoundSpinorChannel {
+    pub fn new(
+        l: u32,
+        requested: ScfChannelRecipe,
+        resolved: ScfResolvedChannelEnergy,
+    ) -> Self {
+        Self {
+            l,
+            requested,
+            resolved,
+        }
+    }
+}
+
+impl SpexSpinorMaterialBinding {
+    pub fn new(channels: Vec<SpexBoundSpinorChannel>) -> Self {
+        Self { channels }
+    }
 }
 
 /// One iteration's potential and basis-neutral controls. Concrete k-dependent
@@ -143,20 +226,20 @@ pub struct CheckpointBandSolution {
 }
 
 impl CheckpointBandSolution {
-    pub(crate) fn points(&self) -> &[CheckpointKPoint] {
+    pub fn points(&self) -> &[CheckpointKPoint] {
         &self.points
     }
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct CheckpointKPoint {
+pub struct CheckpointKPoint {
     weight: f64,
-    pub(crate) solution: CheckpointKPointSolution,
+    pub solution: CheckpointKPointSolution,
     energies: Vec<Hartree>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum CheckpointKPointSolution {
+pub enum CheckpointKPointSolution {
     Collinear {
         bases: Box<Collinear<ScalarIterationBasis>>,
         solutions: Collinear<GeneralizedEigensolution>,
@@ -172,7 +255,29 @@ pub(crate) enum CheckpointKPointSolution {
 }
 
 impl MaterialKernel {
-    pub(super) fn bind_spex_spinor(
+    pub fn new(
+        reciprocal: ReciprocalLattice,
+        geometry: InterstitialGeometry,
+        sites: Vec<CheckpointSite>,
+        frozen_potential: RegionalPotential,
+        restart_density: Option<RegionalDensity>,
+        nuclear_charges: Vec<f64>,
+    ) -> Self {
+        Self {
+            reciprocal,
+            geometry,
+            sites,
+            frozen_potential,
+            restart_density,
+            nuclear_charges,
+            core_potentials: BTreeMap::new(),
+            density_template: None,
+            energy_terms: BTreeMap::new(),
+            spex_spinor_binding: None,
+        }
+    }
+
+    pub fn bind_spex_spinor(
         &mut self,
         binding: SpexSpinorMaterialBinding,
         basis: &ScfBasis,
@@ -239,11 +344,19 @@ impl MaterialKernel {
         &self.frozen_potential
     }
 
-    pub(crate) fn nuclear_charges(&self) -> &[f64] {
+    pub fn sites(&self) -> &[CheckpointSite] {
+        &self.sites
+    }
+
+    pub fn restart_density(&self) -> Option<&RegionalDensity> {
+        self.restart_density.as_ref()
+    }
+
+    pub fn nuclear_charges(&self) -> &[f64] {
         &self.nuclear_charges
     }
 
-    pub(crate) fn solve_points(
+    pub fn solve_points(
         &self,
         potential: &RegionalPotential,
         basis: &ScfBasis,
@@ -270,7 +383,7 @@ impl MaterialKernel {
                 &self.geometry,
                 Collinear::new(&site_inputs.up, &site_inputs.down),
             )?;
-            let scalar = muffintin_dft::solve_collinear_scalar_k_point(
+            let scalar = crate::solve_collinear_scalar_k_point(
                 Collinear::new(&bases.up, &bases.down),
                 &self.geometry,
                 Collinear::new(&interstitial.up, &interstitial.down),
@@ -415,7 +528,7 @@ impl MaterialKernel {
         })
     }
 
-    pub(crate) fn scalar_site_inputs(
+    pub fn scalar_site_inputs(
         &self,
         potential: &RegionalPotential,
         basis: &ScfBasis,
@@ -466,7 +579,7 @@ impl MaterialKernel {
         Ok(Collinear::new(build_spin(0)?, build_spin(1)?))
     }
 
-    pub(crate) fn spinor_site_inputs(
+    pub fn spinor_site_inputs(
         &self,
         potential: &RegionalPotential,
         basis: &ScfBasis,
@@ -648,7 +761,7 @@ impl MaterialKernel {
         }))
     }
 
-    pub(crate) fn validate_band_cog_projection_keys(
+    pub fn validate_band_cog_projection_keys(
         &self,
         spectral: &[&ScfChannelRecipe],
         relativity: ScfRelativity,
@@ -1070,7 +1183,7 @@ impl MaterialKernel {
     fn extended_core_meshes(
         &self,
         requested_site: usize,
-        states: &[muffintin_dft::ScfCoreState],
+        states: &[crate::ScfCoreState],
     ) -> Result<Vec<ExponentialMesh>, MaterialKernelError> {
         self.sites
             .iter()
@@ -1376,7 +1489,7 @@ impl ScfPhysics for MaterialKernel {
     fn solve_dos_spectrum(
         &mut self,
         state: &ScfState,
-        request: &muffintin_dft::DosRequest,
+        request: &crate::DosRequest,
     ) -> Result<RegularSpectrum, Self::Error> {
         let solved = self.solve_points(
             &state.potential,
@@ -1443,7 +1556,7 @@ fn second_variation_blocks(
 }
 
 fn split_second_variation(
-    solution: &muffintin_dft::SecondVariationResult,
+    solution: &crate::SecondVariationResult,
 ) -> Result<Collinear<GeneralizedEigensolution>, MaterialKernelError> {
     let rows = solution.eigenvectors.rows() / 2;
     let columns = solution.eigenvectors.columns();
@@ -1684,7 +1797,7 @@ fn solve_initial_occupations(
     })
 }
 
-pub(crate) fn regular_k_points(mesh: ScfKMesh) -> Result<Vec<[f64; 3]>, MaterialKernelError> {
+pub fn regular_k_points(mesh: ScfKMesh) -> Result<Vec<[f64; 3]>, MaterialKernelError> {
     let count = mesh
         .divisions
         .into_iter()
@@ -1733,7 +1846,7 @@ fn production_plane_wave_envelope(
     Ok(PlaneWaveEnvelope::new(waves))
 }
 
-pub(crate) fn production_density_layout(
+pub fn production_density_layout(
     reciprocal: ReciprocalLattice,
     k_mesh: ScfKMesh,
     cutoff: f64,
@@ -1781,7 +1894,7 @@ fn fractional_to_reciprocal(
     })
 }
 
-pub(crate) fn g_vector(reciprocal: ReciprocalLattice, index: [i32; 3]) -> GVector {
+pub fn g_vector(reciprocal: ReciprocalLattice, index: [i32; 3]) -> GVector {
     let cartesian = reciprocal.cartesian(index);
     GVector {
         index,
@@ -1812,7 +1925,7 @@ pub enum MaterialKernelError {
     #[error(transparent)]
     Sphere(#[from] SphereFieldError),
     #[error(transparent)]
-    Regional(#[from] muffintin_dft::RegionalError),
+    Regional(#[from] crate::RegionalError),
     #[error(transparent)]
     Scalar(#[from] ScalarBuilderError),
     #[error(transparent)]

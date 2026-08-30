@@ -5,7 +5,7 @@ use muffintin_dft::{
     FreeAtomScfSpec, LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis,
     ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig,
     ScfConvergence, ScfCoreSite, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations,
-    ScfPhysics, ScfRelativity, XcFunctional,
+    ScfPhysics, ScfRelativity, XcFunctional, production_density_layout,
 };
 use muffintin_io::{
     AngularBasis, CheckpointFile, CheckpointMeta, EnergyParameterV1, EnergyUnit,
@@ -17,7 +17,6 @@ use muffintin_io::{
 
 use super::{
     AtomicCheckpointRequest, CheckpointPhysics, materialize_atomic_checkpoint_v2,
-    production_density_layout,
 };
 
 #[test]
@@ -165,7 +164,7 @@ fn neutral_atomic_checkpoint_enters_the_native_restart_and_potential_path() {
             .collect::<Vec<_>>(),
         expected_g
     );
-    let restart_density = physics.kernel.restart_density.clone().unwrap();
+    let restart_density = physics.kernel.restart_density().cloned().unwrap();
     let initial_density = ScfPhysics::initial_density(&mut physics.kernel, &config).unwrap();
     assert_eq!(initial_density, restart_density);
     let rebuilt = ScfPhysics::build_potential(

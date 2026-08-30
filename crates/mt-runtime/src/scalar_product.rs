@@ -2,8 +2,9 @@
 
 use muffintin_core::ReciprocalLattice;
 use muffintin_dft::{
-    ScalarIterationBasis, ScalarRadialSite, ScfConfig, ScfRelativity,
-    build_extended_checkpoint_core_potentials,
+    CheckpointBandSolution, CheckpointKPointSolution, MaterialKernelError, ScalarIterationBasis,
+    ScalarRadialSite, ScfConfig, ScfRelativity, build_extended_checkpoint_core_potentials,
+    regular_k_points,
 };
 use muffintin_operators::Collinear;
 use muffintin_operators::lapw::{CompiledBasis, Provenance};
@@ -16,8 +17,7 @@ use muffintin_tensor::DenseEigenvectors;
 use std::collections::BTreeSet;
 
 use crate::checkpoint_physics::{
-    CheckpointBandSolution, CheckpointKPointSolution, CheckpointPhysics, CheckpointPhysicsError,
-    MaterialKernelError, regular_k_points,
+    CheckpointPhysics, CheckpointPhysicsError,
 };
 use crate::q_mesh::{canonical_transfer_q, map_k_minus_q};
 

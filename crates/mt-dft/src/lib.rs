@@ -11,6 +11,7 @@ mod energy;
 mod free_atom;
 mod hartree;
 mod linearization;
+mod material_kernel;
 mod mixing;
 mod occupations;
 mod regional;
@@ -61,6 +62,12 @@ pub use linearization::{
     generate_atomic_energy, generate_band_center_energy, generate_band_cog_energy,
     generate_explicit_energy, generate_fermi_offset_energy, generate_frozen_checkpoint_energy,
     generate_log_derivative_energy, kappa_degeneracy_average,
+};
+pub use material_kernel::{
+    CheckpointBandSolution, CheckpointKPoint, CheckpointKPointSolution, CheckpointOneParticle,
+    CheckpointSite, CheckpointSpin, MaterialKernel, MaterialKernelError, RadialRoute,
+    SpexBoundSpinorChannel, SpexSpinorMaterialBinding, g_vector, production_density_layout,
+    regular_k_points,
 };
 pub use mixing::{DensityMixer, MixAlgebraQuantity, MixRecord, MixStatus, MixStep, MixingError};
 pub use occupations::{

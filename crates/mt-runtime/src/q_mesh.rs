@@ -6,8 +6,9 @@
 
 use muffintin_prodbasis::TransferQ;
 use muffintin_core::{GVector, InverseBohr, ReciprocalLattice};
+use muffintin_dft::g_vector;
 
-use crate::checkpoint_physics::{CheckpointPhysicsError, g_vector};
+use crate::checkpoint_physics::CheckpointPhysicsError;
 
 const MESH_COORD_TOLERANCE: f64 = 1.0e-12;
 

@@ -1,7 +1,7 @@
 use super::*;
 
 impl MaterialKernel {
-    pub(crate) fn scalar_linearization_energies(
+    pub fn scalar_linearization_energies(
         &self,
         basis: &ScfBasis,
         site: &str,
@@ -102,7 +102,7 @@ impl MaterialKernel {
             .collect()
     }
 
-    pub(crate) fn spinor_linearization_energies(
+    pub fn spinor_linearization_energies(
         &self,
         basis: &ScfBasis,
         site: &str,
@@ -230,11 +230,11 @@ impl MaterialKernel {
         self.materialize_nonspectral_basis(potential, basis, &extended)
     }
 
-    pub(crate) fn materialize_nonspectral_basis(
+    pub fn materialize_nonspectral_basis(
         &self,
         potential: &RegionalPotential,
         requested: &ScfBasis,
-        extended: &[muffintin_dft::BuiltExtendedCorePotential],
+        extended: &[crate::BuiltExtendedCorePotential],
     ) -> Result<ScfBasis, MaterialKernelError> {
         self.require_potential_site_count(potential)?;
         self.validate_spex_requested_basis(requested)?;
@@ -480,7 +480,7 @@ impl MaterialKernel {
         }
     }
 
-    pub(crate) fn channel_meshes(
+    pub fn channel_meshes(
         &self,
         basis: &ScfBasis,
     ) -> Result<Vec<ExponentialMesh>, MaterialKernelError> {

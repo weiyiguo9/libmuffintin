@@ -3,6 +3,7 @@ use muffintin_dft::{
     AtomicNumber, AtomicSuperpositionChargeClosure, AtomicSuperpositionError,
     AtomicSuperpositionSite, AtomicSuperpositionSpec, FreeAtomScfSpec,
     LinearizationEnergyGenerator, ScfConfig, ScfRelativity, build_atomic_superposition_density,
+    production_density_layout,
 };
 use muffintin_io::{
     BasisHints, CheckpointMeta, CheckpointV2, DensityV2, FieldRepresentationV2, FieldUnitV2,
@@ -11,7 +12,7 @@ use muffintin_io::{
 use thiserror::Error;
 
 use super::convert_v2::{regional_density_from_v2, regional_scalar_to_v2};
-use super::{CheckpointPhysicsError, convert_checkpoint_geometry, production_density_layout};
+use super::{CheckpointPhysicsError, convert_checkpoint_geometry};
 use muffintin_dft::build_scf_potential;
 
 /// Complete structure/task request for a neutral atomic-superposition V2 restart.
@@ -128,8 +129,8 @@ pub fn materialize_atomic_checkpoint_v2(
                 })?;
             Ok(AtomicSuperpositionSite {
                 atomic_number,
-                position: converted.position,
-                muffin_tin_mesh: converted.up.mesh.clone(),
+                position: converted.position(),
+                muffin_tin_mesh: converted.up().mesh().clone(),
             })
         })
         .collect::<Result<Vec<_>, AtomicCheckpointError>>()?;

@@ -1,4 +1,5 @@
 use super::*;
+use muffintin_dft::g_vector;
 
 /// Build a validated V2 restart checkpoint from a converged SCF state.
 ///
@@ -121,26 +122,26 @@ fn convert_v2_radial_basis(
         basis.mesh.log_increment,
         basis.mesh.point_count,
     )?;
-    Ok(CheckpointSpin {
-        route: match basis.radial_equation {
+    Ok(CheckpointSpin::new(
+        match basis.radial_equation {
             RadialEquationTag::Schroedinger => RadialRoute::Schroedinger,
             RadialEquationTag::ScalarKoellingHarmon => RadialRoute::ScalarKoellingHarmon,
             RadialEquationTag::FullyRelativisticDirac => RadialRoute::Dirac,
         },
         mesh,
-        linearization: basis
+        basis
             .linearization
             .linearization_energies
             .iter()
             .map(|parameter| (parameter.l, Hartree(parameter.energy)))
             .collect(),
-        local_orbitals: basis
+        basis
             .linearization
             .local_orbital_energies
             .iter()
             .map(|parameter| (parameter.l, Hartree(parameter.energy)))
             .collect(),
-    })
+    ))
 }
 
 pub(super) fn regional_potential_from_v2(
@@ -211,8 +212,8 @@ fn regional_scalar_from_v2(
         .iter()
         .map(|site| {
             let source = by_site
-                .get(site.id.as_str())
-                .ok_or_else(|| CheckpointPhysicsError::MissingV2FieldSite(site.id.clone()))?;
+                .get(site.id())
+                .ok_or_else(|| CheckpointPhysicsError::MissingV2FieldSite(site.id().to_owned()))?;
             let channels = source.channels.iter().map(|channel| {
                 let scale = if (channel.l, channel.m) == (0, 0) {
                     (4.0 * PI).sqrt()
@@ -233,7 +234,7 @@ fn regional_scalar_from_v2(
                 ((channel.l, channel.m), values)
             });
             Ok(MuffinTinField::new(
-                site.up.mesh.clone(),
+                site.up().mesh().clone(),
                 SphereField::new(convention, channels)?,
             )?)
         })

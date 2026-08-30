@@ -1,6 +1,6 @@
 //! Checkpoint conversion shell around the runtime-internal material kernel.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::f64::consts::PI;
 
 use muffintin_core::{
@@ -9,9 +9,11 @@ use muffintin_core::{
     VolumeBohr3,
 };
 use muffintin_dft::{
-    InterstitialField, LinearizationEnergyGenerator, MuffinTinField, RegionalDensity,
-    RegionalPotential, RegionalScalarField, ScfBasis, ScfChannelIdentity, ScfChannelTreatment,
-    ScfResolvedChannelEnergy, ScfState, channel_l, generate_frozen_checkpoint_energy,
+    CheckpointSite, CheckpointSpin, InterstitialField, LinearizationEnergyGenerator,
+    MaterialKernel, MuffinTinField, RadialRoute, RegionalDensity, RegionalPotential,
+    RegionalScalarField, ScfBasis, ScfChannelIdentity, ScfChannelTreatment,
+    ScfResolvedChannelEnergy, ScfState, SpexBoundSpinorChannel, SpexSpinorMaterialBinding,
+    channel_l, generate_frozen_checkpoint_energy,
 };
 use muffintin_io::{
     AngularBasis, CheckpointV2, Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2,
@@ -25,7 +27,6 @@ use thiserror::Error;
 
 mod atomic_checkpoint;
 mod convert_v2;
-mod material_kernel;
 
 pub use atomic_checkpoint::{
     AtomicCheckpointError, AtomicCheckpointRequest, AtomicCheckpointResult,
@@ -33,14 +34,7 @@ pub use atomic_checkpoint::{
 };
 pub use convert_v2::checkpoint_v2_from_state;
 use convert_v2::{convert_v2_site_bases, regional_density_from_v2, regional_potential_from_v2};
-pub use material_kernel::MaterialKernelError;
-pub(crate) use material_kernel::{
-    CheckpointBandSolution, CheckpointKPointSolution, MaterialKernel, g_vector,
-    production_density_layout, regular_k_points,
-};
-use material_kernel::{
-    CheckpointSite, CheckpointSpin, RadialRoute, SpexBoundSpinorChannel, SpexSpinorMaterialBinding,
-};
+pub use muffintin_dft::MaterialKernelError;
 
 const CHECKPOINT_RADIUS_TOLERANCE: f64 = 1.0e-10;
 
@@ -91,18 +85,14 @@ impl CheckpointPhysics {
             .transpose()?;
         Ok(Self {
             checkpoint_template: checkpoint.clone(),
-            kernel: MaterialKernel {
-                reciprocal: converted.reciprocal,
-                geometry: converted.geometry,
-                sites: converted.sites,
+            kernel: MaterialKernel::new(
+                converted.reciprocal,
+                converted.geometry,
+                converted.sites,
                 frozen_potential,
                 restart_density,
-                nuclear_charges: converted.nuclear_charges,
-                core_potentials: BTreeMap::new(),
-                density_template: None,
-                energy_terms: BTreeMap::new(),
-                spex_spinor_binding: None,
-            },
+                converted.nuclear_charges,
+            ),
         })
     }
 
@@ -123,13 +113,13 @@ impl CheckpointPhysics {
         {
             return Err(CheckpointPhysicsError::SpexMaterialProvenanceMismatch);
         }
-        for site in &physics.kernel.sites {
-            for (spin, source) in [&site.up, &site.down].into_iter().enumerate() {
-                if source.route != RadialRoute::ScalarKoellingHarmon {
+        for site in physics.kernel.sites() {
+            for (spin, source) in [site.up(), site.down()].into_iter().enumerate() {
+                if source.route() != RadialRoute::ScalarKoellingHarmon {
                     return Err(CheckpointPhysicsError::SpexMaterialSourceRadialEquation {
-                        site: site.id.clone(),
+                        site: site.id().to_owned(),
                         spin,
-                        equation: radial_route_tag(source.route),
+                        equation: radial_route_tag(source.route()),
                     });
                 }
             }
@@ -185,19 +175,19 @@ impl CheckpointPhysics {
                         source,
                     }
                 })?;
-            channels.push(SpexBoundSpinorChannel {
-                l: channel.l,
-                requested: requested.clone(),
-                resolved: ScfResolvedChannelEnergy {
+            channels.push(SpexBoundSpinorChannel::new(
+                channel.l,
+                requested.clone(),
+                ScfResolvedChannelEnergy {
                     recipe: requested,
                     energy: generated.energy,
                     components: vec![generated],
                 },
-            });
+            ));
         }
         physics
             .kernel
-            .bind_spex_spinor(SpexSpinorMaterialBinding { channels }, basis)?;
+            .bind_spex_spinor(SpexSpinorMaterialBinding::new(channels), basis)?;
         Ok(physics)
     }
 
@@ -259,12 +249,12 @@ pub(super) fn convert_checkpoint_geometry(
         let position = fractional_to_cartesian(site.fractional_position, direct);
         let (up, down, nonmagnetic_scalar) =
             convert_v2_site_bases(&site.id, &checkpoint.radial_basis)?;
-        if up.mesh != down.mesh {
+        if up.mesh() != down.mesh() {
             return Err(CheckpointPhysicsError::SpinMeshMismatch {
                 site: site.id.clone(),
             });
         }
-        let radius = up.mesh.last();
+        let radius = up.mesh().last();
         let scale = site
             .muffin_tin_radius
             .abs()
@@ -277,22 +267,22 @@ pub(super) fn convert_checkpoint_geometry(
                 mesh: radius.get(),
             });
         }
-        sites.push(CheckpointSite {
-            id: site.id.clone(),
+        sites.push(CheckpointSite::new(
+            site.id.clone(),
             position,
             radius,
             up,
             down,
             nonmagnetic_scalar,
-        });
+        ));
     }
     let geometry = InterstitialGeometry::new(
         VolumeBohr3(determinant(checkpoint.lattice.vectors)),
         sites
             .iter()
             .map(|site| Sphere {
-                center: site.position,
-                radius: site.radius,
+                center: site.position(),
+                radius: site.radius(),
             })
             .collect::<Vec<_>>(),
     )?;

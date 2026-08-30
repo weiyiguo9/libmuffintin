@@ -196,11 +196,11 @@ fn core_checkpoint_and_config() -> (CheckpointV2, ScfConfig) {
 fn checkpoint_conversion_normalizes_monopole_and_wraps_cartesian_site() {
     let physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     assert_eq!(
-        physics.kernel.geometry.spheres()[0].center,
+        physics.kernel.geometry().spheres()[0].center,
         [Bohr(2.0), Bohr(4.0), Bohr(4.0)]
     );
     let physical = checkpoint_v1().geometry.sites[0].spins[0].potential_channels[0].real[17];
-    let normalized = physics.kernel.frozen_potential.scalar().muffin_tins()[0]
+    let normalized = physics.kernel.frozen_potential().scalar().muffin_tins()[0]
         .field()
         .channel(0, 0)
         .unwrap()[17]
@@ -272,16 +272,16 @@ fn frozen_checkpoint_produces_initial_density_without_fake_atomic_g_zero() {
     let config = config(ScfRelativity::Scalar);
     let meshes = physics.kernel.channel_meshes(&config.basis).unwrap();
     let extended = build_extended_checkpoint_core_potentials(
-        &physics.kernel.frozen_potential,
-        &physics.kernel.geometry,
-        &physics.kernel.nuclear_charges,
+        physics.kernel.frozen_potential(),
+        physics.kernel.geometry(),
+        physics.kernel.nuclear_charges(),
         &meshes,
         CorePotentialContinuationSpec::default(),
     )
     .unwrap();
     let materialized = physics
         .kernel
-        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &config.basis, &extended)
+        .materialize_nonspectral_basis(physics.kernel.frozen_potential(), &config.basis, &extended)
         .unwrap();
     assert_eq!(
         materialized.resolved_channels[0].energy.get().to_bits(),
@@ -317,16 +317,16 @@ fn magnetic_frozen_checkpoint_does_not_turn_spin_splitting_into_kappa_splitting(
     let basis = config(ScfRelativity::SpinorFirstVariation).basis;
     let meshes = physics.kernel.channel_meshes(&basis).unwrap();
     let extended = build_extended_checkpoint_core_potentials(
-        &physics.kernel.frozen_potential,
-        &physics.kernel.geometry,
-        &physics.kernel.nuclear_charges,
+        physics.kernel.frozen_potential(),
+        physics.kernel.geometry(),
+        physics.kernel.nuclear_charges(),
         &meshes,
         CorePotentialContinuationSpec::default(),
     )
     .unwrap();
     let materialized = physics
         .kernel
-        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &basis, &extended)
+        .materialize_nonspectral_basis(physics.kernel.frozen_potential(), &basis, &extended)
         .unwrap();
     assert_eq!(
         physics
@@ -371,20 +371,20 @@ fn atomic_recipe_materializes_from_the_current_extended_potential() {
     }
     let meshes = physics.kernel.channel_meshes(&config.basis).unwrap();
     let extended = build_extended_checkpoint_core_potentials(
-        &physics.kernel.frozen_potential,
-        &physics.kernel.geometry,
-        &physics.kernel.nuclear_charges,
+        physics.kernel.frozen_potential(),
+        physics.kernel.geometry(),
+        physics.kernel.nuclear_charges(),
         &meshes,
         CorePotentialContinuationSpec::default(),
     )
     .unwrap();
     let first = physics
         .kernel
-        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &config.basis, &extended)
+        .materialize_nonspectral_basis(physics.kernel.frozen_potential(), &config.basis, &extended)
         .unwrap();
     let second = physics
         .kernel
-        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &config.basis, &extended)
+        .materialize_nonspectral_basis(physics.kernel.frozen_potential(), &config.basis, &extended)
         .unwrap();
     let atomic = first
         .resolved_channels
@@ -414,15 +414,15 @@ fn seeded_radial_search_does_not_require_a_checkpoint_lo_anchor() {
         });
         let meshes = physics.kernel.channel_meshes(&basis).unwrap();
         let extended = build_extended_checkpoint_core_potentials(
-            &physics.kernel.frozen_potential,
-            &physics.kernel.geometry,
-            &physics.kernel.nuclear_charges,
+            physics.kernel.frozen_potential(),
+            physics.kernel.geometry(),
+            physics.kernel.nuclear_charges(),
             &meshes,
             CorePotentialContinuationSpec::default(),
         )
         .unwrap();
         match physics.kernel.materialize_nonspectral_basis(
-            &physics.kernel.frozen_potential,
+            physics.kernel.frozen_potential(),
             &basis,
             &extended,
         ) {
@@ -581,7 +581,7 @@ fn full_spinor_scf_retains_transverse_magnetization_for_two_iterations() {
 #[test]
 fn scalar_route_rejects_a_transverse_potential() {
     let physics = CheckpointPhysics::new(&checkpoint()).unwrap();
-    let scalar = physics.kernel.frozen_potential.scalar().clone();
+    let scalar = physics.kernel.frozen_potential().scalar().clone();
     let mut transverse = scalar.zero_like();
     transverse.add_scaled(0.01, &scalar).unwrap();
     let zero = scalar.zero_like();
@@ -617,20 +617,20 @@ fn signed_kappa_recipe_keeps_multiple_spinor_local_orbitals() {
     }
     let meshes = physics.kernel.channel_meshes(&basis).unwrap();
     let extended = build_extended_checkpoint_core_potentials(
-        &physics.kernel.frozen_potential,
-        &physics.kernel.geometry,
-        &physics.kernel.nuclear_charges,
+        physics.kernel.frozen_potential(),
+        physics.kernel.geometry(),
+        physics.kernel.nuclear_charges(),
         &meshes,
         CorePotentialContinuationSpec::default(),
     )
     .unwrap();
     let basis = physics
         .kernel
-        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &basis, &extended)
+        .materialize_nonspectral_basis(physics.kernel.frozen_potential(), &basis, &extended)
         .unwrap();
     let inputs = physics
         .kernel
-        .spinor_site_inputs(&physics.kernel.frozen_potential, &basis)
+        .spinor_site_inputs(physics.kernel.frozen_potential(), &basis)
         .unwrap();
     assert_eq!(
         inputs[0].local_orbitals,
@@ -662,20 +662,20 @@ fn scalar_route_omits_signed_kappa_local_orbitals() {
     });
     let meshes = physics.kernel.channel_meshes(&basis).unwrap();
     let extended = build_extended_checkpoint_core_potentials(
-        &physics.kernel.frozen_potential,
-        &physics.kernel.geometry,
-        &physics.kernel.nuclear_charges,
+        physics.kernel.frozen_potential(),
+        physics.kernel.geometry(),
+        physics.kernel.nuclear_charges(),
         &meshes,
         CorePotentialContinuationSpec::default(),
     )
     .unwrap();
     let basis = physics
         .kernel
-        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &basis, &extended)
+        .materialize_nonspectral_basis(physics.kernel.frozen_potential(), &basis, &extended)
         .unwrap();
     let inputs = physics
         .kernel
-        .scalar_site_inputs(&physics.kernel.frozen_potential, &basis)
+        .scalar_site_inputs(physics.kernel.frozen_potential(), &basis)
         .unwrap();
     assert!(inputs.up[0].local_orbitals.is_empty());
     assert!(inputs.down[0].local_orbitals.is_empty());
