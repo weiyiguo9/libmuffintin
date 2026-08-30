@@ -51,23 +51,26 @@ exact contracts and derivations.
   Coulomb operator over `CompiledAuxiliaryBasis`, for mixed-product and
   sampled interpolation-point auxiliaries. It consumes only root
   product-basis IR types by documented convention.
-- `libmuffintin-dft`: density synthesis with noncollinear magnetization,
-  four-component core densities, Weinert electrostatics with periodic nuclei
-  and the per-iteration `build_scf_potential`, LDA/PW92 and PBE, occupations
-  and mixing, total energy and SCF state machines, frozen-potential bands,
-  tetrahedron DOS, channel-energy generators, free-atom LDA, and the
-  periodic neutral-atom superposition.
+- `libmuffintin-dft`: the checkpoint-backed `MaterialKernel` for DFT/SCF
+  physics: density initialization and synthesis with noncollinear
+  magnetization, four-component core densities, Weinert electrostatics with
+  periodic nuclei and the per-iteration `build_scf_potential`, LDA/PW92 and
+  PBE, radial and basis materialization, scalar and spinor eigensolutions,
+  occupations and mixing, total energy and SCF state machines,
+  frozen-potential bands, tetrahedron DOS, channel-energy generators,
+  free-atom LDA, and the periodic neutral-atom superposition.
 - `libmuffintin-io`: versioned, human-diffable TOML checkpoint and grid
   formats; the MLDUMP v1 HDF5 interchange schema (`libmuffintin.mldump`,
   neither CoQui-native nor SPEX-native); the SPEX `spex.snapshot_hdf` v1
   reader; and the CoQui-native scalar Cholesky writer. The FLEUR converter
   remains frozen.
 - `libmuffintin-runtime`: the single `muffintin` binary and its library
-  boundary: ordered TOML workflows with Input V2, the `CheckpointPhysics`
-  kernel, the neutral atomic-start generator
-  `materialize_atomic_checkpoint_v2`, the frozen scalar and spinor
-  product-input, mixed-product, THC, and sampled-Coulomb bridges, and the
-  MLDUMP and CoQui writers. The bridge contracts live in
+  boundary: ordered TOML workflows with Input V2 and the `CheckpointPhysics`
+  checkpoint/IO/orchestration shell, which delegates DFT/SCF physics to
+  `MaterialKernel`; the neutral atomic-start generator
+  `materialize_atomic_checkpoint_v2`; the runtime-owned frozen scalar and
+  spinor product-input, mixed-product, THC, and sampled-Coulomb bridges; and
+  the runtime-owned MLDUMP and CoQui writers. The bridge contracts live in
   [`doc/17`](doc/17_minimal_dft_scf.md)–[`doc/20`](doc/20_sm_dy_full_spinor_material_demo.md).
 
 All in-memory energies are Hartree and all lengths are Bohr; producer-specific

@@ -7,39 +7,47 @@ comparison remain out of scope. The on-disk schema is [19](19_versioned_mldump_i
 
 Product kinematics remain [13](13_product_space_and_lapw_mpb.md). The
 canonical $q$ / Umklapp pair gauge remains [14](14_kpoint_isdf_thc.md).
-The DFT checkpoint kernel remains [17](17_minimal_dft_scf.md).
+The checkpoint-backed DFT/SCF kernel boundary remains [17](17_minimal_dft_scf.md).
 
 ## 1. Packages
 
 | Directory | Package |
 |---|---|
+| `crates/mt-dft` | `libmuffintin-dft` (`muffintin_dft`) |
 | `crates/mt-runtime` | `libmuffintin-runtime` (`muffintin`) |
 | `crates/mt-prodbasis` | `libmuffintin-prodbasis` (root IR plus `mpb::` and `thc::`) |
 | `crates/mt-coulomb` | `libmuffintin-coulomb` (`muffintin_coulomb`) |
 
-`CheckpointPhysics::scalar_product_input` owns the scalar product-input
-capability; it consumes [`ProductSource`] and [`PairColumnLayout`] from
-the `libmuffintin-prodbasis` root IR. `build_scalar_mpb` owns the scalar
+`libmuffintin-dft::MaterialKernel` owns the checkpoint-backed scalar and
+full-spinor one-particle physics and its `solve_points` and
+`solve_spinor_points` entry points. Runtime `CheckpointPhysics` is the
+checkpoint/IO/orchestration/product-space bridge shell and delegates those
+solves to its kernel. `CheckpointPhysics::scalar_product_input` remains the
+runtime-owned scalar product-input capability; it consumes [`ProductSource`]
+and [`PairColumnLayout`] from the `libmuffintin-prodbasis` root IR.
+`build_scalar_mpb` owns the scalar
 mixed-product capability over `muffintin_prodbasis::mpb`.
 `build_scalar_thc` owns the scalar AllQL2 THC capability over
 `muffintin_prodbasis::thc`. `build_scalar_coulomb` owns the sampled
 $\zeta$ Coulomb capability and depends on `libmuffintin-coulomb`.
-`CheckpointPhysics::spinor_product_input` owns the spinor product-input
-capability and consumes `DiracProductSource` from the root IR;
+`CheckpointPhysics::spinor_product_input` remains the runtime-owned spinor
+product-input capability and consumes `DiracProductSource` from the root IR;
 `build_spinor_mpb` owns the spinor mixed-product capability. Neither
 `libmuffintin-prodbasis` nor `libmuffintin-coulomb` depends on runtime,
 and Coulomb takes only root IR types as public inputs; keeping
 `mpb::`/`thc::` types out of the Coulomb surface is a documented
-convention now that the three product-space crates share one package.
+convention now that the three product-space crates share one package. The
+MLDUMP and CoQui writers also remain runtime-owned; moving the material
+kernel does not move either writer or either product-input bridge into DFT.
 
 ## 2. Implemented boundary
 
 The input is a validated V2 checkpoint, an `ScfConfig` whose relativity is
 scalar Koelling–Harmon, and a requested transfer in primitive reciprocal
-coordinates `q_fractional` $=q_{\mathrm{in}}$. The kernel materializes the
-frozen-checkpoint iteration basis, rejects a folded $k-q$ that is not on the
-regular mesh, solves the regular full-BZ scalar eigenproblem, and returns
-[`ScalarProductInput`]:
+coordinates `q_fractional` $=q_{\mathrm{in}}$. The runtime bridge asks
+`MaterialKernel` to materialize the frozen-checkpoint iteration basis and
+solve the regular full-BZ scalar eigenproblem. The bridge rejects a folded
+$k-q$ that is not on the regular mesh and emits [`ScalarProductInput`]:
 
 - `source`: [`ProductSource`] built from the exact scalar iteration bases
   (`ProductPartition` / `InterstitialGeometry`, per-site `ExponentialMesh`,
@@ -274,9 +282,10 @@ The spinor THC/Coulomb bridge adds spinor all $q$ THC and sampled $\zeta$ Coulom
 `CheckpointPhysics::spinor_product_input(&ScfConfig, q_fractional)` accepts
 only `ScfRelativity::SpinorFirstVariation`. Scalar Koelling–Harmon and SOC
 second variation are distinct typed rejections; signed $\kappa$ is not routed
-through second variation. The kernel materializes the frozen-checkpoint
-iteration basis, reuses the scalar product-input canonical $q$ / mesh $k-q$ helper, solves
-the regular full-BZ full-first-variation eigenproblem, and returns
+through second variation. The runtime bridge asks `MaterialKernel` to
+materialize the frozen-checkpoint iteration basis and solve the regular
+full-BZ full-first-variation eigenproblem, reuses the runtime-owned scalar
+product-input canonical $q$ / mesh $k-q$ helper, and emits
 [`SpinorProductInput`]:
 
 - `source`: [`DiracProductSource`] with physical reduced $P$ and $Q$ on one
