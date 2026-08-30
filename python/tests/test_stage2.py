@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 import libmuffintin as mt
 
@@ -111,19 +112,6 @@ def test_stage2_scalar_handles_exports_and_acceptance_gates() -> None:
         relative = np.linalg.norm(weighted_difference) / np.linalg.norm(weighted_reference)
         np.testing.assert_allclose(relative, record["l2_all"][0], rtol=1.0e-12, atol=1.0e-14)
 
-    try:
-        import scipy.linalg
-    except ImportError:
-        pass
-    else:
-        stacked = np.concatenate(
-            [record["pair_samples"][candidates, :].T for record in exported["records"]],
-            axis=0,
-        )
-        stacked *= np.sqrt(weights[candidates])[None, :]
-        _, _, scipy_pivots = scipy.linalg.qr(stacked, mode="economic", pivoting=True)
-        np.testing.assert_array_equal(selection["pivots"], candidates[scipy_pivots[:1]])
-
     coulomb = mt.build_scalar_coulomb(
         product_slice,
         thc,
@@ -143,3 +131,15 @@ def test_stage2_scalar_handles_exports_and_acceptance_gates() -> None:
         rtol=0.0,
         atol=1.0e-12,
     )
+
+    # Gate 2 (same-engine THC reproduction) is scipy-only; a missing scipy
+    # shows as a visible skip here without hiding the scipy-independent
+    # assertions above.
+    scipy_linalg = pytest.importorskip("scipy.linalg")
+    stacked = np.concatenate(
+        [record["pair_samples"][candidates, :].T for record in exported["records"]],
+        axis=0,
+    )
+    stacked *= np.sqrt(weights[candidates])[None, :]
+    _, _, scipy_pivots = scipy_linalg.qr(stacked, mode="economic", pivoting=True)
+    np.testing.assert_array_equal(selection["pivots"], candidates[scipy_pivots[:1]])

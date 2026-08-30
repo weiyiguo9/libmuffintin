@@ -7,16 +7,13 @@ use muffintin_io::CheckpointV2;
 use muffintin_operators::lapw::Provenance;
 use muffintin_prodbasis::{AuxiliaryRegion, InterpolationRegion, OrbitalPair};
 use num_complex::Complex64;
-use numpy::ndarray::{Array2, ShapeBuilder};
-use numpy::{Element, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
+use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::{PyIndexError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
 use crate::checkpoint::CheckpointPhysics;
-
-const SCHEMA: &str = "libmuffintin.pyexport";
-const VERSION: i64 = 1;
+use crate::export::{array2, export_dict, fortran_array2};
 
 #[pyclass(name = "SpinorProductInput", module = "libmuffintin._native", frozen)]
 #[derive(Clone, Debug)]
@@ -60,35 +57,6 @@ pub(crate) struct SpinorCoulombResult {
     pub(crate) _thc: SpinorThcResult,
     pub(crate) inner: Arc<muffintin::SpinorCoulombResult>,
     pub(crate) spec: muffintin::SpinorCoulombSpec,
-}
-
-fn export_dict(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-    let dict = PyDict::new(py);
-    dict.set_item("schema", SCHEMA)?;
-    dict.set_item("version", VERSION)?;
-    Ok(dict)
-}
-
-fn array2<'py, T: Element>(
-    py: Python<'py>,
-    rows: usize,
-    columns: usize,
-    values: Vec<T>,
-) -> Bound<'py, PyArray2<T>> {
-    let array = Array2::from_shape_vec((rows, columns), values)
-        .expect("export row count and flattened data length agree");
-    PyArray2::from_owned_array(py, array)
-}
-
-fn fortran_array2<'py>(
-    py: Python<'py>,
-    rows: usize,
-    columns: usize,
-    values: Vec<Complex64>,
-) -> Bound<'py, PyArray2<Complex64>> {
-    let array = Array2::from_shape_vec((rows, columns).f(), values)
-        .expect("eigenvector shape matches column-major storage");
-    PyArray2::from_owned_array(py, array)
 }
 
 #[pymethods]

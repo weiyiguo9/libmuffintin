@@ -10,6 +10,10 @@ rust-version.workspace = true
 [lib]
 name = "muffintin_python"
 crate-type = ["cdylib"]
+# Tests are Python-side (pytest under python/tests); the cdylib extension
+# module cannot link a Rust test harness (no libpython at link time).
+test = false
+doctest = false
 
 [dependencies]
 libmuffintin-coulomb = { path = "../mt-coulomb" }

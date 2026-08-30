@@ -11,8 +11,8 @@ use crate::coulomb::{ScalarCoulombResult, ScalarMpbCoulombResult};
 use crate::products::ScalarMpbResult;
 use crate::thc::ScalarThcResult;
 
-const SCHEMA: &str = "libmuffintin.pyexport";
-const VERSION: i64 = 1;
+pub(crate) const SCHEMA: &str = "libmuffintin.pyexport";
+pub(crate) const VERSION: i64 = 1;
 
 pub(crate) fn export_dict(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
     let dict = PyDict::new(py);
@@ -21,7 +21,7 @@ pub(crate) fn export_dict(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
     Ok(dict)
 }
 
-fn array2<'py, T: Element>(
+pub(crate) fn array2<'py, T: Element>(
     py: Python<'py>,
     rows: usize,
     columns: usize,
@@ -72,7 +72,7 @@ pub(crate) fn export_orbital_samples(
     Ok(dict.unbind())
 }
 
-fn fortran_array2<'py>(
+pub(crate) fn fortran_array2<'py>(
     py: Python<'py>,
     rows: usize,
     columns: usize,
