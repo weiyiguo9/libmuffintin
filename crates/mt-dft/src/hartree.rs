@@ -540,6 +540,83 @@ pub enum RegionalElectrostaticError {
     NonFiniteEnergy { quantity: &'static str },
 }
 
+/// One SCF iteration's assembled potential and derived controls.
+#[derive(Clone, Debug)]
+pub struct ScfPotentialBuild {
+    pub potential: crate::RegionalPotential,
+    pub electrostatic: RegionalElectrostaticResult,
+    pub exchange_correlation: crate::RegionalXcResult,
+    pub core_spec: crate::CorePotentialBuildSpec,
+    pub energy_terms: crate::ScfEnergyTerms,
+}
+
+/// Failure assembling the iteration potential from a density.
+#[derive(Debug, Error)]
+pub enum ScfPotentialBuildError {
+    #[error(transparent)]
+    Hartree(#[from] muffintin_coulomb::HartreeError),
+    #[error(transparent)]
+    Electrostatic(#[from] RegionalElectrostaticError),
+    #[error(transparent)]
+    Xc(#[from] crate::RegionalXcError),
+    #[error(transparent)]
+    Regional(#[from] RegionalError),
+}
+
+/// Electronic Hartree plus periodic nuclei plus XC on a regional density.
+pub fn build_scf_potential(
+    density: &crate::RegionalDensity,
+    nuclear_charges: &[f64],
+    exchange_correlation: crate::ScfExchangeCorrelation,
+) -> Result<ScfPotentialBuild, ScfPotentialBuildError> {
+    let electrostatic = evaluate_regional_electrostatics(
+        density.charge(),
+        &ElectrostaticSpec::new(
+            muffintin_coulomb::WeinertHartreeSpec::electronic(4)?,
+            nuclear_charges.to_vec(),
+        )?,
+    )?;
+    let output_l_max = std::iter::once(density.charge())
+        .chain(density.magnetization())
+        .flat_map(RegionalScalarField::muffin_tins)
+        .flat_map(|field| field.field().channels().map(|(channel, _)| channel.l))
+        .max()
+        .unwrap_or(0);
+    let xc_field_spec = crate::xc_spec_for_density(
+        density,
+        output_l_max,
+        exchange_correlation.noncollinear_route,
+    );
+    let exchange_correlation_result = crate::evaluate_regional_xc(
+        exchange_correlation.functional,
+        density,
+        xc_field_spec,
+    )?;
+    let mut scalar = electrostatic.potential.clone();
+    scalar.add_scaled(1.0, exchange_correlation_result.potential.scalar())?;
+    let potential = crate::RegionalPotential::new(
+        scalar,
+        exchange_correlation_result.potential.magnetic().clone(),
+    )?;
+    Ok(ScfPotentialBuild {
+        potential,
+        core_spec: crate::CorePotentialBuildSpec {
+            continuation: muffintin_sphere::CorePotentialContinuationSpec::default(),
+            xc_functional: exchange_correlation.functional,
+            xc_noncollinear_route: exchange_correlation.noncollinear_route,
+            xc_angular_point_count: xc_field_spec.angular_point_count,
+        },
+        energy_terms: crate::ScfEnergyTerms {
+            madelung: electrostatic.madelung,
+            coulomb: electrostatic.coulomb,
+            exchange_correlation: exchange_correlation_result.exchange_correlation_energy,
+            exchange_correlation_potential: exchange_correlation_result.density_potential_integral,
+        },
+        electrostatic,
+        exchange_correlation: exchange_correlation_result,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -873,81 +950,4 @@ mod tests {
         assert_eq!(x.potential, z.potential);
         assert_eq!(x.coulomb, z.coulomb);
     }
-}
-
-/// One SCF iteration's assembled potential and derived controls.
-#[derive(Clone, Debug)]
-pub struct ScfPotentialBuild {
-    pub potential: crate::RegionalPotential,
-    pub electrostatic: RegionalElectrostaticResult,
-    pub exchange_correlation: crate::RegionalXcResult,
-    pub core_spec: crate::CorePotentialBuildSpec,
-    pub energy_terms: crate::ScfEnergyTerms,
-}
-
-/// Failure assembling the iteration potential from a density.
-#[derive(Debug, Error)]
-pub enum ScfPotentialBuildError {
-    #[error(transparent)]
-    Hartree(#[from] muffintin_coulomb::HartreeError),
-    #[error(transparent)]
-    Electrostatic(#[from] RegionalElectrostaticError),
-    #[error(transparent)]
-    Xc(#[from] crate::RegionalXcError),
-    #[error(transparent)]
-    Regional(#[from] RegionalError),
-}
-
-/// Electronic Hartree plus periodic nuclei plus XC on a regional density.
-pub fn build_scf_potential(
-    density: &crate::RegionalDensity,
-    nuclear_charges: &[f64],
-    exchange_correlation: crate::ScfExchangeCorrelation,
-) -> Result<ScfPotentialBuild, ScfPotentialBuildError> {
-    let electrostatic = evaluate_regional_electrostatics(
-        density.charge(),
-        &ElectrostaticSpec::new(
-            muffintin_coulomb::WeinertHartreeSpec::electronic(4)?,
-            nuclear_charges.to_vec(),
-        )?,
-    )?;
-    let output_l_max = std::iter::once(density.charge())
-        .chain(density.magnetization())
-        .flat_map(RegionalScalarField::muffin_tins)
-        .flat_map(|field| field.field().channels().map(|(channel, _)| channel.l))
-        .max()
-        .unwrap_or(0);
-    let xc_field_spec = crate::xc_spec_for_density(
-        density,
-        output_l_max,
-        exchange_correlation.noncollinear_route,
-    );
-    let exchange_correlation_result = crate::evaluate_regional_xc(
-        exchange_correlation.functional,
-        density,
-        xc_field_spec,
-    )?;
-    let mut scalar = electrostatic.potential.clone();
-    scalar.add_scaled(1.0, exchange_correlation_result.potential.scalar())?;
-    let potential = crate::RegionalPotential::new(
-        scalar,
-        exchange_correlation_result.potential.magnetic().clone(),
-    )?;
-    Ok(ScfPotentialBuild {
-        potential,
-        core_spec: crate::CorePotentialBuildSpec {
-            continuation: muffintin_sphere::CorePotentialContinuationSpec::default(),
-            xc_functional: exchange_correlation.functional,
-            xc_noncollinear_route: exchange_correlation.noncollinear_route,
-            xc_angular_point_count: xc_field_spec.angular_point_count,
-        },
-        energy_terms: crate::ScfEnergyTerms {
-            madelung: electrostatic.madelung,
-            coulomb: electrostatic.coulomb,
-            exchange_correlation: exchange_correlation_result.exchange_correlation_energy,
-            exchange_correlation_potential: exchange_correlation_result.density_potential_integral,
-        },
-        electrostatic,
-        exchange_correlation: exchange_correlation_result,
-    })
 }

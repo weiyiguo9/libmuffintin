@@ -1035,6 +1035,94 @@ pub enum ScfError<E: Error + Send + Sync + 'static> {
     },
 }
 
+/// Signed-kappa expansion failure for an angular-momentum channel.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum ChannelKappaError {
+    #[error("angular momentum l overflows the signed kappa range")]
+    AngularMomentumOverflow,
+    #[error(transparent)]
+    Kappa(#[from] muffintin_core::KappaError),
+}
+
+/// Both signed-kappa partners of a scalar angular momentum `l`.
+pub fn spinor_kappas_for_l(l: u32) -> Result<Vec<Kappa>, ChannelKappaError> {
+    let l = i32::try_from(l).map_err(|_| ChannelKappaError::AngularMomentumOverflow)?;
+    let negative = l
+        .checked_add(1)
+        .and_then(i32::checked_neg)
+        .ok_or(ChannelKappaError::AngularMomentumOverflow)?;
+    let mut kappas = vec![Kappa::new(negative)?];
+    if l != 0 {
+        kappas.push(Kappa::new(l)?);
+    }
+    Ok(kappas)
+}
+
+/// Orbital angular momentum of a channel identity.
+pub fn channel_l(identity: ScfChannelIdentity) -> u32 {
+    match identity {
+        ScfChannelIdentity::ScalarL { l, .. } => l,
+        ScfChannelIdentity::Kappa { kappa, .. } if kappa > 0 => kappa as u32,
+        ScfChannelIdentity::Kappa { kappa, .. } => (-kappa - 1) as u32,
+    }
+}
+
+/// Principal ordinal of a channel identity.
+pub fn channel_n(identity: ScfChannelIdentity) -> u32 {
+    match identity {
+        ScfChannelIdentity::ScalarL { n, .. } | ScfChannelIdentity::Kappa { n, .. } => n,
+    }
+}
+
+/// Signed-kappa set represented by a channel identity.
+pub fn channel_kappas(identity: ScfChannelIdentity) -> Result<Vec<Kappa>, ChannelKappaError> {
+    match identity {
+        ScfChannelIdentity::ScalarL { l, .. } => spinor_kappas_for_l(l),
+        ScfChannelIdentity::Kappa { kappa, .. } => Ok(vec![Kappa::new(kappa)?]),
+    }
+}
+
+/// Kappa-resolved energy of a resolved channel, with atomic and band-cog
+/// component matching and the resolved energy as fallback.
+pub fn scalar_component_energy(resolved: &ScfResolvedChannelEnergy, kappa: Kappa) -> Hartree {
+    if let Some(energy) =
+        resolved
+            .components
+            .iter()
+            .find_map(|component| match component.diagnostic {
+                crate::LinearizationEnergyDiagnostic::Atomic { state, .. }
+                    if state.kappa == kappa =>
+                {
+                    Some(component.energy)
+                }
+                _ => None,
+            })
+    {
+        return energy;
+    }
+    if resolved.recipe.generator == LinearizationEnergyGenerator::BandCog
+        && let ScfChannelIdentity::ScalarL { l, .. } = resolved.recipe.identity
+        && let Ok(kappas) = spinor_kappas_for_l(l)
+        && kappas.len() == resolved.components.len()
+        && let Some(index) = kappas.iter().position(|candidate| *candidate == kappa)
+    {
+        return resolved.components[index].energy;
+    }
+    resolved.energy
+}
+
+/// Spin-resolved energy of a resolved channel; frozen-checkpoint pairs keep
+/// distinct spin components.
+pub fn spin_resolved_energy(resolved: &ScfResolvedChannelEnergy, spin: usize) -> Hartree {
+    if resolved.recipe.generator == LinearizationEnergyGenerator::FrozenCheckpoint
+        && resolved.components.len() == 2
+    {
+        resolved.components[spin].energy
+    } else {
+        resolved.energy
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -1736,93 +1824,5 @@ mod tests {
                 .iter()
                 .all(|diagnostic| diagnostic.mixing != MixStatus::NotMixed)
         );
-    }
-}
-
-/// Signed-kappa expansion failure for an angular-momentum channel.
-#[derive(Clone, Debug, Error, PartialEq)]
-pub enum ChannelKappaError {
-    #[error("angular momentum l overflows the signed kappa range")]
-    AngularMomentumOverflow,
-    #[error(transparent)]
-    Kappa(#[from] muffintin_core::KappaError),
-}
-
-/// Both signed-kappa partners of a scalar angular momentum `l`.
-pub fn spinor_kappas_for_l(l: u32) -> Result<Vec<Kappa>, ChannelKappaError> {
-    let l = i32::try_from(l).map_err(|_| ChannelKappaError::AngularMomentumOverflow)?;
-    let negative = l
-        .checked_add(1)
-        .and_then(i32::checked_neg)
-        .ok_or(ChannelKappaError::AngularMomentumOverflow)?;
-    let mut kappas = vec![Kappa::new(negative)?];
-    if l != 0 {
-        kappas.push(Kappa::new(l)?);
-    }
-    Ok(kappas)
-}
-
-/// Orbital angular momentum of a channel identity.
-pub fn channel_l(identity: ScfChannelIdentity) -> u32 {
-    match identity {
-        ScfChannelIdentity::ScalarL { l, .. } => l,
-        ScfChannelIdentity::Kappa { kappa, .. } if kappa > 0 => kappa as u32,
-        ScfChannelIdentity::Kappa { kappa, .. } => (-kappa - 1) as u32,
-    }
-}
-
-/// Principal ordinal of a channel identity.
-pub fn channel_n(identity: ScfChannelIdentity) -> u32 {
-    match identity {
-        ScfChannelIdentity::ScalarL { n, .. } | ScfChannelIdentity::Kappa { n, .. } => n,
-    }
-}
-
-/// Signed-kappa set represented by a channel identity.
-pub fn channel_kappas(identity: ScfChannelIdentity) -> Result<Vec<Kappa>, ChannelKappaError> {
-    match identity {
-        ScfChannelIdentity::ScalarL { l, .. } => spinor_kappas_for_l(l),
-        ScfChannelIdentity::Kappa { kappa, .. } => Ok(vec![Kappa::new(kappa)?]),
-    }
-}
-
-/// Kappa-resolved energy of a resolved channel, with atomic and band-cog
-/// component matching and the resolved energy as fallback.
-pub fn scalar_component_energy(resolved: &ScfResolvedChannelEnergy, kappa: Kappa) -> Hartree {
-    if let Some(energy) =
-        resolved
-            .components
-            .iter()
-            .find_map(|component| match component.diagnostic {
-                crate::LinearizationEnergyDiagnostic::Atomic { state, .. }
-                    if state.kappa == kappa =>
-                {
-                    Some(component.energy)
-                }
-                _ => None,
-            })
-    {
-        return energy;
-    }
-    if resolved.recipe.generator == LinearizationEnergyGenerator::BandCog
-        && let ScfChannelIdentity::ScalarL { l, .. } = resolved.recipe.identity
-        && let Ok(kappas) = spinor_kappas_for_l(l)
-        && kappas.len() == resolved.components.len()
-        && let Some(index) = kappas.iter().position(|candidate| *candidate == kappa)
-    {
-        return resolved.components[index].energy;
-    }
-    resolved.energy
-}
-
-/// Spin-resolved energy of a resolved channel; frozen-checkpoint pairs keep
-/// distinct spin components.
-pub fn spin_resolved_energy(resolved: &ScfResolvedChannelEnergy, spin: usize) -> Hartree {
-    if resolved.recipe.generator == LinearizationEnergyGenerator::FrozenCheckpoint
-        && resolved.components.len() == 2
-    {
-        resolved.components[spin].energy
-    } else {
-        resolved.energy
     }
 }

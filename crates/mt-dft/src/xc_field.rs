@@ -901,6 +901,33 @@ pub enum RegionalXcError {
     Grid(#[from] GridError),
 }
 
+/// XC field controls derived from a density: interstitial divisions covering
+/// the stored reciprocal support, an angular rule for the requested output
+/// `l_max`, and the caller's noncollinear route.
+pub fn xc_spec_for_density(
+    density: &crate::RegionalDensity,
+    output_l_max: u32,
+    noncollinear_route: NoncollinearXcRoute,
+) -> XcFieldSpec {
+    let layout = density.charge().interstitial().layout();
+    let divisions = std::array::from_fn(|axis| {
+        let maximum = layout
+            .vectors()
+            .iter()
+            .map(|vector| vector.index[axis].unsigned_abs() as usize)
+            .max()
+            .unwrap_or(0);
+        (2 * maximum + 1).max(4)
+    });
+    let angular_point_count = ((output_l_max as usize + 1).pow(2) * 2).max(50);
+    XcFieldSpec {
+        interstitial_divisions: divisions,
+        angular_point_count,
+        output_l_max,
+        noncollinear_route,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1580,32 +1607,5 @@ mod tests {
                 required: 3,
             })
         ));
-    }
-}
-
-/// XC field controls derived from a density: interstitial divisions covering
-/// the stored reciprocal support, an angular rule for the requested output
-/// `l_max`, and the caller's noncollinear route.
-pub fn xc_spec_for_density(
-    density: &crate::RegionalDensity,
-    output_l_max: u32,
-    noncollinear_route: NoncollinearXcRoute,
-) -> XcFieldSpec {
-    let layout = density.charge().interstitial().layout();
-    let divisions = std::array::from_fn(|axis| {
-        let maximum = layout
-            .vectors()
-            .iter()
-            .map(|vector| vector.index[axis].unsigned_abs() as usize)
-            .max()
-            .unwrap_or(0);
-        (2 * maximum + 1).max(4)
-    });
-    let angular_point_count = ((output_l_max as usize + 1).pow(2) * 2).max(50);
-    XcFieldSpec {
-        interstitial_divisions: divisions,
-        angular_point_count,
-        output_l_max,
-        noncollinear_route,
     }
 }
