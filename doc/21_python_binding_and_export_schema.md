@@ -38,7 +38,6 @@ Out of scope for v0.3:
 
 | Out of scope | Reason |
 |---|---|
-| SCF binding (`run_scf`, mixing, occupations) | The frozen-checkpoint solve is the fixed-orbital entry; SCF stays behind the `muffintin` binary. |
 | Symmetry layer | Full-BZ experiments first; symmetry is a later prefactor optimization, not part of the algorithm question. |
 | SPEX importer work | Already in `libmuffintin-io`; the binding loads its Checkpoint V2 output unchanged. |
 | LMTO/NMTO producers | Later producers of the same export schema; the schema is method-neutral from day one. |
@@ -90,8 +89,10 @@ Constraints:
 ## 3. Binding design rules
 
 1. **Configuration enters as input V2 TOML.** The binding passes a
-   path or string to the existing runtime input parser. No Rust
-   configuration struct is mirrored into Python classes.
+   path or string to the existing runtime input parser. The runtime
+   `single_dft_scf_config` bridge requires exactly one `dft-scf` task;
+   zero or multiple matching tasks are typed errors rather than an implicit
+   task choice. No Rust configuration struct is mirrored into Python classes.
 2. **Results are opaque handles.** `ScalarProductInput`,
    `ScalarMpbResult`, `ScalarThcResult`, `ScalarCoulombResult`, and
    their spinor twins are wrapped, not converted. Handles chain
@@ -99,7 +100,9 @@ Constraints:
    without a Python array round trip, so the non-forgeable identity
    and fingerprint checks on those types keep working. Explicit
    `export_*` methods return NumPy structures for the experiment
-   layer.
+   layer. The Python checkpoint, physics, and product-input handles share
+   reference-counted checkpoint context. This preserves direct-lattice and
+   site identity for exports without copying the checkpoint payload.
 3. **Exports are versioned.** Every export dictionary carries
    `schema = "libmuffintin.pyexport"` and `version = 1`. Key-level
    schemas land in this document as each export is implemented; the
@@ -134,6 +137,112 @@ Constraints:
   stored site radial index, mirroring the existing parent-grid radial
   check; the binding does not relax that contract.
 
+### 4.1 Stage 1 export dictionaries
+
+Every dictionary in this section contains `schema =
+"libmuffintin.pyexport"` and `version = 1`. Nested channel dictionaries do
+not repeat that header. These tables are the complete Stage 1 key contract;
+an implementation must not require consumers to consult another schema.
+
+The field meanings and flatten orders agree with the scalar orbital and
+product sections of MLDUMP v1 where the same physical data appears. This is
+only a semantic cross-check: pyexport is an independent schema, is not
+byte-compatible with MLDUMP, and does not depend on MLDUMP serialization.
+
+`export_orbitals()` returns:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `k_fractional` | `float64[n_k, 3]` | Full-zone fractional $k$ points in production order. |
+| `band_window_start` | `int` | First retained band, currently zero. |
+| `band_window_count` | `int` | Common retained band count $n_{\mathrm{orb}}$. |
+| `channels` | `list[dict]` | Stable spin-channel order; each dictionary has the fields below. |
+
+Each `channels` element contains:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `spin` | `int` | Scalar spin channel, zero or one. |
+| `energies` | `float64[n_k, n_orb]` | Retained eigenvalues in Hartree. |
+| `eigenvectors` | `list[complex128[n_basis(k), n_orb]]` | One Fortran-contiguous basis-by-band matrix for each $k$. |
+| `available_bands` | `int64[n_k]` | Available bands before the common leading window. |
+
+`export_basis(k, spin)` returns:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `k_index` | `int` | Selected $k$ index. |
+| `spin` | `int` | Selected scalar spin channel. |
+| `basis_dimension` | `int` | Total compiled APW plus local-orbital dimension. |
+| `plane_wave_count` | `int` | Number of plane-wave rows. |
+| `plane_wave_g` | `int32[n_g, 3]` | Integer reciprocal labels. |
+| `plane_wave_k_cartesian` | `float64[n_g, 3]` | Cartesian $k$ in inverse Bohr, repeated for every row. |
+| `plane_wave_k_plus_g` | `float64[n_g, 3]` | Cartesian $k+G$ in inverse Bohr. |
+| `apw_labels` | `int64[n_apw, 4]` | Rows `(site, g, l, m)` for the flattened APW coefficients. |
+| `apw_coefficients` | `complex128[n_apw, 2]` | Coefficients multiplying `(u, udot)`; these include the Rayleigh factor and site phase. |
+| `local_orbital_rows` | `int64[n_lo, 6]` | Rows `(global_row, site, l, m, ordinal, radial_n)`. |
+
+`export_radials()` uses offsets so different sites and optional small
+components remain ragged without object arrays:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `mesh_site` | `int64[n_site]` | Stable site index for each mesh. |
+| `mesh_first` | `float64[n_site]` | First radius in Bohr. |
+| `mesh_increment` | `float64[n_site]` | Exponential logarithmic increment. |
+| `mesh_count` | `int64[n_site]` | Point count for each mesh. |
+| `mesh_offsets` | `int64[n_site + 1]` | Offsets into `mesh_radii` and `mesh_weights`. |
+| `mesh_radii` | `float64[sum(mesh_count)]` | Concatenated radii in Bohr. |
+| `mesh_weights` | `float64[sum(mesh_count)]` | Concatenated radial quadrature weights. |
+| `radial_labels` | `int64[n_fun, 5]` | Rows `(site, kind, l, n, spin)`; kind zero is valence and one is core. |
+| `sample_offsets` | `int64[n_fun + 1]` | Offsets into `large`. |
+| `large` | `float64[sum(sample_count)]` | Concatenated reduced large-component samples. |
+| `small_present` | `bool[n_fun]` | Whether each radial has a small component. |
+| `small_offsets` | `int64[n_fun + 1]` | Offsets into `small`; absent components have equal adjacent offsets. |
+| `small` | `float64[sum(present_small_count)]` | Concatenated present reduced small-component samples. |
+
+`export_geometry()` returns:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `site_id` | `list[str]` | Checkpoint site identifiers in stable site order. |
+| `atomic_number` | `int64[n_site]` | Nuclear charge labels from the checkpoint. |
+| `site_fractional` | `float64[n_site, 3]` | Stored fractional direct-lattice coordinates. |
+| `site_cartesian` | `float64[n_site, 3]` | Runtime Cartesian site positions in Bohr. |
+| `muffin_tin_radius` | `float64[n_site]` | Muffin-tin radii in Bohr. |
+| `direct_lattice` | `float64[3, 3]` | Direct primitive vectors by row in Bohr. |
+| `reciprocal_lattice` | `float64[3, 3]` | Reciprocal primitive vectors by row in inverse Bohr, including $2\pi$. |
+| `cell_volume` | `float` | Unit-cell volume in cubic Bohr. |
+
+`export_kq_map()` returns:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `k_index` | `int64[n_k]` | Source $k$ indices. |
+| `kq_index` | `int64[n_k]` | Mapped $k-q$ indices. |
+| `g_wrap_index` | `int32[n_k, 3]` | Integer reciprocal wraps for each mapped point. |
+| `g_wrap_cartesian` | `float64[n_k, 3]` | Cartesian reciprocal wraps in inverse Bohr. |
+| `transfer_cartesian` | `float64[3]` | Canonical transfer $q$ in inverse Bohr. |
+| `global_transfer_index` | `int32[3]` | Global reciprocal transfer removed while canonicalizing the requested $q$. |
+
+`export_pair_support()` returns:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `g_relative_index` | `int32[n_raw_g, 3]` | Integer relative reciprocal labels in canonical raw-support order. |
+| `g_relative_cartesian` | `float64[n_raw_g, 3]` | Cartesian relative reciprocal vectors in inverse Bohr. |
+| `g_relative_norm` | `float64[n_raw_g]` | Their Cartesian norms in inverse Bohr. |
+
+`export_pair_layout()` returns:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `n_k` | `int` | Number of $k$ points. |
+| `n_orb` | `int` | Common orbital count. |
+| `n_columns` | `int` | Total pair-column count. |
+| `core_orbital` | `int` or `None` | Optional sharp-core orbital index. |
+| `pair_order` | `str` | Literal `k*n_orb^2 + i*n_orb + j`. |
+
 ## 5. Entry points
 
 The surface is about fifteen functions and methods, scalar lane
@@ -155,7 +264,7 @@ inp.export_radials()       # ProductRadial tables plus meshes
 inp.export_geometry()      # sites, muffin-tin radii, direct/reciprocal lattice
 inp.export_kq_map()        # kq_index and G_wrap for each k
 inp.export_pair_support()  # raw interstitial pair G set
-inp.pair_layout()          # n_k, n_orb, core_orbital
+inp.export_pair_layout()   # n_k, n_orb, core_orbital, n_columns
 
 mpb = mt.build_scalar_mpb(inp, selections, ...)     # spec fields as kwargs
 mpb.export_auxiliary()     # MT modes, auxiliary |q+G| waves, CutoffRecord
@@ -179,14 +288,79 @@ the existing kernels: the orbital evaluation currently private to the
 scalar THC bridge is promoted to a public runtime function. Everything
 else reuses the frozen runtime boundaries as they stand.
 
+Stage 1 adds one narrow runtime surface, `single_dft_scf_config`: it
+converts the only `dft-scf` task in a prepared Input V2 workflow to the
+existing internal `ScfConfig`, returning a typed error when the count is
+not exactly one. The binding calls this function and does not duplicate
+runtime configuration mapping.
+
+### 5.1 Deferred two-level DFT-SCF binding
+
+The DFT-SCF binding follows the product, THC, and Coulomb lane rather than
+interrupting Stages 1–3. It has two levels:
+
+```python
+result = mt.run_dft_scf("input.toml")
+session = phys.scf_session(config)
+```
+
+`run_dft_scf` is the global production entry. It returns an opaque converged
+checkpoint handle together with energy terms and convergence history. The
+implementation follows the same `dft-scf` runner path as the `muffintin`
+binary; the executable remains a thin wrapper.
+
+`scf_session` is the staged entry. Its opaque `ScfSession` methods correspond
+one-for-one to the eight-step chain in [17](17_minimal_dft_scf.md): initial
+density, `build_scf_potential`, basis materialization and solve, occupations,
+density assembly, mixing, energy terms, and convergence decision. This level
+does not invent binding-specific physics APIs. Before implementation, each
+step is checked against the existing public `libmuffintin-dft` and
+`MaterialKernel` seams; any necessary promotion of a private helper is
+recorded here individually.
+
+The staged inventory distinguishes method-neutral algorithms from the first
+LAPW solver implementation:
+
+| Doc 17 step | Method-neutral stage contract | LAPW solver-specific contract |
+|---|---|---|
+| Initial density | Regional density initialization. | – |
+| Build SCF potential | Density to regional potential and potential-energy terms. | – |
+| Materialize basis and solve | – | LAPW radial/basis materialization, `CompiledBasis`, and eigensolve. |
+| Occupations | Eigenvalue sets to chemical potential, occupations, and occupation correction. | – |
+| Assemble density | – | LAPW eigenvectors and compiled projections to a regional density. |
+| Mix density | Regional input/output densities to the next density and physical residual. | – |
+| Evaluate energy terms | Regional fields, eigenvalue sums, and occupation correction to neutral energy terms. | – |
+| Decide convergence | Energy history and physical density residual to a convergence decision. | – |
+
+A method-neutral Python signature may accept and return only neutral types,
+such as regional densities, regional potentials, eigenvalue sets, energy
+terms, and convergence records. It must not expose `CompiledBasis`, LAPW
+matching coefficients, or another solver-owned type. This is the acceptance
+criterion for reusing the same stage unchanged from a later LMTO or FP-KKR
+route.
+
+Neutral stages may be independent opaque handles rather than methods owned by
+`ScfSession`. For example, `DensityMixer.broyden2(alpha, history)` constructs
+a reusable neutral mixer and `mixer.step(...)` advances it. `ScfSession` owns
+only the loop ordering and connects these reusable neutral stations to the
+solver-specific cells. Thus the global layer runs one LAPW `dft-scf` task,
+while the staged layer is a method-neutral muffin-tin SCF toolbox whose first
+solver consumer happens to be LAPW.
+
+The global entry must be implemented on the staged layer so the two levels
+have one source of truth. Within Stage 4, the global production entry lands
+first; the staged API follows only after the doc 17 chain has been checked
+step by step.
+
 ## 6. Stages
 
 | Stage | Content |
 |---|---|
-| 1 | Scaffolding (`mt-python`, `python/`, maturin), checkpoint loading, `scalar_product_input`, and the seven `export_*` methods on it. |
+| 1 | Scaffolding (`mt-python`, `python/`, maturin), checkpoint loading, `scalar_product_input`, `single_dft_scf_config`, and the seven `export_*` methods on the product-input handle. |
 | 2 | `build_scalar_mpb` / `build_scalar_thc` / `build_scalar_coulomb` handles with exports, the parent-grid array input, and `sample_scalar_orbitals`. |
 | 3 | Spinor twins of stages 1 and 2, plus the MLDUMP and CoQui Cholesky writer pass-throughs. |
-| 4 | Bootstrap of the separate `pymuffintin` package: provider protocols, the muffintin backend adapter over pyexport v1, `auxiliary/{lri,thc,hybrid}.py`, `mbpt/hf.py`, and gate 3. Gates 1 and 2 stay in this repository as binding tests. |
+| 4 | Two-level DFT-SCF binding: global `run_dft_scf` first, then the doc 17 staged `ScfSession`; the global entry is implemented on the staged layer. |
+| 5 | Bootstrap of the separate `pymuffintin` package: provider protocols, the muffintin backend adapter over pyexport v1, `auxiliary/{lri,thc,hybrid}.py`, `mbpt/hf.py`, and gate 3. Gates 1 and 2 stay in this repository as binding tests. |
 
 ## 7. Acceptance gates
 
