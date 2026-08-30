@@ -223,9 +223,9 @@ impl MaterialKernel {
         let extended = build_extended_core_potentials(
             &context.electrostatic,
             &context.exchange_correlation,
-            &context.density,
+            context.source_density(),
             &meshes,
-            context.spec,
+            context.core_spec,
         )?;
         self.materialize_nonspectral_basis(potential, basis, &extended)
     }
@@ -498,7 +498,7 @@ impl MaterialKernel {
                 let orbital_scale =
                     f64::from(maximum_n).powi(2) / self.nuclear_charges[site_index].max(1.0);
                 let outer_radius = (4.0 * site.radius.get()).max(40.0 * orbital_scale);
-                extend_mesh(&site.up.mesh, outer_radius)
+                extend_core_mesh(&site.up.mesh, outer_radius).map_err(Into::into)
             })
             .collect()
     }

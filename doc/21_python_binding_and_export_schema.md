@@ -50,7 +50,7 @@ Out of scope for v0.3:
 ```text
 crates/mt-python/            # the only crate containing PyO3
   Cargo.toml                 # package libmuffintin-python, [lib] name muffintin_python, cdylib
-  src/{lib,checkpoint,products,thc,coulomb,spinor,writers,regional,scf,export}.rs
+  src/{lib,checkpoint,products,thc,coulomb,spinor,writers,regional,core,scf,export}.rs
 python/
   pyproject.toml             # maturin backend, module-name = "libmuffintin._native"
   libmuffintin/
@@ -626,6 +626,22 @@ neutral station. It accepts exactly `lda-pw92` or `pbe`, and exactly
 exports all four regional components, and retains the Madelung, Coulomb, XC,
 and density–XC-potential contractions. It contains no `ScfSession`, LAPW, or
 compiled-basis type.
+
+`CoreStation` is the corresponding independent four-component core station.
+It accepts site-labelled `CoreState` values identified by $(n,\kappa)$,
+occupation, and either a closed-shell average or explicit collinear spin
+partition. `CoreStation.solve(regional_potential)` reuses the complete
+`RegionalPotential` build without consuming it and returns a `CoreResult`
+containing a reusable neutral density, the occupied core eigenvalue sum, and
+site-labelled requested/represented charge diagnostics. The station contains
+no SCF configuration, basis, relativity route, LAPW object, band state, or
+occupation vector.
+
+The radial core Hamiltonian is deliberately limited to the spherical scalar
+effective potential. An explicit spin partition controls only how the solved
+physical $P^2+Q^2$ density is distributed into charge and $m_z$; it does not
+create a magnetic radial core Hamiltonian or a spin-dependent core
+eigenproblem.
 
 The MTO research boundary remains in Python: USW construction, value-and-
 derivative data, kink matrices, LMTO/NMTO assembly, occupations, and NMTO

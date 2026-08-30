@@ -44,6 +44,7 @@ impl RegionalDensity {
 #[derive(Clone, Debug)]
 pub(crate) struct RegionalPotential {
     pub(crate) inner: Arc<ScfPotentialBuild>,
+    pub(crate) structure: Arc<muffintin::Structure>,
 }
 
 #[pymethods]
@@ -309,6 +310,7 @@ pub(crate) fn build_regional_potential(
     .map_err(py_error)?;
     Ok(RegionalPotential {
         inner: Arc::new(inner),
+        structure: Arc::clone(&density.structure),
     })
 }
 

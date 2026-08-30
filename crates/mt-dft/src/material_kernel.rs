@@ -4,23 +4,23 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::PI;
 use std::ops::Range;
 
+use crate::core_station::{extend_core_mesh, solve_regional_core_site};
 use crate::{
     AtomicEnergyRequest, BandPathRequest, BandState, ChannelKappaError, CollinearKPoint,
-    CoreContribution, CoreDensityError, CorePotentialBuildError, CorePotentialBuildSpec,
-    CoreSpinPartition, DensityError, FirstVariationRoute, FirstVariationSubspace, FullSpinorKPoint,
-    GeneratedLinearizationEnergy, InterstitialField, LinearizationEnergyDiagnostic,
-    LinearizationEnergyError, LinearizationEnergyGenerator, LocalPauliPotential, MuffinTinField,
-    OccupationError, PdosEnergySample, RegionalCoreShellInput, RegionalDensity,
-    RegionalElectrostaticResult, RegionalPotential, RegionalScalarField, RegionalXcResult,
-    RegularSpectrum, ScalarBuilderError, ScalarIterationBasis, ScalarLocalOrbitalRequest,
-    ScalarSiteInput, ScfBasis, ScfChannelIdentity, ScfChannelRecipe, ScfChannelTreatment,
-    ScfConfig, ScfCoreSite, ScfEnergyContext, ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh,
-    ScfOccupations, ScfPhysics, ScfPotentialBuildError, ScfRelativity, ScfResolvedChannelEnergy,
-    ScfState, SecondVariationError, SpinorBuilderError, SpinorFirstVariationError,
-    SpinorIterationBasis, SpinorLinearizationEnergy, SpinorLocalOrbitalRequest, SpinorSiteInput,
-    TetrahedronError, build_collinear_scalar_iteration_bases,
-    build_extended_checkpoint_core_potentials, build_extended_core_potentials,
-    build_regional_core_contribution, build_scf_potential, build_spinor_iteration_basis,
+    CoreContribution, CorePotentialBuildError, CoreSiteRequest, CoreSpinPartition,
+    CoreStateRequest, CoreStationError, DensityError, FirstVariationRoute, FirstVariationSubspace,
+    FullSpinorKPoint, GeneratedLinearizationEnergy, InterstitialField,
+    LinearizationEnergyDiagnostic, LinearizationEnergyError, LinearizationEnergyGenerator,
+    LocalPauliPotential, MuffinTinField, OccupationError, PdosEnergySample, RegionalDensity,
+    RegionalPotential, RegionalScalarField, RegularSpectrum, ScalarBuilderError,
+    ScalarIterationBasis, ScalarLocalOrbitalRequest, ScalarSiteInput, ScfBasis, ScfChannelIdentity,
+    ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfCoreSite, ScfEnergyContext,
+    ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfOccupations, ScfPhysics,
+    ScfPotentialBuild, ScfPotentialBuildError, ScfRelativity, ScfResolvedChannelEnergy, ScfState,
+    SecondVariationError, SpinorBuilderError, SpinorFirstVariationError, SpinorIterationBasis,
+    SpinorLinearizationEnergy, SpinorLocalOrbitalRequest, SpinorSiteInput, TetrahedronError,
+    build_collinear_scalar_iteration_bases, build_extended_checkpoint_core_potentials,
+    build_extended_core_potentials, build_scf_potential, build_spinor_iteration_basis,
     channel_kappas, channel_l, channel_n, generate_atomic_energy, generate_band_center_energy,
     generate_band_cog_energy, generate_explicit_energy, generate_fermi_offset_energy,
     generate_frozen_checkpoint_energy, generate_log_derivative_energy, kappa_degeneracy_average,
@@ -41,10 +41,8 @@ use muffintin_operators::{
     SpinorSiteOperatorBlocks,
 };
 use muffintin_sphere::{
-    CoreBracketSearch, CoreDiracSpec, CorePotentialContinuationSpec, CoreState, DiracError,
-    EnergyBracket, ExtendedCorePotential, RadialEquation, SpexSpinOrbitPotential,
-    SpinOrbitRadialError, isolate_core_dirac_bracket, solve_core_dirac,
-    spex_spin_orbit_radial_shell,
+    CorePotentialContinuationSpec, CoreState, DiracError, ExtendedCorePotential, RadialEquation,
+    SpexSpinOrbitPotential, SpinOrbitRadialError, spex_spin_orbit_radial_shell,
 };
 use muffintin_tensor::{DenseEigenvectors, TensorError};
 use num_complex::Complex64;
@@ -72,9 +70,7 @@ pub struct MaterialKernel {
     pub(super) frozen_potential: RegionalPotential,
     pub(super) restart_density: Option<RegionalDensity>,
     pub(super) nuclear_charges: Vec<f64>,
-    core_potentials: BTreeMap<usize, CorePotentialContext>,
-    pub(super) density_template: Option<RegionalDensity>,
-    pub(super) energy_terms: BTreeMap<usize, ScfEnergyTerms>,
+    core_potentials: BTreeMap<usize, ScfPotentialBuild>,
     pub(super) spex_spinor_binding: Option<SpexSpinorMaterialBinding>,
 }
 
@@ -88,14 +84,6 @@ pub struct SpexBoundSpinorChannel {
     l: u32,
     requested: ScfChannelRecipe,
     resolved: ScfResolvedChannelEnergy,
-}
-
-#[derive(Clone, Debug)]
-struct CorePotentialContext {
-    electrostatic: RegionalElectrostaticResult,
-    exchange_correlation: RegionalXcResult,
-    density: RegionalDensity,
-    spec: CorePotentialBuildSpec,
 }
 
 #[derive(Clone, Debug)]
@@ -268,8 +256,6 @@ impl MaterialKernel {
             restart_density,
             nuclear_charges,
             core_potentials: BTreeMap::new(),
-            density_template: None,
-            energy_terms: BTreeMap::new(),
             spex_spinor_binding: None,
         };
         kernel.require_topology_site_count("geometry", kernel.geometry.spheres().len())?;
@@ -1140,88 +1126,6 @@ impl MaterialKernel {
         }
     }
 
-    fn core_contribution(
-        &self,
-        site: &ScfCoreSite,
-        extended: &ExtendedCorePotential,
-        template: &RegionalDensity,
-    ) -> Result<CoreContribution, MaterialKernelError> {
-        let site_index = self
-            .sites
-            .iter()
-            .position(|candidate| candidate.id == site.id)
-            .ok_or_else(|| MaterialKernelError::UnknownCoreSite(site.id.clone()))?;
-        if site.states.is_empty() {
-            return Ok(CoreContribution {
-                site_id: site.id.clone(),
-                density: template.zero_like(),
-                eigenvalue_sum: Hartree(0.0),
-            });
-        }
-        let converted = &self.sites[site_index];
-
-        let mut solved = Vec::with_capacity(site.states.len());
-        for requested in &site.states {
-            let solution = self.solve_bound_dirac_state(
-                site_index,
-                requested.principal_quantum_number,
-                requested.kappa,
-                extended,
-            )?;
-            solved.push((solution, requested.occupation));
-        }
-        let shells = solved
-            .iter()
-            .map(|(solution, occupation)| RegionalCoreShellInput {
-                mesh: &extended.mesh,
-                solution,
-                occupation: *occupation,
-                spin: CoreSpinPartition::ClosedShellAverage,
-            })
-            .collect::<Vec<_>>();
-        Ok(build_regional_core_contribution(
-            site.id.clone(),
-            &self.geometry,
-            site_index,
-            &converted.up.mesh,
-            &shells,
-            template,
-        )?
-        .contribution)
-    }
-
-    fn solve_bound_dirac_state(
-        &self,
-        site_index: usize,
-        principal_quantum_number: u32,
-        kappa: i32,
-        extended: &ExtendedCorePotential,
-    ) -> Result<muffintin_sphere::CoreDiracSolution, MaterialKernelError> {
-        let state = CoreState::new(principal_quantum_number, Kappa::new(kappa)?)?;
-        let charge = self.nuclear_charges[site_index];
-        let converted = &self.sites[site_index];
-        // Scan the complete negative atomic scale. Node-count selection, not
-        // an energy estimate, identifies both core and relLO bound states.
-        let continuum = *extended
-            .values
-            .last()
-            .expect("extended core potential follows a nonempty mesh");
-        let atomic_scale = (charge * charge / f64::from(state.n).powi(2)).max(1.0);
-        let lower = continuum - 2.0 * charge * charge;
-        let upper = continuum - 1.0e-8 * atomic_scale;
-        let window = EnergyBracket::from_values(lower, upper)?;
-        let bracket = isolate_core_dirac_bracket(
-            &extended.mesh,
-            &extended.values,
-            CoreBracketSearch::new(state, converted.radius, window).with_intervals(512),
-        )?;
-        Ok(solve_core_dirac(
-            &extended.mesh,
-            &extended.values,
-            CoreDiracSpec::new(state, bracket, converted.radius),
-        )?)
-    }
-
     fn extended_core_meshes(
         &self,
         requested_site: usize,
@@ -1245,9 +1149,35 @@ impl MaterialKernel {
                 let orbital_scale =
                     f64::from(maximum_n).powi(2) / self.nuclear_charges[site_index].max(1.0);
                 let outer_radius = (4.0 * site.radius.get()).max(40.0 * orbital_scale);
-                extend_mesh(&site.up.mesh, outer_radius)
+                extend_core_mesh(&site.up.mesh, outer_radius).map_err(Into::into)
             })
             .collect()
+    }
+
+    fn core_site_request(
+        &self,
+        site_index: usize,
+        site: &ScfCoreSite,
+    ) -> Result<CoreSiteRequest, MaterialKernelError> {
+        let states = site
+            .states
+            .iter()
+            .map(|requested| {
+                Ok(CoreStateRequest {
+                    state: CoreState::new(
+                        requested.principal_quantum_number,
+                        Kappa::new(requested.kappa)?,
+                    )?,
+                    occupation: requested.occupation,
+                    spin: CoreSpinPartition::ClosedShellAverage,
+                })
+            })
+            .collect::<Result<Vec<_>, MaterialKernelError>>()?;
+        Ok(CoreSiteRequest {
+            site_index,
+            site_id: site.id.clone(),
+            states,
+        })
     }
 
     fn density_layout(
@@ -1286,7 +1216,6 @@ impl ScfPhysics for MaterialKernel {
 
     fn initial_density(&mut self, config: &ScfConfig) -> Result<RegionalDensity, Self::Error> {
         if let Some(density) = &self.restart_density {
-            self.density_template = Some(density.clone());
             return Ok(density.clone());
         }
         let meshes = self.channel_meshes(&config.basis)?;
@@ -1347,15 +1276,16 @@ impl ScfPhysics for MaterialKernel {
                     .iter()
                     .position(|candidate| candidate.id == site.id)
                     .ok_or_else(|| MaterialKernelError::UnknownCoreSite(site.id.clone()))?;
-                let contribution = self.core_contribution(
-                    site,
-                    &initial_extended[site_index].potential,
+                let request = self.core_site_request(site_index, site)?;
+                let contribution = solve_regional_core_site(
                     &density,
+                    &self.nuclear_charges,
+                    &request,
+                    &initial_extended[site_index].potential,
                 )?;
-                density.add_scaled(1.0, &contribution.density)?;
+                density.add_scaled(1.0, &contribution.contribution.density)?;
             }
         }
-        self.density_template = Some(density.clone());
         Ok(density)
     }
 
@@ -1365,19 +1295,10 @@ impl ScfPhysics for MaterialKernel {
         density: &RegionalDensity,
         exchange_correlation: ScfExchangeCorrelation,
     ) -> Result<RegionalPotential, Self::Error> {
-        self.density_template = Some(density.clone());
         let built = build_scf_potential(density, &self.nuclear_charges, exchange_correlation)?;
-        self.core_potentials.insert(
-            iteration,
-            CorePotentialContext {
-                electrostatic: built.electrostatic.clone(),
-                exchange_correlation: built.exchange_correlation.clone(),
-                density: density.clone(),
-                spec: built.core_spec,
-            },
-        );
-        self.energy_terms.insert(iteration, built.energy_terms);
-        Ok(built.potential)
+        let potential = built.potential.clone();
+        self.core_potentials.insert(iteration, built);
+        Ok(potential)
     }
 
     fn solve_core(
@@ -1388,16 +1309,10 @@ impl ScfPhysics for MaterialKernel {
         _basis: &ScfBasis,
         _relativity: ScfRelativity,
     ) -> Result<CoreContribution, Self::Error> {
-        let template = self
-            .density_template
-            .as_ref()
-            .ok_or(MaterialKernelError::MissingDensityTemplate)?
-            .clone();
-        let context = self
+        let built = self
             .core_potentials
             .get(&iteration)
-            .ok_or(MaterialKernelError::MissingCoreContinuation(iteration))?
-            .clone();
+            .ok_or(MaterialKernelError::MissingCoreContinuation(iteration))?;
         let site_index = self
             .sites
             .iter()
@@ -1406,19 +1321,26 @@ impl ScfPhysics for MaterialKernel {
         if site.states.is_empty() {
             return Ok(CoreContribution {
                 site_id: site.id.clone(),
-                density: template.zero_like(),
+                density: built.source_density().zero_like(),
                 eigenvalue_sum: Hartree(0.0),
             });
         }
         let meshes = self.extended_core_meshes(site_index, &site.states)?;
         let continued = build_extended_core_potentials(
-            &context.electrostatic,
-            &context.exchange_correlation,
-            &context.density,
+            &built.electrostatic,
+            &built.exchange_correlation,
+            built.source_density(),
             &meshes,
-            context.spec,
+            built.core_spec,
         )?;
-        self.core_contribution(site, &continued[site_index].potential, &template)
+        let request = self.core_site_request(site_index, site)?;
+        Ok(solve_regional_core_site(
+            built.source_density(),
+            &self.nuclear_charges,
+            &request,
+            &continued[site_index].potential,
+        )?
+        .contribution)
     }
 
     fn assemble_one_particle(
@@ -1492,9 +1414,9 @@ impl ScfPhysics for MaterialKernel {
         &mut self,
         context: ScfEnergyContext<'_, Self::OneParticle, Self::BandSolution>,
     ) -> Result<ScfEnergyTerms, Self::Error> {
-        self.energy_terms
+        self.core_potentials
             .get(&context.iteration)
-            .copied()
+            .map(|build| build.energy_terms)
             .ok_or(MaterialKernelError::MissingEnergyTerms(context.iteration))
     }
 
@@ -1675,23 +1597,6 @@ fn collinear_interstitial_potential(
         InterstitialPotential::try_from(&up)?,
         InterstitialPotential::try_from(&down)?,
     ))
-}
-
-fn extend_mesh(
-    muffin_tin: &ExponentialMesh,
-    target_radius: f64,
-) -> Result<ExponentialMesh, MaterialKernelError> {
-    let extra = (target_radius / muffin_tin.last().get()).ln().max(0.0) / muffin_tin.increment();
-    let count = muffin_tin
-        .len()
-        .checked_add(extra.ceil() as usize)
-        .and_then(|count| count.checked_add(1))
-        .ok_or(MaterialKernelError::CoreMeshCountOverflow)?;
-    Ok(ExponentialMesh::new(
-        muffin_tin.first(),
-        muffin_tin.increment(),
-        count,
-    )?)
 }
 
 fn spex_bound_channel_mismatch(bound: &SpexBoundSpinorChannel) -> MaterialKernelError {
@@ -1991,7 +1896,7 @@ pub enum MaterialKernelError {
     #[error(transparent)]
     CorePotential(#[from] CorePotentialBuildError),
     #[error(transparent)]
-    CoreDensity(#[from] CoreDensityError),
+    CoreStation(#[from] CoreStationError),
     #[error("material-kernel {component} has {actual} sites, expected {expected}")]
     TopologySiteCount {
         component: &'static str,
@@ -2144,10 +2049,6 @@ pub enum MaterialKernelError {
     },
     #[error("core site {0:?} is not present in the checkpoint")]
     UnknownCoreSite(String),
-    #[error("extended core mesh point count overflows usize")]
-    CoreMeshCountOverflow,
-    #[error("core solve has no regional density template")]
-    MissingDensityTemplate,
     #[error("iteration {0} has no raw periodic continuation for the core solve")]
     MissingCoreContinuation(usize),
     #[error("received {actual} occupations for {expected} states")]

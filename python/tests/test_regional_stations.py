@@ -13,8 +13,8 @@ def test_regional_density_roundtrip_and_potential_station() -> None:
     log_increment = math.log(radius / first) / (point_count - 1)
     structure = mt.Structure(
         lattice=[[4.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 4.0]],
-        site_ids=["H-1"],
-        atomic_numbers=[1],
+        site_ids=["C-1"],
+        atomic_numbers=[6],
         fractional_positions=[[0.5, 0.5, 0.5]],
         radial_meshes=[(first, log_increment, point_count)],
         radial_equations=["scalar-koelling-harmon"],
@@ -76,6 +76,21 @@ def test_regional_density_roundtrip_and_potential_station() -> None:
             potential.exchange_correlation_potential,
         )
     )
+
+    core = mt.CoreStation(
+        [mt.CoreSite(0, "C-1", [mt.CoreState(1, -1, occupation=2.0)])]
+    ).solve(potential)
+    assert math.isfinite(core.core_eigenvalue_sum)
+    assert core.core_eigenvalue_sum < 0.0
+    assert core.site_ids() == ["C-1"]
+    assert core.requested_charges() == pytest.approx([2.0])
+    assert core.represented_charges() == pytest.approx([2.0])
+    core_density = core.density()
+    core_export = core_density.export_interstitial()
+    assert np.isfinite(core_export["components"]).all()
+    assert np.isfinite(core_export["mt_components"]).all()
+    combined = roundtrip.add_scaled(1.0, core_density)
+    assert np.isfinite(combined.export_interstitial()["components"]).all()
 
     with pytest.raises(ValueError, match="mt_sample_offsets"):
         mt.RegionalDensity(
