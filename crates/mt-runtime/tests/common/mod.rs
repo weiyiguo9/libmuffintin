@@ -11,12 +11,11 @@ use muffintin::{
     KMesh, Mixing, Occupations, Relativity, Task, Workflow, channel_recipe_to_toml, input_to_toml,
 };
 use muffintin_io::{
-    AngularBasis, BasisHints, Complex64V1, EnergyParameterV1, EnergyUnit,
-    ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization, FourierPhase,
+    AngularBasis, BasisHints, CheckpointMeta, CheckpointV1, Complex64V1, EnergyParameterV1,
+    EnergyUnit, ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization, FourierPhase,
     GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit, LinearizationV1,
-    CheckpointMeta, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTag, SiteSpinV1, SiteV1, CheckpointV1, SphericalChannelConvention, SpinTag,
-    checkpoint_to_toml,
+    PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1, RadialEquationTag,
+    SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag, checkpoint_to_toml,
 };
 
 pub fn sample_input() -> Input {
@@ -41,7 +40,8 @@ pub fn sample_input() -> Input {
                         recipe: Some(PathBuf::from("recipes/si.toml")),
                         envelope: BasisEnvelope {
                             kind: BasisEnvelopeKind::PlaneWave,
-                            cutoff: 4.0,
+                            g_cutoff: Some(4.0),
+                            energy_cutoff: None,
                         },
                         channels: BTreeMap::from([
                             (
@@ -210,7 +210,8 @@ pub fn supported_input() -> Input {
                     recipe: None,
                     envelope: BasisEnvelope {
                         kind: BasisEnvelopeKind::PlaneWave,
-                        cutoff: 0.5,
+                        g_cutoff: Some(0.5),
+                        energy_cutoff: None,
                     },
                     channels: BTreeMap::new(),
                 },

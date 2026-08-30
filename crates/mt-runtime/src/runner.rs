@@ -375,7 +375,7 @@ pub(crate) fn scf_config(
         electron_count: *electron_count,
         k_mesh: map_k_mesh(*k_mesh),
         basis: ScfBasis {
-            plane_wave_cutoff: basis.envelope.cutoff,
+            plane_wave_cutoff: basis.envelope.normalized_cutoff(),
             l_max: basis.l_max,
             channels,
             resolved_channels: Vec::new(),

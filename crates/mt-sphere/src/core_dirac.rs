@@ -648,10 +648,24 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
     let mut lower_shot = shoot(mesh, potential, spec.state.kappa, lower, false)?;
     let upper_shot = shoot(mesh, potential, spec.state.kappa, upper, false)?;
     if lower_shot.residual == 0.0 {
-        return assemble_solution(mesh, potential, spec, lower, lower_shot.match_index);
+        return assemble_solution(
+            mesh,
+            potential,
+            spec,
+            lower,
+            lower_shot.match_index,
+            lower_shot.outer_index,
+        );
     }
     if upper_shot.residual == 0.0 {
-        return assemble_solution(mesh, potential, spec, upper, upper_shot.match_index);
+        return assemble_solution(
+            mesh,
+            potential,
+            spec,
+            upper,
+            upper_shot.match_index,
+            upper_shot.outer_index,
+        );
     }
     if lower_shot.residual.signum() == upper_shot.residual.signum() {
         return Err(DiracError::RootNotBracketed {
@@ -668,7 +682,14 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
         if shot.residual.abs() <= spec.matching_tolerance
             && 0.5 * (upper - lower) <= spec.energy_tolerance
         {
-            return assemble_solution(mesh, potential, spec, energy, shot.match_index);
+            return assemble_solution(
+                mesh,
+                potential,
+                spec,
+                energy,
+                shot.match_index,
+                shot.outer_index,
+            );
         }
         if shot.residual.signum() == lower_shot.residual.signum() {
             lower = energy;
@@ -1077,6 +1098,7 @@ fn regular_valence_initial_state(
 struct Shot {
     residual: f64,
     match_index: usize,
+    outer_index: usize,
 }
 
 fn validate_inputs(
@@ -1142,8 +1164,17 @@ fn shoot(
     keep_arrays: bool,
 ) -> Result<Shot, DiracError> {
     let match_index = select_match_index(mesh, potential, energy);
+    let outer_index = select_outer_index(mesh, match_index);
     let outward = integrate_outward(mesh, potential, kappa, energy, match_index, keep_arrays)?;
-    let inward = integrate_inward(mesh, potential, kappa, energy, match_index, keep_arrays)?;
+    let inward = integrate_inward(
+        mesh,
+        potential,
+        kappa,
+        energy,
+        match_index,
+        outer_index,
+        keep_arrays,
+    )?;
     let (po, qo) = outward.at_match(match_index);
     let (pi, qi) = inward.at_match(match_index);
     let out_norm = po.hypot(qo);
@@ -1158,6 +1189,7 @@ fn shoot(
     Ok(Shot {
         residual,
         match_index,
+        outer_index,
     })
 }
 
@@ -1255,6 +1287,7 @@ fn integrate_inward(
     kappa: Kappa,
     energy: f64,
     stop: usize,
+    outer_index: usize,
     keep_arrays: bool,
 ) -> Result<Branch, DiracError> {
     let n = mesh.len();
@@ -1268,7 +1301,7 @@ fn integrate_inward(
     } else {
         Vec::new()
     };
-    let delta = potential[n - 1] - energy;
+    let delta = potential[outer_index] - energy;
     let mass_factor = 2.0 - delta / C_SQUARED;
     let decay_squared = mass_factor * delta;
     if !decay_squared.is_finite() || decay_squared <= 0.0 {
@@ -1278,11 +1311,11 @@ fn integrate_inward(
     let mut current_p = 1.0;
     let mut current_q = -decay / mass_factor;
     if keep_arrays {
-        p[n - 1] = current_p;
-        q_hat[n - 1] = current_q;
+        p[outer_index] = current_p;
+        q_hat[outer_index] = current_q;
     }
     let k = f64::from(kappa.get());
-    for i in (stop + 1..n).rev() {
+    for i in (stop + 1..=outer_index).rev() {
         (current_p, current_q) = rk4_interval(
             mesh.radii()[i].get(),
             mesh.radii()[i - 1].get(),
@@ -1466,6 +1499,17 @@ fn select_match_index(mesh: &ExponentialMesh, potential: &[f64], energy: f64) ->
         .expect("match-point search range over a nonempty mesh is nonempty")
 }
 
+fn select_outer_index(mesh: &ExponentialMesh, match_index: usize) -> usize {
+    // Seed the decaying branch far enough beyond the state-dependent turning
+    // point without integrating the growing reverse solution across the
+    // unused remainder of an arbitrarily extended user mesh.
+    let target = 15.0 * mesh.radii()[match_index].get();
+    mesh.radii()
+        .iter()
+        .position(|radius| radius.get() >= target)
+        .unwrap_or(mesh.len() - 1)
+}
+
 fn locate_muffin_tin_index(
     mesh: &ExponentialMesh,
     muffin_tin_radius: Bohr,
@@ -1495,9 +1539,18 @@ fn assemble_solution(
     spec: &CoreDiracSpec,
     energy: f64,
     match_index: usize,
+    outer_index: usize,
 ) -> Result<CoreDiracSolution, DiracError> {
     let outward = integrate_outward(mesh, potential, spec.state.kappa, energy, match_index, true)?;
-    let inward = integrate_inward(mesh, potential, spec.state.kappa, energy, match_index, true)?;
+    let inward = integrate_inward(
+        mesh,
+        potential,
+        spec.state.kappa,
+        energy,
+        match_index,
+        outer_index,
+        true,
+    )?;
     let po = outward.p[match_index];
     let qo = outward.q_hat[match_index];
     let pi = inward.p[match_index];
@@ -1518,7 +1571,7 @@ fn assemble_solution(
 
     let mut p = outward.p;
     let mut q_hat = outward.q_hat;
-    for i in match_index + 1..mesh.len() {
+    for i in match_index + 1..=outer_index {
         p[i] = scale_in * inward.p[i];
         q_hat[i] = scale_in * inward.q_hat[i];
     }
@@ -1658,6 +1711,53 @@ mod tests {
         assert!((solution.norm_mt + solution.norm_outside - 1.0).abs() < 2.0e-13);
         assert!(solution.spill > 0.0 && solution.spill < 1.0e-3);
         assert_eq!(solution.nodes, 0);
+        assert!(solution.matching_residual.abs() <= spec.matching_tolerance);
+    }
+
+    #[test]
+    fn long_mesh_iron_one_s_stops_the_inward_branch_beyond_the_match_radius() {
+        let mesh = extended_mesh(1.0e-7, 200.0, 0.002);
+        let z = 26.0;
+        let potential: Vec<f64> = mesh
+            .radii()
+            .iter()
+            .map(|radius| -z / radius.get())
+            .collect();
+        let mt_radius = *mesh
+            .radii()
+            .iter()
+            .min_by(|a, b| (a.get() - 2.0).abs().total_cmp(&(b.get() - 2.0).abs()))
+            .unwrap();
+        let state = CoreState::new(1, Kappa::new(-1).unwrap()).unwrap();
+        let exact = C_SQUARED * ((1.0 - z * z / C_SQUARED).sqrt() - 1.0);
+        let spec = CoreDiracSpec::new(
+            state,
+            EnergyBracket::from_values(exact - 20.0, exact + 20.0).unwrap(),
+            mt_radius,
+        );
+
+        let solution = solve_core_dirac(&mesh, &potential, spec).unwrap();
+        let match_index = mesh
+            .radii()
+            .iter()
+            .position(|radius| *radius == solution.match_radius)
+            .unwrap();
+        let outer_index = select_outer_index(&mesh, match_index);
+
+        assert!(outer_index < mesh.len() - 1);
+        assert!(mesh.radii()[outer_index].get() >= 15.0 * solution.match_radius.get());
+        assert!(
+            solution.p[outer_index + 1..]
+                .iter()
+                .all(|&value| value == 0.0)
+        );
+        assert!(
+            solution.q[outer_index + 1..]
+                .iter()
+                .all(|&value| value == 0.0)
+        );
+        assert!((solution.norm_total - 1.0).abs() < 2.0e-13);
+        assert!(solution.matching_residual.is_finite());
         assert!(solution.matching_residual.abs() <= spec.matching_tolerance);
     }
 

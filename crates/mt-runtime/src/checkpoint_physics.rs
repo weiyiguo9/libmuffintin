@@ -31,8 +31,8 @@ mod atomic_checkpoint;
 mod convert_v2;
 
 pub use atomic_checkpoint::{
-    AtomicCheckpointError, AtomicCheckpointRequest, AtomicCheckpointResult,
-    materialize_atomic_checkpoint_v2,
+    AtomicStart, AtomicStartError, AtomicStartRequest, RegionalFieldLayout,
+    RegionalFieldLayoutError, Structure, materialize_atomic_start,
 };
 pub use convert_v2::checkpoint_v2_from_state;
 use convert_v2::{convert_v2_site_bases, regional_density_from_v2, regional_potential_from_v2};
@@ -68,6 +68,7 @@ pub struct FrozenScalarRadialSamples {
     pub energy_derivative_boundary_radial: Vec<[f64; 2]>,
 }
 
+#[derive(Clone, Debug)]
 pub(super) struct ConvertedCheckpointGeometry {
     pub(super) direct: [[Bohr; 3]; 3],
     pub(super) reciprocal: ReciprocalLattice,

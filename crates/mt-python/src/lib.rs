@@ -10,7 +10,8 @@ mod thc;
 mod writers;
 
 use checkpoint::{
-    Checkpoint, CheckpointPhysics, ScalarProductInput, ScalarProductSlice, load_checkpoint,
+    AtomicStart, Checkpoint, CheckpointPhysics, FreeAtomControls, RegionalFieldLayout,
+    ScalarProductInput, ScalarProductSlice, Structure, load_checkpoint, materialize_atomic_start,
 };
 use coulomb::{
     ScalarCoulombResult, ScalarMpbCoulombResult, build_scalar_coulomb, build_scalar_mpb_coulomb,
@@ -23,6 +24,10 @@ use thc::{ScalarThcResult, build_scalar_thc, sample_scalar_orbitals};
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<Checkpoint>()?;
     module.add_class::<CheckpointPhysics>()?;
+    module.add_class::<Structure>()?;
+    module.add_class::<RegionalFieldLayout>()?;
+    module.add_class::<FreeAtomControls>()?;
+    module.add_class::<AtomicStart>()?;
     module.add_class::<ScalarProductInput>()?;
     module.add_class::<ScalarProductSlice>()?;
     module.add_class::<ScalarMpbResult>()?;
@@ -30,6 +35,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<ScalarCoulombResult>()?;
     module.add_class::<ScalarMpbCoulombResult>()?;
     module.add_function(wrap_pyfunction!(load_checkpoint, module)?)?;
+    module.add_function(wrap_pyfunction!(materialize_atomic_start, module)?)?;
     module.add_function(wrap_pyfunction!(build_scalar_mpb, module)?)?;
     module.add_function(wrap_pyfunction!(build_scalar_thc, module)?)?;
     module.add_function(wrap_pyfunction!(build_scalar_coulomb, module)?)?;

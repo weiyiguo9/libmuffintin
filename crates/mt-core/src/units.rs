@@ -141,6 +141,16 @@ impl Bohr {
 }
 
 impl InverseBohr {
+    /// Convert a plane-wave kinetic-energy cutoff to its reciprocal-length cutoff.
+    pub fn from_kinetic_cutoff(energy: Hartree) -> Self {
+        Self((2.0 * energy.get()).sqrt())
+    }
+
+    /// Convert this reciprocal-length cutoff to the equivalent kinetic energy.
+    pub fn to_kinetic_cutoff(self) -> Hartree {
+        Hartree(0.5 * self.squared())
+    }
+
     /// Square the reciprocal length, useful for Cartesian norm comparisons.
     pub fn squared(self) -> f64 {
         self.0 * self.0
@@ -158,5 +168,12 @@ mod tests {
         assert_eq!(e.to_rydberg(), 2.0);
         let r = Bohr::from_angstrom(BOHR_TO_ANGSTROM);
         assert_eq!(r, Bohr(1.0));
+    }
+
+    #[test]
+    fn kinetic_cutoff_conversion_round_trips() {
+        let reciprocal = InverseBohr::from_kinetic_cutoff(Hartree(8.0));
+        assert_eq!(reciprocal, InverseBohr(4.0));
+        assert_eq!(reciprocal.to_kinetic_cutoff(), Hartree(8.0));
     }
 }

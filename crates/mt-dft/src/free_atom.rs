@@ -114,7 +114,8 @@ pub fn run_free_atom_lda(
                     .expect("the embedded atomic configuration has nonzero kappa"),
             )
             .expect("the embedded atomic configuration is physically admissible");
-            let request = AtomicEnergyRequest::new(state, nuclear_charge, muffin_tin_radius);
+            let request = AtomicEnergyRequest::new(state, nuclear_charge, muffin_tin_radius)
+                .with_intervals(2048);
             let solved = solve_atomic_bound_state(mesh, &potential, request).map_err(|source| {
                 FreeAtomScfError::BoundState {
                     iteration,

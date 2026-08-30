@@ -89,7 +89,7 @@ Constraints:
 
 ## 3. Binding design rules
 
-1. **Configuration enters as input V2 TOML.** The binding passes a
+1. **Configuration enters as input V3 TOML.** The binding passes a
    path or string to the existing runtime input parser. The runtime
    `single_dft_scf_config` bridge requires exactly one `dft-scf` task;
    zero or multiple matching tasks are typed errors rather than an implicit
@@ -437,6 +437,51 @@ require a proper-potential solve and phase-shifted continuation outside the
 muffin tin; the binding does not mislabel such a continuation as the native
 solution.
 
+### 4.5 Common neutral atomic start
+
+The binding exposes a method-neutral cold-start boundary without constructing
+an SCF task or an orbital basis:
+
+```python
+structure = mt.Structure(
+    lattice=lattice_bohr,
+    site_ids=site_ids,
+    atomic_numbers=atomic_numbers,
+    fractional_positions=fractional_positions,
+    radial_meshes=[(first_bohr, log_increment, point_count), ...],
+    radial_equations=["scalar-koelling-harmon", ...],
+    linearization_energies=[[(l, energy_hartree), ...], ...],
+)
+layout = mt.RegionalFieldLayout.from_g_cutoff(
+    structure, g_cutoff=4.0, muffin_tin_l_max=4
+)
+controls = mt.FreeAtomControls(
+    mesh_first=1.0e-6,
+    mesh_log_increment=0.01,
+    mesh_point_count=1683,
+    mixing=0.3,
+    potential_tolerance=2.0e-5,
+    tail_tolerance=1.0e-7,
+    max_iterations=120,
+    angular_points=50,
+)
+start = mt.materialize_atomic_start(structure, layout, "lda-pw92", controls)
+start.checkpoint.write("atomic-start.toml")
+```
+
+Each `radial_meshes` row defines both the exact site muffin-tin radius and the
+serialized radial-mesh `last` value; no second radius can disagree with it.
+`RegionalFieldLayout(...)` alternatively accepts an exact ordered `g_vectors`
+list. Its `from_g_cutoff` helper takes reciprocal length in `bohr^-1`; neither
+constructor accepts a k mesh, `ScfConfig`, or `CompiledBasis`.
+
+`AtomicStart.charge_closure` contains exactly `interstitial_fraction`,
+`response_volume`, `target_electron_count`, `uncorrected_electron_count`,
+`zero_mode_coefficient_correction`, and `represented_electron_count`.
+`AtomicStart.checkpoint` returns the ordinary shared `Checkpoint` handle, whose
+`write(path)` method emits canonical Checkpoint V2 TOML. The fixed binding
+metadata is source-neutral and contains no material name.
+
 ## 5. Entry points
 
 The surface is about fifteen functions and methods, scalar lane
@@ -496,7 +541,7 @@ it is the reference metric used by the Stage 5 pair-space projection and is
 not a new runtime representation or Coulomb algorithm.
 
 Stage 1 adds one narrow runtime surface, `single_dft_scf_config`: it
-converts the only `dft-scf` task in a prepared Input V2 workflow to the
+converts the only `dft-scf` task in a prepared Input V3 workflow to the
 existing internal `ScfConfig`, returning a typed error when the count is
 not exactly one. The binding calls this function and does not duplicate
 runtime configuration mapping.

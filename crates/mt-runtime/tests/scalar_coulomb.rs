@@ -4,12 +4,12 @@ use std::collections::BTreeMap;
 use std::f64::consts::PI;
 
 use muffintin::{
-    RankPolicy, SCALAR_COULOMB_EXACTNESS_FLOOR, ScalarCoulombError, ScalarCoulombPairMatch,
-    ScalarCoulombSpec, ScalarMpbSelection, ScalarMpbSpec, ScalarThcSpec, CheckpointPhysics,
+    CheckpointPhysics, RankPolicy, SCALAR_COULOMB_EXACTNESS_FLOOR, ScalarCoulombError,
+    ScalarCoulombPairMatch, ScalarCoulombSpec, ScalarMpbSelection, ScalarMpbSpec, ScalarThcSpec,
     ThcCandidates, ThcEngine, ThcParentGrid, build_scalar_coulomb, build_scalar_mpb,
     build_scalar_thc,
 };
-use muffintin_prodbasis::{AuxiliaryLayout, OrbitalPair, PairVertex, TransferQ};
+use muffintin_core::Cell;
 use muffintin_core::{Bohr, Hartree, InverseBohr};
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombRequest, InterpolationProjection, SampledPointSupport,
@@ -21,17 +21,16 @@ use muffintin_dft::{
     ScfCoreSite, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations, ScfRelativity,
     XcFunctional,
 };
-use muffintin_core::Cell;
 use muffintin_io::{
-    AngularBasis, BasisHints, Complex64V1, EnergyParameterV1, EnergyUnit,
-    ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization, FourierPhase,
-    GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit, LinearizationV1,
-    CheckpointMeta, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTag, SiteSpinV1, SiteV1, CheckpointV1, CheckpointV2, SphericalChannelConvention,
-    SpinTag,
+    AngularBasis, BasisHints, CheckpointMeta, CheckpointV1, CheckpointV2, Complex64V1,
+    EnergyParameterV1, EnergyUnit, ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization,
+    FourierPhase, GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit,
+    LinearizationV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
+    RadialEquationTag, SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag,
 };
 use muffintin_operators::lapw::Provenance;
 use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
+use muffintin_prodbasis::{AuxiliaryLayout, OrbitalPair, PairVertex, TransferQ};
 use num_complex::Complex64;
 
 #[path = "thc_fixture_common.rs"]
@@ -133,7 +132,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
             shift: [0.0; 3],
         },
         basis: ScfBasis {
-            plane_wave_cutoff: cutoff,
+            plane_wave_cutoff: InverseBohr(cutoff),
             l_max: 1,
             channels: vec![
                 ScfChannelRecipe {

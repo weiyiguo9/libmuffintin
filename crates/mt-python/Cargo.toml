@@ -18,6 +18,7 @@ doctest = false
 [dependencies]
 libmuffintin-coulomb = { path = "../mt-coulomb" }
 libmuffintin-core = { path = "../mt-core" }
+libmuffintin-dft = { path = "../mt-dft" }
 libmuffintin-io = { path = "../mt-io" }
 libmuffintin-operators = { path = "../mt-operators" }
 libmuffintin-prodbasis = { path = "../mt-prodbasis" }

@@ -5,10 +5,11 @@ use std::path::Path;
 use std::time::Instant;
 
 use muffintin::{
-    ChannelIdentity, ChannelTreatment, RecipeSite, CheckpointPhysics, SpinorCoulombSpec,
+    ChannelIdentity, ChannelTreatment, CheckpointPhysics, RecipeSite, SpinorCoulombSpec,
     SpinorMpbSelection, SpinorMpbSpec, ThcCandidates, ThcParentGrid, ThcPoint, ThcRegion,
     build_spinor_coulomb, build_spinor_mpb, compile_channel_recipe, write_spinor_mldump,
 };
+use muffintin_core::Cell;
 use muffintin_core::{Bohr, Hartree, InverseBohr};
 use muffintin_coulomb::{CoulombRequest, InterpolationProjection};
 use muffintin_dft::{
@@ -17,7 +18,6 @@ use muffintin_dft::{
     ScfChannelTreatment, ScfConfig, ScfConvergence, ScfExchangeCorrelation, ScfKMesh, ScfMixing,
     ScfOccupations, ScfRelativity, XcFunctional, fleur_default_atomic_configuration,
 };
-use muffintin_core::Cell;
 use muffintin_io::{
     MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION, MldumpGeometryV1, MldumpHeaderV1,
     MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1, MldumpPayloadV1, MldumpQEntryV1,
@@ -249,7 +249,8 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
         panic!("authorized artifact missing at {ARTIFACT}");
     }
     let started = Instant::now();
-    let fields = read_spex_snapshot_hdf(path).expect("frozen reader must load b45d9b9 checkpoint.h5");
+    let fields =
+        read_spex_snapshot_hdf(path).expect("frozen reader must load b45d9b9 checkpoint.h5");
     assert_eq!(fields.spin_layout, "collinear-up-down");
     assert_eq!(fields.interstitial_phase, "positive-exponent");
     assert_eq!(
@@ -314,7 +315,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
             shift: [0.0; 3],
         },
         basis: ScfBasis {
-            plane_wave_cutoff: fields.plane_wave_cutoff.min(0.5),
+            plane_wave_cutoff: InverseBohr(fields.plane_wave_cutoff.min(0.5)),
             l_max: 3,
             channels: sm_runtime_channels(&recipe),
             resolved_channels: Vec::new(),

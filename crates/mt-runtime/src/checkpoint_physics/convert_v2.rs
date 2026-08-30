@@ -18,12 +18,12 @@ pub fn checkpoint_v2_from_state(
         }
     };
     let mut potential_hints = template_potential.basis_hints;
-    potential_hints.plane_wave_cutoff = Some(state.basis.plane_wave_cutoff);
+    potential_hints.plane_wave_cutoff = Some(state.basis.plane_wave_cutoff.get());
     let mut density_hints = match &template.initial {
         InitialV2::Restart { density, .. } => density.basis_hints,
         InitialV2::FrozenPotential { .. } => template_potential.basis_hints,
     };
-    density_hints.plane_wave_cutoff = Some(state.basis.plane_wave_cutoff);
+    density_hints.plane_wave_cutoff = Some(state.basis.plane_wave_cutoff.get());
     let angular_basis = template.meta.potential_convention.angular_basis;
     let density = DensityV2 {
         unit: FieldUnitV2::BohrMinus3,

@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use muffintin_core::{Hartree, Kappa};
+use muffintin_core::{Hartree, InverseBohr, Kappa};
 use thiserror::Error;
 
 use crate::soc::FirstVariationWindow;
@@ -31,7 +31,7 @@ pub struct ScfKMesh {
 /// LAPW basis controls that do not prescribe a concrete basis representation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScfBasis {
-    pub plane_wave_cutoff: f64,
+    pub plane_wave_cutoff: InverseBohr,
     pub l_max: u32,
     /// Immutable, normalized channel requests for each outer SCF iteration.
     pub channels: Vec<ScfChannelRecipe>,
@@ -184,7 +184,8 @@ impl ScfConfig {
                 return Err(ScfConfigError::NonFiniteKMeshShift { axis, shift });
             }
         }
-        if !self.basis.plane_wave_cutoff.is_finite() || self.basis.plane_wave_cutoff <= 0.0 {
+        let plane_wave_cutoff = self.basis.plane_wave_cutoff.get();
+        if !plane_wave_cutoff.is_finite() || plane_wave_cutoff <= 0.0 {
             return Err(ScfConfigError::InvalidPlaneWaveCutoff(
                 self.basis.plane_wave_cutoff,
             ));
@@ -1407,7 +1408,7 @@ pub enum ScfConfigError {
     #[error("SCF k-mesh shift on axis {axis} is not finite: {shift}")]
     NonFiniteKMeshShift { axis: usize, shift: f64 },
     #[error("plane-wave cutoff must be finite and positive, got {0}")]
-    InvalidPlaneWaveCutoff(f64),
+    InvalidPlaneWaveCutoff(InverseBohr),
     #[error("l_max must be positive")]
     ZeroLMax,
     #[error("SCF channel site must not be empty")]
@@ -1970,7 +1971,7 @@ mod tests {
                 shift: [0.0; 3],
             },
             basis: ScfBasis {
-                plane_wave_cutoff: 4.0,
+                plane_wave_cutoff: InverseBohr(4.0),
                 l_max: 8,
                 channels: Vec::new(),
                 resolved_channels: Vec::new(),

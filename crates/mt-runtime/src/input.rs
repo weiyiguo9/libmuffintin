@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::PathBuf;
 
+use muffintin_core::{Hartree, InverseBohr};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{finite, fraction, nonempty, positive};
@@ -10,7 +11,7 @@ use crate::{ChannelEnergyGenerator, ChannelTreatment, InputError, InputValidatio
 /// Stable discriminator written at the start of every runtime input.
 pub const INPUT_FORMAT: &str = "libmuffintin-input";
 /// Only runtime input schema version currently supported.
-pub const INPUT_VERSION: u32 = 2;
+pub const INPUT_VERSION: u32 = 3;
 
 /// A complete workflow input in the currently supported schema.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -47,6 +48,9 @@ impl Input {
         }
         if self.version == 1 {
             return Err(InputError::V1MigrationRequired);
+        }
+        if self.version == 2 {
+            return Err(InputError::V2MigrationRequired);
         }
         if self.version != INPUT_VERSION {
             return Err(InputError::UnsupportedVersion {
@@ -281,12 +285,32 @@ pub enum BasisEnvelopeKind {
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct BasisEnvelope {
     pub kind: BasisEnvelopeKind,
-    pub cutoff: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub g_cutoff: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub energy_cutoff: Option<f64>,
 }
 
 impl BasisEnvelope {
     fn validate(&self, path: &str) -> Result<(), InputValidationError> {
-        positive(format!("{path}.cutoff"), self.cutoff)
+        match (self.g_cutoff, self.energy_cutoff) {
+            (Some(value), None) => positive(format!("{path}.g-cutoff"), value),
+            (None, Some(value)) => positive(format!("{path}.energy-cutoff"), value),
+            (None, None) => Err(InputValidationError::MissingPlaneWaveCutoff {
+                path: path.to_owned(),
+            }),
+            (Some(_), Some(_)) => Err(InputValidationError::ConflictingPlaneWaveCutoffs {
+                path: path.to_owned(),
+            }),
+        }
+    }
+
+    pub(crate) fn normalized_cutoff(&self) -> InverseBohr {
+        match (self.g_cutoff, self.energy_cutoff) {
+            (Some(value), None) => InverseBohr(value),
+            (None, Some(value)) => InverseBohr::from_kinetic_cutoff(Hartree(value)),
+            _ => unreachable!("validated envelope has exactly one cutoff"),
+        }
     }
 }
 
@@ -479,6 +503,9 @@ pub fn parse_input_toml(text: &str) -> Result<Input, InputError> {
     }
     if header.version == 1 {
         return Err(InputError::V1MigrationRequired);
+    }
+    if header.version == 2 {
+        return Err(InputError::V2MigrationRequired);
     }
     if header.version != INPUT_VERSION {
         return Err(InputError::UnsupportedVersion {

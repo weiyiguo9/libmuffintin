@@ -3,11 +3,8 @@
 use std::collections::BTreeMap;
 
 use muffintin::{
-    SPINOR_MPB_NSPIN, SPINOR_RADIAL_LO0, CheckpointPhysics, SpinorMpbError, SpinorMpbSelection,
+    CheckpointPhysics, SPINOR_MPB_NSPIN, SPINOR_RADIAL_LO0, SpinorMpbError, SpinorMpbSelection,
     SpinorMpbSpec, build_spinor_mpb,
-};
-use muffintin_prodbasis::{
-    CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, OrbitalPair,
 };
 use muffintin_core::{Hartree, InverseBohr, Kappa};
 use muffintin_dft::{
@@ -18,15 +15,17 @@ use muffintin_dft::{
 };
 use muffintin_envelope::site_translation_phase;
 use muffintin_io::{
-    AngularBasis, BasisHints, Complex64V1, EnergyParameterV1, EnergyUnit,
-    ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization, FourierPhase,
-    GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit, LinearizationV1,
-    CheckpointMeta, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTag, SiteSpinV1, SiteV1, CheckpointV1, CheckpointV2, SphericalChannelConvention,
-    SpinTag,
+    AngularBasis, BasisHints, CheckpointMeta, CheckpointV1, CheckpointV2, Complex64V1,
+    EnergyParameterV1, EnergyUnit, ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization,
+    FourierPhase, GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit,
+    LinearizationV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
+    RadialEquationTag, SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag,
 };
-use muffintin_prodbasis::mpb::{DEFAULT_TOLERANCE, DiracBlochVertexAccumulator};
 use muffintin_operators::CompiledSiteProjection;
+use muffintin_prodbasis::mpb::{DEFAULT_TOLERANCE, DiracBlochVertexAccumulator};
+use muffintin_prodbasis::{
+    CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, OrbitalPair,
+};
 use num_complex::Complex64;
 
 fn hydrogen_spinor_checkpoint() -> CheckpointV2 {
@@ -123,7 +122,7 @@ fn spinor_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
             shift: [0.0; 3],
         },
         basis: ScfBasis {
-            plane_wave_cutoff: cutoff,
+            plane_wave_cutoff: InverseBohr(cutoff),
             l_max: 1,
             channels: vec![
                 ScfChannelRecipe {

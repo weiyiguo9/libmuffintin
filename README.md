@@ -65,10 +65,10 @@ exact contracts and derivations.
   reader; and the CoQui-native scalar Cholesky writer. The FLEUR converter
   remains frozen.
 - `libmuffintin-runtime`: the single `muffintin` binary and its library
-  boundary: ordered TOML workflows with Input V2 and the `CheckpointPhysics`
+  boundary: ordered TOML workflows with Input V3 and the `CheckpointPhysics`
   checkpoint/IO/orchestration shell, which delegates DFT/SCF physics to
-  `MaterialKernel`; the neutral atomic-start generator
-  `materialize_atomic_checkpoint_v2`; the runtime-owned frozen scalar and
+  `MaterialKernel`; the explicit-layout neutral atomic-start generator
+  `materialize_atomic_start`; the runtime-owned frozen scalar and
   spinor product-input, mixed-product, THC, and sampled-Coulomb bridges; and
   the runtime-owned MLDUMP and CoQui writers. The bridge contracts live in
   [`doc/17`](doc/17_minimal_dft_scf.md)–[`doc/20`](doc/20_sm_dy_full_spinor_material_demo.md).

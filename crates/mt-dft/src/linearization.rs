@@ -157,7 +157,7 @@ pub(crate) fn solve_atomic_bound_state(
     let charge_squared = request.nuclear_charge * request.nuclear_charge;
     let atomic_scale = (charge_squared / f64::from(request.state.n).powi(2)).max(1.0);
     let energy_window = EnergyBracket::from_values(
-        continuum - 2.0 * charge_squared,
+        continuum - 2.0 * atomic_scale,
         continuum - 1.0e-8 * atomic_scale,
     )
     .map_err(|source| LinearizationEnergyError::Atomic {

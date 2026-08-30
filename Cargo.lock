@@ -1049,6 +1049,7 @@ version = "0.2.0"
 dependencies = [
  "libmuffintin-core",
  "libmuffintin-coulomb",
+ "libmuffintin-dft",
  "libmuffintin-io",
  "libmuffintin-operators",
  "libmuffintin-prodbasis",

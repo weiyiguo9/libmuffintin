@@ -14,12 +14,11 @@ use muffintin_dft::{
     XcFunctional,
 };
 use muffintin_io::{
-    AngularBasis, BasisHints, Complex64V1, EnergyParameterV1, EnergyUnit,
-    ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization, FourierPhase,
-    GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit, LinearizationV1,
-    CheckpointMeta, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTag, SiteSpinV1, SiteV1, CheckpointV1, CheckpointV2, SphericalChannelConvention,
-    SpinTag,
+    AngularBasis, BasisHints, CheckpointMeta, CheckpointV1, CheckpointV2, Complex64V1,
+    EnergyParameterV1, EnergyUnit, ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization,
+    FourierPhase, GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit,
+    LinearizationV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
+    RadialEquationTag, SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag,
 };
 
 #[path = "thc_fixture_common.rs"]
@@ -127,7 +126,7 @@ pub fn spinor_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
             shift: [0.0; 3],
         },
         basis: ScfBasis {
-            plane_wave_cutoff: cutoff,
+            plane_wave_cutoff: InverseBohr(cutoff),
             l_max: 1,
             channels: vec![
                 ScfChannelRecipe {

@@ -4,12 +4,12 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::f64::consts::PI;
 
+use muffintin_core::{AngularGrid, Cell};
 use muffintin_core::{
     Bohr, ExponentialMesh, FourierFieldError, FourierLayout, HermitianFourierField,
     InterstitialGeometry, LatticeError, MeshError, ReciprocalLattice, Sphere, StepFunctionError,
     lm_count, lm_from_index, real_spherical_harmonics, spherical_bessel_j,
 };
-use muffintin_core::{AngularGrid, Cell};
 use muffintin_sphere::{SphereField, SphereFieldError};
 use num_complex::Complex64;
 use thiserror::Error;
@@ -107,6 +107,12 @@ pub enum AtomicSuperpositionError {
         radius: f64,
         maximum: f64,
     },
+    #[error("source site {site} has invalid pseudo-density boundary value {value}")]
+    InvalidPseudoDensityBoundaryValue { site: usize, value: f64 },
+    #[error("source site {site} has invalid pseudo-density boundary derivative {derivative}")]
+    InvalidPseudoDensityBoundaryDerivative { site: usize, derivative: f64 },
+    #[error("source site {site} pseudo-density overflowed at radius {radius} bohr")]
+    PseudoDensityOverflow { site: usize, radius: f64 },
     #[error("Fourier layout has no opposite vector for {0:?}")]
     MissingOpposite([i32; 3]),
     #[error(
@@ -325,6 +331,17 @@ fn build_fourier_coefficients(
     atoms: &BTreeMap<AtomicNumber, FreeAtomState>,
 ) -> Result<Vec<Complex64>, AtomicSuperpositionError> {
     let volume = spec.direct_lattice.volume().get();
+    let mut extensions = BTreeMap::new();
+    for (site_index, site) in spec.sites.iter().enumerate() {
+        let key = AtomicExtensionKey::new(site);
+        if let Entry::Vacant(entry) = extensions.entry(key) {
+            entry.insert(build_atomic_extension(
+                &atoms[&site.atomic_number],
+                site_index,
+                site.muffin_tin_mesh.last().get(),
+            )?);
+        }
+    }
     spec.fourier_layout
         .vectors()
         .iter()
@@ -332,12 +349,12 @@ fn build_fourier_coefficients(
             let mut coefficient = Complex64::new(0.0, 0.0);
             let mut transforms = BTreeMap::new();
             for site in &spec.sites {
-                let transform = if let Some(&transform) = transforms.get(&site.atomic_number) {
+                let key = AtomicExtensionKey::new(site);
+                let transform = if let Some(&transform) = transforms.get(&key) {
                     transform
                 } else {
                     let atom = &atoms[&site.atomic_number];
-                    let integrand = atom
-                        .number_density
+                    let integrand = extensions[&key]
                         .iter()
                         .zip(atom.mesh.radii())
                         .map(|(&density, radius)| {
@@ -347,7 +364,7 @@ fn build_fourier_coefficients(
                         })
                         .collect::<Vec<_>>();
                     let transform = 4.0 * PI * atom.mesh.integrate(&integrand)? / volume;
-                    transforms.insert(site.atomic_number, transform);
+                    transforms.insert(key, transform);
                     transform
                 };
                 let phase = -vector
@@ -363,11 +380,112 @@ fn build_fourier_coefficients(
         .collect()
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct AtomicExtensionKey {
+    atomic_number: AtomicNumber,
+    muffin_tin_first: u64,
+    muffin_tin_increment: u64,
+    muffin_tin_len: usize,
+}
+
+impl AtomicExtensionKey {
+    fn new(site: &AtomicSuperpositionSite) -> Self {
+        Self {
+            atomic_number: site.atomic_number,
+            muffin_tin_first: site.muffin_tin_mesh.first().get().to_bits(),
+            muffin_tin_increment: site.muffin_tin_mesh.increment().to_bits(),
+            muffin_tin_len: site.muffin_tin_mesh.len(),
+        }
+    }
+}
+
+fn build_atomic_extension(
+    atom: &FreeAtomState,
+    site: usize,
+    muffin_tin_radius: f64,
+) -> Result<Vec<f64>, AtomicSuperpositionError> {
+    let (value, derivative) = interpolate_atom_value_and_derivative(atom, site, muffin_tin_radius)?;
+    let pseudo = AtomicPseudoDensity::new(site, muffin_tin_radius, value, derivative)?;
+    atom.number_density
+        .iter()
+        .zip(atom.mesh.radii())
+        .map(|(&density, radius)| {
+            if radius.get() < muffin_tin_radius {
+                pseudo.value(radius.get())
+            } else {
+                Ok(density)
+            }
+        })
+        .collect()
+}
+
+#[derive(Clone, Copy, Debug)]
+struct AtomicPseudoDensity {
+    site: usize,
+    radius: f64,
+    value_at_radius: f64,
+    derivative_at_radius: f64,
+}
+
+impl AtomicPseudoDensity {
+    fn new(
+        site: usize,
+        radius: f64,
+        value_at_radius: f64,
+        derivative_at_radius: f64,
+    ) -> Result<Self, AtomicSuperpositionError> {
+        if !value_at_radius.is_finite() || value_at_radius <= 0.0 {
+            return Err(
+                AtomicSuperpositionError::InvalidPseudoDensityBoundaryValue {
+                    site,
+                    value: value_at_radius,
+                },
+            );
+        }
+        if !derivative_at_radius.is_finite() {
+            return Err(
+                AtomicSuperpositionError::InvalidPseudoDensityBoundaryDerivative {
+                    site,
+                    derivative: derivative_at_radius,
+                },
+            );
+        }
+        Ok(Self {
+            site,
+            radius,
+            value_at_radius,
+            derivative_at_radius,
+        })
+    }
+
+    fn value(self, radius: f64) -> Result<f64, AtomicSuperpositionError> {
+        let exponent = self.derivative_at_radius / (2.0 * self.value_at_radius * self.radius)
+            * (radius * radius - self.radius * self.radius);
+        let value = self.value_at_radius * exponent.exp();
+        if value.is_finite() && value > 0.0 {
+            Ok(value)
+        } else {
+            Err(AtomicSuperpositionError::PseudoDensityOverflow {
+                site: self.site,
+                radius,
+            })
+        }
+    }
+}
+
 fn interpolate_atom(
     atom: &FreeAtomState,
     site: usize,
     radius: f64,
 ) -> Result<f64, AtomicSuperpositionError> {
+    interpolate_atom_value_and_derivative(atom, site, radius).map(|(value, _)| value)
+}
+
+fn interpolate_atom_value_and_derivative(
+    atom: &FreeAtomState,
+    site: usize,
+    radius: f64,
+) -> Result<(f64, f64), AtomicSuperpositionError> {
     let radii = atom.mesh.radii();
     if radius < radii[0].get() {
         return Err(AtomicSuperpositionError::InterpolationBelowMesh {
@@ -384,12 +502,24 @@ fn interpolate_atom(
         });
     }
     match radii.binary_search_by(|sample| sample.get().total_cmp(&radius)) {
-        Ok(index) => Ok(atom.number_density[index]),
+        Ok(index) => {
+            let (lower, upper) = if index + 1 < radii.len() {
+                (index, index + 1)
+            } else {
+                (index - 1, index)
+            };
+            let derivative = (atom.number_density[upper] - atom.number_density[lower])
+                / (atom.mesh.increment() * radius);
+            Ok((atom.number_density[index], derivative))
+        }
         Err(upper) => {
             let lower = upper - 1;
             let fraction = (radius / radii[lower].get()).ln() / atom.mesh.increment();
-            Ok(atom.number_density[lower]
-                + fraction * (atom.number_density[upper] - atom.number_density[lower]))
+            let difference = atom.number_density[upper] - atom.number_density[lower];
+            Ok((
+                atom.number_density[lower] + fraction * difference,
+                difference / (atom.mesh.increment() * radius),
+            ))
         }
     }
 }
@@ -494,8 +624,8 @@ fn norm(vector: [f64; 3]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use muffintin_core::InverseBohr;
     use muffintin_core::AngularPoint;
+    use muffintin_core::InverseBohr;
 
     #[test]
     fn two_site_superposition_closes_charge_and_retains_neighbor_anisotropy() {

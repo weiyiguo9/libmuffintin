@@ -1,40 +1,159 @@
-use muffintin_core::{AngularGrid, Cell, GridError};
+use muffintin_core::{
+    AngularGrid, Cell, FourierFieldError, FourierLayout, GridError, HermitianFourierField,
+    InverseBohr, LatticeError,
+};
 use muffintin_dft::{
     AtomicNumber, AtomicSuperpositionChargeClosure, AtomicSuperpositionError,
-    AtomicSuperpositionSite, AtomicSuperpositionSpec, FreeAtomScfSpec,
-    LinearizationEnergyGenerator, ScfConfig, ScfRelativity, build_atomic_superposition_density,
-    production_density_layout,
+    AtomicSuperpositionSite, AtomicSuperpositionSpec, FreeAtomScfSpec, ScfExchangeCorrelation,
+    build_atomic_superposition_density, build_scf_potential, g_vector,
 };
 use muffintin_io::{
     BasisHints, CheckpointMeta, CheckpointV2, DensityV2, FieldRepresentationV2, FieldUnitV2,
-    FourierNormalization, FourierPhase, InitialV2, InverseLengthUnit, PotentialV2,
+    FourierNormalization, FourierPhase, GeometryV2, InitialV2, InverseLengthUnit, IoError,
+    PotentialV2,
 };
+use num_complex::Complex64;
 use thiserror::Error;
 
 use super::convert_v2::{regional_density_from_v2, regional_scalar_to_v2};
-use super::{CheckpointPhysicsError, convert_checkpoint_geometry};
-use muffintin_dft::build_scf_potential;
+use super::{CheckpointPhysicsError, ConvertedCheckpointGeometry, convert_checkpoint_geometry};
 
-/// Complete structure/task request for a neutral atomic-superposition V2 restart.
-#[derive(Clone, Debug, PartialEq)]
-pub struct AtomicCheckpointRequest {
-    pub meta: CheckpointMeta,
-    pub geometry: muffintin_io::GeometryV2,
-    pub scf: ScfConfig,
-    pub free_atom_scf: FreeAtomScfSpec,
-    pub atomic_superposition_angular_points: usize,
+/// Validated crystal structure and exact per-site radial meshes for regional fields.
+#[derive(Clone, Debug)]
+pub struct Structure {
+    geometry: GeometryV2,
+    converted: ConvertedCheckpointGeometry,
 }
 
-/// Validated restart checkpoint and its exact finite-layout charge accounting.
+impl Structure {
+    /// Validate and convert one source-neutral V2 geometry into internal atomic units.
+    pub fn new(geometry: GeometryV2) -> Result<Self, CheckpointPhysicsError> {
+        geometry.validate().map_err(IoError::from)?;
+        let converted = convert_checkpoint_geometry(&geometry)?;
+        Ok(Self {
+            geometry,
+            converted,
+        })
+    }
+
+    /// Exact checkpoint geometry retained for serialization.
+    pub const fn geometry(&self) -> &GeometryV2 {
+        &self.geometry
+    }
+}
+
+/// Exact scalar regional-field layout selected independently of an orbital basis.
 #[derive(Clone, Debug, PartialEq)]
-pub struct AtomicCheckpointResult {
+pub struct RegionalFieldLayout {
+    fourier: FourierLayout,
+    muffin_tin_l_max: u32,
+    g_cutoff: Option<InverseBohr>,
+}
+
+impl RegionalFieldLayout {
+    /// Construct from an exact ordered reciprocal-index list.
+    pub fn new(
+        structure: &Structure,
+        reciprocal_indices: Vec<[i32; 3]>,
+        muffin_tin_l_max: u32,
+    ) -> Result<Self, RegionalFieldLayoutError> {
+        let reciprocal = structure.converted.reciprocal;
+        let vectors = reciprocal_indices
+            .into_iter()
+            .map(|index| g_vector(reciprocal, index))
+            .collect();
+        Self::from_fourier_layout(
+            FourierLayout::new(reciprocal, vectors)?,
+            muffin_tin_l_max,
+            None,
+        )
+    }
+
+    /// Construct the exact reciprocal sphere selected by a positive `bohr^-1` cutoff.
+    pub fn from_g_cutoff(
+        structure: &Structure,
+        g_cutoff: InverseBohr,
+        muffin_tin_l_max: u32,
+    ) -> Result<Self, RegionalFieldLayoutError> {
+        if !g_cutoff.get().is_finite() || g_cutoff.get() <= 0.0 {
+            return Err(RegionalFieldLayoutError::InvalidGCutoff(g_cutoff));
+        }
+        let reciprocal = structure.converted.reciprocal;
+        let mut vectors = reciprocal.enumerate(g_cutoff)?;
+        vectors.sort_unstable_by_key(|vector| vector.index);
+        Self::from_fourier_layout(
+            FourierLayout::new(reciprocal, vectors)?,
+            muffin_tin_l_max,
+            Some(g_cutoff),
+        )
+    }
+
+    fn from_fourier_layout(
+        fourier: FourierLayout,
+        muffin_tin_l_max: u32,
+        g_cutoff: Option<InverseBohr>,
+    ) -> Result<Self, RegionalFieldLayoutError> {
+        if fourier.index([0; 3]).is_none() {
+            return Err(RegionalFieldLayoutError::MissingZeroVector);
+        }
+        HermitianFourierField::new(
+            fourier.clone(),
+            vec![Complex64::new(0.0, 0.0); fourier.len()],
+        )?;
+        Ok(Self {
+            fourier,
+            muffin_tin_l_max,
+            g_cutoff,
+        })
+    }
+
+    pub const fn fourier(&self) -> &FourierLayout {
+        &self.fourier
+    }
+
+    pub const fn muffin_tin_l_max(&self) -> u32 {
+        self.muffin_tin_l_max
+    }
+
+    pub const fn g_cutoff(&self) -> Option<InverseBohr> {
+        self.g_cutoff
+    }
+}
+
+/// Invalid explicit reciprocal layout for a physically real regional field.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum RegionalFieldLayoutError {
+    #[error("regional-field G cutoff must be finite and positive, got {0}")]
+    InvalidGCutoff(InverseBohr),
+    #[error("regional-field Fourier layout must contain G=0")]
+    MissingZeroVector,
+    #[error(transparent)]
+    Lattice(#[from] LatticeError),
+    #[error(transparent)]
+    Fourier(#[from] FourierFieldError),
+}
+
+/// Exact request for a neutral atomic-superposition regional start.
+#[derive(Clone, Debug)]
+pub struct AtomicStartRequest {
+    pub meta: CheckpointMeta,
+    pub structure: Structure,
+    pub field_layout: RegionalFieldLayout,
+    pub exchange_correlation: ScfExchangeCorrelation,
+    pub free_atom_scf: FreeAtomScfSpec,
+    pub angular_grid: AngularGrid,
+}
+
+/// Validated restart checkpoint and exact finite-layout charge accounting.
+#[derive(Clone, Debug)]
+pub struct AtomicStart {
     pub checkpoint: CheckpointV2,
     pub charge_closure: AtomicSuperpositionChargeClosure,
 }
 
-/// Invalid stage-4 request or failure in the production density/potential path.
+/// Invalid common atomic-start request or failure in the production density/potential path.
 #[derive(Debug, Error)]
-pub enum AtomicCheckpointError {
+pub enum AtomicStartError {
     #[error(transparent)]
     PotentialBuild(#[from] muffintin_dft::ScfPotentialBuildError),
     #[error(transparent)]
@@ -42,88 +161,45 @@ pub enum AtomicCheckpointError {
     #[error(transparent)]
     AtomicSuperposition(#[from] AtomicSuperpositionError),
     #[error(transparent)]
-    AngularGrid(#[from] GridError),
-    #[error("neutral atomic checkpoint requires electron count {neutral}, got {electron_count}")]
-    NonNeutralElectronCount { electron_count: f64, neutral: f64 },
+    Grid(#[from] GridError),
+    #[error("regional-field layout belongs to a different direct lattice")]
+    FieldLayoutStructureMismatch,
     #[error("site {site:?} atomic number {atomic_number} is outside the free-atom route 1..=103")]
     UnsupportedAtomicNumber { site: String, atomic_number: u16 },
-    #[error("regular k mesh division {axis} is zero")]
-    ZeroKMeshDivision { axis: usize },
-    #[error("plane-wave cutoff must be finite and positive, got {0}")]
-    InvalidPlaneWaveCutoff(f64),
-    #[error("atomic checkpoint basis l_max must be positive")]
-    ZeroLMax,
-    #[error("atomic checkpoint muffin-tin output angular momentum overflows u32")]
-    AngularMomentumOverflow,
-    #[error("atomic checkpoint request must not carry pre-resolved basis channels")]
-    PreResolvedBasis,
-    #[error("site {site:?} frozen-checkpoint basis generation needs an authored checkpoint anchor")]
-    FrozenCheckpointGenerator { site: String },
-    #[error(
-        "site {site:?} spectral generator {generator:?} needs provisional bands or chemical potential"
-    )]
-    SpectralGenerator {
-        site: String,
-        generator: LinearizationEnergyGenerator,
-    },
-    #[error(
-        "site {site:?} generator {generator:?} needs an explicit seed without a checkpoint anchor"
-    )]
-    MissingGeneratorSeed {
-        site: String,
-        generator: LinearizationEnergyGenerator,
-    },
-    #[error("radial basis for {relativity:?} must use {expected:?}; site {site:?} uses {actual:?}")]
-    RadialEquationRoute {
-        site: String,
-        relativity: ScfRelativity,
-        expected: muffintin_io::RadialEquationTag,
-        actual: muffintin_io::RadialEquationTag,
-    },
 }
 
-/// Materialize a nonmagnetic neutral SAD density and its production crystal potential.
-pub fn materialize_atomic_checkpoint_v2(
-    request: AtomicCheckpointRequest,
-) -> Result<AtomicCheckpointResult, AtomicCheckpointError> {
-    validate_request(&request)?;
-    let converted = convert_checkpoint_geometry(&request.geometry)?;
-    let fourier_layout = production_density_layout(
-        converted.reciprocal,
-        request.scf.k_mesh,
-        request.scf.basis.plane_wave_cutoff,
-    )
-    .map_err(CheckpointPhysicsError::from)?;
-    let muffin_tin_l_max = match request.scf.relativity {
-        ScfRelativity::Scalar | ScfRelativity::SocSecondVariation { .. } => request
-            .scf
-            .basis
-            .l_max
-            .checked_mul(2)
-            .ok_or(AtomicCheckpointError::AngularMomentumOverflow)?,
-        ScfRelativity::SpinorFirstVariation => request
-            .scf
-            .basis
-            .l_max
-            .checked_add(1)
-            .and_then(|value| value.checked_mul(2))
-            .ok_or(AtomicCheckpointError::AngularMomentumOverflow)?,
-    };
-    if i32::try_from(muffin_tin_l_max).is_err() {
-        return Err(AtomicCheckpointError::AngularMomentumOverflow);
+/// Materialize a neutral nonmagnetic density and production crystal potential.
+pub fn materialize_atomic_start(
+    request: AtomicStartRequest,
+) -> Result<AtomicStart, AtomicStartError> {
+    let AtomicStartRequest {
+        meta,
+        structure,
+        field_layout,
+        exchange_correlation,
+        free_atom_scf,
+        angular_grid,
+    } = request;
+    if field_layout.fourier.reciprocal() != &structure.converted.reciprocal {
+        return Err(AtomicStartError::FieldLayoutStructureMismatch);
     }
-    let angular_grid = AngularGrid::fibonacci(request.atomic_superposition_angular_points)?;
-    let direct_lattice = Cell::new(converted.direct)?;
-    let sites = request
+    let target_electron_count = structure
         .geometry
         .sites
         .iter()
-        .zip(&converted.sites)
+        .map(|site| f64::from(site.atomic_number))
+        .sum();
+    let direct_lattice = Cell::new(structure.converted.direct)?;
+    let sites = structure
+        .geometry
+        .sites
+        .iter()
+        .zip(&structure.converted.sites)
         .map(|(site, converted)| {
             let atomic_number = u8::try_from(site.atomic_number)
                 .ok()
                 .and_then(AtomicNumber::new)
-                .ok_or_else(|| AtomicCheckpointError::UnsupportedAtomicNumber {
+                .ok_or_else(|| AtomicStartError::UnsupportedAtomicNumber {
                     site: site.id.clone(),
                     atomic_number: site.atomic_number,
                 })?;
@@ -133,20 +209,20 @@ pub fn materialize_atomic_checkpoint_v2(
                 muffin_tin_mesh: converted.up().mesh().clone(),
             })
         })
-        .collect::<Result<Vec<_>, AtomicCheckpointError>>()?;
+        .collect::<Result<Vec<_>, AtomicStartError>>()?;
     let atomic = build_atomic_superposition_density(&AtomicSuperpositionSpec {
         direct_lattice,
         sites,
-        fourier_layout,
-        muffin_tin_l_max,
+        fourier_layout: field_layout.fourier.clone(),
+        muffin_tin_l_max: field_layout.muffin_tin_l_max,
         angular_grid,
-        target_electron_count: request.scf.electron_count,
-        free_atom_scf: request.free_atom_scf,
+        target_electron_count,
+        free_atom_scf,
     })?;
-    let angular_basis = request.meta.potential_convention.angular_basis;
+    let angular_basis = meta.potential_convention.angular_basis;
     let basis_hints = BasisHints {
         reciprocal_length_unit: InverseLengthUnit::BohrInverse,
-        plane_wave_cutoff: Some(request.scf.basis.plane_wave_cutoff),
+        plane_wave_cutoff: field_layout.g_cutoff.map(InverseBohr::get),
         coefficient_cutoff: None,
         normalization: FourierNormalization::CellNormalized,
         phase: FourierPhase::NegativeExponent,
@@ -158,35 +234,35 @@ pub fn materialize_atomic_checkpoint_v2(
         basis_hints,
         n: regional_scalar_to_v2(
             atomic.density.charge(),
-            &request.geometry.sites,
+            &structure.geometry.sites,
             angular_basis,
         )?,
         mx: regional_scalar_to_v2(
             &atomic.density.magnetization()[0],
-            &request.geometry.sites,
+            &structure.geometry.sites,
             angular_basis,
         )?,
         my: regional_scalar_to_v2(
             &atomic.density.magnetization()[1],
-            &request.geometry.sites,
+            &structure.geometry.sites,
             angular_basis,
         )?,
         mz: regional_scalar_to_v2(
             &atomic.density.magnetization()[2],
-            &request.geometry.sites,
+            &structure.geometry.sites,
             angular_basis,
         )?,
     };
     let production_density = regional_density_from_v2(
         &density,
-        &converted.geometry,
-        &converted.sites,
-        converted.reciprocal,
+        &structure.converted.geometry,
+        &structure.converted.sites,
+        structure.converted.reciprocal,
     )?;
     let built_potential = build_scf_potential(
         &production_density,
-        &converted.nuclear_charges,
-        request.scf.exchange_correlation,
+        &structure.converted.nuclear_charges,
+        exchange_correlation,
     )?;
     let potential = PotentialV2 {
         unit: FieldUnitV2::Hartree,
@@ -195,114 +271,35 @@ pub fn materialize_atomic_checkpoint_v2(
         basis_hints,
         v0: regional_scalar_to_v2(
             built_potential.potential.scalar(),
-            &request.geometry.sites,
+            &structure.geometry.sites,
             angular_basis,
         )?,
         bx: regional_scalar_to_v2(
             &built_potential.potential.magnetic()[0],
-            &request.geometry.sites,
+            &structure.geometry.sites,
             angular_basis,
         )?,
         by: regional_scalar_to_v2(
             &built_potential.potential.magnetic()[1],
-            &request.geometry.sites,
+            &structure.geometry.sites,
             angular_basis,
         )?,
         bz: regional_scalar_to_v2(
             &built_potential.potential.magnetic()[2],
-            &request.geometry.sites,
+            &structure.geometry.sites,
             angular_basis,
         )?,
     };
     let checkpoint = CheckpointV2::new(
-        request.meta,
-        request.geometry,
+        meta,
+        structure.geometry,
         InitialV2::Restart { density, potential },
     );
     checkpoint
         .validate()
         .map_err(CheckpointPhysicsError::from)?;
-    Ok(AtomicCheckpointResult {
+    Ok(AtomicStart {
         checkpoint,
         charge_closure: atomic.charge_closure,
     })
-}
-
-fn validate_request(request: &AtomicCheckpointRequest) -> Result<(), AtomicCheckpointError> {
-    let neutral = request
-        .geometry
-        .sites
-        .iter()
-        .map(|site| f64::from(site.atomic_number))
-        .sum::<f64>();
-    if request.scf.electron_count != neutral {
-        return Err(AtomicCheckpointError::NonNeutralElectronCount {
-            electron_count: request.scf.electron_count,
-            neutral,
-        });
-    }
-    for (axis, &division) in request.scf.k_mesh.divisions.iter().enumerate() {
-        if division == 0 {
-            return Err(AtomicCheckpointError::ZeroKMeshDivision { axis });
-        }
-    }
-    let cutoff = request.scf.basis.plane_wave_cutoff;
-    if !cutoff.is_finite() || cutoff <= 0.0 {
-        return Err(AtomicCheckpointError::InvalidPlaneWaveCutoff(cutoff));
-    }
-    if request.scf.basis.l_max == 0 {
-        return Err(AtomicCheckpointError::ZeroLMax);
-    }
-    if !request.scf.basis.resolved_channels.is_empty() {
-        return Err(AtomicCheckpointError::PreResolvedBasis);
-    }
-    for recipe in &request.scf.basis.channels {
-        match recipe.generator {
-            LinearizationEnergyGenerator::FrozenCheckpoint => {
-                return Err(AtomicCheckpointError::FrozenCheckpointGenerator {
-                    site: recipe.site.clone(),
-                });
-            }
-            generator @ (LinearizationEnergyGenerator::BandCog
-            | LinearizationEnergyGenerator::FermiOffset) => {
-                return Err(AtomicCheckpointError::SpectralGenerator {
-                    site: recipe.site.clone(),
-                    generator,
-                });
-            }
-            generator @ (LinearizationEnergyGenerator::Explicit
-            | LinearizationEnergyGenerator::BandCenter
-            | LinearizationEnergyGenerator::LogDerivative)
-                if recipe.seed.is_none() =>
-            {
-                return Err(AtomicCheckpointError::MissingGeneratorSeed {
-                    site: recipe.site.clone(),
-                    generator,
-                });
-            }
-            LinearizationEnergyGenerator::Explicit
-            | LinearizationEnergyGenerator::Atomic
-            | LinearizationEnergyGenerator::BandCenter
-            | LinearizationEnergyGenerator::LogDerivative => {}
-        }
-    }
-    let expected = match request.scf.relativity {
-        ScfRelativity::Scalar | ScfRelativity::SocSecondVariation { .. } => {
-            muffintin_io::RadialEquationTag::ScalarKoellingHarmon
-        }
-        ScfRelativity::SpinorFirstVariation => {
-            muffintin_io::RadialEquationTag::FullyRelativisticDirac
-        }
-    };
-    for radial in &request.geometry.radial_basis {
-        if radial.radial_equation != expected {
-            return Err(AtomicCheckpointError::RadialEquationRoute {
-                site: radial.site_id.clone(),
-                relativity: request.scf.relativity,
-                expected,
-                actual: radial.radial_equation,
-            });
-        }
-    }
-    Ok(())
 }

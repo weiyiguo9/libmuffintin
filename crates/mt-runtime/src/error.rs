@@ -53,6 +53,10 @@ pub enum InputValidationError {
     NonFinite { path: String, value: f64 },
     #[error("{path} must be positive, got {value}")]
     NotPositive { path: String, value: f64 },
+    #[error("{path} requires exactly one of g-cutoff or energy-cutoff")]
+    MissingPlaneWaveCutoff { path: String },
+    #[error("{path} accepts only one of g-cutoff or energy-cutoff")]
+    ConflictingPlaneWaveCutoffs { path: String },
     #[error("{path} must be in the interval (0, 1], got {value}")]
     InvalidFraction { path: String, value: f64 },
     #[error("{path} must be nonzero")]
@@ -90,9 +94,13 @@ pub enum InputError {
         found: u32,
     },
     #[error(
-        "input version 1 requires migration to version = 2: replace plane-wave-cutoff with [task.<id>.basis.envelope] kind/cutoff, and replace local-orbitals/state-overrides with [task.<id>.basis.channels]"
+        "input version 1 requires migration to version = 3: replace plane-wave-cutoff with [task.<id>.basis.envelope] kind plus g-cutoff or energy-cutoff, and replace local-orbitals/state-overrides with [task.<id>.basis.channels]"
     )]
     V1MigrationRequired,
+    #[error(
+        "input version 2 requires migration to version = 3: replace [task.<id>.basis.envelope].cutoff with exactly one of g-cutoff or energy-cutoff"
+    )]
+    V2MigrationRequired,
     #[error(transparent)]
     Validation(#[from] InputValidationError),
     #[error("could not read input file {path:?}: {source}")]

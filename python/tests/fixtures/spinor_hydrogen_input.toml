@@ -1,5 +1,5 @@
 format = "libmuffintin-input"
-version = 2
+version = 3
 checkpoint = "spinor_hydrogen_checkpoint.toml"
 
 [workflow]
@@ -19,7 +19,7 @@ energy-generator = "frozen-checkpoint"
 
 [task.scf.basis.envelope]
 kind = "plane-wave"
-cutoff = 0.5
+g-cutoff = 0.5
 
 [task.scf.basis.channels."H-1"]
 hdlo = ["+2p1/2@frozen"]

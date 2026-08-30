@@ -31,7 +31,7 @@ One TOML document has one explicit execution-order array and one block for each 
 
 ```toml
 format = "libmuffintin-input"
-version = 2
+version = 3
 checkpoint = "material.checkpoint.toml"
 
 [workflow]
@@ -52,7 +52,7 @@ recipe = "recipes/si.toml"
 
 [task.scf.basis.envelope]
 kind = "plane-wave"
-cutoff = 4.0
+g-cutoff = 4.0
 
 [task.scf.basis.channels.Si]
 lo = ["3s", "3p"]
@@ -111,7 +111,7 @@ minimum = -1.0
 maximum = 1.0
 ```
 
-Task child data use named subblocks plus typed arrays such as band-path points. Unknown fields, task kinds, orphan blocks, duplicate IDs, forward sources, and incompatible outputs are errors. Input V1 is rejected with a migration diagnostic: `[basis.envelope]` replaces the flat `plane-wave-cutoff`, and the channel table replaces `local-orbitals` and `state-overrides`. V2 has no compatibility aliases for those removed fields.
+Task child data use named subblocks plus typed arrays such as band-path points. Unknown fields, task kinds, orphan blocks, duplicate IDs, forward sources, and incompatible outputs are errors. Input V1 is rejected with a migration diagnostic: `[basis.envelope]` replaces the flat `plane-wave-cutoff`, and the channel table replaces `local-orbitals` and `state-overrides`. Input V2 is also rejected: its dimensionally ambiguous envelope `cutoff` must become exactly one of `g-cutoff` in bohr inverse or `energy-cutoff` in Hartree. Input V3 has no compatibility aliases for removed fields. The two cutoff spellings normalize to the same internal `InverseBohr`, with $G_{\max}=\sqrt{2E_{\mathrm{cut}}}$.
 
 The channel table separates identity from treatment. A token is a spectroscopic state such as `5p`, `5p-`, `5p+`, `5p1/2`, or `5p3/2`; the two $j$ spellings normalize to the same signed $\kappa$. Treatments are `core`, `valence`, `lo`, and `hdlo`. Species rows are complete treatment replacements, while site rows contain only `+` additions and `-` removals. A suffix selects a low-frequency per-channel exception: `@atomic`, `@band-center`, `@log-derivative`, `@band-cog`, `@fermi-offset`, `@frozen`, or an explicit energy such as `@-0.15` or `@-4.08eV`. Bare numbers are Hartree and `eV` suffixes are converted once during normalization.
 
@@ -258,7 +258,7 @@ Checkpoint V2 stores shared geometry and radial-basis metadata plus either a fro
 
 `FreeAtomScfSpec` makes the exponential radial mesh, potential mixing, potential tolerance, tail tolerance, and maximum iteration count explicit. Public `run_free_atom_lda` starts from the bare nuclear potential and resolves the neutral FLEUR occupation catalogue into every occupied signed $\kappa$ channel. Each radial iteration solves those bound Dirac orbitals, forms the physical $P^2+Q^2$ density, evaluates the isolated spherical Hartree potential and unpolarized LDA/PW92 potential, and mixes the resulting effective potential. Success requires the potential residual, integrated-charge error, and outer logarithmic-shell charge to satisfy the caller's tolerances. Bound-state, quadrature, XC, convergence, and tail failures remain typed rather than producing a partial atomic state.
 
-`build_atomic_superposition_density` places the converged neutral atoms on the supplied crystal and sums every periodic image whose verified radial tail intersects a target muffin-tin sphere. It evaluates the overlapped density on the target radial/angular grid and projects all requested nonspherical muffin-tin channels instead of retaining only a spherical on-site term. Its interstitial Fourier coefficients are neutral-atom form factors on the exact production density layout: the union of every $G_{\mathrm{right}}-G_{\mathrm{left}}$ difference from every plane-wave envelope on the regular k mesh. After muffin-tin projection and finite Fourier truncation, only the represented $G=0$ coefficient is corrected so the regional integral equals the requested charge; finite $G$ coefficients and the nonspherical muffin-tin density are unchanged. Interpolation beyond the verified atomic tail is a typed error.
+`build_atomic_superposition_density` places the converged neutral atoms on the supplied crystal and sums every periodic image whose verified radial tail intersects a target muffin-tin sphere. It evaluates the overlapped density on the target radial/angular grid and projects all requested nonspherical muffin-tin channels instead of retaining only a spherical on-site term. Its interstitial Fourier coefficients are neutral-atom form factors on the caller's exact `RegionalFieldLayout`; the atomic path does not infer that layout from a k mesh, plane-wave orbital basis, or `CompiledBasis`. `RegionalFieldLayout::new` accepts an ordered reciprocal-index list, while `from_g_cutoff` enumerates the reciprocal sphere from an explicit `InverseBohr`. After muffin-tin projection and finite Fourier truncation, only the represented $G=0$ coefficient is corrected so the regional integral equals the requested charge; finite $G$ coefficients and the nonspherical muffin-tin density are unchanged. Interpolation beyond the verified atomic tail is a typed error.
 
 The path is deliberately nonmagnetic and neutral-only. `electron_count` must satisfy
 
@@ -266,7 +266,7 @@ The path is deliberately nonmagnetic and neutral-only. `electron_count` must sat
 N_e=\sum_s Z_s,
 ```
 
-and the generated magnetization components are zero. Public `materialize_atomic_checkpoint_v2` takes the structure, DFT task, and free-atom controls, constructs the exact production layout and atomic-superposition density, then uses the production Weinert electronic Hartree, periodic nuclei, and task-selected XC path to build the operator potential. It emits `InitialV2::Restart { density, potential }` inside a validated `CheckpointV2`. A pre-resolved basis is rejected, as are the checkpoint-dependent `frozen-checkpoint` generator and the spectral `band-cog` and `fermi-offset` generators, which require information unavailable before the first crystal solve.
+and the generated magnetization components are zero. Public `materialize_atomic_start` takes a validated `Structure`, an explicit `RegionalFieldLayout`, XC selection, free-atom controls, and an angular projection grid. The neutral electron count is the exact sum of the supplied atomic numbers. It builds the atomic-superposition density, then uses the production Weinert electronic Hartree, periodic nuclei, and selected XC path to build the operator potential. The returned `AtomicStart` carries `InitialV2::Restart { density, potential }` inside a validated `CheckpointV2` plus the exact finite-layout charge-closure record. No SCF task, k mesh, orbital-basis cutoff, or material-specific constructor enters this path.
 
 This is a public library generator for a cold-start restart artifact. It is not a new one-run CLI input, does not guess local or total magnetic moments, and does not add a magnetic superposition-of-atoms policy.
 
@@ -290,6 +290,6 @@ A bands task consumes an earlier `ScfState` and solves its frozen potential on t
 
 ## 12. Acceptance status and evidence boundary
 
-The implementation has focused gates for weighted occupations, Gaussian and logistic tails, scalar/4c radial identities, local orbitals and HDLOs labeled by signed $\kappa$, all seven radial-energy generators, band-center brackets and diagnostics, degeneracy averaging over signed $\kappa$, physical nonorthogonal `band-cog` projection, same-iteration spectral refinement, bitwise frozen anchors, recipe merge priority and editing, automatic rLO injection/removal, V1 migration failure, V2 round-trip, plane-wave and sphere density synthesis, core $P^2+Q^2$ and spill, Weinert electronic and nuclear potentials, electrostatic boundary matching, LDA/PW92 free-atom convergence, periodic-image superposition with nonspherical muffin-tin projection, finite-layout charge closure, production-potential restart materialization, LDA/PBE functional derivatives, both noncollinear XC reductions, spin-rotation covariance, transverse Pauli blocks, four-component mixing, Checkpoint V1-to-V2 normalization and restart, SCF ordering and source reuse, scalar and SOC eigensolutions, and tetrahedron normalization. The unified CLI also executes a minimal one-site authored checkpoint through the runtime shell and delegated `MaterialKernel`; the atomic-checkpoint generator remains a library generator rather than another CLI input route.
+The implementation has focused gates for weighted occupations, Gaussian and logistic tails, scalar/4c radial identities, local orbitals and HDLOs labeled by signed $\kappa$, all seven radial-energy generators, band-center brackets and diagnostics, degeneracy averaging over signed $\kappa$, physical nonorthogonal `band-cog` projection, same-iteration spectral refinement, bitwise frozen anchors, recipe merge priority and editing, automatic rLO injection/removal, V1/V2 migration failure, V3 round-trip, plane-wave and sphere density synthesis, core $P^2+Q^2$ and spill, Weinert electronic and nuclear potentials, electrostatic boundary matching, LDA/PW92 free-atom convergence, periodic-image superposition with nonspherical muffin-tin projection, finite-layout charge closure, production-potential restart materialization, LDA/PBE functional derivatives, both noncollinear XC reductions, spin-rotation covariance, transverse Pauli blocks, four-component mixing, Checkpoint V1-to-V2 normalization and restart, SCF ordering and source reuse, scalar and SOC eigensolutions, and tetrahedron normalization. The unified CLI also executes a minimal one-site authored checkpoint through the runtime shell and delegated `MaterialKernel`; the atomic-checkpoint generator remains a library generator rather than another CLI input route.
 
 These gates close the DFT implementation contract and the orbital-configuration V2 extension at the library, TOML workflow, checkpoint/restart, and executable levels. They also close the public-library neutral atomic-start path and therefore the v0.2 implementation sequence. This closure does not claim a release tag, material acceptance, or cross-code validation. Si and SrVO3 scalar results, Pt or Au second-variation SOC, collinear and noncollinear magnetic fixtures, and a regular-mesh tetrahedron DOS still require frozen cross-code reference artifacts before the DFT route can be called cross-code accepted or production validated. Meta-GGA, hybrids, forces, SCF symmetry reduction, tetrahedron occupations, charged atomic starts, and magnetic moment initialization remain outside this contract.

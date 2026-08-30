@@ -2,12 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{IoError, ValidationError, finite, nonempty, positive};
 use crate::checkpoint::{
-    AngularBasis, BasisHints, Complex64V1, ExponentialMeshSpec, FourierCoefficientV1,
-    GeometryV1, LatticeV1, LinearizationV1, CheckpointMeta, PotentialChannelV1, RadialEquationTag,
-    CHECKPOINT_FORMAT, SiteSpinV1, CheckpointV1, SpinTag,
+    AngularBasis, BasisHints, CHECKPOINT_FORMAT, CheckpointMeta, CheckpointV1, Complex64V1,
+    ExponentialMeshSpec, FourierCoefficientV1, GeometryV1, LatticeV1, LinearizationV1,
+    PotentialChannelV1, RadialEquationTag, SiteSpinV1, SpinTag,
 };
+use crate::error::{IoError, ValidationError, finite, nonempty, positive};
 use crate::units::LengthUnit;
 
 /// Schema version for noncollinear Pauli-field checkpoints.
@@ -97,7 +97,8 @@ pub struct GeometryV2 {
 }
 
 impl GeometryV2 {
-    fn validate(&self) -> Result<(), ValidationError> {
+    /// Validate the lattice, site identity, and exact per-site radial layouts.
+    pub fn validate(&self) -> Result<(), ValidationError> {
         self.lattice.validate()?;
         if self.sites.is_empty() {
             return Err(ValidationError::Empty {

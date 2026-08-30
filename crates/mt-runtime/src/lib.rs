@@ -41,9 +41,9 @@ pub use channel_token::{
     parse_channel_token,
 };
 pub use checkpoint_physics::{
-    AtomicCheckpointError, AtomicCheckpointRequest, AtomicCheckpointResult, CheckpointPhysics,
-    CheckpointPhysicsError, FrozenScalarRadialSamples, MaterialKernelError,
-    checkpoint_v2_from_state, materialize_atomic_checkpoint_v2,
+    AtomicStart, AtomicStartError, AtomicStartRequest, CheckpointPhysics, CheckpointPhysicsError,
+    FrozenScalarRadialSamples, MaterialKernelError, RegionalFieldLayout, RegionalFieldLayoutError,
+    Structure, checkpoint_v2_from_state, materialize_atomic_start,
 };
 pub use dft_scf::{
     DftConvergenceDecision, DftCoreStep, DftEnergyRecord, DftLapwDensityAssembly, DftLapwSolution,

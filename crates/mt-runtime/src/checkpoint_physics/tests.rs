@@ -1,6 +1,5 @@
 use super::*;
 use muffintin_core::Kappa;
-use std::collections::BTreeMap;
 use muffintin_dft::{
     BandPathPoint, BandPathRequest, FirstVariationWindow, LinearizationEnergyDiagnostic,
     NoncollinearXcRoute, ScfChannelRecipe, ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState,
@@ -15,6 +14,7 @@ use muffintin_io::{
     SphericalChannelConvention, SpinTag, checkpoint_file_from_toml, checkpoint_file_to_toml,
 };
 use muffintin_sphere::CorePotentialContinuationSpec;
+use std::collections::BTreeMap;
 
 fn checkpoint_v1() -> muffintin_io::CheckpointV1 {
     let point_count = 61;
@@ -112,7 +112,7 @@ fn config(relativity: ScfRelativity) -> ScfConfig {
             shift: [0.0; 3],
         },
         basis: ScfBasis {
-            plane_wave_cutoff: 0.5,
+            plane_wave_cutoff: InverseBohr(0.5),
             l_max: 1,
             channels: vec![
                 ScfChannelRecipe {
@@ -753,10 +753,10 @@ fn frozen_consumers_use_their_source_states_basis_after_a_later_scf() {
     let first_config = config(ScfRelativity::Scalar);
     let first = run_scf(&mut physics.kernel, &first_config, None).unwrap();
     let mut later_config = first_config.clone();
-    later_config.basis.plane_wave_cutoff = 0.55;
+    later_config.basis.plane_wave_cutoff = InverseBohr(0.55);
     let later = run_scf(&mut physics.kernel, &later_config, Some(&first)).unwrap();
-    assert_eq!(first.basis.plane_wave_cutoff, 0.5);
-    assert_eq!(later.basis.plane_wave_cutoff, 0.55);
+    assert_eq!(first.basis.plane_wave_cutoff, InverseBohr(0.5));
+    assert_eq!(later.basis.plane_wave_cutoff, InverseBohr(0.55));
 
     let request = BandPathRequest {
         bands: 1,

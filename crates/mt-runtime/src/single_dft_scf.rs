@@ -14,9 +14,9 @@ pub enum SingleDftScfConfigError {
     Input(#[from] InputError),
 }
 
-/// Select and map the sole DFT SCF task in a prepared Input V2 workflow.
+/// Select and map the sole DFT SCF task in a prepared Input V3 workflow.
 ///
-/// This is the single-SCF selection surface from Input V2 to frozen product
+/// This is the single-SCF selection surface from Input V3 to frozen product
 /// inputs. Selection follows [`PreparedWorkflow::tasks`] stable order and
 /// rejects workflows containing zero or multiple DFT SCF tasks.
 pub fn single_dft_scf_config(

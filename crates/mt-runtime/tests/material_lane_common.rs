@@ -9,13 +9,14 @@
 use std::path::{Path, PathBuf};
 
 use muffintin::{
-    CheckpointPhysicsError, CheckpointPhysics, SpinorProductInput, SpinorThcError, SpinorThcSpec,
+    CheckpointPhysics, CheckpointPhysicsError, SpinorProductInput, SpinorThcError, SpinorThcSpec,
     ThcCandidates, ThcEngine, ThcParentGrid, build_spinor_thc,
 };
+use muffintin_core::InverseBohr;
 use muffintin_dft::{ScfConfig, ScfRelativity};
 use muffintin_io::{
-    CheckpointFile, CheckpointV2, SpexMaterialBasisRecipeV1, materialize_checkpoint_v2,
-    read_spex_snapshot_hdf, checkpoint_file_from_toml,
+    CheckpointFile, CheckpointV2, SpexMaterialBasisRecipeV1, checkpoint_file_from_toml,
+    materialize_checkpoint_v2, read_spex_snapshot_hdf,
 };
 use muffintin_prodbasis::thc::RankPolicy;
 
@@ -109,7 +110,9 @@ pub fn load_spex_material(
 ) -> Result<MaterialFixture, MaterialLaneError> {
     require_spinor_first_variation(&config)?;
     if !spex_path.is_file() {
-        return Err(MaterialLaneError::MissingCheckpoint(spex_path.to_path_buf()));
+        return Err(MaterialLaneError::MissingCheckpoint(
+            spex_path.to_path_buf(),
+        ));
     }
     let fields = read_spex_snapshot_hdf(spex_path)?;
     let materialized = materialize_checkpoint_v2(&fields, recipe)?;
@@ -193,7 +196,7 @@ mod tests {
                 shift: [0.0; 3],
             },
             basis: ScfBasis {
-                plane_wave_cutoff: 1.0,
+                plane_wave_cutoff: InverseBohr(1.0),
                 l_max: 1,
                 channels: Vec::new(),
                 resolved_channels: Vec::new(),

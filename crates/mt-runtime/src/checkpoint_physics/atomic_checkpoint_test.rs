@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
-use muffintin_core::{Bohr, ExponentialMesh, Hartree};
+use muffintin_core::{AngularGrid, Bohr, ExponentialMesh, Hartree, InverseBohr};
 use muffintin_dft::{
     FreeAtomScfSpec, LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis,
     ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig,
     ScfConvergence, ScfCoreSite, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations,
-    ScfPhysics, ScfRelativity, XcFunctional, production_density_layout,
+    ScfPhysics, ScfRelativity, XcFunctional,
 };
 use muffintin_io::{
     AngularBasis, CheckpointFile, CheckpointMeta, EnergyParameterV1, EnergyUnit,
@@ -16,11 +16,11 @@ use muffintin_io::{
 };
 
 use super::{
-    AtomicCheckpointRequest, CheckpointPhysics, materialize_atomic_checkpoint_v2,
+    AtomicStartRequest, CheckpointPhysics, RegionalFieldLayout, Structure, materialize_atomic_start,
 };
 
 #[test]
-fn neutral_atomic_checkpoint_enters_the_native_restart_and_potential_path() {
+fn neutral_atomic_start_uses_the_requested_regional_layout_and_restart_path() {
     let first = 1.0e-4_f64;
     let radius = 1.5_f64;
     let point_count = 61;
@@ -75,7 +75,7 @@ fn neutral_atomic_checkpoint_enters_the_native_restart_and_potential_path() {
             shift: [0.0; 3],
         },
         basis: ScfBasis {
-            plane_wave_cutoff: 4.0,
+            plane_wave_cutoff: InverseBohr(4.0),
             l_max: 1,
             channels: vec![ScfChannelRecipe {
                 site: "H-1".to_owned(),
@@ -108,10 +108,14 @@ fn neutral_atomic_checkpoint_enters_the_native_restart_and_potential_path() {
         }],
     };
     let free_atom_mesh = ExponentialMesh::new(Bohr(1.0e-6), 0.01, 1683).unwrap();
-    let generated = materialize_atomic_checkpoint_v2(AtomicCheckpointRequest {
+    let structure = Structure::new(geometry).unwrap();
+    let field_layout = RegionalFieldLayout::from_g_cutoff(&structure, InverseBohr(4.0), 2).unwrap();
+    let expected_layout = field_layout.fourier().clone();
+    let generated = materialize_atomic_start(AtomicStartRequest {
         meta,
-        geometry,
-        scf: config.clone(),
+        structure,
+        field_layout,
+        exchange_correlation: config.exchange_correlation,
         free_atom_scf: FreeAtomScfSpec {
             mesh: free_atom_mesh,
             mixing: 0.3,
@@ -119,7 +123,7 @@ fn neutral_atomic_checkpoint_enters_the_native_restart_and_potential_path() {
             tail_tolerance: 1.0e-7,
             max_iterations: 120,
         },
-        atomic_superposition_angular_points: 50,
+        angular_grid: AngularGrid::fibonacci(50).unwrap(),
     })
     .unwrap();
 
@@ -133,12 +137,6 @@ fn neutral_atomic_checkpoint_enters_the_native_restart_and_potential_path() {
         panic!("atomic materialization must produce a restart checkpoint");
     };
     let mut physics = CheckpointPhysics::new(&generated.checkpoint).unwrap();
-    let expected_layout = production_density_layout(
-        *physics.kernel.reciprocal(),
-        config.k_mesh,
-        config.basis.plane_wave_cutoff,
-    )
-    .unwrap();
     let expected_g = expected_layout
         .vectors()
         .iter()

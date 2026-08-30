@@ -4,10 +4,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::PI;
 use std::ops::Range;
 
-use muffintin_core::{
-    Bohr, ExponentialMesh, FourierFieldError, FourierLayout, GVector, Hartree,
-    InterstitialGeometry, InverseBohr, Kappa, LatticeError, MeshError, ReciprocalLattice,
-};
 use crate::{
     AtomicEnergyRequest, BandPathRequest, BandState, ChannelKappaError, CollinearKPoint,
     CoreContribution, CoreDensityError, CorePotentialBuildError, CorePotentialBuildSpec,
@@ -17,21 +13,24 @@ use crate::{
     OccupationError, PdosEnergySample, RegionalCoreShellInput, RegionalDensity,
     RegionalElectrostaticResult, RegionalPotential, RegionalScalarField, RegionalXcResult,
     RegularSpectrum, ScalarBuilderError, ScalarIterationBasis, ScalarLocalOrbitalRequest,
-    ScalarSiteInput, ScfBasis, ScfChannelIdentity,
-    ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfCoreSite, ScfEnergyContext,
-    ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfOccupations, ScfPhysics,
-    ScfPotentialBuildError, ScfRelativity, ScfResolvedChannelEnergy, ScfState,
-    SecondVariationError, SpinorBuilderError, SpinorFirstVariationError, SpinorIterationBasis,
-    SpinorLinearizationEnergy, SpinorLocalOrbitalRequest, SpinorSiteInput, TetrahedronError,
-    build_collinear_scalar_iteration_bases, build_extended_checkpoint_core_potentials,
-    build_extended_core_potentials, build_regional_core_contribution, build_scf_potential,
-    build_spinor_iteration_basis, channel_kappas, channel_l, channel_n, generate_atomic_energy,
-    generate_band_center_energy, generate_band_cog_energy, generate_explicit_energy,
-    generate_fermi_offset_energy, generate_frozen_checkpoint_energy,
-    generate_log_derivative_energy, kappa_degeneracy_average, physical_site_band_projections,
-    scalar_component_energy, solve_fermi_dirac, solve_gaussian, solve_soc_second_variation,
-    solve_spinor_k_point, spin_resolved_energy, spinor_kappas_for_l,
+    ScalarSiteInput, ScfBasis, ScfChannelIdentity, ScfChannelRecipe, ScfChannelTreatment,
+    ScfConfig, ScfCoreSite, ScfEnergyContext, ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh,
+    ScfOccupations, ScfPhysics, ScfPotentialBuildError, ScfRelativity, ScfResolvedChannelEnergy,
+    ScfState, SecondVariationError, SpinorBuilderError, SpinorFirstVariationError,
+    SpinorIterationBasis, SpinorLinearizationEnergy, SpinorLocalOrbitalRequest, SpinorSiteInput,
+    TetrahedronError, build_collinear_scalar_iteration_bases,
+    build_extended_checkpoint_core_potentials, build_extended_core_potentials,
+    build_regional_core_contribution, build_scf_potential, build_spinor_iteration_basis,
+    channel_kappas, channel_l, channel_n, generate_atomic_energy, generate_band_center_energy,
+    generate_band_cog_energy, generate_explicit_energy, generate_fermi_offset_energy,
+    generate_frozen_checkpoint_energy, generate_log_derivative_energy, kappa_degeneracy_average,
+    physical_site_band_projections, scalar_component_energy, solve_fermi_dirac, solve_gaussian,
+    solve_soc_second_variation, solve_spinor_k_point, spin_resolved_energy, spinor_kappas_for_l,
     synthesize_collinear_valence_density, synthesize_full_spinor_valence_density,
+};
+use muffintin_core::{
+    Bohr, ExponentialMesh, FourierFieldError, FourierLayout, GVector, Hartree,
+    InterstitialGeometry, InverseBohr, Kappa, LatticeError, MeshError, ReciprocalLattice,
 };
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_operators::lapw::{
@@ -193,11 +192,7 @@ impl CheckpointSite {
 }
 
 impl SpexBoundSpinorChannel {
-    pub fn new(
-        l: u32,
-        requested: ScfChannelRecipe,
-        resolved: ScfResolvedChannelEnergy,
-    ) -> Self {
+    pub fn new(l: u32, requested: ScfChannelRecipe, resolved: ScfResolvedChannelEnergy) -> Self {
         Self {
             l,
             requested,
@@ -933,7 +928,7 @@ impl MaterialKernel {
     fn plane_wave_envelope(
         &self,
         fractional_k: [f64; 3],
-        cutoff: f64,
+        cutoff: InverseBohr,
     ) -> Result<PlaneWaveEnvelope, MaterialKernelError> {
         production_plane_wave_envelope(self.reciprocal, fractional_k, cutoff)
     }
@@ -1863,19 +1858,20 @@ pub fn regular_k_points(mesh: ScfKMesh) -> Result<Vec<[f64; 3]>, MaterialKernelE
 fn production_plane_wave_envelope(
     reciprocal: ReciprocalLattice,
     fractional_k: [f64; 3],
-    cutoff: f64,
+    cutoff: InverseBohr,
 ) -> Result<PlaneWaveEnvelope, MaterialKernelError> {
     if fractional_k.iter().any(|value| !value.is_finite()) {
         return Err(MaterialKernelError::NonFiniteKPoint(fractional_k));
     }
     let k = fractional_to_reciprocal(fractional_k, reciprocal.basis());
     let k_norm = squared_norm(k.map(InverseBohr::get)).sqrt();
-    let candidates = reciprocal.enumerate(InverseBohr(cutoff + k_norm))?;
+    let cutoff_value = cutoff.get();
+    let candidates = reciprocal.enumerate(InverseBohr(cutoff_value + k_norm))?;
     let waves = candidates
         .into_iter()
         .filter(|g| {
             let wave = std::array::from_fn(|axis| k[axis].get() + g.cartesian[axis].get());
-            squared_norm(wave) <= cutoff * cutoff * (1.0 + 64.0 * f64::EPSILON)
+            squared_norm(wave) <= cutoff_value * cutoff_value * (1.0 + 64.0 * f64::EPSILON)
         })
         .map(|g| PlaneWave::new(k, g))
         .collect::<Vec<_>>();
@@ -1891,7 +1887,7 @@ fn production_plane_wave_envelope(
 pub fn production_density_layout(
     reciprocal: ReciprocalLattice,
     k_mesh: ScfKMesh,
-    cutoff: f64,
+    cutoff: InverseBohr,
 ) -> Result<FourierLayout, MaterialKernelError> {
     let points = regular_k_points(k_mesh)?;
     if points.is_empty() {
@@ -2125,7 +2121,7 @@ pub enum MaterialKernelError {
     #[error("k point {0:?} contains a non-finite coordinate")]
     NonFiniteKPoint([f64; 3]),
     #[error("plane-wave cutoff {cutoff} produces no basis at k={k:?}")]
-    EmptyPlaneWaveBasis { k: [f64; 3], cutoff: f64 },
+    EmptyPlaneWaveBasis { k: [f64; 3], cutoff: InverseBohr },
     #[error("regular k-point set is empty")]
     EmptyKPointSet,
     #[error("regular k-point count overflows usize")]

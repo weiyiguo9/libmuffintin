@@ -3,10 +3,9 @@
 use std::collections::BTreeMap;
 
 use muffintin::{
-    SCALAR_MPB_NSPIN, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarMpbError, ScalarMpbSelection,
-    ScalarMpbSpec, CheckpointPhysics, build_scalar_mpb,
+    CheckpointPhysics, SCALAR_MPB_NSPIN, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarMpbError,
+    ScalarMpbSelection, ScalarMpbSpec, build_scalar_mpb,
 };
-use muffintin_prodbasis::{CompiledAuxiliaryBasis, OrbitalPair};
 use muffintin_core::{Hartree, InverseBohr};
 use muffintin_dft::{
     LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
@@ -15,14 +14,14 @@ use muffintin_dft::{
     XcFunctional,
 };
 use muffintin_io::{
-    AngularBasis, BasisHints, Complex64V1, EnergyParameterV1, EnergyUnit,
-    ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization, FourierPhase,
-    GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit, LinearizationV1,
-    CheckpointMeta, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTag, SiteSpinV1, SiteV1, CheckpointV1, CheckpointV2, SphericalChannelConvention,
-    SpinTag,
+    AngularBasis, BasisHints, CheckpointMeta, CheckpointV1, CheckpointV2, Complex64V1,
+    EnergyParameterV1, EnergyUnit, ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization,
+    FourierPhase, GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit,
+    LinearizationV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
+    RadialEquationTag, SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag,
 };
 use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
+use muffintin_prodbasis::{CompiledAuxiliaryBasis, OrbitalPair};
 use num_complex::Complex64;
 
 fn hydrogen_checkpoint() -> CheckpointV2 {
@@ -119,7 +118,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
             shift: [0.0; 3],
         },
         basis: ScfBasis {
-            plane_wave_cutoff: cutoff,
+            plane_wave_cutoff: InverseBohr(cutoff),
             l_max: 1,
             channels: vec![
                 ScfChannelRecipe {

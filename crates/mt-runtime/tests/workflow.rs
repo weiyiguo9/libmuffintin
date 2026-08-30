@@ -24,11 +24,12 @@ use muffintin_dft::{
 use muffintin_io::CheckpointFile;
 use num_complex::Complex64;
 
-use common::{sample_input, sample_checkpoint, supported_input, supported_checkpoint};
+use common::{sample_checkpoint, sample_input, supported_checkpoint, supported_input};
 
 struct WorkflowKernel {
     template: RegionalDensity,
     events: Vec<String>,
+    cutoffs: Vec<InverseBohr>,
     band_source: Option<ScfState>,
     dos_source: Option<ScfState>,
     saw_sv_window: bool,
@@ -40,6 +41,7 @@ impl WorkflowKernel {
         Self {
             template: scalar_density(1.0),
             events: Vec::new(),
+            cutoffs: Vec::new(),
             band_source: None,
             dos_source: None,
             saw_sv_window: false,
@@ -59,8 +61,9 @@ impl ScfPhysics for WorkflowKernel {
     type OneParticle = ();
     type BandSolution = Vec<BandState>;
 
-    fn initial_density(&mut self, _config: &ScfConfig) -> Result<RegionalDensity, Self::Error> {
+    fn initial_density(&mut self, config: &ScfConfig) -> Result<RegionalDensity, Self::Error> {
         self.events.push("initial".to_owned());
+        self.cutoffs.push(config.basis.plane_wave_cutoff);
         Ok(self.template.clone())
     }
 
@@ -300,6 +303,31 @@ fn workflow_executes_scf_bands_dos_in_order_with_exact_state_reuse() {
             .count(),
         state.iterations()
     );
+}
+
+#[test]
+fn reciprocal_and_energy_cutoffs_reach_the_same_scf_config() {
+    let mut reciprocal_input = sample_input();
+    let Task::DftScf { basis, .. } = reciprocal_input.task.get_mut("scf").unwrap() else {
+        panic!("scf task changed kind");
+    };
+    basis.energy_generator = Some(ChannelEnergyGenerator::FrozenCheckpoint);
+    basis.recipe = None;
+    basis.channels.clear();
+
+    let mut energy_input = reciprocal_input.clone();
+    let Task::DftScf { basis, .. } = energy_input.task.get_mut("scf").unwrap() else {
+        panic!("scf task changed kind");
+    };
+    basis.envelope.g_cutoff = None;
+    basis.envelope.energy_cutoff = Some(8.0);
+
+    for input in [reciprocal_input, energy_input] {
+        let prepared = prepare_input(&input, CheckpointFile::V1(sample_checkpoint())).unwrap();
+        let mut kernel = WorkflowKernel::new();
+        execute_prepared_with(&prepared, &mut kernel).unwrap();
+        assert_eq!(kernel.cutoffs, vec![InverseBohr(4.0)]);
+    }
 }
 
 #[test]

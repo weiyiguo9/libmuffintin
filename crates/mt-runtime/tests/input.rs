@@ -13,14 +13,14 @@ use muffintin::{
 use muffintin_core::Hartree;
 use muffintin_io::CheckpointFile;
 
-use common::{FixtureDirectory, sample_input, sample_checkpoint};
+use common::{FixtureDirectory, sample_checkpoint, sample_input};
 
 #[test]
 fn input_round_trips_deterministically_with_header_first() {
     let input = sample_input();
     let encoded = input_to_toml(&input).unwrap();
     assert!(encoded.starts_with(
-        "format = \"libmuffintin-input\"\nversion = 2\ncheckpoint = \"data/checkpoint.toml\"\n"
+        "format = \"libmuffintin-input\"\nversion = 3\ncheckpoint = \"data/checkpoint.toml\"\n"
     ));
     let decoded = parse_input_toml(&encoded).unwrap();
     assert_eq!(decoded, input);
@@ -62,7 +62,8 @@ fn envelope_channels_quoted_sites_and_explicit_empty_rows_are_preserved() {
         scf["basis"]["envelope"]["kind"].as_str(),
         Some("plane-wave")
     );
-    assert_eq!(scf["basis"]["envelope"]["cutoff"].as_float(), Some(4.0));
+    assert_eq!(scf["basis"]["envelope"]["g-cutoff"].as_float(), Some(4.0));
+    assert!(scf["basis"]["envelope"].get("energy-cutoff").is_none());
     assert!(
         scf["basis"]["channels"]["Si"]["valence"]
             .as_array()
@@ -142,10 +143,10 @@ fn header_unknown_fields_and_unknown_kinds_are_rejected() {
         parse_input_toml(&wrong_format),
         Err(InputError::InvalidFormat { .. })
     ));
-    let wrong_version = encoded.replacen("version = 2", "version = 3", 1);
+    let wrong_version = encoded.replacen("version = 3", "version = 4", 1);
     assert!(matches!(
         parse_input_toml(&wrong_version),
-        Err(InputError::UnsupportedVersion { found: 3, .. })
+        Err(InputError::UnsupportedVersion { found: 4, .. })
     ));
 
     let unknown_field = encoded.replacen(
@@ -210,7 +211,7 @@ max-iterations = 20
     let error = parse_input_toml(v1).unwrap_err();
     assert!(matches!(error, InputError::V1MigrationRequired));
     let message = error.to_string();
-    assert!(message.contains("version = 2"));
+    assert!(message.contains("version = 3"));
     assert!(message.contains("envelope"));
     assert!(message.contains("channels"));
     assert!(message.contains("local-orbitals/state-overrides"));
@@ -224,7 +225,7 @@ max-iterations = 20
 }
 
 #[test]
-fn v2_rejects_each_removed_flat_orbital_field() {
+fn v3_rejects_each_removed_flat_orbital_field() {
     let encoded = input_to_toml(&sample_input()).unwrap();
     let flat_cutoff = encoded.replacen(
         "[task.scf.basis]\n",
@@ -258,13 +259,50 @@ fn envelope_kind_and_cutoff_are_strict() {
         Err(InputError::Decode(_))
     ));
 
-    let nonpositive = encoded.replacen("cutoff = 4.0", "cutoff = 0.0", 1);
+    let nonpositive = encoded.replacen("g-cutoff = 4.0", "g-cutoff = 0.0", 1);
     assert!(matches!(
         parse_input_toml(&nonpositive),
         Err(InputError::Validation(
             InputValidationError::NotPositive { .. }
         ))
     ));
+
+    let missing = encoded.replace("g-cutoff = 4.0\n", "");
+    assert!(matches!(
+        parse_input_toml(&missing),
+        Err(InputError::Validation(
+            InputValidationError::MissingPlaneWaveCutoff { .. }
+        ))
+    ));
+
+    let conflicting = encoded.replacen("g-cutoff = 4.0", "g-cutoff = 4.0\nenergy-cutoff = 8.0", 1);
+    assert!(matches!(
+        parse_input_toml(&conflicting),
+        Err(InputError::Validation(
+            InputValidationError::ConflictingPlaneWaveCutoffs { .. }
+        ))
+    ));
+}
+
+#[test]
+fn v2_gets_the_dedicated_cutoff_migration_error() {
+    let encoded = input_to_toml(&sample_input()).unwrap();
+    let v2 = encoded.replacen("version = 3", "version = 2", 1);
+    assert!(matches!(
+        parse_input_toml(&v2),
+        Err(InputError::V2MigrationRequired)
+    ));
+}
+
+#[test]
+fn energy_cutoff_round_trip_preserves_its_spelling() {
+    let encoded = input_to_toml(&sample_input()).unwrap();
+    let energy = encoded.replacen("g-cutoff = 4.0", "energy-cutoff = 8.0", 1);
+    let decoded = parse_input_toml(&energy).unwrap();
+    let reencoded = input_to_toml(&decoded).unwrap();
+    assert!(reencoded.contains("energy-cutoff = 8.0"));
+    assert!(!reencoded.contains("g-cutoff"));
+    assert_eq!(parse_input_toml(&reencoded).unwrap(), decoded);
 }
 
 #[test]
@@ -427,7 +465,7 @@ fn physical_numbers_and_nonzero_controls_are_validated() {
     let Task::DftScf { basis, .. } = input.task.get_mut("scf").unwrap() else {
         panic!("scf task changed kind");
     };
-    basis.envelope.cutoff = f64::NAN;
+    basis.envelope.g_cutoff = Some(f64::NAN);
     assert!(matches!(
         input.validate(),
         Err(InputError::Validation(
@@ -480,7 +518,8 @@ fn prepare_is_filesystem_free_and_resolves_sources() {
         },
     )]);
     let prepared =
-        prepare_input_with_recipes(&input, CheckpointFile::V1(sample_checkpoint()), &recipes).unwrap();
+        prepare_input_with_recipes(&input, CheckpointFile::V1(sample_checkpoint()), &recipes)
+            .unwrap();
     assert_eq!(prepared.tasks.len(), 3);
     let recipe = prepared.tasks[0].channel_recipe.as_ref().unwrap();
     assert_eq!(recipe.sites.len(), 1);
@@ -528,7 +567,10 @@ fn path_loader_resolves_checkpoint_relative_to_input_parent() {
     let input_path = fixture.write_workflow();
     assert_eq!(input_path.parent(), Some(fixture.root()));
     let prepared = load_input_path(&input_path).unwrap();
-    assert_eq!(prepared.checkpoint, sample_checkpoint().normalize_v2().unwrap());
+    assert_eq!(
+        prepared.checkpoint,
+        sample_checkpoint().normalize_v2().unwrap()
+    );
     assert_eq!(prepared.tasks[0].id, "scf");
     assert!(prepared.tasks[0].channel_recipe.is_some());
 

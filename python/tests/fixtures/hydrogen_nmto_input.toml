@@ -1,5 +1,5 @@
 format = "libmuffintin-input"
-version = 2
+version = 3
 checkpoint = "hydrogen_checkpoint.toml"
 
 [workflow]
@@ -19,7 +19,7 @@ energy-generator = "frozen-checkpoint"
 
 [task.scf.basis.envelope]
 kind = "plane-wave"
-cutoff = 5.0
+g-cutoff = 5.0
 
 [task.scf.occupations]
 kind = "fermi-dirac"

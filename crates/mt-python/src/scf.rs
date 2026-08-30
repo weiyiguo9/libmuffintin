@@ -208,7 +208,7 @@ impl DftScfPlan {
 
 #[pymethods]
 impl CheckpointPhysics {
-    /// Create the staged SCF session selected by Input V2 for this checkpoint context.
+    /// Create the staged SCF session selected by Input V3 for this checkpoint context.
     fn scf_session(&self, input_path: PathBuf) -> PyResult<ScfSession> {
         let plan = muffintin::prepare_dft_scf(input_path).map_err(py_error)?;
         let session = plan
