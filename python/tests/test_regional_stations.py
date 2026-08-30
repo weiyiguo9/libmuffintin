@@ -122,6 +122,31 @@ def test_regional_density_roundtrip_and_potential_station() -> None:
     )
     assert changed.energy_change == pytest.approx(0.001)
 
+    mixer_output = roundtrip.add_scaled(-0.25, roundtrip)
+    linear_mixer = mt.DensityMixer.linear(0.4)
+    linear_step = linear_mixer.step(roundtrip, mixer_output)
+    assert linear_step.status == "linear"
+    expected_mixed = roundtrip.add_scaled(-0.1, roundtrip)
+    linear_density = linear_step.density()
+    linear_export = linear_density.export_interstitial()
+    expected_export = expected_mixed.export_interstitial()
+    np.testing.assert_allclose(linear_export["components"], expected_export["components"])
+    np.testing.assert_allclose(
+        linear_export["mt_components"], expected_export["mt_components"]
+    )
+
+    broyden = mt.DensityMixer.broyden2(0.4, 4)
+    broyden_step = broyden.step(roundtrip, mixer_output)
+    assert broyden_step.status == "nonlinear-warmup"
+    assert broyden.history_length == 1
+    pulay = mt.DensityMixer.pulay_anderson(0.4, 4)
+    pulay_step = pulay.step(roundtrip, mixer_output)
+    assert pulay_step.status == "nonlinear-warmup"
+    assert pulay.history_length == 1
+    np.testing.assert_array_equal(pulay.last_pulay_coefficients(), [1.0])
+    for step in (linear_step, broyden_step, pulay_step):
+        assert math.isfinite(step.density().residual_rms())
+
     with pytest.raises(ValueError, match="mt_sample_offsets"):
         mt.RegionalDensity(
             structure,

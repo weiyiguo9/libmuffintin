@@ -167,6 +167,21 @@ impl DensityMixer {
         input: &RegionalDensity,
         output: &RegionalDensity,
     ) -> Result<MixStep, MixingError> {
+        let snapshot = self.clone();
+        match self.mix_inner(input, output) {
+            Ok(step) => Ok(step),
+            Err(error) => {
+                *self = snapshot;
+                Err(error)
+            }
+        }
+    }
+
+    fn mix_inner(
+        &mut self,
+        input: &RegionalDensity,
+        output: &RegionalDensity,
+    ) -> Result<MixStep, MixingError> {
         let residual = input.difference(output)?;
         let record = MixRecord {
             input: input.clone(),
@@ -683,8 +698,9 @@ mod tests {
 
     #[test]
     fn non_finite_physical_metric_is_a_hard_error_not_fallback() {
-        let mut mixer = DensityMixer::broyden2(0.2, 4).unwrap();
+        let mut mixer = DensityMixer::pulay_anderson(0.2, 4).unwrap();
         mixer.mix(&scalar(1.0e200), &scalar(0.0)).unwrap();
+        let state_before_failure = mixer.clone();
         let error = mixer.mix(&scalar(2.0e200), &scalar(0.0)).unwrap_err();
         assert!(
             matches!(
@@ -694,5 +710,8 @@ mod tests {
             ),
             "{error:?}"
         );
+        assert_eq!(mixer, state_before_failure);
+        assert_eq!(mixer.history().len(), 1);
+        assert_eq!(mixer.last_pulay_coefficients(), &[1.0]);
     }
 }

@@ -5,6 +5,7 @@ mod core;
 mod coulomb;
 mod energy;
 mod export;
+mod mixing;
 mod products;
 mod regional;
 mod scf;
@@ -46,6 +47,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(sample_scalar_orbitals, module)?)?;
     core::register(module)?;
     energy::register(module)?;
+    mixing::register(module)?;
     spinor::register(module)?;
     writers::register(module)?;
     regional::register(module)?;

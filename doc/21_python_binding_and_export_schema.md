@@ -50,7 +50,7 @@ Out of scope for v0.3:
 ```text
 crates/mt-python/            # the only crate containing PyO3
   Cargo.toml                 # package libmuffintin-python, [lib] name muffintin_python, cdylib
-  src/{lib,checkpoint,products,thc,coulomb,spinor,writers,regional,core,energy,scf,export}.rs
+  src/{lib,checkpoint,products,thc,coulomb,spinor,writers,regional,core,energy,mixing,scf,export}.rs
 python/
   pyproject.toml             # maturin backend, module-name = "libmuffintin._native"
   libmuffintin/
@@ -661,6 +661,30 @@ correction of its arbitrary occupation method explicitly. Rust never infers
 an occupation vector, chemical potential, smearing family, or band
 degeneracy, and labels this generic contribution as external rather than
 Fermi–Dirac or Gaussian.
+
+`DensityMixer` is an independent stateful station over reusable
+`RegionalDensity` values. Its residual and linear update conventions are
+
+```math
+r = \rho_{\mathrm{input}}-\rho_{\mathrm{output}},
+\qquad
+\rho_{\mathrm{next}}=\rho_{\mathrm{input}}-\alpha r.
+```
+
+Linear, Broyden type 2, and Pulay–Anderson use the same physical Pauli metric,
+
+```math
+\langle\rho,\rho'\rangle
+=\frac{1}{2}\left(\langle n,n'\rangle
++\sum_{j=x,y,z}\langle m_j,m'_j\rangle\right),
+```
+
+and the nonlinear mixer itself owns its bounded oldest-to-newest history and
+last Pulay coefficients. A failed step is transactional: neither a newly
+considered record nor partial coefficient changes survive. The independent
+mixer borrows neutral input/output values and returns another neutral value;
+it cannot replace the private mixer inside `ScfSession` or mint a
+`RegionalDensityStep` session ticket.
 
 The MTO research boundary remains in Python: USW construction, value-and-
 derivative data, kink matrices, LMTO/NMTO assembly, occupations, and NMTO
