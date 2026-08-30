@@ -128,8 +128,9 @@ Si/SrVO3 scalar, Pt/Au second-variation SOC, magnetic, and cross-code
 tetrahedron-DOS fixtures. Checkpoint V1 remains readable through exact
 normalization to Checkpoint V2.
 
-The next planned step is a thin PyO3/maturin Python binding that would expose
-the frozen scalar and spinor product/THC/Coulomb boundaries as versioned NumPy
-structures in the separate backend-neutral `pymuffintin` package. That binding
-is not published and adds no current physics, SCF, symmetry, importer, or
-wheel claim.
+The local-only PyO3/maturin binding now exposes the frozen scalar and spinor
+product/THC/Coulomb boundaries as versioned NumPy structures and exposes the
+production DFT-SCF loop through one global entry plus linear staged handles.
+The separate backend-neutral `pymuffintin` research package consumes those
+exports; it is not part of this workspace. Neither package is published, and
+this work adds no symmetry, importer, wheel, or material-accuracy claim.
