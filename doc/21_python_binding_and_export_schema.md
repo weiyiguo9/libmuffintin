@@ -559,15 +559,15 @@ Stage 5 keeps the native boundary explicit. `MuffintinAdapter` reconstructs
 pair samples from `sample_scalar_orbitals` plus the exported $k-q$ wraps,
 builds an all-pair MPB reference, and obtains its full Coulomb operator from
 `build_scalar_mpb_coulomb`. A Python auxiliary representation stores pair
-vertices $C_{mathrm{trial}}$, not forged Rust auxiliary functions. The
+vertices $C_{\mathrm{trial}}$, not forged Rust auxiliary functions. The
 adapter forms the reference pair kernel and its Moore–Penrose projection:
 
 ```math
-K_{mathrm{MPB}} = C_{mathrm{MPB}}^* V_{mathrm{MPB}} C_{mathrm{MPB}}^{\mathsf T},
+K_{\mathrm{MPB}} = C_{\mathrm{MPB}}^* V_{\mathrm{MPB}} C_{\mathrm{MPB}}^{\mathsf T},
 \qquad
-V_{mathrm{trial}} = (C_{mathrm{trial}}^*)^+
-K_{mathrm{MPB}}
-(C_{mathrm{trial}}^{\mathsf T})^+.
+V_{\mathrm{trial}} = (C_{\mathrm{trial}}^*)^+
+K_{\mathrm{MPB}}
+(C_{\mathrm{trial}}^{\mathsf T})^+.
 ```
 
 For a concatenated muffin-tin LRI plus interstitial THC vertex matrix this
