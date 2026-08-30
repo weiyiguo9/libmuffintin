@@ -386,6 +386,57 @@ context:
 | `write_spinor_mldump` | Same metadata with spinor handles. | Spinor MLDUMP v1 HDF5. |
 | `write_scalar_coqui_cholesky` | `path, slice, thc, coulomb, tolerance` | CoQui Cholesky HDF5. |
 
+### 4.4 Regional fields and frozen scalar radial sampling
+
+`CheckpointPhysics.export_frozen_potential()`, an available
+`CheckpointPhysics.export_restart_density()`, and the staged SCF
+`export_interstitial()` methods return the same additive regional dictionary.
+The original interstitial keys remain unchanged; the muffin-tin keys complete
+the representation:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `angular_basis` | `str` | `complex-condon-shortley` or `real-tesseral-condon-shortley`. |
+| `g_vectors` | `int32[n_g,3]` | Integer reciprocal labels for the interstitial block. |
+| `components` | `complex128[4,n_g]` | Interstitial charge/scalar, $x$, $y$, $z$ components. |
+| `mt_mesh_site` | `int64[n_site]` | Stable site index for each muffin-tin mesh. |
+| `mt_mesh_first` | `float64[n_site]` | First radial point in Bohr. |
+| `mt_mesh_increment` | `float64[n_site]` | Exponential-mesh logarithmic increment. |
+| `mt_mesh_count` | `int64[n_site]` | Radial point count per site. |
+| `mt_mesh_offsets` | `int64[n_site+1]` | Offsets into `mt_mesh_radii` and `mt_mesh_weights`. |
+| `mt_mesh_radii` | `float64[sum(mt_mesh_count)]` | Concatenated radii in Bohr. |
+| `mt_mesh_weights` | `float64[sum(mt_mesh_count)]` | Concatenated radial quadrature weights. |
+| `mt_channel_labels` | `int64[n_channel,3]` | Rows `(site,l,m)` in site-major angular-channel order. |
+| `mt_sample_offsets` | `int64[n_channel+1]` | Offsets for the channel-major radial samples. |
+| `mt_components` | `complex128[4,n_mt_sample]` | Flattened muffin-tin components in the same Pauli order. |
+
+For a frozen-potential checkpoint, `export_restart_density()` returns `None`.
+It returns the same regional dictionary only when the loaded checkpoint
+contains an actual restart density.
+
+`CheckpointPhysics.sample_frozen_scalar_radials(site_id, l, energies,
+hard_radius=None)` returns:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `site_index`, `site_id`, `l` | `int`, `str`, `int` | Selected checkpoint site and angular momentum. |
+| `energies` | `float64[n_E]` | Requested energies in Hartree. |
+| `mesh_first`, `mesh_increment`, `mesh_count` | `float`, `float`, `int` | Native exponential-mesh parameters. |
+| `mesh_radii` | `float64[n_r]` | Native muffin-tin radii in Bohr. |
+| `radial_samples` | `float64[n_E,n_r]` | Normalized $u(r)$ from `RadialSolver`. |
+| `boundary_radius` | `float` | Native muffin-tin radius in Bohr. |
+| `boundary_radial` | `float64[n_E,2]` | Exact rows $[u(R),u'(R)]$. |
+| `log_derivative` | `list[float or None]` | $u'(R)/u(R)$ in inverse Bohr. |
+| `energy_derivative_boundary_radial` | `float64[n_E,2]` | Exact rows $[\partial_Eu(R),\partial_Eu'(R)]$ from `solve_with_energy_derivative`; this is the trace required by $\dot K$. |
+
+This sampler is deliberately limited to a nonmagnetic scalar checkpoint
+potential and uses the physical spherical potential
+$V(r)=v_{00}(r)/\sqrt{4\pi}$ in Hartree. `hard_radius` may be omitted or must
+equal the native muffin-tin radius exactly. A different hard sphere would
+require a proper-potential solve and phase-shifted continuation outside the
+muffin tin; the binding does not mislabel such a continuation as the native
+solution.
+
 ## 5. Entry points
 
 The surface is about fifteen functions and methods, scalar lane
@@ -396,6 +447,9 @@ import libmuffintin as mt
 
 snap = mt.load_checkpoint("checkpoint.toml")            # Checkpoint V1/V2 via mt-io
 phys = mt.CheckpointPhysics(snap)                     # CheckpointPhysics::new
+v_mt = phys.export_frozen_potential()                 # full regional Pauli field
+rho_mt = phys.export_restart_density()                # None for frozen-potential input
+rad = phys.sample_frozen_scalar_radials("H-1", 0, [-0.3])
 inp  = phys.scalar_product_input("input.toml", q=[0.0, 0.0, 0.0])
 inps = phys.scalar_q_slice("input.toml")            # complete k-mesh slice in
                                                     # production q-index order
@@ -540,8 +594,9 @@ Method-neutral `RegionalDensity`, `RegionalPotentialStep`, and
 `LapwDensityAssembly` exports return pyexport v1 dictionaries with
 `g_vectors: int32[n_g,3]` and
 `components: complex128[4,n_g]` in charge/scalar, $x$, $y$, $z$ order. The
-current v1 dictionary exports the interstitial Fourier block only; it neither
-exports nor accepts a `CompiledBasis`. `Occupations.values()` returns
+same additive dictionary now includes the complete flattened muffin-tin
+field described in section 4.4; it still does not accept a `CompiledBasis`.
+`Occupations.values()` returns
 `float64[n_state]`; the remaining staged observations are typed scalar
 properties on their opaque handles.
 
