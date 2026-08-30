@@ -186,7 +186,7 @@ fn associated_legendre(l: u32, m: u32, x: f64) -> f64 {
 }
 
 pub(crate) const fn parity(n: u32) -> f64 {
-    if n % 2 == 0 { 1.0 } else { -1.0 }
+    if n.is_multiple_of(2) { 1.0 } else { -1.0 }
 }
 
 #[cfg(test)]

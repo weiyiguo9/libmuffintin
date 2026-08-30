@@ -49,7 +49,7 @@ pub struct CoquiCholeskyHeader {
 impl CoquiCholeskyHeader {
     /// Number of $q$ records implied by `qpts`.
     pub fn n_q(&self) -> Result<usize, ValidationError> {
-        if self.qpts.len() % 3 != 0 {
+        if !self.qpts.len().is_multiple_of(3) {
             return Err(ValidationError::InvalidValue {
                 path: "/Interaction/qpts".to_owned(),
                 expected: "length multiple of 3".to_owned(),

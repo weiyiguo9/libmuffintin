@@ -97,7 +97,7 @@ fn validate_neumann_argument(x: f64) -> Result<(), BesselError> {
 
 fn apply_y_parity(l: u32, x: f64, positive: f64) -> f64 {
     // y_l(-x) = (-1)^(l+1) y_l(x).
-    if x.is_sign_negative() && l % 2 == 0 {
+    if x.is_sign_negative() && l.is_multiple_of(2) {
         -positive
     } else {
         positive

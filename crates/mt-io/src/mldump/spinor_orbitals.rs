@@ -701,7 +701,7 @@ fn validate_site_match(
             .into());
         }
     }
-    if prefix_len == 0 || prefix_len % 2 != 0 {
+    if prefix_len == 0 || !prefix_len.is_multiple_of(2) {
         return Err(ValidationError::InvalidValue {
             path: format!("{path}.site_matches[{site}].apw_projection"),
             expected: "nonempty APW prefix of (n=0,n=1) channel pairs".to_owned(),
@@ -748,18 +748,18 @@ fn validate_site_match(
             }
             .into());
         }
-        if let Some(previous) = previous_channel {
-            if identity <= previous {
-                return Err(ValidationError::InvalidValue {
-                    path: format!("{path}.site_matches[{site}].apw_projection"),
-                    expected: format!(
-                        "strictly increasing (signed_kappa, twice_mu) after ({}, {})",
-                        previous.0, previous.1
-                    ),
-                    actual: format!("({}, {})", identity.0, identity.1),
-                }
-                .into());
+        if let Some(previous) = previous_channel
+            && identity <= previous
+        {
+            return Err(ValidationError::InvalidValue {
+                path: format!("{path}.site_matches[{site}].apw_projection"),
+                expected: format!(
+                    "strictly increasing (signed_kappa, twice_mu) after ({}, {})",
+                    previous.0, previous.1
+                ),
+                actual: format!("({}, {})", identity.0, identity.1),
             }
+            .into());
         }
         previous_channel = Some(identity);
     }
