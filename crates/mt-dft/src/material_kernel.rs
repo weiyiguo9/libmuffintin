@@ -186,6 +186,10 @@ impl CheckpointSite {
     pub const fn down(&self) -> &CheckpointSpin {
         &self.down
     }
+
+    pub const fn nonmagnetic_scalar(&self) -> bool {
+        self.nonmagnetic_scalar
+    }
 }
 
 impl SpexBoundSpinorChannel {
