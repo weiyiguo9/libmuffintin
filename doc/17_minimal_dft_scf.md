@@ -10,14 +10,15 @@ SPEX `src/iterate.f:841-1788` and FlapwMBPT `dft_loop.F:1-35` fix the iteration 
 
 ```text
 input density
-  -> electronic Hartree + periodic nuclei + XC potential
-  -> four-component core solve at every site
-  -> materialize the immutable channel recipe on the current potential
-  -> radial basis, LAPW matching, H and S
-  -> regular full-BZ eigensolutions, chemical potential, and occupations
-  -> same-potential spectral refinement for band-cog or fermi-offset, if requested
-  -> valence density + P^2 + Q^2 core density
-  -> total energy, physical residual, convergence, and mixing
+  │
+  ├─→ electronic Hartree + periodic nuclei + XC potential
+  ├─→ four-component core solve at every site
+  ├─→ materialize the immutable channel recipe on the current potential
+  ├─→ radial basis, LAPW matching, H and S
+  ├─→ regular full-BZ eigensolutions, chemical potential, occupations
+  ├─→ same-potential spectral refinement (band-cog or fermi-offset, if requested)
+  ├─→ valence density + P^2 + Q^2 core density
+  └─→ total energy, physical residual, convergence, and mixing
 ```
 
 The driver owns this order, occupation counting, convergence, and mixer history. `libmuffintin-dft::MaterialKernel` owns the checkpoint-backed DFT/SCF physics: density initialization, electrostatics and XC, radial and basis construction, scalar/SOC/full-spinor routing, eigensolutions, orbital density synthesis, energy terms, and frozen-potential spectra. The DFT layer consumes compiled capabilities and never depends on a concrete `LapwBasis` façade.

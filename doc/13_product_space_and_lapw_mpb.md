@@ -20,9 +20,17 @@ There is no `libmuffintin-mbp` alias. The root IR does not depend on
 
 ## 2. Dependency DAG
 
-```text
-prodbasis  → core, envelope, operators, sphere
-coulomb    → prodbasis, core, envelope
+An arrow points from a crate to what depends on it.
+
+```mermaid
+graph LR
+    core --> prodbasis
+    envelope --> prodbasis
+    operators --> prodbasis
+    sphere --> prodbasis
+    prodbasis --> coulomb
+    core --> coulomb
+    envelope --> coulomb
 ```
 
 Within `libmuffintin-prodbasis` the `mpb::` and `thc::` modules build on

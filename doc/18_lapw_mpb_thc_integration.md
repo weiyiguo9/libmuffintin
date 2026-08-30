@@ -168,43 +168,54 @@ $\sum_Q L_{Qpr}\mathrm{conj}(L_{Qsq})$.
 
 ## 2. Algorithms
 
+The scalar path (sections 2.1–2.4) and the spinor path (sections 2.5–2.7)
+share this shape: product-input construction feeds two independent
+consumers, mixed-product assembly and THC selection/fit, whose outputs meet
+only at Coulomb assembly and the section 1.4 comparison metric.
+
+```mermaid
+flowchart TD
+    A["checkpoint + ScfConfig + q_in"] --> B["ScalarProductInput (2.1)"]
+    B --> C["build_scalar_mpb (2.2)"]
+    C --> D[ScalarMpbResult]
+    B --> E["build_scalar_thc, per q slice (2.3)"]
+    E --> F[ScalarThcResult]
+    D --> G["build_scalar_coulomb (2.4)"]
+    F --> G
+    G --> H[ScalarCoulombResult]
+    D --> I["Coulomb comparison, section 1.4"]
+    H --> I
+```
+
 ### 2.1 Scalar product-input construction
 
 The input is a validated V2 checkpoint, an `ScfConfig` whose relativity is
 scalar Koelling–Harmon, and a requested transfer in primitive reciprocal
 coordinates $q_{\mathrm{in}}$. The bridge materializes the frozen-checkpoint
 iteration basis, solves the regular full-BZ scalar eigenproblem, folds $q$ by
-section 1.1, and rejects a folded $k-q$ that is not on the regular mesh. It then
-assembles one bundle carrying: the exact scalar iteration bases (partition,
-per-site radial mesh, valence $P$ samples with optional $Q$, empty cores,
-finite raw interstitial pair support of relative $G$ labels); per-spin,
-per $k$ column-major eigenvectors together with the exact compiled basis used
-by the solve (plane-wave $G$ labels, APW $(u,\dot u)$ matching coefficients,
-confined LO layout) — this bundle does not carry coefficients or the compiled
-basis on the orbital-pair source itself; the folded $k-q_{\mathrm{canonical}}$
-mesh index and per-column $G_{\mathrm{wrap}}$; a pair-column layout keyed by
-$(k,i,j)$; the exact reciprocal lattice used to fold $q$; and a common leading
-band window with per $k$ available-band counts. Spin labels are $0$ (up) and
-$1$ (down). SCF state is not the orbital source; the runtime bridge consumes
-each solved k-point's band solution directly.
+section 1.1, and rejects a folded $k-q$ that is not on the regular mesh. It
+then assembles one bundle — bundle contents are section 3.2 — from the exact
+scalar iteration bases, the per-spin per $k$ eigensolution, and the exact
+compiled basis used by the solve; this bundle does not carry coefficients or
+the compiled basis on the orbital-pair source itself. SCF state is not the
+orbital source; the runtime bridge consumes each solved k-point's band
+solution directly.
 
 ### 2.2 Scalar mixed-product assembly
 
 The bridge consumes the published scalar product-input bundle and an
-explicit spec (reciprocal lattice, product angular/reciprocal cutoffs,
-overlap tolerance, a nonempty list of same-spin band selections). The left
-orbital is the mapped $k-q$ side; the right orbital is at $k$, both drawn from
-the published common leading window. Muffin-tin contraction visits every APW
-$u$, APW $\dot u$, and LO site coordinate present in the exact per $k$
-compiled basis and applies the coefficient/phase convention of section 1.2; terms
-absent from the raw radial products (triangle/parity) are skipped, but $u$,
-$\dot u$, and LO channels that exist in the descriptor are not dropped.
-Interstitial contraction sums the PW-only rows at $G_{\mathrm{rel}}$ from
-section 1.2. One accumulator sums those primitive terms into a single checked
-vertex per selection; the bridge does not build a complete primitive vertex
-per basis-pair term. Empty selection, a spin/$k$/band outside the frozen
-input, or an incompatible pair-column layout is a typed stage-boundary
-rejection.
+explicit spec (fields: section 3.3). The left orbital is the mapped $k-q$
+side; the right orbital is at $k$, both drawn from the published common
+leading window. Muffin-tin contraction visits every APW $u$, APW $\dot u$,
+and LO site coordinate present in the exact per $k$ compiled basis and
+applies the coefficient/phase convention of section 1.2; terms absent from
+the raw radial products (triangle/parity) are skipped, but $u$, $\dot u$,
+and LO channels that exist in the descriptor are not dropped. Interstitial
+contraction sums the PW-only rows at $G_{\mathrm{rel}}$ from section 1.2.
+One accumulator sums those primitive terms into a single checked vertex per
+selection; the bridge does not build a complete primitive vertex per
+basis-pair term. Empty selection, a spin/$k$/band outside the frozen input,
+or an incompatible pair-column layout is a typed stage-boundary rejection.
 
 ### 2.3 Scalar adaptive THC selection and fit
 
@@ -222,10 +233,10 @@ Cholesky does not form the dense point Gram but still materializes the
 stacked weighted pair matrix. Core-orbital diagnostics stay empty in this
 path.
 
-The parent grid is an externally supplied immutable parent support bound to
-the exact product partition: muffin-tin points name a site and radial index
-on the stored exponential mesh and must lie on that sample's Cartesian
-radius; interstitial points are partitioned interstitial. Weights may be
+The parent grid (`ThcParentGrid`, section 3.4) is bound to the exact product
+partition: muffin-tin points name a site and radial index on the stored
+exponential mesh and must lie on that sample's Cartesian radius; interstitial
+points are partitioned interstitial. Weights may be
 zero if at least one is positive; they are never clamped and are not L2
 selection candidates; there is no radial interpolation. Orbitals are
 evaluated on that parent grid using the muffin-tin and interstitial kernels
@@ -236,11 +247,12 @@ This stage does not build sampled auxiliary functions or Coulomb operators.
 
 ### 2.4 Scalar sampled $\zeta$ Coulomb assembly
 
-The bridge consumes the same complete ordered $q$ slice, a matching THC
-result, an existing Coulomb request plus interpolation projection, and an
-explicit bounded subset of matching scalar mixed-product vertices. The
-request reciprocal lattice must equal the frozen product-input reciprocal;
-it is not inferred from a caller-supplied cell recipe. For every THC $q$
+The bridge consumes the same complete ordered $q$ slice plus the inputs of
+section 3.5 (a matching THC result, an existing Coulomb request and
+interpolation projection, a bounded subset of matching mixed-product
+vertices). The request reciprocal lattice must equal the frozen product-input
+reciprocal; it is not inferred from a caller-supplied cell recipe. For every
+THC $q$
 record, the bridge builds the sampled auxiliary functions on the full THC
 parent grid in original order (Cartesian coordinates, true weights including
 zero-weight rows, exact muffin-tin/interstitial support, per-site meshes, and
@@ -257,6 +269,21 @@ matches the decoded column, and malformed public Bloch indices are rejected
 without decoding them. Matched mixed-product/THC pairs are then compared by
 the section 1.4 metric.
 
+The spinor path mirrors that shape one q-record at a time:
+
+```mermaid
+flowchart TD
+    A["checkpoint + full-first-variation ScfConfig + q_in"] --> B["SpinorProductInput (2.5)"]
+    B --> C["build_spinor_mpb (2.6)"]
+    C --> D[SpinorMpbResult]
+    B --> E["build_spinor_thc, per q slice (2.7)"]
+    E --> F[SpinorThcResult]
+    F --> G["build_spinor_coulomb (2.7)"]
+    G --> H[SpinorCoulombResult]
+    D --> I["Coulomb comparison, section 1.4"]
+    H --> I
+```
+
 ### 2.5 Frozen spinor product-input construction
 
 Only `ScfRelativity::SpinorFirstVariation` is accepted; scalar Koelling–Harmon
@@ -264,31 +291,24 @@ and SOC second variation are distinct typed rejections, and signed $\kappa$
 is not routed through second variation. The bridge materializes the
 frozen-checkpoint iteration basis, solves the regular full-BZ
 full-first-variation eigenproblem, reuses the scalar path's canonical $q$ /
-mesh $k-q$ folding (section 1.1), and assembles a bundle carrying: the Dirac
-product source with physical reduced $P$ and $Q$ on one site mesh, empty
-cores, partition, $G_{\mathrm{transfer}}$, and raw interstitial pair support, and the radial
-identity convention of section 1.3; per $k$ column-major eigenvectors, eigenvalues,
-and the exact compiled spinor basis used by the solve, with row order two
-Pauli interstitial blocks (shared spatial $G$ labels) followed by site
-confined LO/RLO rows $(\kappa,2\mu,n)$ with $n$ fastest — APW $(P,\dot P)$ are
-matching coefficients on plane-wave rows, not extra eigenbasis rows; the
-folded $k-q_{\mathrm{canonical}}$ mesh index and per-column
-$G_{\mathrm{wrap}}$ with the same positive pair-density convention as the
-scalar path; a pair-column layout with left band at $k-q$ and right band at
-$k$; and the exact checkpoint lattice. Off-mesh $q$ is rejected the same way
-as the scalar path. Eigenvector rows equal the basis dimension local to $k$ and
-are not truncated to a common size. Raw interstitial support is the
-deduplicated union, sorted by $|G|$ then index, of
-$G_{\mathrm{right}}-G_{\mathrm{left}}+G_{\mathrm{wrap}}$ over actual spinor
-plane-wave $G$ labels; the global $G_{\mathrm{transfer}}$ Umklapp is excluded. SCF state
-is not the orbital source.
+mesh $k-q$ folding (section 1.1), and assembles one bundle — bundle contents
+are section 3.7 — from the Dirac product source, the per $k$ eigensolution,
+and the exact compiled spinor basis used by the solve. Compiled-basis row
+order is two Pauli interstitial blocks (shared spatial $G$ labels) followed
+by site confined LO/RLO rows $(\kappa,2\mu,n)$ with $n$ fastest; APW
+$(P,\dot P)$ are matching coefficients on plane-wave rows, not extra
+eigenbasis rows. Off-mesh $q$ is rejected the same way as the scalar path.
+Eigenvector rows equal the basis dimension local to $k$ and are not truncated
+to a common size. Raw interstitial support is the deduplicated union, sorted
+by $|G|$ then index, of $G_{\mathrm{right}}-G_{\mathrm{left}}+G_{\mathrm{wrap}}$
+over actual spinor plane-wave $G$ labels; the global $G_{\mathrm{transfer}}$
+Umklapp is excluded. SCF state is not the orbital source.
 
 ### 2.6 Selected-band spinor mixed-product assembly
 
 The bridge consumes the published spinor product-input bundle and an
-explicit spec (product angular/reciprocal cutoffs, overlap tolerance, a
-nonempty list of band selections inside the spinor leading window); there is
-no caller lattice and no collinear spin tag. Construction seals a
+explicit spec (fields: section 3.8); there is no caller lattice and no
+collinear spin tag. Construction seals a
 runtime-private frozen-input identity of the originating spinor product
 input — the complete Dirac source, frozen orbitals (k fractions, band window
 and available counts, every ordered compiled-basis layout, eigenvalues, and

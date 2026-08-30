@@ -84,6 +84,29 @@
   numeric ranges. Preserve literal `--` only in code, command-line options,
   and Markdown table separators.
 
+## Diagrams and tables
+
+- Prefer a GitHub-rendered ` ```mermaid ` fence over prose for a branching
+  control-flow pipeline or a crate dependency/data-flow DAG. Use
+  `flowchart TD` for sequential procedures and `graph LR` for dependency
+  DAGs.
+- Prefer a plain fenced code block with Unicode box-drawing characters
+  (`│ ├ └ ─ →`) over mermaid for a compact linear flow or a layout/ordering
+  diagram: a small pipeline with no branching, memory or column ordering,
+  or a tree-shaped file/module listing. Mermaid is heavyweight there and
+  box-drawing keeps alignment exact.
+- GitHub does not render `$...$` math inside mermaid node labels or inside a
+  box-drawing fence. Label both with code identifiers (`ScalarProductInput`,
+  `PairBlock`), not formulas; formulas stay in the formula layer as prose or
+  math fences.
+- Quote a mermaid node label that contains parentheses, commas, or other
+  mermaid-significant characters, for example `A["fit zeta (weighted L2)"]`.
+- Prefer a GitHub table over prose for an enumerable contract: inputs and
+  outputs, engine or format comparisons, gate values, schema fields.
+- A diagram or table must condense the prose it replaces, not sit alongside
+  it unchanged. Skip a diagram where the prose it would replace is already
+  tight; do not add decorative diagrams.
+
 ## Numbered documentation
 
 - Keep the canonical derivations in `doc/` and name them
@@ -94,3 +117,9 @@
 - Preserve the existing numbering and keep cross-document notation and
   conventions consistent; update earlier numbered documents when needed.
 - Do not add unnumbered one-off files to `doc/`.
+- Separate three layers instead of interleaving them: formulas (mathematical
+  contracts, conventions, derivations — math fences), algorithms
+  (method-neutral procedures — where mermaid flowcharts belong), and
+  implementation (concrete crate/type/function bindings, gate values,
+  fixture pointers — where tables and code identifiers belong).
+  [18](doc/18_lapw_mpb_thc_integration.md) is the reference layout.

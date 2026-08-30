@@ -33,15 +33,28 @@ Linux.
 
 ## 2. Dependency DAG
 
-```text
-core
-tensor
-sphere            → core
-io                → core
-envelope          → core, sphere
-operators         → core, envelope, sphere, tensor, faer
-prodbasis         → core, envelope, operators, sphere, faer
-coulomb           → prodbasis, core, envelope
+An arrow points from a crate to what depends on it.
+
+```mermaid
+graph LR
+    tensor
+    core --> sphere
+    core --> io
+    core --> envelope
+    sphere --> envelope
+    core --> operators
+    envelope --> operators
+    sphere --> operators
+    tensor --> operators
+    faer --> operators
+    core --> prodbasis
+    envelope --> prodbasis
+    operators --> prodbasis
+    sphere --> prodbasis
+    faer --> prodbasis
+    prodbasis --> coulomb
+    core --> coulomb
+    envelope --> coulomb
 ```
 
 The envelope crate stores host augmentation coefficients only. Backend
@@ -77,14 +90,13 @@ as `l_max` and `interstitial` are not part of the IR.
 
 Compilation and assembly are:
 
-```text
-PlaneWaveEnvelope + LapwSiteInput
-        │
-        ▼
-recipes::lapw() ─→ BasisSpec ─compile→ CompiledBasis ─assemble_compiled→ OperatorSet(H, S)
-                       ▲
-                       │
-              explicit BasisSpec
+```mermaid
+flowchart LR
+    A["PlaneWaveEnvelope + LapwSiteInput"] --> B["recipes::lapw()"]
+    B --> C[BasisSpec]
+    D["explicit BasisSpec"] --> C
+    C -- compile --> E[CompiledBasis]
+    E -- assemble_compiled --> F["OperatorSet(H, S)"]
 ```
 
 `compile` takes only a `BasisSpec`. Plane waves come from the envelope block;
