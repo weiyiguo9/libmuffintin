@@ -48,7 +48,8 @@ pub use checkpoint_physics::{
 pub use dft_scf::{
     DftConvergenceDecision, DftCoreStep, DftEnergyRecord, DftLapwDensityAssembly, DftLapwSolution,
     DftOccupations, DftRegionalDensity, DftRegionalFourier, DftRegionalPotentialStep, DftScfError,
-    DftScfPlan, DftScfResult, DftScfSession, prepare_dft_scf, run_dft_scf,
+    DftScfPlan, DftScfResult, DftScfSession, density_fourier, potential_fourier, prepare_dft_scf,
+    run_dft_scf,
 };
 pub use error::{InputError, InputValidationError};
 pub use input::{

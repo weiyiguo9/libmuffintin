@@ -4,6 +4,7 @@ mod checkpoint;
 mod coulomb;
 mod export;
 mod products;
+mod regional;
 mod scf;
 mod spinor;
 mod thc;
@@ -43,6 +44,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(sample_scalar_orbitals, module)?)?;
     spinor::register(module)?;
     writers::register(module)?;
+    regional::register(module)?;
     scf::register(module)?;
     Ok(())
 }

@@ -40,6 +40,26 @@ impl Structure {
     pub const fn geometry(&self) -> &GeometryV2 {
         &self.geometry
     }
+
+    /// Runtime interstitial partition derived from the validated geometry.
+    pub const fn interstitial_geometry(&self) -> &muffintin_core::InterstitialGeometry {
+        &self.converted.geometry
+    }
+
+    /// Exact reciprocal lattice associated with the direct lattice.
+    pub const fn reciprocal(&self) -> &muffintin_core::ReciprocalLattice {
+        &self.converted.reciprocal
+    }
+
+    /// Exact per-site radial meshes in geometry site order.
+    pub fn site_meshes(&self) -> impl ExactSizeIterator<Item = &muffintin_core::ExponentialMesh> {
+        self.converted.sites.iter().map(|site| site.up().mesh())
+    }
+
+    /// Positive nuclear charges in geometry site order.
+    pub fn nuclear_charges(&self) -> &[f64] {
+        &self.converted.nuclear_charges
+    }
 }
 
 /// Exact scalar regional-field layout selected independently of an orbital basis.

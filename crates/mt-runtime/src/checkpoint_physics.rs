@@ -237,6 +237,11 @@ impl CheckpointPhysics {
             .map(crate::dft_scf::density_fourier)
     }
 
+    /// Clone the checkpoint restart density as a reusable method-neutral value.
+    pub fn restart_density(&self) -> Option<RegionalDensity> {
+        self.kernel.restart_density().cloned()
+    }
+
     /// Solve the nonmagnetic scalar frozen potential on its native MT radius.
     pub fn sample_frozen_scalar_radials(
         &self,

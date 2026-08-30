@@ -125,9 +125,9 @@ pub(crate) struct ScfSession {
     inner: Mutex<Option<muffintin::DftScfSession>>,
 }
 
-#[pyclass(name = "RegionalDensity", module = "libmuffintin._native", frozen)]
+#[pyclass(name = "RegionalDensityStep", module = "libmuffintin._native", frozen)]
 #[derive(Debug)]
-pub(crate) struct RegionalDensity {
+pub(crate) struct RegionalDensityStep {
     inner: Mutex<Option<muffintin::DftRegionalDensity>>,
 }
 
@@ -222,16 +222,19 @@ impl CheckpointPhysics {
 
 #[pymethods]
 impl ScfSession {
-    fn initial_density(&self) -> PyResult<RegionalDensity> {
-        Ok(RegionalDensity {
+    fn initial_density(&self) -> PyResult<RegionalDensityStep> {
+        Ok(RegionalDensityStep {
             inner: Mutex::new(Some(with_session(&self.inner, |session| {
                 session.initial_density()
             })?)),
         })
     }
 
-    fn potential(&self, density: PyRef<'_, RegionalDensity>) -> PyResult<RegionalPotentialStep> {
-        let density = take(&density.inner, "RegionalDensity")?;
+    fn potential(
+        &self,
+        density: PyRef<'_, RegionalDensityStep>,
+    ) -> PyResult<RegionalPotentialStep> {
+        let density = take(&density.inner, "RegionalDensityStep")?;
         Ok(RegionalPotentialStep {
             inner: Mutex::new(Some(with_session(&self.inner, |session| {
                 session.potential(density)
@@ -293,9 +296,9 @@ impl ScfSession {
         })
     }
 
-    fn mix(&self, decision: PyRef<'_, ConvergenceDecision>) -> PyResult<RegionalDensity> {
+    fn mix(&self, decision: PyRef<'_, ConvergenceDecision>) -> PyResult<RegionalDensityStep> {
         let decision = take(&decision.inner, "ConvergenceDecision")?;
-        Ok(RegionalDensity {
+        Ok(RegionalDensityStep {
             inner: Mutex::new(Some(with_session(&self.inner, |session| {
                 session.mix(decision)
             })?)),
@@ -311,7 +314,7 @@ impl ScfSession {
 }
 
 #[pymethods]
-impl RegionalDensity {
+impl RegionalDensityStep {
     #[getter]
     fn iteration(&self) -> PyResult<usize> {
         Ok(self
@@ -319,15 +322,15 @@ impl RegionalDensity {
             .lock()
             .expect("density mutex is not poisoned")
             .as_ref()
-            .ok_or_else(|| PyValueError::new_err("RegionalDensity has already been consumed"))?
+            .ok_or_else(|| PyValueError::new_err("RegionalDensityStep has already been consumed"))?
             .iteration())
     }
 
     fn export_interstitial(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         let guard = self.inner.lock().expect("density mutex is not poisoned");
-        let density = guard
-            .as_ref()
-            .ok_or_else(|| PyValueError::new_err("RegionalDensity has already been consumed"))?;
+        let density = guard.as_ref().ok_or_else(|| {
+            PyValueError::new_err("RegionalDensityStep has already been consumed")
+        })?;
         export_regional(py, density.export_interstitial())
     }
 }
@@ -590,7 +593,7 @@ impl ScfResult {
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<DftScfPlan>()?;
     module.add_class::<ScfSession>()?;
-    module.add_class::<RegionalDensity>()?;
+    module.add_class::<RegionalDensityStep>()?;
     module.add_class::<RegionalPotentialStep>()?;
     module.add_class::<CoreStep>()?;
     module.add_class::<LapwSolution>()?;

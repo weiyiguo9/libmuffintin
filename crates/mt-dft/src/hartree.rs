@@ -543,11 +543,19 @@ pub enum RegionalElectrostaticError {
 /// One SCF iteration's assembled potential and derived controls.
 #[derive(Clone, Debug)]
 pub struct ScfPotentialBuild {
+    source_density: crate::RegionalDensity,
     pub potential: crate::RegionalPotential,
     pub electrostatic: RegionalElectrostaticResult,
     pub exchange_correlation: crate::RegionalXcResult,
     pub core_spec: crate::CorePotentialBuildSpec,
     pub energy_terms: crate::ScfEnergyTerms,
+}
+
+impl ScfPotentialBuild {
+    /// Density from which this complete potential build was evaluated.
+    pub const fn source_density(&self) -> &crate::RegionalDensity {
+        &self.source_density
+    }
 }
 
 /// Failure assembling the iteration potential from a density.
@@ -587,11 +595,8 @@ pub fn build_scf_potential(
         output_l_max,
         exchange_correlation.noncollinear_route,
     );
-    let exchange_correlation_result = crate::evaluate_regional_xc(
-        exchange_correlation.functional,
-        density,
-        xc_field_spec,
-    )?;
+    let exchange_correlation_result =
+        crate::evaluate_regional_xc(exchange_correlation.functional, density, xc_field_spec)?;
     let mut scalar = electrostatic.potential.clone();
     scalar.add_scaled(1.0, exchange_correlation_result.potential.scalar())?;
     let potential = crate::RegionalPotential::new(
@@ -599,6 +604,7 @@ pub fn build_scf_potential(
         exchange_correlation_result.potential.magnetic().clone(),
     )?;
     Ok(ScfPotentialBuild {
+        source_density: density.clone(),
         potential,
         core_spec: crate::CorePotentialBuildSpec {
             continuation: muffintin_sphere::CorePotentialContinuationSpec::default(),

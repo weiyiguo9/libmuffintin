@@ -18,6 +18,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyType};
 
 use crate::export::export_dict;
+use crate::regional::RegionalDensity;
 use crate::scf::export_regional;
 
 #[pyclass(name = "Checkpoint", module = "libmuffintin._native", frozen)]
@@ -36,13 +37,13 @@ pub(crate) struct CheckpointPhysics {
 #[pyclass(name = "Structure", module = "libmuffintin._native", frozen)]
 #[derive(Clone, Debug)]
 pub(crate) struct Structure {
-    inner: Arc<muffintin::Structure>,
+    pub(crate) inner: Arc<muffintin::Structure>,
 }
 
 #[pyclass(name = "RegionalFieldLayout", module = "libmuffintin._native", frozen)]
 #[derive(Clone, Debug)]
 pub(crate) struct RegionalFieldLayout {
-    inner: Arc<muffintin::RegionalFieldLayout>,
+    pub(crate) inner: Arc<muffintin::RegionalFieldLayout>,
 }
 
 #[pyclass(name = "FreeAtomControls", module = "libmuffintin._native", frozen)]
@@ -395,6 +396,18 @@ impl CheckpointPhysics {
             .export_restart_density()
             .map(|density| export_regional(py, density))
             .transpose()
+    }
+
+    fn restart_density(&self) -> PyResult<Option<RegionalDensity>> {
+        let Some(density) = self.physics.restart_density() else {
+            return Ok(None);
+        };
+        let structure = muffintin::Structure::new(self.checkpoint.geometry.clone())
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        Ok(Some(RegionalDensity::from_runtime(
+            density,
+            Arc::new(structure),
+        )))
     }
 
     #[pyo3(signature = (site_id, l, energies, hard_radius=None))]

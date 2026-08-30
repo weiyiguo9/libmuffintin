@@ -42,7 +42,7 @@ pub struct DftRegionalFourier {
     pub mt_components: [Vec<Complex64>; 4],
 }
 
-pub(crate) fn density_fourier(density: &RegionalDensity) -> DftRegionalFourier {
+pub fn density_fourier(density: &RegionalDensity) -> DftRegionalFourier {
     regional_fourier([
         density.charge(),
         &density.magnetization()[0],
@@ -51,7 +51,7 @@ pub(crate) fn density_fourier(density: &RegionalDensity) -> DftRegionalFourier {
     ])
 }
 
-pub(crate) fn potential_fourier(potential: &RegionalPotential) -> DftRegionalFourier {
+pub fn potential_fourier(potential: &RegionalPotential) -> DftRegionalFourier {
     regional_fourier([
         potential.scalar(),
         &potential.magnetic()[0],

@@ -10,7 +10,9 @@ FIXTURES = Path(__file__).with_name("fixtures")
 INPUT = FIXTURES / "hydrogen_input.toml"
 
 
-def _run_one_iteration(session: mt.ScfSession, density: mt.RegionalDensity) -> mt.ConvergenceDecision:
+def _run_one_iteration(
+    session: mt.ScfSession, density: mt.RegionalDensityStep
+) -> mt.ConvergenceDecision:
     potential = session.potential(density)
     core = session.core(potential)
     lapw = session.lapw(core)

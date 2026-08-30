@@ -50,7 +50,7 @@ Out of scope for v0.3:
 ```text
 crates/mt-python/            # the only crate containing PyO3
   Cargo.toml                 # package libmuffintin-python, [lib] name muffintin_python, cdylib
-  src/{lib,checkpoint,products,thc,coulomb,spinor,writers,scf,export}.rs
+  src/{lib,checkpoint,products,thc,coulomb,spinor,writers,regional,scf,export}.rs
 python/
   pyproject.toml             # maturin backend, module-name = "libmuffintin._native"
   libmuffintin/
@@ -608,6 +608,29 @@ solver-specific cells. Thus the global layer runs one LAPW `dft-scf` task,
 while the staged layer is a method-neutral muffin-tin SCF toolbox whose first
 solver consumer happens to be LAPW.
 
+The first independent neutral values are `RegionalDensity` and
+`RegionalPotential`. `RegionalDensity` is a reusable, non-consuming value: it
+can be reconstructed directly from a `Structure`, `RegionalFieldLayout`, the
+four interstitial component rows, and the complete muffin-tin channel/offset
+payload of pyexport v1. Construction uses the caller's exact ordered $G$ list,
+exact site meshes, and harmonic convention; the binding neither fabricates a
+checkpoint nor converts normalized coefficients through checkpoint V2.
+`physical_inner_product`, `residual_rms`, `difference_rms`, `difference`, and
+`add_scaled` provide neutral density algebra. `CheckpointPhysics.restart_density()`
+returns the same reusable value when a restart density exists.
+
+`build_regional_potential(density, xc, noncollinear_route)` is an independent
+neutral station. It accepts exactly `lda-pw92` or `pbe`, and exactly
+`local-spin-frame` or `magnetization-field`; the route defaults only to
+`local-spin-frame`. Its `RegionalPotential` owns the complete potential build,
+exports all four regional components, and retains the Madelung, Coulomb, XC,
+and density–XC-potential contractions. It contains no `ScfSession`, LAPW, or
+compiled-basis type.
+
+The MTO research boundary remains in Python: USW construction, value-and-
+derivative data, kink matrices, LMTO/NMTO assembly, occupations, and NMTO
+density synthesis are not moved into these Rust neutral stations.
+
 The global entry must be implemented on the staged layer so the two levels
 have one source of truth. Within Stage 4, the global production entry lands
 first; the staged API follows only after the doc 17 chain has been checked
@@ -616,7 +639,7 @@ step by step.
 The concrete Python transition chain is:
 
 ```text
-RegionalDensity
+RegionalDensityStep
   → RegionalPotentialStep
   → CoreStep
   → LapwSolution
@@ -625,18 +648,21 @@ RegionalDensity
   → EnergyRecord
   → ConvergenceDecision
   ├─ converged → ScfResult
-  └─ continue  → mix → RegionalDensity
+  └─ continue  → mix → RegionalDensityStep
 ```
 
-Transition handles are linear: passing one to the next stage consumes it.
+`RegionalDensityStep` is a session ticket, distinct from the reusable
+`RegionalDensity` value. Transition handles are linear: passing one to the
+next stage consumes it.
 Using a consumed handle, mixing a converged decision, or passing a handle from
 another session is an explicit error. `ScfResult` exposes `converged`,
 `iterations`, `total_energy`, `energy_history(): float64[n_iteration]`,
 `convergence_history(): float64[n_iteration,2]` ordered as density RMS then
 absolute energy change, and `restart_checkpoint()`.
 
-Method-neutral `RegionalDensity`, `RegionalPotentialStep`, and
-`LapwDensityAssembly` exports return pyexport v1 dictionaries with
+Reusable `RegionalDensity` and `RegionalPotential`, plus the session tickets
+`RegionalDensityStep`, `RegionalPotentialStep`, and `LapwDensityAssembly`,
+export pyexport v1 dictionaries with
 `g_vectors: int32[n_g,3]` and
 `components: complex128[4,n_g]` in charge/scalar, $x$, $y$, $z$ order. The
 same additive dictionary now includes the complete flattened muffin-tin

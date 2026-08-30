@@ -1054,6 +1054,7 @@ dependencies = [
  "libmuffintin-operators",
  "libmuffintin-prodbasis",
  "libmuffintin-runtime",
+ "libmuffintin-sphere",
  "num-complex",
  "numpy",
  "pyo3",
