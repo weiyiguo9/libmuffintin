@@ -9,6 +9,7 @@ use muffintin_dft::{
     ScfIterationDiagnostic, ScfLoop, ScfState,
 };
 use muffintin_io::CheckpointV2;
+use muffintin_sphere::HarmonicConvention;
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -20,15 +21,28 @@ type ConcreteLapw = LapwSolution<CheckpointOneParticle, CheckpointBandSolution>;
 type ConcreteOccupations = OccupationStep<CheckpointOneParticle, CheckpointBandSolution>;
 type ConcreteDensity = LapwDensityAssembly<CheckpointOneParticle, CheckpointBandSolution>;
 
-/// Representation-neutral interstitial Pauli components for language bindings.
+/// Representation-neutral regional Pauli components for language bindings.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DftRegionalFourier {
+    pub angular_basis: &'static str,
     pub g_vectors: Vec<[i32; 3]>,
     /// Component-major values in charge/scalar, x, y, z order.
     pub components: [Vec<Complex64>; 4],
+    pub mt_mesh_site: Vec<i64>,
+    pub mt_mesh_first: Vec<f64>,
+    pub mt_mesh_increment: Vec<f64>,
+    pub mt_mesh_count: Vec<i64>,
+    pub mt_mesh_offsets: Vec<i64>,
+    pub mt_mesh_radii: Vec<f64>,
+    pub mt_mesh_weights: Vec<f64>,
+    /// Rows `(site, l, m)` in site-major, angular-channel order.
+    pub mt_channel_labels: Vec<[i64; 3]>,
+    pub mt_sample_offsets: Vec<i64>,
+    /// Component-major values in charge/scalar, x, y, z order.
+    pub mt_components: [Vec<Complex64>; 4],
 }
 
-fn density_fourier(density: &RegionalDensity) -> DftRegionalFourier {
+pub(crate) fn density_fourier(density: &RegionalDensity) -> DftRegionalFourier {
     regional_fourier([
         density.charge(),
         &density.magnetization()[0],
@@ -37,7 +51,7 @@ fn density_fourier(density: &RegionalDensity) -> DftRegionalFourier {
     ])
 }
 
-fn potential_fourier(potential: &RegionalPotential) -> DftRegionalFourier {
+pub(crate) fn potential_fourier(potential: &RegionalPotential) -> DftRegionalFourier {
     regional_fourier([
         potential.scalar(),
         &potential.magnetic()[0],
@@ -47,7 +61,42 @@ fn potential_fourier(potential: &RegionalPotential) -> DftRegionalFourier {
 }
 
 fn regional_fourier(fields: [&muffintin_dft::RegionalScalarField; 4]) -> DftRegionalFourier {
+    let muffin_tins = fields[0].muffin_tins();
+    let angular_basis = match muffin_tins
+        .first()
+        .expect("regional fields contain at least one muffin-tin site")
+        .field()
+        .convention()
+    {
+        HarmonicConvention::Complex => "complex-condon-shortley",
+        HarmonicConvention::Real => "real-tesseral-condon-shortley",
+    };
+    let mut mt_mesh_site = Vec::with_capacity(muffin_tins.len());
+    let mut mt_mesh_first = Vec::with_capacity(muffin_tins.len());
+    let mut mt_mesh_increment = Vec::with_capacity(muffin_tins.len());
+    let mut mt_mesh_count = Vec::with_capacity(muffin_tins.len());
+    let mut mt_mesh_offsets = vec![0_i64];
+    let mut mt_mesh_radii = Vec::new();
+    let mut mt_mesh_weights = Vec::new();
+    let mut mt_channel_labels = Vec::new();
+    let mut mt_sample_offsets = vec![0_i64];
+    for (site, muffin_tin) in muffin_tins.iter().enumerate() {
+        let mesh = muffin_tin.mesh();
+        mt_mesh_site.push(site as i64);
+        mt_mesh_first.push(mesh.first().get());
+        mt_mesh_increment.push(mesh.increment());
+        mt_mesh_count.push(mesh.len() as i64);
+        mt_mesh_radii.extend(mesh.radii().iter().map(|radius| radius.get()));
+        mt_mesh_weights.extend_from_slice(mesh.weights());
+        mt_mesh_offsets.push(mt_mesh_radii.len() as i64);
+        for (lm, samples) in muffin_tin.field().channels() {
+            mt_channel_labels.push([site as i64, i64::from(lm.l), i64::from(lm.m)]);
+            mt_sample_offsets
+                .push(mt_sample_offsets.last().copied().unwrap() + samples.len() as i64);
+        }
+    }
     DftRegionalFourier {
+        angular_basis,
         g_vectors: fields[0]
             .interstitial()
             .layout()
@@ -56,6 +105,23 @@ fn regional_fourier(fields: [&muffintin_dft::RegionalScalarField; 4]) -> DftRegi
             .map(|vector| vector.index)
             .collect(),
         components: fields.map(|field| field.interstitial().field().coefficients().to_vec()),
+        mt_mesh_site,
+        mt_mesh_first,
+        mt_mesh_increment,
+        mt_mesh_count,
+        mt_mesh_offsets,
+        mt_mesh_radii,
+        mt_mesh_weights,
+        mt_channel_labels,
+        mt_sample_offsets,
+        mt_components: fields.map(|field| {
+            field
+                .muffin_tins()
+                .iter()
+                .flat_map(|muffin_tin| muffin_tin.field().channels())
+                .flat_map(|(_, samples)| samples.iter().copied())
+                .collect()
+        }),
     }
 }
 

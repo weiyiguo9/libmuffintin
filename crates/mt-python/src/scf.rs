@@ -32,22 +32,43 @@ fn with_session<T>(
     operation(session).map_err(py_error)
 }
 
-fn export_regional<'py>(
+pub(crate) fn export_regional<'py>(
     py: Python<'py>,
     fields: muffintin::DftRegionalFourier,
 ) -> PyResult<Py<PyDict>> {
-    let g = fields
-        .g_vectors
+    let muffintin::DftRegionalFourier {
+        angular_basis,
+        g_vectors,
+        components,
+        mt_mesh_site,
+        mt_mesh_first,
+        mt_mesh_increment,
+        mt_mesh_count,
+        mt_mesh_offsets,
+        mt_mesh_radii,
+        mt_mesh_weights,
+        mt_channel_labels,
+        mt_sample_offsets,
+        mt_components,
+    } = fields;
+    let g = g_vectors
         .iter()
         .flat_map(|vector| *vector)
         .collect::<Vec<_>>();
-    let values = fields.components.into_iter().flatten().collect::<Vec<_>>();
+    let values = components.into_iter().flatten().collect::<Vec<_>>();
+    let mt_labels = mt_channel_labels
+        .iter()
+        .flat_map(|label| *label)
+        .collect::<Vec<_>>();
+    let mt_values = mt_components.into_iter().flatten().collect::<Vec<_>>();
+    let mt_sample_count = mt_sample_offsets.last().copied().unwrap_or(0) as usize;
     let dict = export_dict(py)?;
+    dict.set_item("angular_basis", angular_basis)?;
     dict.set_item(
         "g_vectors",
         PyArray2::from_owned_array(
             py,
-            Array2::from_shape_vec((fields.g_vectors.len(), 3), g)
+            Array2::from_shape_vec((g_vectors.len(), 3), g)
                 .expect("each reciprocal vector has three coordinates"),
         ),
     )?;
@@ -55,8 +76,38 @@ fn export_regional<'py>(
         "components",
         PyArray2::from_owned_array(
             py,
-            Array2::from_shape_vec((4, fields.g_vectors.len()), values)
+            Array2::from_shape_vec((4, g_vectors.len()), values)
                 .expect("four regional components share one Fourier layout"),
+        ),
+    )?;
+    dict.set_item("mt_mesh_site", PyArray1::from_vec(py, mt_mesh_site))?;
+    dict.set_item("mt_mesh_first", PyArray1::from_vec(py, mt_mesh_first))?;
+    dict.set_item(
+        "mt_mesh_increment",
+        PyArray1::from_vec(py, mt_mesh_increment),
+    )?;
+    dict.set_item("mt_mesh_count", PyArray1::from_vec(py, mt_mesh_count))?;
+    dict.set_item("mt_mesh_offsets", PyArray1::from_vec(py, mt_mesh_offsets))?;
+    dict.set_item("mt_mesh_radii", PyArray1::from_vec(py, mt_mesh_radii))?;
+    dict.set_item("mt_mesh_weights", PyArray1::from_vec(py, mt_mesh_weights))?;
+    dict.set_item(
+        "mt_channel_labels",
+        PyArray2::from_owned_array(
+            py,
+            Array2::from_shape_vec((mt_channel_labels.len(), 3), mt_labels)
+                .expect("each muffin-tin channel label has three entries"),
+        ),
+    )?;
+    dict.set_item(
+        "mt_sample_offsets",
+        PyArray1::from_vec(py, mt_sample_offsets),
+    )?;
+    dict.set_item(
+        "mt_components",
+        PyArray2::from_owned_array(
+            py,
+            Array2::from_shape_vec((4, mt_sample_count), mt_values)
+                .expect("four regional components share one muffin-tin layout"),
         ),
     )?;
     Ok(dict.unbind())
