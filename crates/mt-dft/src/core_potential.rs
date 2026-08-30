@@ -19,7 +19,7 @@ use muffintin_core::{
     Bohr, ExponentialMesh, InterstitialGeometry, spherical_bessel_j, spherical_bessel_j_derivative,
 };
 use muffintin_coulomb::{InterstitialHartreePotential, MuffinTinHartreePotential};
-use muffintin_grid::{AngularGrid, GridError};
+use muffintin_core::{AngularGrid, GridError};
 use muffintin_radial::{
     CenteredSphericalFourierMode, CorePotentialContinuationError, CorePotentialContinuationSpec,
     ExtendedCorePotential, join_core_spherical_potential,

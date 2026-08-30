@@ -980,6 +980,7 @@ version = "0.2.0"
 dependencies = [
  "num-complex",
  "proptest",
+ "rstsr",
  "thiserror 2.0.20",
 ]
 
@@ -991,7 +992,6 @@ dependencies = [
  "libmuffintin-auxiliary-ir",
  "libmuffintin-basis",
  "libmuffintin-core",
- "libmuffintin-grid",
  "libmuffintin-mpb",
  "libmuffintin-thc",
  "num-complex",
@@ -1007,7 +1007,6 @@ dependencies = [
  "libmuffintin-core",
  "libmuffintin-coulomb",
  "libmuffintin-envelope",
- "libmuffintin-grid",
  "libmuffintin-lapw",
  "libmuffintin-operators",
  "libmuffintin-radial",
@@ -1027,21 +1026,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "libmuffintin-grid"
-version = "0.2.0"
-dependencies = [
- "libmuffintin-core",
- "rstsr",
- "thiserror 2.0.20",
-]
-
-[[package]]
 name = "libmuffintin-io"
 version = "0.2.0"
 dependencies = [
  "hdf5-metno",
  "libmuffintin-core",
- "libmuffintin-grid",
  "serde",
  "thiserror 2.0.20",
  "toml",
@@ -1118,7 +1107,6 @@ dependencies = [
  "libmuffintin-coulomb",
  "libmuffintin-dft",
  "libmuffintin-envelope",
- "libmuffintin-grid",
  "libmuffintin-io",
  "libmuffintin-lapw",
  "libmuffintin-mpb",

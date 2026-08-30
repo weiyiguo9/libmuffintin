@@ -8,7 +8,7 @@ use muffintin_auxiliary_ir::{
 };
 use muffintin_core::{ExponentialMesh, ReciprocalLattice};
 use muffintin_coulomb::CoulombOperator;
-use muffintin_grid::Cell;
+use muffintin_core::Cell;
 use muffintin_io::{
     IoError, MLDUMP_INTERSTITIAL_SENTINEL, MLDUMP_PARENT_REGION_INTERSTITIAL,
     MLDUMP_PARENT_REGION_MUFFIN_TIN, MLDUMP_THC_ENGINE_PIVOTED_CHOLESKY, MLDUMP_THC_ENGINE_QRCP,

@@ -13,7 +13,7 @@ use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombRequest, InterpolationProjection, SampledPointSupport,
     assemble_coulomb,
 };
-use muffintin_grid::Cell;
+use muffintin_core::Cell;
 use muffintin_mpb::DEFAULT_TOLERANCE;
 use num_complex::Complex64;
 

@@ -13,7 +13,6 @@ name = "muffintin_coulomb"
 [dependencies]
 libmuffintin-basis = { path = "../mt-basis" }
 libmuffintin-core = { path = "../mt-core" }
-libmuffintin-grid = { path = "../mt-grid" }
 libmuffintin-auxiliary-ir = { path = "../mt-auxiliary-ir" }
 num-complex.workspace = true
 thiserror.workspace = true

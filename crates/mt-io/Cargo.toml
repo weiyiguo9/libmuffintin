@@ -12,13 +12,10 @@ name = "muffintin_io"
 
 [dependencies]
 hdf5-metno = "=0.12.3"
-libmuffintin-grid = { path = "../mt-grid" }
+libmuffintin-core = { path = "../mt-core" }
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror.workspace = true
 toml = "0.8.20"
-
-[dev-dependencies]
-libmuffintin-core = { path = "../mt-core" }
 
 [lints]
 workspace = true

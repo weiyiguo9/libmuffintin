@@ -21,7 +21,7 @@ use muffintin_dft::{
     ScfCoreSite, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations, ScfRelativity,
     XcFunctional,
 };
-use muffintin_grid::Cell;
+use muffintin_core::Cell;
 use muffintin_io::{
     AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1,
     ExponentialMeshSpecV1, FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1,

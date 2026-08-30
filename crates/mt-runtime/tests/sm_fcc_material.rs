@@ -17,7 +17,7 @@ use muffintin_dft::{
     ScfChannelTreatment, ScfConfig, ScfConvergence, ScfExchangeCorrelation, ScfKMesh, ScfMixing,
     ScfOccupations, ScfRelativity, XcFunctional, fleur_default_atomic_configuration,
 };
-use muffintin_grid::Cell;
+use muffintin_core::Cell;
 use muffintin_io::{
     MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION, MldumpGeometryV1, MldumpHeaderV1,
     MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1, MldumpPayloadV1, MldumpQEntryV1,

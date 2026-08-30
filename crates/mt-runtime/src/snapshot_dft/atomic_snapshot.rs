@@ -3,7 +3,7 @@ use muffintin_dft::{
     AtomicSuperpositionSite, AtomicSuperpositionSpec, FreeAtomScfSpec,
     LinearizationEnergyGenerator, ScfConfig, ScfRelativity, build_atomic_superposition_density,
 };
-use muffintin_grid::{AngularGrid, Cell, GridError};
+use muffintin_core::{AngularGrid, Cell, GridError};
 use muffintin_io::{
     BasisHintsV1, DensityV2, FieldRepresentationV2, FieldUnitV2, FourierNormalizationV1,
     FourierPhaseV1, InitialV2, InverseLengthUnitV1, MetaV1, PotentialV2, SnapshotV2,

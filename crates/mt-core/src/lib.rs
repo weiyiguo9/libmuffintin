@@ -11,6 +11,7 @@ pub mod bessel;
 pub mod conventions;
 pub mod fourier_field;
 pub mod gaunt;
+pub mod grid;
 pub mod harmonics;
 pub mod mesh;
 pub mod reciprocal;
@@ -25,6 +26,12 @@ pub use bessel::{
 pub use conventions::{KineticOperatorConvention, spherical_value_from_y00_coefficient};
 pub use fourier_field::{FourierFieldError, FourierLayout, HermitianFourierField};
 pub use gaunt::{gaunt, real_gaunt, wigner_3j};
+pub use grid::{
+    AngularGrid, AngularPoint, AtomGrid, Cell, CompositeGrid, Grid, GridError, GridPoint,
+    InterstitialGrid, RegionTag, UniformGrid,
+};
+#[cfg(feature = "rstsr")]
+pub use grid::RstsrGridExt;
 pub use harmonics::{
     Lm, LmError, complex_spherical_harmonic, complex_spherical_harmonics, lm_count, lm_from_index,
     lm_index, real_spherical_harmonic, real_spherical_harmonics,

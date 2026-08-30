@@ -2,7 +2,7 @@
 
 use crate::CoulombError;
 use muffintin_core::{InverseBohr, ReciprocalLattice};
-use muffintin_grid::Cell;
+use muffintin_core::Cell;
 
 /// Default SPEX-style Weinert expansion cutoff used by the toy assembler.
 pub const DEFAULT_LEXP: u32 = 4;

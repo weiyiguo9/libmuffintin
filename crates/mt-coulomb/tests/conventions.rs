@@ -9,7 +9,7 @@ use muffintin_coulomb::{
     intra_sphere_poisson, multipole_moment, radial_primitive, second_moment, spex_real_g,
     spherical_bessel_moment, structure_constants, weinert_gmat,
 };
-use muffintin_grid::Cell;
+use muffintin_core::Cell;
 use std::f64::consts::E;
 use std::f64::consts::PI;
 

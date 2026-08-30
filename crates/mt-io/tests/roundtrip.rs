@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use muffintin_core::Bohr;
-use muffintin_grid::{Cell, Grid, UniformGrid};
+use muffintin_core::{Cell, Grid, UniformGrid};
 use muffintin_io::{
     AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1,
     ExponentialMeshSpecV1, FieldRepresentationV2, FieldUnitV2, FourierCoefficientV1,

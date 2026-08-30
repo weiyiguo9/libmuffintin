@@ -8,7 +8,7 @@ use muffintin_core::{
     Bohr, FourierFieldError, FourierLayout, Hartree, Lm, MeshError, complex_spherical_harmonics,
     lm_count, real_spherical_harmonics,
 };
-use muffintin_grid::{AngularGrid, Cell, Grid, GridError, InterstitialGrid, UniformGrid};
+use muffintin_core::{AngularGrid, Cell, Grid, GridError, InterstitialGrid, UniformGrid};
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
 use num_complex::Complex64;
 use std::collections::BTreeMap;

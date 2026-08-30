@@ -4,7 +4,7 @@ use crate::CoulombError;
 use muffintin_auxiliary_ir::{AuxiliaryLayout, AuxiliaryRegion, PairVertex, TransferQ};
 use muffintin_basis::Provenance;
 use muffintin_core::ReciprocalLattice;
-use muffintin_grid::Cell;
+use muffintin_core::Cell;
 use num_complex::Complex64;
 
 /// Typed auxiliary representation stored with $V^q$. Neither mixed-product nor

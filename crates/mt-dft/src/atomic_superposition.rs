@@ -9,7 +9,7 @@ use muffintin_core::{
     InterstitialGeometry, LatticeError, MeshError, ReciprocalLattice, Sphere, StepFunctionError,
     lm_count, lm_from_index, real_spherical_harmonics, spherical_bessel_j,
 };
-use muffintin_grid::{AngularGrid, Cell};
+use muffintin_core::{AngularGrid, Cell};
 use muffintin_sphere::{SphereField, SphereFieldError};
 use num_complex::Complex64;
 use thiserror::Error;
@@ -495,7 +495,7 @@ fn norm(vector: [f64; 3]) -> f64 {
 mod tests {
     use super::*;
     use muffintin_core::InverseBohr;
-    use muffintin_grid::AngularPoint;
+    use muffintin_core::AngularPoint;
 
     #[test]
     fn two_site_superposition_closes_charge_and_retains_neighbor_anisotropy() {
