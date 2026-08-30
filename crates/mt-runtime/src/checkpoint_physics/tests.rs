@@ -1,4 +1,5 @@
 use super::*;
+use muffintin_dft::NoncollinearXcRoute;
 use muffintin_dft::{
     BandPathPoint, FirstVariationWindow, ScfConvergence, ScfCoreSite, ScfCoreState, ScfMixing,
     XcFunctional, run_scf,

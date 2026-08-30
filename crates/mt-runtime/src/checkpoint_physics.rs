@@ -10,12 +10,15 @@ use muffintin_core::{
     ReciprocalLattice, Sphere, StepFunctionError, VolumeBohr3,
 };
 use muffintin_dft::{
+    ChannelKappaError, ScfPotentialBuildError, build_scf_potential,
+    channel_kappas, channel_l, channel_n, scalar_component_energy, spin_resolved_energy,
+    spinor_kappas_for_l,
     AtomicEnergyRequest, BandPathRequest, BandState, CollinearKPoint, CoreContribution,
     CoreDensityError, CorePotentialBuildError, CorePotentialBuildSpec, CoreSpinPartition,
-    DensityError, ElectrostaticSpec, FirstVariationRoute, FirstVariationSubspace, FullSpinorKPoint,
+    DensityError, FirstVariationRoute, FirstVariationSubspace, FullSpinorKPoint,
     GeneratedLinearizationEnergy, InterstitialField, LinearizationEnergyDiagnostic,
     LinearizationEnergyError, LinearizationEnergyGenerator, LocalPauliPotential, MuffinTinField,
-    NoncollinearXcRoute, OccupationError, PdosEnergySample, RegionalCoreShellInput,
+    OccupationError, PdosEnergySample, RegionalCoreShellInput,
     RegionalDensity, RegionalElectrostaticError, RegionalElectrostaticResult, RegionalPotential,
     RegionalScalarField, RegionalXcError, RegionalXcResult, RegularSpectrum, ScalarBuilderError,
     ScalarIterationBasis, ScalarLocalOrbitalRequest, ScalarSiteInput, ScfBasis, ScfChannelIdentity,
@@ -23,10 +26,10 @@ use muffintin_dft::{
     ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfOccupations, ScfPhysics, ScfRelativity,
     ScfResolvedChannelEnergy, ScfState, SecondVariationError, SpinorBuilderError,
     SpinorFirstVariationError, SpinorIterationBasis, SpinorLinearizationEnergy,
-    SpinorLocalOrbitalRequest, SpinorSiteInput, TetrahedronError, XcFieldSpec,
+    SpinorLocalOrbitalRequest, SpinorSiteInput, TetrahedronError,
     build_collinear_scalar_iteration_bases, build_extended_core_potentials,
     build_extended_checkpoint_core_potentials, build_regional_core_contribution,
-    build_spinor_iteration_basis, evaluate_regional_electrostatics, evaluate_regional_xc,
+    build_spinor_iteration_basis,
     generate_atomic_energy, generate_band_center_energy, generate_band_cog_energy,
     generate_explicit_energy, generate_fermi_offset_energy, generate_frozen_checkpoint_energy,
     generate_log_derivative_energy, kappa_degeneracy_average, physical_site_band_projections,
@@ -133,13 +136,6 @@ struct ConvertedCheckpointGeometry {
     nuclear_charges: Vec<f64>,
 }
 
-struct ProductionPotentialBuild {
-    potential: RegionalPotential,
-    electrostatic: RegionalElectrostaticResult,
-    exchange_correlation: RegionalXcResult,
-    core_spec: CorePotentialBuildSpec,
-    energy_terms: ScfEnergyTerms,
-}
 
 #[derive(Clone, Debug)]
 struct CheckpointSpin {
@@ -1276,55 +1272,6 @@ impl CheckpointPhysics {
     }
 }
 
-fn build_production_potential(
-    density: &RegionalDensity,
-    nuclear_charges: &[f64],
-    exchange_correlation: ScfExchangeCorrelation,
-) -> Result<ProductionPotentialBuild, CheckpointPhysicsError> {
-    let electrostatic = evaluate_regional_electrostatics(
-        density.charge(),
-        &ElectrostaticSpec::new(
-            muffintin_coulomb::WeinertHartreeSpec::electronic(4)?,
-            nuclear_charges.to_vec(),
-        )?,
-    )?;
-    let output_l_max = std::iter::once(density.charge())
-        .chain(density.magnetization())
-        .flat_map(RegionalScalarField::muffin_tins)
-        .flat_map(|field| field.field().channels().map(|(channel, _)| channel.l))
-        .max()
-        .unwrap_or(0);
-    let xc_field_spec = xc_spec(
-        density,
-        output_l_max,
-        exchange_correlation.noncollinear_route,
-    );
-    let exchange_correlation_result =
-        evaluate_regional_xc(exchange_correlation.functional, density, xc_field_spec)?;
-    let mut scalar = electrostatic.potential.clone();
-    scalar.add_scaled(1.0, exchange_correlation_result.potential.scalar())?;
-    let potential = RegionalPotential::new(
-        scalar,
-        exchange_correlation_result.potential.magnetic().clone(),
-    )?;
-    Ok(ProductionPotentialBuild {
-        potential,
-        core_spec: CorePotentialBuildSpec {
-            continuation: CorePotentialContinuationSpec::default(),
-            xc_functional: exchange_correlation.functional,
-            xc_noncollinear_route: exchange_correlation.noncollinear_route,
-            xc_angular_point_count: xc_field_spec.angular_point_count,
-        },
-        energy_terms: ScfEnergyTerms {
-            madelung: electrostatic.madelung,
-            coulomb: electrostatic.coulomb,
-            exchange_correlation: exchange_correlation_result.exchange_correlation_energy,
-            exchange_correlation_potential: exchange_correlation_result.density_potential_integral,
-        },
-        electrostatic,
-        exchange_correlation: exchange_correlation_result,
-    })
-}
 
 impl ScfPhysics for CheckpointPhysics {
     type Error = CheckpointPhysicsError;
@@ -1414,7 +1361,7 @@ impl ScfPhysics for CheckpointPhysics {
     ) -> Result<RegionalPotential, Self::Error> {
         self.density_template = Some(density.clone());
         let built =
-            build_production_potential(density, &self.nuclear_charges, exchange_correlation)?;
+            build_scf_potential(density, &self.nuclear_charges, exchange_correlation)?;
         self.core_potentials.insert(
             iteration,
             CorePotentialContext {
@@ -1742,74 +1689,11 @@ fn extend_mesh(
     )?)
 }
 
-fn spinor_kappas_for_l(l: u32) -> Result<Vec<Kappa>, CheckpointPhysicsError> {
-    let l = i32::try_from(l).map_err(|_| CheckpointPhysicsError::AngularMomentumOverflow)?;
-    let negative = l
-        .checked_add(1)
-        .and_then(i32::checked_neg)
-        .ok_or(CheckpointPhysicsError::AngularMomentumOverflow)?;
-    let mut kappas = vec![Kappa::new(negative)?];
-    if l != 0 {
-        kappas.push(Kappa::new(l)?);
-    }
-    Ok(kappas)
-}
 
-fn channel_l(identity: ScfChannelIdentity) -> u32 {
-    match identity {
-        ScfChannelIdentity::ScalarL { l, .. } => l,
-        ScfChannelIdentity::Kappa { kappa, .. } if kappa > 0 => kappa as u32,
-        ScfChannelIdentity::Kappa { kappa, .. } => (-kappa - 1) as u32,
-    }
-}
 
-fn channel_n(identity: ScfChannelIdentity) -> u32 {
-    match identity {
-        ScfChannelIdentity::ScalarL { n, .. } | ScfChannelIdentity::Kappa { n, .. } => n,
-    }
-}
 
-fn channel_kappas(identity: ScfChannelIdentity) -> Result<Vec<Kappa>, CheckpointPhysicsError> {
-    match identity {
-        ScfChannelIdentity::ScalarL { l, .. } => spinor_kappas_for_l(l),
-        ScfChannelIdentity::Kappa { kappa, .. } => Ok(vec![Kappa::new(kappa)?]),
-    }
-}
 
-fn scalar_component_energy(resolved: &ScfResolvedChannelEnergy, kappa: Kappa) -> Hartree {
-    if let Some(energy) =
-        resolved
-            .components
-            .iter()
-            .find_map(|component| match component.diagnostic {
-                LinearizationEnergyDiagnostic::Atomic { state, .. } if state.kappa == kappa => {
-                    Some(component.energy)
-                }
-                _ => None,
-            })
-    {
-        return energy;
-    }
-    if resolved.recipe.generator == LinearizationEnergyGenerator::BandCog
-        && let ScfChannelIdentity::ScalarL { l, .. } = resolved.recipe.identity
-        && let Ok(kappas) = spinor_kappas_for_l(l)
-        && kappas.len() == resolved.components.len()
-        && let Some(index) = kappas.iter().position(|candidate| *candidate == kappa)
-    {
-        return resolved.components[index].energy;
-    }
-    resolved.energy
-}
 
-fn spin_resolved_energy(resolved: &ScfResolvedChannelEnergy, spin: usize) -> Hartree {
-    if resolved.recipe.generator == LinearizationEnergyGenerator::FrozenCheckpoint
-        && resolved.components.len() == 2
-    {
-        resolved.components[spin].energy
-    } else {
-        resolved.energy
-    }
-}
 
 fn spex_material_channel_mismatch(
     channel: &muffintin_io::SpexMaterialChannelV1,
@@ -2053,29 +1937,6 @@ fn insert_plane_wave_differences(indices: &mut BTreeSet<[i32; 3]>, waves: &[Plan
     }
 }
 
-fn xc_spec(
-    density: &RegionalDensity,
-    output_l_max: u32,
-    noncollinear_route: NoncollinearXcRoute,
-) -> XcFieldSpec {
-    let layout = density.charge().interstitial().layout();
-    let divisions = std::array::from_fn(|axis| {
-        let maximum = layout
-            .vectors()
-            .iter()
-            .map(|vector| vector.index[axis].unsigned_abs() as usize)
-            .max()
-            .unwrap_or(0);
-        (2 * maximum + 1).max(4)
-    });
-    let angular_point_count = ((output_l_max as usize + 1).pow(2) * 2).max(50);
-    XcFieldSpec {
-        interstitial_divisions: divisions,
-        angular_point_count,
-        output_l_max,
-        noncollinear_route,
-    }
-}
 
 fn convert_checkpoint_geometry(
     checkpoint: &GeometryV2,
@@ -2187,6 +2048,10 @@ fn squared_norm(vector: [f64; 3]) -> f64 {
 /// Checkpoint conversion or concrete DFT-kernel failure.
 #[derive(Debug, Error)]
 pub enum CheckpointPhysicsError {
+    #[error(transparent)]
+    ChannelKappa(#[from] ChannelKappaError),
+    #[error(transparent)]
+    PotentialBuild(#[from] ScfPotentialBuildError),
     #[error(transparent)]
     Checkpoint(#[from] IoError),
     #[error(transparent)]

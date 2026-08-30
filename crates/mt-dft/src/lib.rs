@@ -51,6 +51,7 @@ pub use free_atom::{
     FreeAtomOrbital, FreeAtomScfError, FreeAtomScfSpec, FreeAtomState, run_free_atom_lda,
 };
 pub use hartree::{
+    ScfPotentialBuild, ScfPotentialBuildError, build_scf_potential,
     ElectrostaticSpec, RegionalElectrostaticError, RegionalElectrostaticResult,
     evaluate_regional_electrostatics,
 };
@@ -77,6 +78,8 @@ pub use scalar::{
     solve_collinear_scalar_k_point, solve_scalar_k_point, solve_scalar_second_variation,
 };
 pub use scf::{
+    ChannelKappaError, channel_kappas, channel_l, channel_n, scalar_component_energy,
+    spin_resolved_energy, spinor_kappas_for_l,
     BandPathPoint, BandPathPointResult, BandPathRequest, BandPathResult, CoreContribution,
     DosRequest, DosResult, ScfBasis, ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe,
     ScfChannelTreatment, ScfConfig, ScfConfigError, ScfConvergence, ScfCoreSite, ScfCoreState,
@@ -104,5 +107,6 @@ pub use tetrahedron::{
 };
 pub use xc::{DensityJet2, XcError, XcFunctional, XcPoint, evaluate_xc_point};
 pub use xc_field::{
+    xc_spec_for_density,
     NoncollinearXcRoute, RegionalXcError, RegionalXcResult, XcFieldSpec, evaluate_regional_xc,
 };

@@ -12,9 +12,9 @@ use thiserror::Error;
 
 use super::convert_v2::{regional_density_from_v2, regional_scalar_to_v2};
 use super::{
-    CheckpointPhysicsError, build_production_potential, convert_checkpoint_geometry,
-    production_density_layout,
+    CheckpointPhysicsError, convert_checkpoint_geometry, production_density_layout,
 };
+use muffintin_dft::build_scf_potential;
 
 /// Complete structure/task request for a neutral atomic-superposition V2 restart.
 #[derive(Clone, Debug, PartialEq)]
@@ -36,6 +36,8 @@ pub struct AtomicCheckpointResult {
 /// Invalid stage-4 request or failure in the production density/potential path.
 #[derive(Debug, Error)]
 pub enum AtomicCheckpointError {
+    #[error(transparent)]
+    PotentialBuild(#[from] muffintin_dft::ScfPotentialBuildError),
     #[error(transparent)]
     CheckpointPhysics(#[from] CheckpointPhysicsError),
     #[error(transparent)]
@@ -181,7 +183,7 @@ pub fn materialize_atomic_checkpoint_v2(
         &converted.sites,
         converted.reciprocal,
     )?;
-    let built_potential = build_production_potential(
+    let built_potential = build_scf_potential(
         &production_density,
         &converted.nuclear_charges,
         request.scf.exchange_correlation,
