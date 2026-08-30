@@ -211,6 +211,10 @@ impl RegionalDensity {
         self.inner.residual_rms().map_err(py_error)
     }
 
+    fn electron_count(&self) -> PyResult<f64> {
+        muffintin_dft::electron_count(self.inner.as_ref()).map_err(py_error)
+    }
+
     fn difference_rms(&self, other: PyRef<'_, Self>) -> PyResult<f64> {
         self.require_same_structure(&other)?;
         self.inner
