@@ -1,10 +1,7 @@
 use std::env;
 use std::process::ExitCode;
 
-use muffintin::{
-    PreparedWorkflow, CheckpointPhysics, TaskResult, WorkflowResult, execute_prepared_with,
-    load_input_path,
-};
+use muffintin::{CheckpointPhysics, PreparedWorkflow, TaskResult, WorkflowResult, load_input_path};
 
 fn main() -> ExitCode {
     let mut arguments = env::args_os();
@@ -36,7 +33,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match execute_prepared_with(&prepared, &mut physics) {
+    match physics.execute_prepared(&prepared) {
         Ok(result) => {
             print_summary(&prepared, &result);
             ExitCode::SUCCESS

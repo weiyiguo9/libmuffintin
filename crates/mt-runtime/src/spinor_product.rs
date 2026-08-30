@@ -1,26 +1,26 @@
 //! Frozen full-first-variation spinor product input for one requested transfer $q$.
 
-use muffintin_prodbasis::{
-    AuxiliaryPartition, DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples,
-    DiracSiteRadialSet, PairColumnLayout, ProductOrbitalKind, RawInterstitialPairSupport,
-    TransferQ,
-};
 use muffintin_core::{Hartree, Kappa, ReciprocalLattice, TwiceMu};
 use muffintin_dft::{
     ScfConfig, ScfRelativity, SpinorIterationBasis, SpinorRadialSite,
     build_extended_checkpoint_core_potentials,
 };
 use muffintin_operators::lapw::{Provenance, SpinorCompiledBasis};
+use muffintin_prodbasis::{
+    AuxiliaryPartition, DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples,
+    DiracSiteRadialSet, PairColumnLayout, ProductOrbitalKind, RawInterstitialPairSupport,
+    TransferQ,
+};
 use muffintin_sphere::CorePotentialContinuationSpec;
 use muffintin_tensor::DenseEigenvectors;
 use std::collections::BTreeSet;
 
+use crate::checkpoint_physics::{
+    CheckpointBandSolution, CheckpointKPointSolution, CheckpointPhysics, CheckpointPhysicsError,
+    MaterialKernelError, regular_k_points,
+};
 use crate::q_mesh::{canonical_transfer_q, map_k_minus_q};
 use crate::scalar_product::leading_bands;
-use crate::checkpoint_physics::{
-    CheckpointBandSolution, CheckpointPhysicsError, CheckpointPhysics, CheckpointKPointSolution,
-    regular_k_points,
-};
 use crate::thc_grid::is_gamma_fractional;
 
 /// `DiracRadialId.n` for the APW base $(P,Q)$.
@@ -118,16 +118,20 @@ impl CheckpointPhysics {
             }
         }
         let transfer = canonical_transfer_q(q_fractional, *self.reciprocal())?;
-        let meshes = self.channel_meshes(&config.basis)?;
+        let meshes = self.kernel.channel_meshes(&config.basis)?;
         let extended = build_extended_checkpoint_core_potentials(
             self.frozen_potential(),
             self.geometry(),
             self.nuclear_charges(),
             &meshes,
             CorePotentialContinuationSpec::default(),
+        )
+        .map_err(MaterialKernelError::from)?;
+        let basis = self.kernel.materialize_nonspectral_basis(
+            self.frozen_potential(),
+            &config.basis,
+            &extended,
         )?;
-        let basis =
-            self.materialize_nonspectral_basis(self.frozen_potential(), &config.basis, &extended)?;
         let k_fractional = regular_k_points(config.k_mesh)?;
         let mut k_minus_q = Vec::with_capacity(k_fractional.len());
         for (k_index, &k_frac) in k_fractional.iter().enumerate() {
@@ -139,7 +143,7 @@ impl CheckpointPhysics {
                 umklapp: mapped.umklapp,
             });
         }
-        let bands = self.solve_points(
+        let bands = self.kernel.solve_points(
             self.frozen_potential(),
             &basis,
             &k_fractional,
@@ -579,7 +583,9 @@ fn raw_pair_support(
     )?)
 }
 
-fn site_radials(basis: &SpinorIterationBasis) -> Result<Vec<DiracSiteRadialSet>, CheckpointPhysicsError> {
+fn site_radials(
+    basis: &SpinorIterationBasis,
+) -> Result<Vec<DiracSiteRadialSet>, CheckpointPhysicsError> {
     basis
         .radial_sites
         .iter()

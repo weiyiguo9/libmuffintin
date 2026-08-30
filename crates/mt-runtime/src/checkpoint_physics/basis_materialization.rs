@@ -1,12 +1,12 @@
 use super::*;
 
-impl CheckpointPhysics {
-    pub(super) fn scalar_linearization_energies(
+impl MaterialKernel {
+    pub(crate) fn scalar_linearization_energies(
         &self,
         basis: &ScfBasis,
         site: &str,
         spin: usize,
-    ) -> Result<Vec<Hartree>, CheckpointPhysicsError> {
+    ) -> Result<Vec<Hartree>, MaterialKernelError> {
         (0..=basis.l_max)
             .map(|l| {
                 let channels = basis
@@ -34,7 +34,7 @@ impl CheckpointPhysics {
                         .iter()
                         .any(|resolved| channel_n(resolved.recipe.identity) != n)
                     {
-                        return Err(CheckpointPhysicsError::AmbiguousBaseChannel {
+                        return Err(MaterialKernelError::AmbiguousBaseChannel {
                             site: site.to_owned(),
                             l,
                         });
@@ -47,9 +47,9 @@ impl CheckpointPhysics {
                             }
                             ScfChannelIdentity::ScalarL { .. } => unreachable!(),
                         })
-                        .collect::<Result<Vec<_>, CheckpointPhysicsError>>()?;
+                        .collect::<Result<Vec<_>, MaterialKernelError>>()?;
                     return kappa_degeneracy_average(l, &partners).map_err(|source| {
-                        CheckpointPhysicsError::ScalarKappaAverage {
+                        MaterialKernelError::ScalarKappaAverage {
                             site: site.to_owned(),
                             l,
                             source,
@@ -57,12 +57,12 @@ impl CheckpointPhysics {
                     });
                 }
                 if channels.is_empty() {
-                    Err(CheckpointPhysicsError::MissingMaterializedBaseChannel {
+                    Err(MaterialKernelError::MissingMaterializedBaseChannel {
                         site: site.to_owned(),
                         l,
                     })
                 } else {
-                    Err(CheckpointPhysicsError::AmbiguousBaseChannel {
+                    Err(MaterialKernelError::AmbiguousBaseChannel {
                         site: site.to_owned(),
                         l,
                     })
@@ -76,7 +76,7 @@ impl CheckpointPhysics {
         basis: &ScfBasis,
         site: &str,
         spin: usize,
-    ) -> Result<Vec<ScalarLocalOrbitalRequest>, CheckpointPhysicsError> {
+    ) -> Result<Vec<ScalarLocalOrbitalRequest>, MaterialKernelError> {
         basis
             .resolved_channels
             .iter()
@@ -102,11 +102,11 @@ impl CheckpointPhysics {
             .collect()
     }
 
-    pub(super) fn spinor_linearization_energies(
+    pub(crate) fn spinor_linearization_energies(
         &self,
         basis: &ScfBasis,
         site: &str,
-    ) -> Result<Vec<SpinorLinearizationEnergy>, CheckpointPhysicsError> {
+    ) -> Result<Vec<SpinorLinearizationEnergy>, MaterialKernelError> {
         let mut energies = Vec::new();
         for l in 0..=basis.l_max {
             let channels = basis
@@ -150,7 +150,7 @@ impl CheckpointPhysics {
                         .copied()
                         .collect::<Vec<_>>();
                     if matches.len() != 1 {
-                        return Err(CheckpointPhysicsError::MissingSpinorBaseChannel {
+                        return Err(MaterialKernelError::MissingSpinorBaseChannel {
                             site: site.to_owned(),
                             l,
                             kappa: kappa.get(),
@@ -164,12 +164,12 @@ impl CheckpointPhysics {
                 continue;
             }
             return Err(if channels.is_empty() {
-                CheckpointPhysicsError::MissingMaterializedBaseChannel {
+                MaterialKernelError::MissingMaterializedBaseChannel {
                     site: site.to_owned(),
                     l,
                 }
             } else {
-                CheckpointPhysicsError::AmbiguousBaseChannel {
+                MaterialKernelError::AmbiguousBaseChannel {
                     site: site.to_owned(),
                     l,
                 }
@@ -182,7 +182,7 @@ impl CheckpointPhysics {
         &self,
         basis: &ScfBasis,
         site: &str,
-    ) -> Result<Vec<SpinorLocalOrbitalRequest>, CheckpointPhysicsError> {
+    ) -> Result<Vec<SpinorLocalOrbitalRequest>, MaterialKernelError> {
         let mut orbitals = Vec::new();
         for resolved in basis.resolved_channels.iter().filter(|resolved| {
             resolved.recipe.site == site
@@ -214,11 +214,11 @@ impl CheckpointPhysics {
         iteration: usize,
         potential: &RegionalPotential,
         basis: &ScfBasis,
-    ) -> Result<ScfBasis, CheckpointPhysicsError> {
+    ) -> Result<ScfBasis, MaterialKernelError> {
         let context = self
             .core_potentials
             .get(&iteration)
-            .ok_or(CheckpointPhysicsError::MissingCoreContinuation(iteration))?;
+            .ok_or(MaterialKernelError::MissingCoreContinuation(iteration))?;
         let meshes = self.channel_meshes(basis)?;
         let extended = build_extended_core_potentials(
             &context.electrostatic,
@@ -235,7 +235,7 @@ impl CheckpointPhysics {
         potential: &RegionalPotential,
         requested: &ScfBasis,
         extended: &[muffintin_dft::BuiltExtendedCorePotential],
-    ) -> Result<ScfBasis, CheckpointPhysicsError> {
+    ) -> Result<ScfBasis, MaterialKernelError> {
         self.require_potential_site_count(potential)?;
         self.validate_spex_requested_basis(requested)?;
         let mut basis = requested.clone();
@@ -285,7 +285,7 @@ impl CheckpointPhysics {
         potential: &RegionalPotential,
         extended: &ExtendedCorePotential,
         lo_ordinal: Option<usize>,
-    ) -> Result<ScfResolvedChannelEnergy, CheckpointPhysicsError> {
+    ) -> Result<ScfResolvedChannelEnergy, MaterialKernelError> {
         let site = &self.sites[site_index];
         let l = channel_l(recipe.identity);
         let one = |generated: GeneratedLinearizationEnergy| ScfResolvedChannelEnergy {
@@ -297,7 +297,7 @@ impl CheckpointPhysics {
             LinearizationEnergyGenerator::Explicit => {
                 let seed = recipe
                     .seed
-                    .ok_or_else(|| CheckpointPhysicsError::MissingChannelSeed {
+                    .ok_or_else(|| MaterialKernelError::MissingChannelSeed {
                         site: recipe.site.clone(),
                         identity: recipe.identity,
                         generator: recipe.generator,
@@ -363,7 +363,7 @@ impl CheckpointPhysics {
             LinearizationEnergyGenerator::BandCenter
             | LinearizationEnergyGenerator::LogDerivative => {
                 if matches!(recipe.identity, ScfChannelIdentity::Kappa { .. }) {
-                    return Err(CheckpointPhysicsError::ScalarGeneratorRequiresLIdentity {
+                    return Err(MaterialKernelError::ScalarGeneratorRequiresLIdentity {
                         site: recipe.site.clone(),
                         identity: recipe.identity,
                         generator: recipe.generator,
@@ -407,7 +407,7 @@ impl CheckpointPhysics {
         &self,
         recipe: &ScfChannelRecipe,
         lo_ordinal: Option<usize>,
-    ) -> Result<ScfResolvedChannelEnergy, CheckpointPhysicsError> {
+    ) -> Result<ScfResolvedChannelEnergy, MaterialKernelError> {
         let energy = self.checkpoint_anchor(recipe, lo_ordinal)?;
         Ok(ScfResolvedChannelEnergy {
             recipe: recipe.clone(),
@@ -425,7 +425,7 @@ impl CheckpointPhysics {
         &self,
         recipe: &ScfChannelRecipe,
         lo_ordinal: Option<usize>,
-    ) -> Result<Hartree, CheckpointPhysicsError> {
+    ) -> Result<Hartree, MaterialKernelError> {
         let site_index = self.site_index(&recipe.site)?;
         let up = self.checkpoint_anchor_spin(recipe, lo_ordinal, 0)?;
         let down = self.checkpoint_anchor_spin(recipe, lo_ordinal, 1)?;
@@ -441,26 +441,27 @@ impl CheckpointPhysics {
         recipe: &ScfChannelRecipe,
         lo_ordinal: Option<usize>,
         spin: usize,
-    ) -> Result<Hartree, CheckpointPhysicsError> {
+    ) -> Result<Hartree, MaterialKernelError> {
         let site_index = self.site_index(&recipe.site)?;
         let site = &self.sites[site_index];
         let l = channel_l(recipe.identity);
         let radial = if spin == 0 { &site.up } else { &site.down };
         match recipe.treatment {
             ScfChannelTreatment::Lo => {
-                let ordinal =
-                    lo_ordinal.ok_or_else(|| CheckpointPhysicsError::MissingFrozenCheckpointAnchor {
+                let ordinal = lo_ordinal.ok_or_else(|| {
+                    MaterialKernelError::MissingFrozenCheckpointAnchor {
                         site: recipe.site.clone(),
                         identity: recipe.identity,
                         treatment: recipe.treatment,
-                    })?;
+                    }
+                })?;
                 radial
                     .local_orbitals
                     .iter()
                     .filter(|(candidate_l, _)| *candidate_l == l)
                     .nth(ordinal)
                     .map(|(_, energy)| *energy)
-                    .ok_or_else(|| CheckpointPhysicsError::MissingFrozenCheckpointLo {
+                    .ok_or_else(|| MaterialKernelError::MissingFrozenCheckpointLo {
                         site: site.id.clone(),
                         l,
                         ordinal,
@@ -470,7 +471,7 @@ impl CheckpointPhysics {
             ScfChannelTreatment::Core
             | ScfChannelTreatment::Valence
             | ScfChannelTreatment::Hdlo => radial.linearization.get(&l).copied().ok_or_else(|| {
-                CheckpointPhysicsError::MissingFrozenCheckpointBase {
+                MaterialKernelError::MissingFrozenCheckpointBase {
                     site: site.id.clone(),
                     l,
                     spin,
@@ -482,7 +483,7 @@ impl CheckpointPhysics {
     pub(crate) fn channel_meshes(
         &self,
         basis: &ScfBasis,
-    ) -> Result<Vec<ExponentialMesh>, CheckpointPhysicsError> {
+    ) -> Result<Vec<ExponentialMesh>, MaterialKernelError> {
         self.sites
             .iter()
             .enumerate()

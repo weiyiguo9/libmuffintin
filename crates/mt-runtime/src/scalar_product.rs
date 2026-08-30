@@ -1,25 +1,25 @@
 //! Frozen scalar LAPW product input for one requested transfer $q$.
 
-use muffintin_prodbasis::{
-    AuxiliaryPartition, AuxiliarySource, PairColumnLayout, ProductRadial, RadialSamples,
-    RawInterstitialPairSupport, SiteRadialSet, TransferQ,
-};
 use muffintin_core::ReciprocalLattice;
 use muffintin_dft::{
     ScalarIterationBasis, ScalarRadialSite, ScfConfig, ScfRelativity,
     build_extended_checkpoint_core_potentials,
 };
-use muffintin_operators::lapw::{CompiledBasis, Provenance};
 use muffintin_operators::Collinear;
+use muffintin_operators::lapw::{CompiledBasis, Provenance};
+use muffintin_prodbasis::{
+    AuxiliaryPartition, AuxiliarySource, PairColumnLayout, ProductRadial, RadialSamples,
+    RawInterstitialPairSupport, SiteRadialSet, TransferQ,
+};
 use muffintin_sphere::CorePotentialContinuationSpec;
 use muffintin_tensor::DenseEigenvectors;
 use std::collections::BTreeSet;
 
-use crate::q_mesh::{canonical_transfer_q, map_k_minus_q};
 use crate::checkpoint_physics::{
-    CheckpointBandSolution, CheckpointPhysicsError, CheckpointPhysics, CheckpointKPointSolution,
-    regular_k_points,
+    CheckpointBandSolution, CheckpointKPointSolution, CheckpointPhysics, CheckpointPhysicsError,
+    MaterialKernelError, regular_k_points,
 };
+use crate::q_mesh::{canonical_transfer_q, map_k_minus_q};
 
 /// ProductRadial $n$ for the scalar linearization function $u$.
 pub const SCALAR_RADIAL_U: usize = 0;
@@ -113,16 +113,20 @@ impl CheckpointPhysics {
             return Err(CheckpointPhysicsError::ScalarProductRequiresScalarRelativity);
         }
         let transfer = canonical_transfer_q(q_fractional, *self.reciprocal())?;
-        let meshes = self.channel_meshes(&config.basis)?;
+        let meshes = self.kernel.channel_meshes(&config.basis)?;
         let extended = build_extended_checkpoint_core_potentials(
             self.frozen_potential(),
             self.geometry(),
             self.nuclear_charges(),
             &meshes,
             CorePotentialContinuationSpec::default(),
+        )
+        .map_err(MaterialKernelError::from)?;
+        let basis = self.kernel.materialize_nonspectral_basis(
+            self.frozen_potential(),
+            &config.basis,
+            &extended,
         )?;
-        let basis =
-            self.materialize_nonspectral_basis(self.frozen_potential(), &config.basis, &extended)?;
         let k_fractional = regular_k_points(config.k_mesh)?;
         let mut k_minus_q = Vec::with_capacity(k_fractional.len());
         for (k_index, &k_frac) in k_fractional.iter().enumerate() {
@@ -134,7 +138,7 @@ impl CheckpointPhysics {
                 umklapp: mapped.umklapp,
             });
         }
-        let bands = self.solve_points(
+        let bands = self.kernel.solve_points(
             self.frozen_potential(),
             &basis,
             &k_fractional,
@@ -300,7 +304,10 @@ fn site_radials(
         .collect()
 }
 
-fn spin_radials(spin: u8, site: &ScalarRadialSite) -> Result<Vec<ProductRadial>, CheckpointPhysicsError> {
+fn spin_radials(
+    spin: u8,
+    site: &ScalarRadialSite,
+) -> Result<Vec<ProductRadial>, CheckpointPhysicsError> {
     let mut valence = Vec::new();
     for (l, linearized) in site.linearized.iter().enumerate() {
         let l = u32::try_from(l).map_err(|_| CheckpointPhysicsError::AngularMomentumOverflow)?;
@@ -349,11 +356,10 @@ pub(crate) fn leading_bands(
         return Ok(eigenvectors.clone());
     }
     let host = eigenvectors.to_host_column_major();
-    Ok(DenseEigenvectors::from_host_column_major(
-        rows,
-        n_orb,
-        host[..rows * n_orb].to_vec(),
-    )?)
+    Ok(
+        DenseEigenvectors::from_host_column_major(rows, n_orb, host[..rows * n_orb].to_vec())
+            .map_err(MaterialKernelError::from)?,
+    )
 }
 
 fn radial_samples(large: &[f64], small: Option<&[f64]>) -> RadialSamples {

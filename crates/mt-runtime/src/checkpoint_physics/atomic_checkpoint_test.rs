@@ -8,10 +8,11 @@ use muffintin_dft::{
     ScfPhysics, ScfRelativity, XcFunctional,
 };
 use muffintin_io::{
-    AngularBasis, EnergyParameterV1, EnergyUnit, ExponentialMeshSpec, GeometryV2, InitialV2,
-    LatticeV1, LengthUnit, LinearizationV1, CheckpointMeta, PotentialConventionV1,
-    PotentialRadialQuantityV1, RadialBasisSpinV2, RadialEquationTag, SiteRadialBasisV2, SiteV2,
-    CheckpointFile, SphericalChannelConvention, checkpoint_file_from_toml, checkpoint_file_to_toml,
+    AngularBasis, CheckpointFile, CheckpointMeta, EnergyParameterV1, EnergyUnit,
+    ExponentialMeshSpec, GeometryV2, InitialV2, LatticeV1, LengthUnit, LinearizationV1,
+    PotentialConventionV1, PotentialRadialQuantityV1, RadialBasisSpinV2, RadialEquationTag,
+    SiteRadialBasisV2, SiteV2, SphericalChannelConvention, checkpoint_file_from_toml,
+    checkpoint_file_to_toml,
 };
 
 use super::{
@@ -134,7 +135,7 @@ fn neutral_atomic_checkpoint_enters_the_native_restart_and_potential_path() {
     };
     let mut physics = CheckpointPhysics::new(&generated.checkpoint).unwrap();
     let expected_layout = production_density_layout(
-        *physics.reciprocal(),
+        *physics.kernel.reciprocal(),
         config.k_mesh,
         config.basis.plane_wave_cutoff,
     )
@@ -164,11 +165,11 @@ fn neutral_atomic_checkpoint_enters_the_native_restart_and_potential_path() {
             .collect::<Vec<_>>(),
         expected_g
     );
-    let restart_density = physics.restart_density.clone().unwrap();
-    let initial_density = ScfPhysics::initial_density(&mut physics, &config).unwrap();
+    let restart_density = physics.kernel.restart_density.clone().unwrap();
+    let initial_density = ScfPhysics::initial_density(&mut physics.kernel, &config).unwrap();
     assert_eq!(initial_density, restart_density);
     let rebuilt = ScfPhysics::build_potential(
-        &mut physics,
+        &mut physics.kernel,
         0,
         &initial_density,
         config.exchange_correlation,

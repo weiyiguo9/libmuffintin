@@ -122,7 +122,11 @@ fn convert_v2_radial_basis(
         basis.mesh.point_count,
     )?;
     Ok(CheckpointSpin {
-        equation: basis.radial_equation,
+        route: match basis.radial_equation {
+            RadialEquationTag::Schroedinger => RadialRoute::Schroedinger,
+            RadialEquationTag::ScalarKoellingHarmon => RadialRoute::ScalarKoellingHarmon,
+            RadialEquationTag::FullyRelativisticDirac => RadialRoute::Dirac,
+        },
         mesh,
         linearization: basis
             .linearization

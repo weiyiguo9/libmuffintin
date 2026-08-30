@@ -1,19 +1,17 @@
+use muffintin_core::{AngularGrid, Cell, GridError};
 use muffintin_dft::{
     AtomicNumber, AtomicSuperpositionChargeClosure, AtomicSuperpositionError,
     AtomicSuperpositionSite, AtomicSuperpositionSpec, FreeAtomScfSpec,
     LinearizationEnergyGenerator, ScfConfig, ScfRelativity, build_atomic_superposition_density,
 };
-use muffintin_core::{AngularGrid, Cell, GridError};
 use muffintin_io::{
-    BasisHints, DensityV2, FieldRepresentationV2, FieldUnitV2, FourierNormalization,
-    FourierPhase, InitialV2, InverseLengthUnit, CheckpointMeta, PotentialV2, CheckpointV2,
+    BasisHints, CheckpointMeta, CheckpointV2, DensityV2, FieldRepresentationV2, FieldUnitV2,
+    FourierNormalization, FourierPhase, InitialV2, InverseLengthUnit, PotentialV2,
 };
 use thiserror::Error;
 
 use super::convert_v2::{regional_density_from_v2, regional_scalar_to_v2};
-use super::{
-    CheckpointPhysicsError, convert_checkpoint_geometry, production_density_layout,
-};
+use super::{CheckpointPhysicsError, convert_checkpoint_geometry, production_density_layout};
 use muffintin_dft::build_scf_potential;
 
 /// Complete structure/task request for a neutral atomic-superposition V2 restart.
@@ -93,7 +91,8 @@ pub fn materialize_atomic_checkpoint_v2(
         converted.reciprocal,
         request.scf.k_mesh,
         request.scf.basis.plane_wave_cutoff,
-    )?;
+    )
+    .map_err(CheckpointPhysicsError::from)?;
     let muffin_tin_l_max = match request.scf.relativity {
         ScfRelativity::Scalar | ScfRelativity::SocSecondVariation { .. } => request
             .scf
@@ -219,7 +218,9 @@ pub fn materialize_atomic_checkpoint_v2(
         request.geometry,
         InitialV2::Restart { density, potential },
     );
-    checkpoint.validate().map_err(CheckpointPhysicsError::from)?;
+    checkpoint
+        .validate()
+        .map_err(CheckpointPhysicsError::from)?;
     Ok(AtomicCheckpointResult {
         checkpoint,
         charge_closure: atomic.charge_closure,

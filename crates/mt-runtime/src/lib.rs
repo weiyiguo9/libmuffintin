@@ -7,6 +7,7 @@ extern crate self as muffintin;
 
 mod channel_recipe;
 mod channel_token;
+mod checkpoint_physics;
 mod error;
 mod input;
 mod mldump_header;
@@ -20,7 +21,6 @@ mod scalar_mpb;
 mod scalar_product;
 mod scalar_thc;
 mod site_coords;
-mod checkpoint_physics;
 mod spinor_coulomb;
 mod spinor_mldump;
 mod spinor_mpb;
@@ -37,6 +37,11 @@ pub use channel_token::{
     ChannelEnergyGenerator, ChannelIdentity, ChannelProvenance, ChannelRecipeRecord, ChannelScope,
     ChannelTokenContext, ChannelTokenError, ChannelTreatment, ParsedChannelToken,
     parse_channel_token,
+};
+pub use checkpoint_physics::{
+    AtomicCheckpointError, AtomicCheckpointRequest, AtomicCheckpointResult, CheckpointPhysics,
+    CheckpointPhysicsError, MaterialKernelError, checkpoint_v2_from_state,
+    materialize_atomic_checkpoint_v2,
 };
 pub use error::{InputError, InputValidationError};
 pub use input::{
@@ -67,10 +72,6 @@ pub use scalar_product::{
     ScalarKMinusQ, ScalarProductInput, ScalarSpinChannel,
 };
 pub use scalar_thc::{ScalarThcError, ScalarThcResult, ScalarThcSpec, build_scalar_thc};
-pub use checkpoint_physics::{
-    AtomicCheckpointError, AtomicCheckpointRequest, AtomicCheckpointResult, CheckpointPhysicsError,
-    CheckpointPhysics, materialize_atomic_checkpoint_v2, checkpoint_v2_from_state,
-};
 pub use spinor_coulomb::{
     SPINOR_COULOMB_EXACTNESS_FLOOR, SpinorCoulombDiscrepancy, SpinorCoulombError,
     SpinorCoulombPairDiagnostic, SpinorCoulombPairMatch, SpinorCoulombQRecord, SpinorCoulombResult,

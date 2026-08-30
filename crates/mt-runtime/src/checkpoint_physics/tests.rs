@@ -1,16 +1,19 @@
 use super::*;
-use muffintin_dft::NoncollinearXcRoute;
+use muffintin_core::Kappa;
 use muffintin_dft::{
-    BandPathPoint, FirstVariationWindow, ScfConvergence, ScfCoreSite, ScfCoreState, ScfMixing,
-    XcFunctional, run_scf,
+    BandPathPoint, BandPathRequest, FirstVariationWindow, LinearizationEnergyDiagnostic,
+    NoncollinearXcRoute, ScfChannelRecipe, ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState,
+    ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations, ScfPhysics, ScfRelativity,
+    SpinorLocalOrbitalRequest, XcFunctional, build_extended_checkpoint_core_potentials, run_scf,
 };
 use muffintin_io::{
-    BasisHints, Complex64V1, EnergyParameterV1, EnergyUnit, ExponentialMeshSpec,
-    FourierCoefficientV1, FourierNormalization, FourierPhase, GeometryV1, InterstitialV1,
-    InverseLengthUnit, LatticeV1, LengthUnit, LinearizationV1, CheckpointMeta, PotentialChannelV1,
-    PotentialConventionV1, PotentialRadialQuantityV1, SiteSpinV1, SiteV1, CheckpointFile, CheckpointV1,
+    BasisHints, CheckpointFile, CheckpointMeta, CheckpointV1, Complex64V1, EnergyParameterV1,
+    EnergyUnit, ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization, FourierPhase,
+    GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit, LinearizationV1,
+    PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1, SiteSpinV1, SiteV1,
     SphericalChannelConvention, SpinTag, checkpoint_file_from_toml, checkpoint_file_to_toml,
 };
+use muffintin_sphere::CorePotentialContinuationSpec;
 
 fn checkpoint_v1() -> muffintin_io::CheckpointV1 {
     let point_count = 61;
@@ -193,11 +196,11 @@ fn core_checkpoint_and_config() -> (CheckpointV2, ScfConfig) {
 fn checkpoint_conversion_normalizes_monopole_and_wraps_cartesian_site() {
     let physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     assert_eq!(
-        physics.geometry.spheres()[0].center,
+        physics.kernel.geometry.spheres()[0].center,
         [Bohr(2.0), Bohr(4.0), Bohr(4.0)]
     );
     let physical = checkpoint_v1().geometry.sites[0].spins[0].potential_channels[0].real[17];
-    let normalized = physics.frozen_potential.scalar().muffin_tins()[0]
+    let normalized = physics.kernel.frozen_potential.scalar().muffin_tins()[0]
         .field()
         .channel(0, 0)
         .unwrap()[17]
@@ -240,7 +243,7 @@ fn v2_interstitial_components_are_keyed_independently_of_input_order() {
     ];
 
     let physics = CheckpointPhysics::new(&checkpoint).unwrap();
-    let potential = physics.frozen_potential();
+    let potential = physics.kernel.frozen_potential();
     for field in potential.magnetic() {
         assert_eq!(
             field.interstitial().layout(),
@@ -267,17 +270,18 @@ fn v2_interstitial_components_are_keyed_independently_of_input_order() {
 fn frozen_checkpoint_produces_initial_density_without_fake_atomic_g_zero() {
     let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let config = config(ScfRelativity::Scalar);
-    let meshes = physics.channel_meshes(&config.basis).unwrap();
+    let meshes = physics.kernel.channel_meshes(&config.basis).unwrap();
     let extended = build_extended_checkpoint_core_potentials(
-        &physics.frozen_potential,
-        &physics.geometry,
-        &physics.nuclear_charges,
+        &physics.kernel.frozen_potential,
+        &physics.kernel.geometry,
+        &physics.kernel.nuclear_charges,
         &meshes,
         CorePotentialContinuationSpec::default(),
     )
     .unwrap();
     let materialized = physics
-        .materialize_nonspectral_basis(&physics.frozen_potential, &config.basis, &extended)
+        .kernel
+        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &config.basis, &extended)
         .unwrap();
     assert_eq!(
         materialized.resolved_channels[0].energy.get().to_bits(),
@@ -287,7 +291,7 @@ fn frozen_checkpoint_produces_initial_density_without_fake_atomic_g_zero() {
         materialized.resolved_channels[1].energy.get().to_bits(),
         (-0.15_f64).to_bits()
     );
-    let density = physics.initial_density(&config).unwrap();
+    let density = physics.kernel.initial_density(&config).unwrap();
     assert!((muffintin_dft::electron_count(&density).unwrap() - 1.0).abs() < 1.0e-10);
     assert!(
         density
@@ -311,20 +315,22 @@ fn magnetic_frozen_checkpoint_does_not_turn_spin_splitting_into_kappa_splitting(
     checkpoint.geometry.sites[0].spins = vec![up, down];
     let physics = CheckpointPhysics::new(&checkpoint.normalize_v2().unwrap()).unwrap();
     let basis = config(ScfRelativity::SpinorFirstVariation).basis;
-    let meshes = physics.channel_meshes(&basis).unwrap();
+    let meshes = physics.kernel.channel_meshes(&basis).unwrap();
     let extended = build_extended_checkpoint_core_potentials(
-        &physics.frozen_potential,
-        &physics.geometry,
-        &physics.nuclear_charges,
+        &physics.kernel.frozen_potential,
+        &physics.kernel.geometry,
+        &physics.kernel.nuclear_charges,
         &meshes,
         CorePotentialContinuationSpec::default(),
     )
     .unwrap();
     let materialized = physics
-        .materialize_nonspectral_basis(&physics.frozen_potential, &basis, &extended)
+        .kernel
+        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &basis, &extended)
         .unwrap();
     assert_eq!(
         physics
+            .kernel
             .scalar_linearization_energies(&materialized, "H-1", 0)
             .unwrap()[1]
             .get()
@@ -333,6 +339,7 @@ fn magnetic_frozen_checkpoint_does_not_turn_spin_splitting_into_kappa_splitting(
     );
     assert_eq!(
         physics
+            .kernel
             .scalar_linearization_energies(&materialized, "H-1", 1)
             .unwrap()[1]
             .get()
@@ -340,6 +347,7 @@ fn magnetic_frozen_checkpoint_does_not_turn_spin_splitting_into_kappa_splitting(
         (-0.16_f64).to_bits()
     );
     let spinor = physics
+        .kernel
         .spinor_linearization_energies(&materialized, "H-1")
         .unwrap();
     let p = spinor
@@ -361,20 +369,22 @@ fn atomic_recipe_materializes_from_the_current_extended_potential() {
             channel.generator = LinearizationEnergyGenerator::Atomic;
         }
     }
-    let meshes = physics.channel_meshes(&config.basis).unwrap();
+    let meshes = physics.kernel.channel_meshes(&config.basis).unwrap();
     let extended = build_extended_checkpoint_core_potentials(
-        &physics.frozen_potential,
-        &physics.geometry,
-        &physics.nuclear_charges,
+        &physics.kernel.frozen_potential,
+        &physics.kernel.geometry,
+        &physics.kernel.nuclear_charges,
         &meshes,
         CorePotentialContinuationSpec::default(),
     )
     .unwrap();
     let first = physics
-        .materialize_nonspectral_basis(&physics.frozen_potential, &config.basis, &extended)
+        .kernel
+        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &config.basis, &extended)
         .unwrap();
     let second = physics
-        .materialize_nonspectral_basis(&physics.frozen_potential, &config.basis, &extended)
+        .kernel
+        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &config.basis, &extended)
         .unwrap();
     let atomic = first
         .resolved_channels
@@ -402,23 +412,27 @@ fn seeded_radial_search_does_not_require_a_checkpoint_lo_anchor() {
             seed: Some(Hartree(-0.2)),
             provenance: muffintin_dft::ScfChannelProvenance::Site,
         });
-        let meshes = physics.channel_meshes(&basis).unwrap();
+        let meshes = physics.kernel.channel_meshes(&basis).unwrap();
         let extended = build_extended_checkpoint_core_potentials(
-            &physics.frozen_potential,
-            &physics.geometry,
-            &physics.nuclear_charges,
+            &physics.kernel.frozen_potential,
+            &physics.kernel.geometry,
+            &physics.kernel.nuclear_charges,
             &meshes,
             CorePotentialContinuationSpec::default(),
         )
         .unwrap();
-        match physics.materialize_nonspectral_basis(&physics.frozen_potential, &basis, &extended) {
+        match physics.kernel.materialize_nonspectral_basis(
+            &physics.kernel.frozen_potential,
+            &basis,
+            &extended,
+        ) {
             Ok(materialized) => assert!(
                 materialized
                     .resolved_channels
                     .iter()
                     .any(|resolved| resolved.recipe.generator == generator)
             ),
-            Err(CheckpointPhysicsError::ChannelGenerator {
+            Err(MaterialKernelError::ChannelGenerator {
                 generator: actual, ..
             }) => assert_eq!(actual, generator),
             Err(error) => panic!("seeded {generator:?} failed before its generator: {error}"),
@@ -429,7 +443,7 @@ fn seeded_radial_search_does_not_require_a_checkpoint_lo_anchor() {
 #[test]
 fn scalar_single_site_checkpoint_runs_two_iteration_scf_smoke() {
     let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
-    let state = run_scf(&mut physics, &config(ScfRelativity::Scalar), None).unwrap();
+    let state = run_scf(&mut physics.kernel, &config(ScfRelativity::Scalar), None).unwrap();
     assert_eq!(state.iterations(), 2);
     assert_eq!(state.relativity, ScfRelativity::Scalar);
 }
@@ -441,7 +455,7 @@ fn fermi_offset_refines_inside_each_scf_iteration() {
     let channel = &mut config.basis.channels[0];
     channel.generator = LinearizationEnergyGenerator::FermiOffset;
     channel.seed = Some(Hartree(-0.1));
-    let state = run_scf(&mut physics, &config, None).unwrap();
+    let state = run_scf(&mut physics.kernel, &config, None).unwrap();
     assert!(state.diagnostics.iter().all(|diagnostic| {
         diagnostic.resolved_channels.iter().any(|resolved| {
             resolved.recipe.generator == LinearizationEnergyGenerator::FermiOffset
@@ -458,7 +472,7 @@ fn band_cog_uses_physical_projection_inside_the_scf_iteration() {
     let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let mut config = config(ScfRelativity::Scalar);
     config.basis.channels[0].generator = LinearizationEnergyGenerator::BandCog;
-    let state = run_scf(&mut physics, &config, None).unwrap();
+    let state = run_scf(&mut physics.kernel, &config, None).unwrap();
     assert!(state.diagnostics.iter().all(|diagnostic| {
         diagnostic.resolved_channels.iter().any(|resolved| {
             resolved.recipe.generator == LinearizationEnergyGenerator::BandCog
@@ -482,11 +496,11 @@ fn spinor_band_cog_rejects_distinct_channels_with_the_same_kappa_projection() {
     second.identity = ScfChannelIdentity::Kappa { n: 3, kappa: -1 };
 
     assert!(matches!(
-        physics.validate_band_cog_projection_keys(
+        physics.kernel.validate_band_cog_projection_keys(
             &[&first, &second],
             ScfRelativity::SpinorFirstVariation,
         ),
-        Err(CheckpointPhysicsError::AmbiguousBandCogProjection { .. })
+        Err(MaterialKernelError::AmbiguousBandCogProjection { .. })
     ));
 }
 
@@ -496,12 +510,14 @@ fn second_variation_is_routed_and_full_spinor_never_falls_back_to_scalar() {
     let sv = config(ScfRelativity::SocSecondVariation {
         window: FirstVariationWindow::new(0, 1).unwrap(),
     });
-    assert!(physics.initial_density(&sv).is_ok());
+    assert!(physics.kernel.initial_density(&sv).is_ok());
 
     let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     assert!(matches!(
-        physics.initial_density(&config(ScfRelativity::SpinorFirstVariation)),
-        Err(CheckpointPhysicsError::SpinorRadialEquation { .. })
+        physics
+            .kernel
+            .initial_density(&config(ScfRelativity::SpinorFirstVariation)),
+        Err(MaterialKernelError::SpinorRadialEquation { .. })
     ));
 }
 
@@ -512,6 +528,7 @@ fn fully_relativistic_checkpoint_uses_full_spinor_solve_and_density() {
         RadialEquationTag::FullyRelativisticDirac;
     let mut physics = CheckpointPhysics::new(&checkpoint.normalize_v2().unwrap()).unwrap();
     let density = physics
+        .kernel
         .initial_density(&config(ScfRelativity::SpinorFirstVariation))
         .unwrap();
     assert!((muffintin_dft::electron_count(&density).unwrap() - 1.0).abs() < 1.0e-9);
@@ -524,14 +541,14 @@ fn full_spinor_scf_retains_transverse_magnetization_for_two_iterations() {
         RadialEquationTag::FullyRelativisticDirac;
     let config = config(ScfRelativity::SpinorFirstVariation);
     let mut physics = CheckpointPhysics::new(&checkpoint.normalize_v2().unwrap()).unwrap();
-    let mut source = run_scf(&mut physics, &config, None).unwrap();
+    let mut source = run_scf(&mut physics.kernel, &config, None).unwrap();
     let charge = source.density.charge().clone();
     let mut transverse = charge.zero_like();
     transverse.add_scaled(0.1, &charge).unwrap();
     let zero = charge.zero_like();
     source.density = RegionalDensity::new(charge, [transverse, zero.clone(), zero]).unwrap();
 
-    let state = run_scf(&mut physics, &config, Some(&source)).unwrap();
+    let state = run_scf(&mut physics.kernel, &config, Some(&source)).unwrap();
     assert_eq!(state.iterations(), 2);
     assert!(state.density.magnetization()[0].residual_rms().unwrap() > 1.0e-8);
 
@@ -557,26 +574,26 @@ fn full_spinor_scf_retains_transverse_magnetization_for_two_iterations() {
     {
         assert!(restarted.difference_rms(expected).unwrap() < 1.0e-10);
     }
-    let restarted_density = restarted_physics.initial_density(&config).unwrap();
+    let restarted_density = restarted_physics.kernel.initial_density(&config).unwrap();
     assert!(state.density.difference_rms(&restarted_density).unwrap() < 1.0e-12);
 }
 
 #[test]
 fn scalar_route_rejects_a_transverse_potential() {
     let physics = CheckpointPhysics::new(&checkpoint()).unwrap();
-    let scalar = physics.frozen_potential.scalar().clone();
+    let scalar = physics.kernel.frozen_potential.scalar().clone();
     let mut transverse = scalar.zero_like();
     transverse.add_scaled(0.01, &scalar).unwrap();
     let zero = scalar.zero_like();
     let potential = RegionalPotential::new(scalar, [transverse, zero.clone(), zero]).unwrap();
     assert!(matches!(
-        physics.solve_points(
+        physics.kernel.solve_points(
             &potential,
             &config(ScfRelativity::Scalar).basis,
             &[[0.0; 3]],
             ScfRelativity::Scalar,
         ),
-        Err(CheckpointPhysicsError::TransversePotentialUnsupported { .. })
+        Err(MaterialKernelError::TransversePotentialUnsupported { .. })
     ));
 }
 
@@ -598,20 +615,22 @@ fn signed_kappa_recipe_keeps_multiple_spinor_local_orbitals() {
             provenance: muffintin_dft::ScfChannelProvenance::Site,
         });
     }
-    let meshes = physics.channel_meshes(&basis).unwrap();
+    let meshes = physics.kernel.channel_meshes(&basis).unwrap();
     let extended = build_extended_checkpoint_core_potentials(
-        &physics.frozen_potential,
-        &physics.geometry,
-        &physics.nuclear_charges,
+        &physics.kernel.frozen_potential,
+        &physics.kernel.geometry,
+        &physics.kernel.nuclear_charges,
         &meshes,
         CorePotentialContinuationSpec::default(),
     )
     .unwrap();
     let basis = physics
-        .materialize_nonspectral_basis(&physics.frozen_potential, &basis, &extended)
+        .kernel
+        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &basis, &extended)
         .unwrap();
     let inputs = physics
-        .spinor_site_inputs(&physics.frozen_potential, &basis)
+        .kernel
+        .spinor_site_inputs(&physics.kernel.frozen_potential, &basis)
         .unwrap();
     assert_eq!(
         inputs[0].local_orbitals,
@@ -641,20 +660,22 @@ fn scalar_route_omits_signed_kappa_local_orbitals() {
         seed: Some(Hartree(-0.1)),
         provenance: muffintin_dft::ScfChannelProvenance::Site,
     });
-    let meshes = physics.channel_meshes(&basis).unwrap();
+    let meshes = physics.kernel.channel_meshes(&basis).unwrap();
     let extended = build_extended_checkpoint_core_potentials(
-        &physics.frozen_potential,
-        &physics.geometry,
-        &physics.nuclear_charges,
+        &physics.kernel.frozen_potential,
+        &physics.kernel.geometry,
+        &physics.kernel.nuclear_charges,
         &meshes,
         CorePotentialContinuationSpec::default(),
     )
     .unwrap();
     let basis = physics
-        .materialize_nonspectral_basis(&physics.frozen_potential, &basis, &extended)
+        .kernel
+        .materialize_nonspectral_basis(&physics.kernel.frozen_potential, &basis, &extended)
         .unwrap();
     let inputs = physics
-        .scalar_site_inputs(&physics.frozen_potential, &basis)
+        .kernel
+        .scalar_site_inputs(&physics.kernel.frozen_potential, &basis)
         .unwrap();
     assert!(inputs.up[0].local_orbitals.is_empty());
     assert!(inputs.down[0].local_orbitals.is_empty());
@@ -664,7 +685,7 @@ fn scalar_route_omits_signed_kappa_local_orbitals() {
 fn nonempty_core_is_present_initially_and_in_the_scf_iteration() {
     let (checkpoint, config) = core_checkpoint_and_config();
     let mut physics = CheckpointPhysics::new(&checkpoint).unwrap();
-    let initial = physics.initial_density(&config).unwrap();
+    let initial = physics.kernel.initial_density(&config).unwrap();
     let initial_count = muffintin_dft::electron_count(&initial).unwrap();
     assert!(
         (initial_count - 2.0).abs() < 1.0e-8,
@@ -672,7 +693,7 @@ fn nonempty_core_is_present_initially_and_in_the_scf_iteration() {
     );
 
     let mut physics = CheckpointPhysics::new(&checkpoint).unwrap();
-    let state = run_scf(&mut physics, &config, None).unwrap();
+    let state = run_scf(&mut physics.kernel, &config, None).unwrap();
     assert_eq!(state.iterations(), 2);
 }
 
@@ -680,10 +701,10 @@ fn nonempty_core_is_present_initially_and_in_the_scf_iteration() {
 fn frozen_consumers_use_their_source_states_basis_after_a_later_scf() {
     let mut physics = CheckpointPhysics::new(&checkpoint()).unwrap();
     let first_config = config(ScfRelativity::Scalar);
-    let first = run_scf(&mut physics, &first_config, None).unwrap();
+    let first = run_scf(&mut physics.kernel, &first_config, None).unwrap();
     let mut later_config = first_config.clone();
     later_config.basis.plane_wave_cutoff = 0.55;
-    let later = run_scf(&mut physics, &later_config, Some(&first)).unwrap();
+    let later = run_scf(&mut physics.kernel, &later_config, Some(&first)).unwrap();
     assert_eq!(first.basis.plane_wave_cutoff, 0.5);
     assert_eq!(later.basis.plane_wave_cutoff, 0.55);
 
@@ -700,7 +721,14 @@ fn frozen_consumers_use_their_source_states_basis_after_a_later_scf() {
             },
         ],
     };
-    assert_eq!(physics.solve_band_path(&first, &request).unwrap().len(), 2);
+    assert_eq!(
+        physics
+            .kernel
+            .solve_band_path(&first, &request)
+            .unwrap()
+            .len(),
+        2
+    );
 }
 
 #[test]
@@ -710,7 +738,7 @@ fn second_variation_rejects_a_window_that_would_drop_lower_scalar_bands() {
         window: FirstVariationWindow::new(1, 2).unwrap(),
     });
     assert!(matches!(
-        physics.initial_density(&config),
-        Err(CheckpointPhysicsError::SecondVariationDropsLowerBands { start: 1 })
+        physics.kernel.initial_density(&config),
+        Err(MaterialKernelError::SecondVariationDropsLowerBands { start: 1 })
     ));
 }
