@@ -3,13 +3,13 @@ use std::collections::BTreeMap;
 use muffintin_core::Bohr;
 use muffintin_core::{Cell, Grid, UniformGrid};
 use muffintin_io::{
-    AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1,
-    ExponentialMeshSpecV1, FieldRepresentationV2, FieldUnitV2, FourierCoefficientV1,
-    FourierNormalizationV1, FourierPhaseV1, GeometryV1, GridArtifactV1, InitialV2, InterstitialV1,
-    InverseLengthUnitV1, IoError, LatticeV1, LengthUnitV1, LinearizationV1, MetaV1,
+    AngularBasis, BasisHints, Complex64V1, EnergyParameterV1, EnergyUnit,
+    ExponentialMeshSpec, FieldRepresentationV2, FieldUnitV2, FourierCoefficientV1,
+    FourierNormalization, FourierPhase, GeometryV1, GridArtifactV1, InitialV2, InterstitialV1,
+    InverseLengthUnit, IoError, LatticeV1, LengthUnit, LinearizationV1, CheckpointMeta,
     PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1, RadialBasisSpinV2,
-    RadialEquationTagV1, SiteSpinV1, SiteV1, CheckpointFile, CheckpointV1,
-    SphericalChannelConventionV1, SpinTagV1, VolumeUnitV1, grid_artifact_from_toml,
+    RadialEquationTag, SiteSpinV1, SiteV1, CheckpointFile, CheckpointV1,
+    SphericalChannelConvention, SpinTag, VolumeUnit, grid_artifact_from_toml,
     grid_artifact_to_toml, checkpoint_file_from_toml, checkpoint_file_to_toml, checkpoint_from_toml,
     checkpoint_to_toml,
 };
@@ -19,41 +19,41 @@ fn checkpoint() -> CheckpointV1 {
     let first = 0.1;
     let increment = 0.2;
     CheckpointV1::new(
-        MetaV1 {
+        CheckpointMeta {
             title: "minimal silicon checkpoint".to_owned(),
             producer: "mt-io test".to_owned(),
             producer_version: Some("1.2.3".to_owned()),
             energy_zero: "cell-average interstitial potential".to_owned(),
             potential_convention: PotentialConventionV1 {
-                angular_basis: AngularBasisV1::RealTesseralCondonShortley,
+                angular_basis: AngularBasis::RealTesseralCondonShortley,
                 radial_quantity: PotentialRadialQuantityV1::Potential,
-                spherical_channel: SphericalChannelConventionV1::PhysicalValue,
+                spherical_channel: SphericalChannelConvention::PhysicalValue,
             },
             annotations: BTreeMap::from([("source".to_owned(), "fixture".to_owned())]),
         },
         GeometryV1 {
             lattice: LatticeV1 {
-                unit: LengthUnitV1::Bohr,
+                unit: LengthUnit::Bohr,
                 vectors: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
             },
             sites: vec![SiteV1 {
                 id: "Si-1".to_owned(),
                 atomic_number: 14,
                 fractional_position: [0.0, 0.0, 0.0],
-                muffin_tin_radius_unit: LengthUnitV1::Bohr,
+                muffin_tin_radius_unit: LengthUnit::Bohr,
                 muffin_tin_radius: 2.0,
                 spins: vec![SiteSpinV1 {
-                    spin: SpinTagV1::Scalar,
-                    mesh: ExponentialMeshSpecV1 {
-                        radius_unit: LengthUnitV1::Bohr,
+                    spin: SpinTag::Scalar,
+                    mesh: ExponentialMeshSpec {
+                        radius_unit: LengthUnit::Bohr,
                         first,
                         log_increment: increment,
                         point_count,
                         last: first * ((point_count - 1) as f64 * increment).exp(),
                         consistency_tolerance: 1.0e-12,
                     },
-                    radial_equation: RadialEquationTagV1::ScalarKoellingHarmon,
-                    potential_unit: EnergyUnitV1::Hartree,
+                    radial_equation: RadialEquationTag::ScalarKoellingHarmon,
+                    potential_unit: EnergyUnit::Hartree,
                     potential_channels: vec![PotentialChannelV1 {
                         l: 0,
                         m: 0,
@@ -61,7 +61,7 @@ fn checkpoint() -> CheckpointV1 {
                         imaginary: Vec::new(),
                     }],
                     linearization: LinearizationV1 {
-                        energy_unit: EnergyUnitV1::Hartree,
+                        energy_unit: EnergyUnit::Hartree,
                         linearization_energies: vec![EnergyParameterV1 { l: 0, energy: -0.2 }],
                         local_orbital_energies: vec![EnergyParameterV1 { l: 1, energy: -1.1 }],
                     },
@@ -69,7 +69,7 @@ fn checkpoint() -> CheckpointV1 {
             }],
         },
         InterstitialV1 {
-            coefficient_unit: EnergyUnitV1::Hartree,
+            coefficient_unit: EnergyUnit::Hartree,
             coefficients: vec![FourierCoefficientV1 {
                 g: [0, 0, 0],
                 value: Complex64V1 {
@@ -77,12 +77,12 @@ fn checkpoint() -> CheckpointV1 {
                     imaginary: 0.0,
                 },
             }],
-            basis_hints: BasisHintsV1 {
-                reciprocal_length_unit: InverseLengthUnitV1::BohrInverse,
+            basis_hints: BasisHints {
+                reciprocal_length_unit: InverseLengthUnit::BohrInverse,
                 plane_wave_cutoff: Some(4.0),
                 coefficient_cutoff: Some(8.0),
-                normalization: FourierNormalizationV1::CellNormalized,
-                phase: FourierPhaseV1::NegativeExponent,
+                normalization: FourierNormalization::CellNormalized,
+                phase: FourierPhase::NegativeExponent,
             },
         },
     )
@@ -212,9 +212,9 @@ fn v2_rejects_nonexact_sites_meshes_and_duplicate_hermitian_keys() {
     let mut mismatched_mesh = checkpoint();
     let scalar = mismatched_mesh.geometry.sites[0].spins.remove(0);
     let mut up = scalar.clone();
-    up.spin = SpinTagV1::Up;
+    up.spin = SpinTag::Up;
     let mut down = scalar;
-    down.spin = SpinTagV1::Down;
+    down.spin = SpinTag::Down;
     down.mesh.first *= 1.01;
     down.mesh.last *= 1.01;
     mismatched_mesh.geometry.sites[0].spins = vec![up, down];
@@ -246,10 +246,10 @@ fn v1_normalization_maps_scalar_and_up_down_exactly() {
     let mut collinear = checkpoint();
     let scalar_spin = collinear.geometry.sites[0].spins.remove(0);
     let mut up = scalar_spin.clone();
-    up.spin = SpinTagV1::Up;
+    up.spin = SpinTag::Up;
     up.potential_channels[0].real = vec![4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0];
     let mut down = scalar_spin;
-    down.spin = SpinTagV1::Down;
+    down.spin = SpinTag::Down;
     down.potential_channels[0].real = vec![2.0, 2.0, 4.0, 4.0, 6.0, 6.0, 8.0];
     collinear.geometry.sites[0].spins = vec![up, down];
 
@@ -287,8 +287,8 @@ fn v1_normalization_maps_scalar_and_up_down_exactly() {
 #[test]
 fn grid_artifact_round_trips_independently() {
     let grid = GridArtifactV1::new(
-        LengthUnitV1::Bohr,
-        VolumeUnitV1::Bohr3,
+        LengthUnit::Bohr,
+        VolumeUnit::Bohr3,
         vec![[0.0, 0.0, 0.0], [1.0, 0.5, -0.5]],
         vec![0.4, 0.6],
         vec!["interstitial".to_owned(), "muffin-tin:Si-1".to_owned()],
@@ -329,8 +329,8 @@ fn checkpoint_rejects_unknown_version() {
 #[test]
 fn grid_rejects_unknown_version() {
     let grid = GridArtifactV1::new(
-        LengthUnitV1::Bohr,
-        VolumeUnitV1::Bohr3,
+        LengthUnit::Bohr,
+        VolumeUnit::Bohr3,
         vec![[0.0, 0.0, 0.0]],
         vec![1.0],
         vec!["interstitial".to_owned()],
@@ -369,8 +369,8 @@ fn readers_reject_non_finite_values_and_grid_length_mismatch() {
     assert!(checkpoint_from_toml(&non_finite).is_err());
 
     let grid = GridArtifactV1::new(
-        LengthUnitV1::Bohr,
-        VolumeUnitV1::Bohr3,
+        LengthUnit::Bohr,
+        VolumeUnit::Bohr3,
         vec![[0.0, 0.0, 0.0]],
         Vec::new(),
         vec!["interstitial".to_owned()],

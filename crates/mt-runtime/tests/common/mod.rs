@@ -11,11 +11,11 @@ use muffintin::{
     KMesh, Mixing, Occupations, Relativity, Task, Workflow, channel_recipe_to_toml, input_to_toml,
 };
 use muffintin_io::{
-    AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1,
-    ExponentialMeshSpecV1, FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1,
-    GeometryV1, InterstitialV1, InverseLengthUnitV1, LatticeV1, LengthUnitV1, LinearizationV1,
-    MetaV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTagV1, SiteSpinV1, SiteV1, CheckpointV1, SphericalChannelConventionV1, SpinTagV1,
+    AngularBasis, BasisHints, Complex64V1, EnergyParameterV1, EnergyUnit,
+    ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization, FourierPhase,
+    GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit, LinearizationV1,
+    CheckpointMeta, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
+    RadialEquationTag, SiteSpinV1, SiteV1, CheckpointV1, SphericalChannelConvention, SpinTag,
     checkpoint_to_toml,
 };
 
@@ -120,41 +120,41 @@ pub fn sample_checkpoint() -> CheckpointV1 {
     let first = 0.1;
     let increment = 0.2;
     CheckpointV1::new(
-        MetaV1 {
+        CheckpointMeta {
             title: "runtime fixture".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,
             energy_zero: "cell-average interstitial potential".to_owned(),
             potential_convention: PotentialConventionV1 {
-                angular_basis: AngularBasisV1::RealTesseralCondonShortley,
+                angular_basis: AngularBasis::RealTesseralCondonShortley,
                 radial_quantity: PotentialRadialQuantityV1::Potential,
-                spherical_channel: SphericalChannelConventionV1::PhysicalValue,
+                spherical_channel: SphericalChannelConvention::PhysicalValue,
             },
             annotations: BTreeMap::new(),
         },
         GeometryV1 {
             lattice: LatticeV1 {
-                unit: LengthUnitV1::Bohr,
+                unit: LengthUnit::Bohr,
                 vectors: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
             },
             sites: vec![SiteV1 {
                 id: "Si-1".to_owned(),
                 atomic_number: 14,
                 fractional_position: [0.0, 0.0, 0.0],
-                muffin_tin_radius_unit: LengthUnitV1::Bohr,
+                muffin_tin_radius_unit: LengthUnit::Bohr,
                 muffin_tin_radius: 2.0,
                 spins: vec![SiteSpinV1 {
-                    spin: SpinTagV1::Scalar,
-                    mesh: ExponentialMeshSpecV1 {
-                        radius_unit: LengthUnitV1::Bohr,
+                    spin: SpinTag::Scalar,
+                    mesh: ExponentialMeshSpec {
+                        radius_unit: LengthUnit::Bohr,
                         first,
                         log_increment: increment,
                         point_count,
                         last: first * ((point_count - 1) as f64 * increment).exp(),
                         consistency_tolerance: 1.0e-12,
                     },
-                    radial_equation: RadialEquationTagV1::ScalarKoellingHarmon,
-                    potential_unit: EnergyUnitV1::Hartree,
+                    radial_equation: RadialEquationTag::ScalarKoellingHarmon,
+                    potential_unit: EnergyUnit::Hartree,
                     potential_channels: vec![PotentialChannelV1 {
                         l: 0,
                         m: 0,
@@ -162,7 +162,7 @@ pub fn sample_checkpoint() -> CheckpointV1 {
                         imaginary: Vec::new(),
                     }],
                     linearization: LinearizationV1 {
-                        energy_unit: EnergyUnitV1::Hartree,
+                        energy_unit: EnergyUnit::Hartree,
                         linearization_energies: vec![EnergyParameterV1 { l: 0, energy: -0.2 }],
                         local_orbital_energies: Vec::new(),
                     },
@@ -170,7 +170,7 @@ pub fn sample_checkpoint() -> CheckpointV1 {
             }],
         },
         InterstitialV1 {
-            coefficient_unit: EnergyUnitV1::Hartree,
+            coefficient_unit: EnergyUnit::Hartree,
             coefficients: vec![FourierCoefficientV1 {
                 g: [0, 0, 0],
                 value: Complex64V1 {
@@ -178,12 +178,12 @@ pub fn sample_checkpoint() -> CheckpointV1 {
                     imaginary: 0.0,
                 },
             }],
-            basis_hints: BasisHintsV1 {
-                reciprocal_length_unit: InverseLengthUnitV1::BohrInverse,
+            basis_hints: BasisHints {
+                reciprocal_length_unit: InverseLengthUnit::BohrInverse,
                 plane_wave_cutoff: Some(4.0),
                 coefficient_cutoff: Some(8.0),
-                normalization: FourierNormalizationV1::CellNormalized,
-                phase: FourierPhaseV1::NegativeExponent,
+                normalization: FourierNormalization::CellNormalized,
+                phase: FourierPhase::NegativeExponent,
             },
         },
     )
@@ -239,41 +239,41 @@ pub fn supported_checkpoint() -> CheckpointV1 {
         .map(|index| first * (index as f64 * increment).exp())
         .collect::<Vec<_>>();
     CheckpointV1::new(
-        MetaV1 {
+        CheckpointMeta {
             title: "supported runtime hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,
             energy_zero: "zero interstitial Fourier mean".to_owned(),
             potential_convention: PotentialConventionV1 {
-                angular_basis: AngularBasisV1::ComplexCondonShortley,
+                angular_basis: AngularBasis::ComplexCondonShortley,
                 radial_quantity: PotentialRadialQuantityV1::Potential,
-                spherical_channel: SphericalChannelConventionV1::PhysicalValue,
+                spherical_channel: SphericalChannelConvention::PhysicalValue,
             },
             annotations: BTreeMap::new(),
         },
         GeometryV1 {
             lattice: LatticeV1 {
-                unit: LengthUnitV1::Bohr,
+                unit: LengthUnit::Bohr,
                 vectors: [[8.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 8.0]],
             },
             sites: vec![SiteV1 {
                 id: "H-1".to_owned(),
                 atomic_number: 1,
                 fractional_position: [0.5; 3],
-                muffin_tin_radius_unit: LengthUnitV1::Bohr,
+                muffin_tin_radius_unit: LengthUnit::Bohr,
                 muffin_tin_radius: radius,
                 spins: vec![SiteSpinV1 {
-                    spin: SpinTagV1::Scalar,
-                    mesh: ExponentialMeshSpecV1 {
-                        radius_unit: LengthUnitV1::Bohr,
+                    spin: SpinTag::Scalar,
+                    mesh: ExponentialMeshSpec {
+                        radius_unit: LengthUnit::Bohr,
                         first,
                         log_increment: increment,
                         point_count,
                         last: first * ((point_count - 1) as f64 * increment).exp(),
                         consistency_tolerance: 1.0e-12,
                     },
-                    radial_equation: RadialEquationTagV1::ScalarKoellingHarmon,
-                    potential_unit: EnergyUnitV1::Hartree,
+                    radial_equation: RadialEquationTag::ScalarKoellingHarmon,
+                    potential_unit: EnergyUnit::Hartree,
                     potential_channels: vec![PotentialChannelV1 {
                         l: 0,
                         m: 0,
@@ -281,7 +281,7 @@ pub fn supported_checkpoint() -> CheckpointV1 {
                         imaginary: Vec::new(),
                     }],
                     linearization: LinearizationV1 {
-                        energy_unit: EnergyUnitV1::Hartree,
+                        energy_unit: EnergyUnit::Hartree,
                         linearization_energies: vec![
                             EnergyParameterV1 { l: 0, energy: -0.3 },
                             EnergyParameterV1 {
@@ -295,7 +295,7 @@ pub fn supported_checkpoint() -> CheckpointV1 {
             }],
         },
         InterstitialV1 {
-            coefficient_unit: EnergyUnitV1::Hartree,
+            coefficient_unit: EnergyUnit::Hartree,
             coefficients: vec![FourierCoefficientV1 {
                 g: [0; 3],
                 value: Complex64V1 {
@@ -303,12 +303,12 @@ pub fn supported_checkpoint() -> CheckpointV1 {
                     imaginary: 0.0,
                 },
             }],
-            basis_hints: BasisHintsV1 {
-                reciprocal_length_unit: InverseLengthUnitV1::BohrInverse,
+            basis_hints: BasisHints {
+                reciprocal_length_unit: InverseLengthUnit::BohrInverse,
                 plane_wave_cutoff: Some(0.5),
                 coefficient_cutoff: Some(1.0),
-                normalization: FourierNormalizationV1::CellNormalized,
-                phase: FourierPhaseV1::NegativeExponent,
+                normalization: FourierNormalization::CellNormalized,
+                phase: FourierPhase::NegativeExponent,
             },
         },
     )

@@ -8,10 +8,10 @@ use muffintin_dft::{
     ScfPhysics, ScfRelativity, XcFunctional,
 };
 use muffintin_io::{
-    AngularBasisV1, EnergyParameterV1, EnergyUnitV1, ExponentialMeshSpecV1, GeometryV2, InitialV2,
-    LatticeV1, LengthUnitV1, LinearizationV1, MetaV1, PotentialConventionV1,
-    PotentialRadialQuantityV1, RadialBasisSpinV2, RadialEquationTagV1, SiteRadialBasisV2, SiteV2,
-    CheckpointFile, SphericalChannelConventionV1, checkpoint_file_from_toml, checkpoint_file_to_toml,
+    AngularBasis, EnergyParameterV1, EnergyUnit, ExponentialMeshSpec, GeometryV2, InitialV2,
+    LatticeV1, LengthUnit, LinearizationV1, CheckpointMeta, PotentialConventionV1,
+    PotentialRadialQuantityV1, RadialBasisSpinV2, RadialEquationTag, SiteRadialBasisV2, SiteV2,
+    CheckpointFile, SphericalChannelConvention, checkpoint_file_from_toml, checkpoint_file_to_toml,
 };
 
 use super::{
@@ -27,44 +27,44 @@ fn neutral_atomic_checkpoint_enters_the_native_restart_and_potential_path() {
     let log_increment = (radius / first).ln() / (point_count - 1) as f64;
     let geometry = GeometryV2 {
         lattice: LatticeV1 {
-            unit: LengthUnitV1::Bohr,
+            unit: LengthUnit::Bohr,
             vectors: [[4.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 4.0]],
         },
         sites: vec![SiteV2 {
             id: "H-1".to_owned(),
             atomic_number: 1,
             fractional_position: [0.5, 0.5, 0.5],
-            muffin_tin_radius_unit: LengthUnitV1::Bohr,
+            muffin_tin_radius_unit: LengthUnit::Bohr,
             muffin_tin_radius: radius,
         }],
         radial_basis: vec![SiteRadialBasisV2 {
             site_id: "H-1".to_owned(),
             spin: RadialBasisSpinV2::Scalar,
-            mesh: ExponentialMeshSpecV1 {
-                radius_unit: LengthUnitV1::Bohr,
+            mesh: ExponentialMeshSpec {
+                radius_unit: LengthUnit::Bohr,
                 first,
                 log_increment,
                 point_count,
                 last: radius,
                 consistency_tolerance: 1.0e-12,
             },
-            radial_equation: RadialEquationTagV1::ScalarKoellingHarmon,
+            radial_equation: RadialEquationTag::ScalarKoellingHarmon,
             linearization: LinearizationV1 {
-                energy_unit: EnergyUnitV1::Hartree,
+                energy_unit: EnergyUnit::Hartree,
                 linearization_energies: vec![EnergyParameterV1 { l: 0, energy: -0.3 }],
                 local_orbital_energies: Vec::new(),
             },
         }],
     };
-    let meta = MetaV1 {
+    let meta = CheckpointMeta {
         title: "neutral atomic checkpoint production test".to_owned(),
         producer: "libmuffintin-runtime".to_owned(),
         producer_version: None,
         energy_zero: "periodic crystal electrostatic reference".to_owned(),
         potential_convention: PotentialConventionV1 {
-            angular_basis: AngularBasisV1::ComplexCondonShortley,
+            angular_basis: AngularBasis::ComplexCondonShortley,
             radial_quantity: PotentialRadialQuantityV1::Potential,
-            spherical_channel: SphericalChannelConventionV1::PhysicalValue,
+            spherical_channel: SphericalChannelConvention::PhysicalValue,
         },
         annotations: BTreeMap::new(),
     };

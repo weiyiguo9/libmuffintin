@@ -2,7 +2,7 @@ use muffintin_core::{Grid, RegionTag};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{IoError, ValidationError, finite, nonempty};
-use crate::units::{LengthUnitV1, VolumeUnitV1};
+use crate::units::{LengthUnit, VolumeUnit};
 
 /// Stable discriminator for materialized integration grids.
 pub const GRID_ARTIFACT_FORMAT: &str = "libmuffintin-grid-artifact";
@@ -15,8 +15,8 @@ pub const GRID_ARTIFACT_VERSION: u32 = 1;
 pub struct GridArtifactV1 {
     pub format: String,
     pub version: u32,
-    pub point_unit: LengthUnitV1,
-    pub weight_unit: VolumeUnitV1,
+    pub point_unit: LengthUnit,
+    pub weight_unit: VolumeUnit,
     pub points: Vec<[f64; 3]>,
     pub weights: Vec<f64>,
     /// One nonempty producer-defined region label per point.
@@ -26,8 +26,8 @@ pub struct GridArtifactV1 {
 impl GridArtifactV1 {
     /// Construct a grid with the required independent V1 header.
     pub fn new(
-        point_unit: LengthUnitV1,
-        weight_unit: VolumeUnitV1,
+        point_unit: LengthUnit,
+        weight_unit: VolumeUnit,
         points: Vec<[f64; 3]>,
         weights: Vec<f64>,
         region_tags: Vec<String>,
@@ -61,8 +61,8 @@ impl GridArtifactV1 {
             })
             .collect();
         Self::new(
-            LengthUnitV1::Bohr,
-            VolumeUnitV1::Bohr3,
+            LengthUnit::Bohr,
+            VolumeUnit::Bohr3,
             points,
             weights,
             region_tags,

@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{IoError, ValidationError, finite, nonempty, positive};
-use crate::units::{EnergyUnitV1, InverseLengthUnitV1, LengthUnitV1};
+use crate::units::{EnergyUnit, InverseLengthUnit, LengthUnit};
 
 /// Stable discriminator written at the start of every checkpoint.
 pub const CHECKPOINT_FORMAT: &str = "libmuffintin-checkpoint";
@@ -23,14 +23,14 @@ pub(crate) fn is_checkpoint_format(format: &str) -> bool {
 pub struct CheckpointV1 {
     pub format: String,
     pub version: u32,
-    pub meta: MetaV1,
+    pub meta: CheckpointMeta,
     pub geometry: GeometryV1,
     pub interstitial: InterstitialV1,
 }
 
 impl CheckpointV1 {
     /// Construct a checkpoint with the required V1 header.
-    pub fn new(meta: MetaV1, geometry: GeometryV1, interstitial: InterstitialV1) -> Self {
+    pub fn new(meta: CheckpointMeta, geometry: GeometryV1, interstitial: InterstitialV1) -> Self {
         Self {
             format: CHECKPOINT_FORMAT.to_owned(),
             version: CHECKPOINT_VERSION,
@@ -65,7 +65,7 @@ impl CheckpointV1 {
 /// Provenance and convention metadata that changes interpretation.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct MetaV1 {
+pub struct CheckpointMeta {
     pub title: String,
     pub producer: String,
     pub producer_version: Option<String>,
@@ -77,7 +77,7 @@ pub struct MetaV1 {
     pub annotations: BTreeMap<String, String>,
 }
 
-impl MetaV1 {
+impl CheckpointMeta {
     pub(crate) fn validate(&self) -> Result<(), ValidationError> {
         nonempty("meta.title", &self.title)?;
         nonempty("meta.producer", &self.producer)?;
@@ -96,14 +96,14 @@ impl MetaV1 {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PotentialConventionV1 {
-    pub angular_basis: AngularBasisV1,
+    pub angular_basis: AngularBasis,
     pub radial_quantity: PotentialRadialQuantityV1,
-    pub spherical_channel: SphericalChannelConventionV1,
+    pub spherical_channel: SphericalChannelConvention,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum AngularBasisV1 {
+pub enum AngularBasis {
     ComplexCondonShortley,
     RealTesseralCondonShortley,
 }
@@ -117,7 +117,7 @@ pub enum PotentialRadialQuantityV1 {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum SphericalChannelConventionV1 {
+pub enum SphericalChannelConvention {
     /// The `(0,0)` samples are the physical scalar entering the radial equation.
     PhysicalValue,
 }
@@ -155,7 +155,7 @@ impl GeometryV1 {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LatticeV1 {
-    pub unit: LengthUnitV1,
+    pub unit: LengthUnit,
     pub vectors: [[f64; 3]; 3],
 }
 
@@ -184,7 +184,7 @@ pub struct SiteV1 {
     pub atomic_number: u16,
     /// Fractional direct-lattice coordinates; equivalent translated values are allowed.
     pub fractional_position: [f64; 3],
-    pub muffin_tin_radius_unit: LengthUnitV1,
+    pub muffin_tin_radius_unit: LengthUnit,
     pub muffin_tin_radius: f64,
     pub spins: Vec<SiteSpinV1>,
 }
@@ -225,10 +225,10 @@ impl SiteV1 {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SiteSpinV1 {
-    pub spin: SpinTagV1,
-    pub mesh: ExponentialMeshSpecV1,
-    pub radial_equation: RadialEquationTagV1,
-    pub potential_unit: EnergyUnitV1,
+    pub spin: SpinTag,
+    pub mesh: ExponentialMeshSpec,
+    pub radial_equation: RadialEquationTag,
+    pub potential_unit: EnergyUnit,
     pub potential_channels: Vec<PotentialChannelV1>,
     pub linearization: LinearizationV1,
 }
@@ -260,7 +260,7 @@ impl SiteSpinV1 {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum SpinTagV1 {
+pub enum SpinTag {
     Scalar,
     Up,
     Down,
@@ -268,7 +268,7 @@ pub enum SpinTagV1 {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum RadialEquationTagV1 {
+pub enum RadialEquationTag {
     Schroedinger,
     ScalarKoellingHarmon,
     FullyRelativisticDirac,
@@ -277,8 +277,8 @@ pub enum RadialEquationTagV1 {
 /// Serialized radial mesh identity `r_i = first * exp(i * log_increment)`.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ExponentialMeshSpecV1 {
-    pub radius_unit: LengthUnitV1,
+pub struct ExponentialMeshSpec {
+    pub radius_unit: LengthUnit,
     pub first: f64,
     pub log_increment: f64,
     pub point_count: usize,
@@ -287,7 +287,7 @@ pub struct ExponentialMeshSpecV1 {
     pub consistency_tolerance: f64,
 }
 
-impl ExponentialMeshSpecV1 {
+impl ExponentialMeshSpec {
     pub(crate) fn validate(&self, path: &str) -> Result<(), ValidationError> {
         positive(format!("{path}.first"), self.first)?;
         finite(format!("{path}.log_increment"), self.log_increment)?;
@@ -374,7 +374,7 @@ impl PotentialChannelV1 {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LinearizationV1 {
-    pub energy_unit: EnergyUnitV1,
+    pub energy_unit: EnergyUnit,
     pub linearization_energies: Vec<EnergyParameterV1>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub local_orbital_energies: Vec<EnergyParameterV1>,
@@ -415,9 +415,9 @@ pub struct EnergyParameterV1 {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct InterstitialV1 {
-    pub coefficient_unit: EnergyUnitV1,
+    pub coefficient_unit: EnergyUnit,
     pub coefficients: Vec<FourierCoefficientV1>,
-    pub basis_hints: BasisHintsV1,
+    pub basis_hints: BasisHints,
 }
 
 impl InterstitialV1 {
@@ -467,15 +467,15 @@ pub struct Complex64V1 {
 /// Non-authoritative information useful when reconstructing a plane-wave basis.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct BasisHintsV1 {
-    pub reciprocal_length_unit: InverseLengthUnitV1,
+pub struct BasisHints {
+    pub reciprocal_length_unit: InverseLengthUnit,
     pub plane_wave_cutoff: Option<f64>,
     pub coefficient_cutoff: Option<f64>,
-    pub normalization: FourierNormalizationV1,
-    pub phase: FourierPhaseV1,
+    pub normalization: FourierNormalization,
+    pub phase: FourierPhase,
 }
 
-impl BasisHintsV1 {
+impl BasisHints {
     pub(crate) fn validate(&self, path: &str) -> Result<(), ValidationError> {
         if let Some(value) = self.plane_wave_cutoff {
             positive(format!("{path}.plane_wave_cutoff"), value)?;
@@ -489,13 +489,13 @@ impl BasisHintsV1 {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum FourierNormalizationV1 {
+pub enum FourierNormalization {
     CellNormalized,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum FourierPhaseV1 {
+pub enum FourierPhase {
     /// `f_G = Omega^-1 integral f(r) exp(-i G.r) dr`.
     NegativeExponent,
 }

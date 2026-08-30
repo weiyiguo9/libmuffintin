@@ -15,12 +15,12 @@ use muffintin_dft::{
     ScfRelativity, XcFunctional,
 };
 use muffintin_io::{
-    AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, EnergyUnitV1,
-    ExponentialMeshSpecV1, FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1,
-    GeometryV1, InterstitialV1, InverseLengthUnitV1, LatticeV1, LengthUnitV1, LinearizationV1,
-    MetaV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTagV1, SiteSpinV1, SiteV1, CheckpointV1, CheckpointV2, SphericalChannelConventionV1,
-    SpinTagV1,
+    AngularBasis, BasisHints, Complex64V1, EnergyParameterV1, EnergyUnit,
+    ExponentialMeshSpec, FourierCoefficientV1, FourierNormalization, FourierPhase,
+    GeometryV1, InterstitialV1, InverseLengthUnit, LatticeV1, LengthUnit, LinearizationV1,
+    CheckpointMeta, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
+    RadialEquationTag, SiteSpinV1, SiteV1, CheckpointV1, CheckpointV2, SphericalChannelConvention,
+    SpinTag,
 };
 use muffintin_sphere::{SPEX_SPEED_OF_LIGHT, ValenceDiracSpec, solve_valence_dirac};
 use num_complex::Complex64;
@@ -34,41 +34,41 @@ fn hydrogen_spinor_checkpoint() -> CheckpointV2 {
         .map(|index| first * (index as f64 * increment).exp())
         .collect::<Vec<_>>();
     CheckpointV1::new(
-        MetaV1 {
+        CheckpointMeta {
             title: "spinor product-input hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,
             energy_zero: "zero interstitial Fourier mean".to_owned(),
             potential_convention: PotentialConventionV1 {
-                angular_basis: AngularBasisV1::ComplexCondonShortley,
+                angular_basis: AngularBasis::ComplexCondonShortley,
                 radial_quantity: PotentialRadialQuantityV1::Potential,
-                spherical_channel: SphericalChannelConventionV1::PhysicalValue,
+                spherical_channel: SphericalChannelConvention::PhysicalValue,
             },
             annotations: BTreeMap::new(),
         },
         GeometryV1 {
             lattice: LatticeV1 {
-                unit: LengthUnitV1::Bohr,
+                unit: LengthUnit::Bohr,
                 vectors: [[8.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 8.0]],
             },
             sites: vec![SiteV1 {
                 id: "H-1".to_owned(),
                 atomic_number: 1,
                 fractional_position: [1.25, -0.5, 0.5],
-                muffin_tin_radius_unit: LengthUnitV1::Bohr,
+                muffin_tin_radius_unit: LengthUnit::Bohr,
                 muffin_tin_radius: radius,
                 spins: vec![SiteSpinV1 {
-                    spin: SpinTagV1::Scalar,
-                    mesh: ExponentialMeshSpecV1 {
-                        radius_unit: LengthUnitV1::Bohr,
+                    spin: SpinTag::Scalar,
+                    mesh: ExponentialMeshSpec {
+                        radius_unit: LengthUnit::Bohr,
                         first,
                         log_increment: increment,
                         point_count,
                         last: first * ((point_count - 1) as f64 * increment).exp(),
                         consistency_tolerance: 1.0e-12,
                     },
-                    radial_equation: RadialEquationTagV1::FullyRelativisticDirac,
-                    potential_unit: EnergyUnitV1::Hartree,
+                    radial_equation: RadialEquationTag::FullyRelativisticDirac,
+                    potential_unit: EnergyUnit::Hartree,
                     potential_channels: vec![PotentialChannelV1 {
                         l: 0,
                         m: 0,
@@ -76,7 +76,7 @@ fn hydrogen_spinor_checkpoint() -> CheckpointV2 {
                         imaginary: Vec::new(),
                     }],
                     linearization: LinearizationV1 {
-                        energy_unit: EnergyUnitV1::Hartree,
+                        energy_unit: EnergyUnit::Hartree,
                         linearization_energies: vec![
                             EnergyParameterV1 { l: 0, energy: -0.3 },
                             EnergyParameterV1 {
@@ -90,7 +90,7 @@ fn hydrogen_spinor_checkpoint() -> CheckpointV2 {
             }],
         },
         InterstitialV1 {
-            coefficient_unit: EnergyUnitV1::Hartree,
+            coefficient_unit: EnergyUnit::Hartree,
             coefficients: vec![FourierCoefficientV1 {
                 g: [0; 3],
                 value: Complex64V1 {
@@ -98,12 +98,12 @@ fn hydrogen_spinor_checkpoint() -> CheckpointV2 {
                     imaginary: 0.0,
                 },
             }],
-            basis_hints: BasisHintsV1 {
-                reciprocal_length_unit: InverseLengthUnitV1::BohrInverse,
+            basis_hints: BasisHints {
+                reciprocal_length_unit: InverseLengthUnit::BohrInverse,
                 plane_wave_cutoff: Some(0.5),
                 coefficient_cutoff: Some(1.0),
-                normalization: FourierNormalizationV1::CellNormalized,
-                phase: FourierPhaseV1::NegativeExponent,
+                normalization: FourierNormalization::CellNormalized,
+                phase: FourierPhase::NegativeExponent,
             },
         },
     )

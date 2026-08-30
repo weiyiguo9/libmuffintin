@@ -3,13 +3,13 @@ use serde::{Deserialize, Serialize};
 /// Canonical serialized length unit.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum LengthUnitV1 {
+pub enum LengthUnit {
     Bohr,
 }
 
 /// Canonical serialized reciprocal-length unit.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum InverseLengthUnitV1 {
+pub enum InverseLengthUnit {
     #[serde(rename = "bohr^-1")]
     BohrInverse,
 }
@@ -17,13 +17,13 @@ pub enum InverseLengthUnitV1 {
 /// Canonical serialized energy unit.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum EnergyUnitV1 {
+pub enum EnergyUnit {
     Hartree,
 }
 
 /// Canonical serialized volume unit.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum VolumeUnitV1 {
+pub enum VolumeUnit {
     #[serde(rename = "bohr^3")]
     Bohr3,
 }

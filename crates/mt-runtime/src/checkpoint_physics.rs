@@ -38,9 +38,9 @@ use muffintin_dft::{
 };
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_io::{
-    AngularBasisV1, Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2,
+    AngularBasis, Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2,
     FourierCoefficientV2, GeometryV2, InitialV2, InterstitialFieldV2, IoError, MuffinTinFieldV2,
-    PotentialV2, RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, CheckpointV2,
+    PotentialV2, RadialBasisSpinV2, RadialEquationTag, RegionalFieldV2, CheckpointV2,
     SpexMaterialBasisRecipeV1, SpexMaterialChannelKind, SphericalChannelV2,
 };
 use muffintin_operators::lapw::{Collinear, GeneralizedEigensolution, InterstitialPotential, LapwError};
@@ -139,7 +139,7 @@ struct ConvertedCheckpointGeometry {
 
 #[derive(Clone, Debug)]
 struct CheckpointSpin {
-    equation: RadialEquationTagV1,
+    equation: RadialEquationTag,
     mesh: ExponentialMesh,
     linearization: BTreeMap<u32, Hartree>,
     local_orbitals: Vec<(u32, Hartree)>,
@@ -259,7 +259,7 @@ impl CheckpointPhysics {
         }
         for site in &physics.sites {
             for (spin, source) in [&site.up, &site.down].into_iter().enumerate() {
-                if source.equation != RadialEquationTagV1::ScalarKoellingHarmon {
+                if source.equation != RadialEquationTag::ScalarKoellingHarmon {
                     return Err(CheckpointPhysicsError::SpexMaterialSourceRadialEquation {
                         site: site.id.clone(),
                         spin,
@@ -578,7 +578,7 @@ impl CheckpointPhysics {
                 .enumerate()
                 .map(|(site_index, site)| {
                     let template = if spin == 0 { &site.up } else { &site.down };
-                    if template.equation != RadialEquationTagV1::ScalarKoellingHarmon {
+                    if template.equation != RadialEquationTag::ScalarKoellingHarmon {
                         return Err(CheckpointPhysicsError::ScalarRadialEquation {
                             site: site.id.clone(),
                             spin,
@@ -626,7 +626,7 @@ impl CheckpointPhysics {
         let source_is_dirac = self.sites.iter().all(|site| {
             [&site.up, &site.down]
                 .into_iter()
-                .all(|source| source.equation == RadialEquationTagV1::FullyRelativisticDirac)
+                .all(|source| source.equation == RadialEquationTag::FullyRelativisticDirac)
         });
         if !source_is_dirac && self.spex_spinor_binding.is_some() {
             self.validate_spex_resolved_basis(basis)?;
@@ -637,7 +637,7 @@ impl CheckpointPhysics {
             .map(|(site_index, site)| {
                 if !source_is_dirac && self.spex_spinor_binding.is_none() {
                     for (spin, template) in [&site.up, &site.down].into_iter().enumerate() {
-                        if template.equation != RadialEquationTagV1::FullyRelativisticDirac {
+                        if template.equation != RadialEquationTag::FullyRelativisticDirac {
                             return Err(CheckpointPhysicsError::SpinorRadialEquation {
                                 site: site.id.clone(),
                                 spin,
@@ -2139,7 +2139,7 @@ pub enum CheckpointPhysicsError {
     ScalarRadialEquation {
         site: String,
         spin: usize,
-        equation: RadialEquationTagV1,
+        equation: RadialEquationTag,
     },
     #[error(
         "full-spinor route needs fully relativistic input at site {site:?}, spin {spin}; got {equation:?}"
@@ -2147,7 +2147,7 @@ pub enum CheckpointPhysicsError {
     SpinorRadialEquation {
         site: String,
         spin: usize,
-        equation: RadialEquationTagV1,
+        equation: RadialEquationTag,
     },
     #[error("SPEX material checkpoint annotations do not match the caller-owned recipe")]
     SpexMaterialProvenanceMismatch,
@@ -2157,7 +2157,7 @@ pub enum CheckpointPhysicsError {
     SpexMaterialSourceRadialEquation {
         site: String,
         spin: usize,
-        equation: RadialEquationTagV1,
+        equation: RadialEquationTag,
     },
     #[error(
         "SPEX material channel site={site:?}, n={n}, l={l}, kappa={kappa}, treatment={treatment:?}, derivative_order={derivative_order}, energy={energy} is not bound exactly to the runtime basis"

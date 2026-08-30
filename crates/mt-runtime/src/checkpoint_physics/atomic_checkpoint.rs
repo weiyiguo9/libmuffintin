@@ -5,8 +5,8 @@ use muffintin_dft::{
 };
 use muffintin_core::{AngularGrid, Cell, GridError};
 use muffintin_io::{
-    BasisHintsV1, DensityV2, FieldRepresentationV2, FieldUnitV2, FourierNormalizationV1,
-    FourierPhaseV1, InitialV2, InverseLengthUnitV1, MetaV1, PotentialV2, CheckpointV2,
+    BasisHints, DensityV2, FieldRepresentationV2, FieldUnitV2, FourierNormalization,
+    FourierPhase, InitialV2, InverseLengthUnit, CheckpointMeta, PotentialV2, CheckpointV2,
 };
 use thiserror::Error;
 
@@ -19,7 +19,7 @@ use muffintin_dft::build_scf_potential;
 /// Complete structure/task request for a neutral atomic-superposition V2 restart.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AtomicCheckpointRequest {
-    pub meta: MetaV1,
+    pub meta: CheckpointMeta,
     pub geometry: muffintin_io::GeometryV2,
     pub scf: ScfConfig,
     pub free_atom_scf: FreeAtomScfSpec,
@@ -78,8 +78,8 @@ pub enum AtomicCheckpointError {
     RadialEquationRoute {
         site: String,
         relativity: ScfRelativity,
-        expected: muffintin_io::RadialEquationTagV1,
-        actual: muffintin_io::RadialEquationTagV1,
+        expected: muffintin_io::RadialEquationTag,
+        actual: muffintin_io::RadialEquationTag,
     },
 }
 
@@ -144,12 +144,12 @@ pub fn materialize_atomic_checkpoint_v2(
         free_atom_scf: request.free_atom_scf,
     })?;
     let angular_basis = request.meta.potential_convention.angular_basis;
-    let basis_hints = BasisHintsV1 {
-        reciprocal_length_unit: InverseLengthUnitV1::BohrInverse,
+    let basis_hints = BasisHints {
+        reciprocal_length_unit: InverseLengthUnit::BohrInverse,
         plane_wave_cutoff: Some(request.scf.basis.plane_wave_cutoff),
         coefficient_cutoff: None,
-        normalization: FourierNormalizationV1::CellNormalized,
-        phase: FourierPhaseV1::NegativeExponent,
+        normalization: FourierNormalization::CellNormalized,
+        phase: FourierPhase::NegativeExponent,
     };
     let density = DensityV2 {
         unit: FieldUnitV2::BohrMinus3,
@@ -286,10 +286,10 @@ fn validate_request(request: &AtomicCheckpointRequest) -> Result<(), AtomicCheck
     }
     let expected = match request.scf.relativity {
         ScfRelativity::Scalar | ScfRelativity::SocSecondVariation { .. } => {
-            muffintin_io::RadialEquationTagV1::ScalarKoellingHarmon
+            muffintin_io::RadialEquationTag::ScalarKoellingHarmon
         }
         ScfRelativity::SpinorFirstVariation => {
-            muffintin_io::RadialEquationTagV1::FullyRelativisticDirac
+            muffintin_io::RadialEquationTag::FullyRelativisticDirac
         }
     };
     for radial in &request.geometry.radial_basis {

@@ -24,9 +24,9 @@ use crate::mldump::{
     require_numeric_dataset, require_shape, usize_as_i64, write_f64_attr, write_i64_attr,
 };
 use crate::checkpoint::{
-    AngularBasisV1, BasisHintsV1, EnergyParameterV1, ExponentialMeshSpecV1, FourierNormalizationV1,
-    FourierPhaseV1, LinearizationV1, MetaV1, PotentialConventionV1, PotentialRadialQuantityV1,
-    RadialEquationTagV1, CHECKPOINT_FORMAT, SphericalChannelConventionV1,
+    AngularBasis, BasisHints, EnergyParameterV1, ExponentialMeshSpec, FourierNormalization,
+    FourierPhase, LinearizationV1, CheckpointMeta, PotentialConventionV1, PotentialRadialQuantityV1,
+    RadialEquationTag, CHECKPOINT_FORMAT, SphericalChannelConvention,
 };
 use crate::checkpoint_v2::{
     Complex64V2, DensityV2, FieldRepresentationV2, FieldUnitV2, FourierCoefficientV2, GeometryV2,
@@ -34,7 +34,7 @@ use crate::checkpoint_v2::{
     RegionalFieldV2, CHECKPOINT_VERSION_V2, SiteRadialBasisV2, SiteV2, CheckpointV2,
     SphericalChannelV2,
 };
-use crate::units::{EnergyUnitV1, InverseLengthUnitV1, LengthUnitV1};
+use crate::units::{EnergyUnit, InverseLengthUnit, LengthUnit};
 
 /// Root `schema_name` for this producer file.
 pub const SPEX_SNAPSHOT_HDF_SCHEMA_NAME: &str = "spex.snapshot_hdf";
@@ -286,7 +286,7 @@ fn require_unit(group: &Group, name: &str, expected: &str) -> Result<(), IoError
     }
 }
 
-fn read_meta(group: &Group) -> Result<(MetaV1, String, String), IoError> {
+fn read_meta(group: &Group) -> Result<(CheckpointMeta, String, String), IoError> {
     let title = require_nonempty_attr(group, "title", "/meta/@title")?;
     let producer = require_nonempty_attr(group, "producer", "/meta/@producer")?;
     let producer_version =
@@ -359,15 +359,15 @@ fn read_meta(group: &Group) -> Result<(MetaV1, String, String), IoError> {
         }
     };
     Ok((
-        MetaV1 {
+        CheckpointMeta {
             title,
             producer,
             producer_version: Some(producer_version),
             energy_zero,
             potential_convention: PotentialConventionV1 {
-                angular_basis: AngularBasisV1::ComplexCondonShortley,
+                angular_basis: AngularBasis::ComplexCondonShortley,
                 radial_quantity: PotentialRadialQuantityV1::Potential,
-                spherical_channel: SphericalChannelConventionV1::PhysicalValue,
+                spherical_channel: SphericalChannelConvention::PhysicalValue,
             },
             annotations,
         },
@@ -378,7 +378,7 @@ fn read_meta(group: &Group) -> Result<(MetaV1, String, String), IoError> {
 
 fn write_meta(
     group: &Group,
-    meta: &MetaV1,
+    meta: &CheckpointMeta,
     source_revision: &str,
     source_kind: &str,
 ) -> Result<(), IoError> {
@@ -535,7 +535,7 @@ fn read_geometry(group: &Group) -> Result<GeometryScratch, IoError> {
         }
     }
     let lattice = crate::checkpoint::LatticeV1 {
-        unit: LengthUnitV1::Bohr,
+        unit: LengthUnit::Bohr,
         vectors,
     };
     lattice.validate()?;
@@ -586,7 +586,7 @@ fn read_geometry(group: &Group) -> Result<GeometryScratch, IoError> {
                 positions[index * 3 + 1],
                 positions[index * 3 + 2],
             ],
-            muffin_tin_radius_unit: LengthUnitV1::Bohr,
+            muffin_tin_radius_unit: LengthUnit::Bohr,
             muffin_tin_radius: radii[index],
         });
     }
@@ -690,8 +690,8 @@ fn read_radial_basis(
             "mesh_consistency_tolerance",
             &format!("{}/@mesh_consistency_tolerance", record.name()),
         )?;
-        let mesh = ExponentialMeshSpecV1 {
-            radius_unit: LengthUnitV1::Bohr,
+        let mesh = ExponentialMeshSpec {
+            radius_unit: LengthUnit::Bohr,
             first,
             log_increment,
             point_count,
@@ -750,7 +750,7 @@ fn read_radial_basis(
             mesh,
             radial_equation,
             linearization: LinearizationV1 {
-                energy_unit: EnergyUnitV1::Hartree,
+                energy_unit: EnergyUnit::Hartree,
                 linearization_energies,
                 local_orbital_energies,
             },
@@ -925,7 +925,7 @@ fn write_orbitals(group: &Group, orbitals: &[SpexScalarLoV1]) -> Result<(), IoEr
 fn read_initial(
     group: &Group,
     geometry: &GeometryV2,
-    angular_basis: AngularBasisV1,
+    angular_basis: AngularBasis,
 ) -> Result<(InitialV2, f64, f64, String, String), IoError> {
     let kind = require_nonempty_attr(group, "kind", "/initial/@kind")?;
     require_token(
@@ -1080,7 +1080,7 @@ fn write_initial(group: &Group, file: &SpexFrozenFieldsV1) -> Result<(), IoError
 fn read_potential(
     group: &Group,
     geometry: &GeometryV2,
-    angular_basis: AngularBasisV1,
+    angular_basis: AngularBasis,
     spin_layout: &str,
 ) -> Result<PotentialV2, IoError> {
     let mut components = BTreeMap::new();
@@ -1223,7 +1223,7 @@ fn regional_all_zero(field: &RegionalFieldV2) -> bool {
 fn read_density(
     group: &Group,
     geometry: &GeometryV2,
-    angular_basis: AngularBasisV1,
+    angular_basis: AngularBasis,
 ) -> Result<DensityV2, IoError> {
     require_token(
         group,
@@ -1263,13 +1263,13 @@ fn write_density(group: &Group, density: &DensityV2, geometry: &GeometryV2) -> R
     write_regional(&group.create_group("mz")?, &density.mz, geometry)
 }
 
-fn hints_placeholder() -> BasisHintsV1 {
-    BasisHintsV1 {
-        reciprocal_length_unit: InverseLengthUnitV1::BohrInverse,
+fn hints_placeholder() -> BasisHints {
+    BasisHints {
+        reciprocal_length_unit: InverseLengthUnit::BohrInverse,
         plane_wave_cutoff: None,
         coefficient_cutoff: None,
-        normalization: FourierNormalizationV1::CellNormalized,
-        phase: FourierPhaseV1::NegativeExponent,
+        normalization: FourierNormalization::CellNormalized,
+        phase: FourierPhase::NegativeExponent,
     }
 }
 
@@ -2517,11 +2517,11 @@ fn spin_token(spin: RadialBasisSpinV2) -> &'static str {
     }
 }
 
-fn parse_radial_equation(token: &str) -> Result<RadialEquationTagV1, IoError> {
+fn parse_radial_equation(token: &str) -> Result<RadialEquationTag, IoError> {
     match token {
-        "schroedinger" => Ok(RadialEquationTagV1::Schroedinger),
-        "scalar-koelling-harmon" => Ok(RadialEquationTagV1::ScalarKoellingHarmon),
-        "fully-relativistic-dirac" => Ok(RadialEquationTagV1::FullyRelativisticDirac),
+        "schroedinger" => Ok(RadialEquationTag::Schroedinger),
+        "scalar-koelling-harmon" => Ok(RadialEquationTag::ScalarKoellingHarmon),
+        "fully-relativistic-dirac" => Ok(RadialEquationTag::FullyRelativisticDirac),
         other => Err(ValidationError::InvalidValue {
             path: "radial_equation".to_owned(),
             expected: "schroedinger|scalar-koelling-harmon|fully-relativistic-dirac".to_owned(),
@@ -2531,11 +2531,11 @@ fn parse_radial_equation(token: &str) -> Result<RadialEquationTagV1, IoError> {
     }
 }
 
-fn radial_token(tag: RadialEquationTagV1) -> &'static str {
+fn radial_token(tag: RadialEquationTag) -> &'static str {
     match tag {
-        RadialEquationTagV1::Schroedinger => "schroedinger",
-        RadialEquationTagV1::ScalarKoellingHarmon => "scalar-koelling-harmon",
-        RadialEquationTagV1::FullyRelativisticDirac => "fully-relativistic-dirac",
+        RadialEquationTag::Schroedinger => "schroedinger",
+        RadialEquationTag::ScalarKoellingHarmon => "scalar-koelling-harmon",
+        RadialEquationTag::FullyRelativisticDirac => "fully-relativistic-dirac",
     }
 }
 

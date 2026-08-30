@@ -21,7 +21,7 @@ use muffintin_core::Cell;
 use muffintin_io::{
     MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION, MldumpGeometryV1, MldumpHeaderV1,
     MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1, MldumpPayloadV1, MldumpQEntryV1,
-    MldumpRadialMeshV1, MldumpSiteV1, RadialBasisSpinV2, RadialEquationTagV1,
+    MldumpRadialMeshV1, MldumpSiteV1, RadialBasisSpinV2, RadialEquationTag,
     SpexMaterialBasisRecipeV1, SpexMaterialChannelKind, SpexMaterialChannelV1,
     materialize_checkpoint_v2, read_mldump_v1, read_spex_snapshot_hdf,
 };
@@ -303,7 +303,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
             .geometry
             .radial_basis
             .iter()
-            .all(|basis| basis.radial_equation == RadialEquationTagV1::ScalarKoellingHarmon),
+            .all(|basis| basis.radial_equation == RadialEquationTag::ScalarKoellingHarmon),
         "SPEX must remain frozen scalar Koelling-Harmon source provenance"
     );
 

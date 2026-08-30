@@ -60,11 +60,11 @@ pub use mldump::{
     SpinorSiteMatchV1, read_mldump_v1,
 };
 pub use checkpoint::{
-    AngularBasisV1, BasisHintsV1, Complex64V1, EnergyParameterV1, ExponentialMeshSpecV1,
-    FourierCoefficientV1, FourierNormalizationV1, FourierPhaseV1, GeometryV1, InterstitialV1,
-    LatticeV1, LinearizationV1, MetaV1, PotentialChannelV1, PotentialConventionV1,
-    PotentialRadialQuantityV1, RadialEquationTagV1, CHECKPOINT_FORMAT, CHECKPOINT_VERSION, SiteSpinV1,
-    SiteV1, CheckpointV1, SphericalChannelConventionV1, SpinTagV1, checkpoint_from_toml,
+    AngularBasis, BasisHints, Complex64V1, EnergyParameterV1, ExponentialMeshSpec,
+    FourierCoefficientV1, FourierNormalization, FourierPhase, GeometryV1, InterstitialV1,
+    LatticeV1, LinearizationV1, CheckpointMeta, PotentialChannelV1, PotentialConventionV1,
+    PotentialRadialQuantityV1, RadialEquationTag, CHECKPOINT_FORMAT, CHECKPOINT_VERSION, SiteSpinV1,
+    SiteV1, CheckpointV1, SphericalChannelConvention, SpinTag, checkpoint_from_toml,
     checkpoint_to_toml,
 };
 pub use checkpoint_v2::{
@@ -80,4 +80,4 @@ pub use spex_snapshot::{
     SpexMaterializedSnapshotV1, SpexScalarLoKind, SpexScalarLoTableV1, SpexScalarLoV1,
     SpexSnapshotHashV1, materialize_checkpoint_v2, read_spex_snapshot_hdf, write_spex_snapshot_hdf,
 };
-pub use units::{EnergyUnitV1, InverseLengthUnitV1, LengthUnitV1, VolumeUnitV1};
+pub use units::{EnergyUnit, InverseLengthUnit, LengthUnit, VolumeUnit};

@@ -4,31 +4,31 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use muffintin_io::{
-    AngularBasisV1, BasisHintsV1, Complex64V2, EnergyParameterV1, ExponentialMeshSpecV1,
-    FieldRepresentationV2, FieldUnitV2, FourierCoefficientV2, FourierNormalizationV1,
-    FourierPhaseV1, GeometryV2, InitialV2, InterstitialFieldV2, IoError, LatticeV1,
-    LinearizationV1, MetaV1, MuffinTinFieldV2, PotentialConventionV1, PotentialRadialQuantityV1,
-    PotentialV2, RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, CHECKPOINT_FORMAT,
+    AngularBasis, BasisHints, Complex64V2, EnergyParameterV1, ExponentialMeshSpec,
+    FieldRepresentationV2, FieldUnitV2, FourierCoefficientV2, FourierNormalization,
+    FourierPhase, GeometryV2, InitialV2, InterstitialFieldV2, IoError, LatticeV1,
+    LinearizationV1, CheckpointMeta, MuffinTinFieldV2, PotentialConventionV1, PotentialRadialQuantityV1,
+    PotentialV2, RadialBasisSpinV2, RadialEquationTag, RegionalFieldV2, CHECKPOINT_FORMAT,
     CHECKPOINT_VERSION_V2, SPEX_FOURIER_HERMITIAN_TOLERANCE, SPEX_SNAPSHOT_HDF_SCHEMA_NAME,
     SPEX_SNAPSHOT_HDF_SCHEMA_VERSION, SPEX_SNAPSHOT_HDF_SOURCE_KIND, SiteRadialBasisV2, SiteV2,
     CheckpointV2, SpexFrozenFieldsV1, SpexMaterialBasisRecipeV1, SpexMaterialChannelKind,
     SpexMaterialChannelV1, SpexScalarLoKind, SpexScalarLoTableV1, SpexScalarLoV1,
-    SpexSnapshotHashV1, SphericalChannelConventionV1, SphericalChannelV2, ValidationError,
+    SpexSnapshotHashV1, SphericalChannelConvention, SphericalChannelV2, ValidationError,
     materialize_checkpoint_v2, read_spex_snapshot_hdf, write_spex_snapshot_hdf,
 };
-use muffintin_io::{EnergyUnitV1, InverseLengthUnitV1, LengthUnitV1};
+use muffintin_io::{EnergyUnit, InverseLengthUnit, LengthUnit};
 
 fn fixture_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(name)
 }
 
-fn mesh() -> ExponentialMeshSpecV1 {
+fn mesh() -> ExponentialMeshSpec {
     let first = 1.0e-4;
     let log_increment = 0.5;
     let point_count = 7;
     let last = first * (((point_count - 1) as f64) * log_increment).exp();
-    ExponentialMeshSpecV1 {
-        radius_unit: LengthUnitV1::Bohr,
+    ExponentialMeshSpec {
+        radius_unit: LengthUnit::Bohr,
         first,
         log_increment,
         point_count,
@@ -37,7 +37,7 @@ fn mesh() -> ExponentialMeshSpecV1 {
     }
 }
 
-fn radial_samples(mesh: &ExponentialMeshSpecV1, scale: f64) -> (Vec<f64>, Vec<f64>) {
+fn radial_samples(mesh: &ExponentialMeshSpec, scale: f64) -> (Vec<f64>, Vec<f64>) {
     let real = (0..mesh.point_count)
         .map(|index| scale / (1.0 + index as f64))
         .collect();
@@ -45,7 +45,7 @@ fn radial_samples(mesh: &ExponentialMeshSpecV1, scale: f64) -> (Vec<f64>, Vec<f6
     (real, imaginary)
 }
 
-fn regional(site_id: &str, mesh: &ExponentialMeshSpecV1, scale: f64) -> RegionalFieldV2 {
+fn regional(site_id: &str, mesh: &ExponentialMeshSpec, scale: f64) -> RegionalFieldV2 {
     let (real, imaginary) = radial_samples(mesh, scale);
     RegionalFieldV2 {
         muffin_tins: vec![MuffinTinFieldV2 {
@@ -72,49 +72,49 @@ fn regional(site_id: &str, mesh: &ExponentialMeshSpecV1, scale: f64) -> Regional
 fn sample_fields() -> SpexFrozenFieldsV1 {
     let mesh = mesh();
     let site_id = "Sm-1";
-    let hints = BasisHintsV1 {
-        reciprocal_length_unit: InverseLengthUnitV1::BohrInverse,
+    let hints = BasisHints {
+        reciprocal_length_unit: InverseLengthUnit::BohrInverse,
         plane_wave_cutoff: Some(3.5),
         coefficient_cutoff: Some(1.0e-8),
-        normalization: FourierNormalizationV1::CellNormalized,
-        phase: FourierPhaseV1::NegativeExponent,
+        normalization: FourierNormalization::CellNormalized,
+        phase: FourierPhase::NegativeExponent,
     };
     let v0 = regional(site_id, &mesh, -1.0);
     let zero = regional(site_id, &mesh, 0.0);
     let checkpoint = CheckpointV2 {
         format: CHECKPOINT_FORMAT.to_owned(),
         version: CHECKPOINT_VERSION_V2,
-        meta: MetaV1 {
+        meta: CheckpointMeta {
             title: "spex checkpoint hdf fixture".to_owned(),
             producer: "spex-test".to_owned(),
             producer_version: Some("06.00pre38".to_owned()),
             energy_zero: "SPEX absolute Hartree".to_owned(),
             potential_convention: PotentialConventionV1 {
-                angular_basis: AngularBasisV1::ComplexCondonShortley,
+                angular_basis: AngularBasis::ComplexCondonShortley,
                 radial_quantity: PotentialRadialQuantityV1::Potential,
-                spherical_channel: SphericalChannelConventionV1::PhysicalValue,
+                spherical_channel: SphericalChannelConvention::PhysicalValue,
             },
             annotations: BTreeMap::new(),
         },
         geometry: GeometryV2 {
             lattice: LatticeV1 {
-                unit: LengthUnitV1::Bohr,
+                unit: LengthUnit::Bohr,
                 vectors: [[8.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 8.0]],
             },
             sites: vec![SiteV2 {
                 id: site_id.to_owned(),
                 atomic_number: 62,
                 fractional_position: [0.0, 0.0, 0.0],
-                muffin_tin_radius_unit: LengthUnitV1::Bohr,
+                muffin_tin_radius_unit: LengthUnit::Bohr,
                 muffin_tin_radius: mesh.last,
             }],
             radial_basis: vec![SiteRadialBasisV2 {
                 site_id: site_id.to_owned(),
                 spin: RadialBasisSpinV2::Scalar,
                 mesh,
-                radial_equation: RadialEquationTagV1::ScalarKoellingHarmon,
+                radial_equation: RadialEquationTag::ScalarKoellingHarmon,
                 linearization: LinearizationV1 {
-                    energy_unit: EnergyUnitV1::Hartree,
+                    energy_unit: EnergyUnit::Hartree,
                     linearization_energies: vec![
                         EnergyParameterV1 { l: 0, energy: -0.2 },
                         EnergyParameterV1 {
@@ -130,7 +130,7 @@ fn sample_fields() -> SpexFrozenFieldsV1 {
             potential: PotentialV2 {
                 unit: FieldUnitV2::Hartree,
                 representation: FieldRepresentationV2::MaskedOperator,
-                angular_basis: AngularBasisV1::ComplexCondonShortley,
+                angular_basis: AngularBasis::ComplexCondonShortley,
                 basis_hints: hints,
                 v0,
                 bx: zero.clone(),
@@ -218,7 +218,7 @@ fn spex_frozen_fields_roundtrip_without_kappa() {
     assert_eq!(read.scalar_los, source.scalar_los);
     assert_eq!(read.spin_layout, "collinear-up-down");
     match read.checkpoint.geometry.radial_basis[0].radial_equation {
-        RadialEquationTagV1::ScalarKoellingHarmon => {}
+        RadialEquationTag::ScalarKoellingHarmon => {}
         other => panic!("expected KH, got {other:?}"),
     }
     let roles = hdf5_metno::File::open(&path)
@@ -310,7 +310,7 @@ fn consume_wsl_b45d9b9_checkpoint_h5() {
     assert_eq!(fields.scalar_los.len(), 2);
     assert_eq!(fields.scalar_los[0].orbitals.len(), 2);
     match fields.checkpoint.geometry.radial_basis[0].radial_equation {
-        RadialEquationTagV1::ScalarKoellingHarmon => {}
+        RadialEquationTag::ScalarKoellingHarmon => {}
         other => panic!("expected KH, got {other:?}"),
     }
 }

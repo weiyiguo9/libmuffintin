@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{IoError, ValidationError, finite, nonempty, positive};
 use crate::checkpoint::{
-    AngularBasisV1, BasisHintsV1, Complex64V1, ExponentialMeshSpecV1, FourierCoefficientV1,
-    GeometryV1, LatticeV1, LinearizationV1, MetaV1, PotentialChannelV1, RadialEquationTagV1,
-    CHECKPOINT_FORMAT, SiteSpinV1, CheckpointV1, SpinTagV1,
+    AngularBasis, BasisHints, Complex64V1, ExponentialMeshSpec, FourierCoefficientV1,
+    GeometryV1, LatticeV1, LinearizationV1, CheckpointMeta, PotentialChannelV1, RadialEquationTag,
+    CHECKPOINT_FORMAT, SiteSpinV1, CheckpointV1, SpinTag,
 };
-use crate::units::LengthUnitV1;
+use crate::units::LengthUnit;
 
 /// Schema version for noncollinear Pauli-field checkpoints.
 pub const CHECKPOINT_VERSION_V2: u32 = 2;
@@ -19,13 +19,13 @@ pub const CHECKPOINT_VERSION_V2: u32 = 2;
 pub struct CheckpointV2 {
     pub format: String,
     pub version: u32,
-    pub meta: MetaV1,
+    pub meta: CheckpointMeta,
     pub geometry: GeometryV2,
     pub initial: InitialV2,
 }
 
 impl CheckpointV2 {
-    pub fn new(meta: MetaV1, geometry: GeometryV2, initial: InitialV2) -> Self {
+    pub fn new(meta: CheckpointMeta, geometry: GeometryV2, initial: InitialV2) -> Self {
         Self {
             format: CHECKPOINT_FORMAT.to_owned(),
             version: CHECKPOINT_VERSION_V2,
@@ -198,7 +198,7 @@ pub struct SiteV2 {
     pub id: String,
     pub atomic_number: u16,
     pub fractional_position: [f64; 3],
-    pub muffin_tin_radius_unit: LengthUnitV1,
+    pub muffin_tin_radius_unit: LengthUnit,
     pub muffin_tin_radius: f64,
 }
 
@@ -234,8 +234,8 @@ pub enum RadialBasisSpinV2 {
 pub struct SiteRadialBasisV2 {
     pub site_id: String,
     pub spin: RadialBasisSpinV2,
-    pub mesh: ExponentialMeshSpecV1,
-    pub radial_equation: RadialEquationTagV1,
+    pub mesh: ExponentialMeshSpec,
+    pub radial_equation: RadialEquationTag,
     pub linearization: LinearizationV1,
 }
 
@@ -448,8 +448,8 @@ struct RegionalLayoutV2 {
 pub struct DensityV2 {
     pub unit: FieldUnitV2,
     pub representation: FieldRepresentationV2,
-    pub angular_basis: AngularBasisV1,
-    pub basis_hints: BasisHintsV1,
+    pub angular_basis: AngularBasis,
+    pub basis_hints: BasisHints,
     pub n: RegionalFieldV2,
     pub mx: RegionalFieldV2,
     pub my: RegionalFieldV2,
@@ -461,7 +461,7 @@ impl DensityV2 {
         &self,
         path: &str,
         geometry: &GeometryV2,
-        angular_basis: AngularBasisV1,
+        angular_basis: AngularBasis,
     ) -> Result<(), ValidationError> {
         validate_field_header(
             path,
@@ -492,8 +492,8 @@ impl DensityV2 {
 pub struct PotentialV2 {
     pub unit: FieldUnitV2,
     pub representation: FieldRepresentationV2,
-    pub angular_basis: AngularBasisV1,
-    pub basis_hints: BasisHintsV1,
+    pub angular_basis: AngularBasis,
+    pub basis_hints: BasisHints,
     pub v0: RegionalFieldV2,
     pub bx: RegionalFieldV2,
     pub by: RegionalFieldV2,
@@ -505,7 +505,7 @@ impl PotentialV2 {
         &self,
         path: &str,
         geometry: &GeometryV2,
-        angular_basis: AngularBasisV1,
+        angular_basis: AngularBasis,
     ) -> Result<(), ValidationError> {
         validate_field_header(
             path,
@@ -536,8 +536,8 @@ fn validate_field_header(
     expected_unit: FieldUnitV2,
     representation: FieldRepresentationV2,
     expected_representation: FieldRepresentationV2,
-    angular_basis: AngularBasisV1,
-    expected_angular_basis: AngularBasisV1,
+    angular_basis: AngularBasis,
+    expected_angular_basis: AngularBasis,
 ) -> Result<(), ValidationError> {
     if unit != expected_unit {
         return Err(ValidationError::InvalidValue {
@@ -603,7 +603,7 @@ impl InitialV2 {
     fn validate(
         &self,
         geometry: &GeometryV2,
-        angular_basis: AngularBasisV1,
+        angular_basis: AngularBasis,
     ) -> Result<(), ValidationError> {
         match self {
             Self::FrozenPotential { potential } => {
@@ -694,9 +694,9 @@ impl CheckpointV1 {
                     site.spins.iter().map(|spin| SiteRadialBasisV2 {
                         site_id: site.id.clone(),
                         spin: match spin.spin {
-                            SpinTagV1::Scalar => RadialBasisSpinV2::Scalar,
-                            SpinTagV1::Up => RadialBasisSpinV2::Up,
-                            SpinTagV1::Down => RadialBasisSpinV2::Down,
+                            SpinTag::Scalar => RadialBasisSpinV2::Scalar,
+                            SpinTag::Up => RadialBasisSpinV2::Up,
+                            SpinTag::Down => RadialBasisSpinV2::Down,
                         },
                         mesh: spin.mesh,
                         radial_equation: spin.radial_equation,
@@ -720,7 +720,7 @@ impl CheckpointV1 {
 fn potential_from_v1(
     geometry: &GeometryV1,
     interstitial: &crate::checkpoint::InterstitialV1,
-    meta: &MetaV1,
+    meta: &CheckpointMeta,
 ) -> Result<PotentialV2, ValidationError> {
     let mut v0_sites = Vec::with_capacity(geometry.sites.len());
     let mut bx_sites = Vec::with_capacity(geometry.sites.len());
@@ -795,9 +795,9 @@ fn normalize_site_potential(
     site_id: &str,
     spins: &[SiteSpinV1],
 ) -> Result<(Vec<SphericalChannelV2>, Vec<SphericalChannelV2>), ValidationError> {
-    let scalar = spins.iter().find(|spin| spin.spin == SpinTagV1::Scalar);
-    let up = spins.iter().find(|spin| spin.spin == SpinTagV1::Up);
-    let down = spins.iter().find(|spin| spin.spin == SpinTagV1::Down);
+    let scalar = spins.iter().find(|spin| spin.spin == SpinTag::Scalar);
+    let up = spins.iter().find(|spin| spin.spin == SpinTag::Up);
+    let down = spins.iter().find(|spin| spin.spin == SpinTag::Down);
     match (scalar, up, down) {
         (Some(scalar), None, None) => {
             let v0: Vec<_> = scalar

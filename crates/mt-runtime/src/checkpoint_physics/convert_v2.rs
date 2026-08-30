@@ -189,14 +189,14 @@ pub(super) fn regional_density_from_v2(
 
 fn regional_scalar_from_v2(
     field: &RegionalFieldV2,
-    angular_basis: AngularBasisV1,
+    angular_basis: AngularBasis,
     geometry: &InterstitialGeometry,
     sites: &[CheckpointSite],
     reciprocal: ReciprocalLattice,
 ) -> Result<RegionalScalarField, CheckpointPhysicsError> {
     let convention = match angular_basis {
-        AngularBasisV1::ComplexCondonShortley => HarmonicConvention::Complex,
-        AngularBasisV1::RealTesseralCondonShortley => HarmonicConvention::Real,
+        AngularBasis::ComplexCondonShortley => HarmonicConvention::Complex,
+        AngularBasis::RealTesseralCondonShortley => HarmonicConvention::Real,
     };
     let by_site = field
         .muffin_tins
@@ -260,7 +260,7 @@ fn regional_scalar_from_v2(
 pub(super) fn regional_scalar_to_v2(
     field: &RegionalScalarField,
     sites: &[muffintin_io::SiteV2],
-    angular_basis: AngularBasisV1,
+    angular_basis: AngularBasis,
 ) -> Result<RegionalFieldV2, CheckpointPhysicsError> {
     if field.muffin_tins().len() != sites.len() {
         return Err(CheckpointPhysicsError::ExportSiteCount {
@@ -298,11 +298,11 @@ pub(super) fn regional_scalar_to_v2(
 
 fn sphere_channels_to_v2(
     field: &SphereField,
-    angular_basis: AngularBasisV1,
+    angular_basis: AngularBasis,
 ) -> Result<Vec<SphericalChannelV2>, CheckpointPhysicsError> {
     let target = match angular_basis {
-        AngularBasisV1::ComplexCondonShortley => HarmonicConvention::Complex,
-        AngularBasisV1::RealTesseralCondonShortley => HarmonicConvention::Real,
+        AngularBasis::ComplexCondonShortley => HarmonicConvention::Complex,
+        AngularBasis::RealTesseralCondonShortley => HarmonicConvention::Real,
     };
     if field.convention() == target {
         return Ok(field
