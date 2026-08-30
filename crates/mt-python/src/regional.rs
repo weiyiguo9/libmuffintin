@@ -1,18 +1,20 @@
 use std::sync::Arc;
 
-use muffintin_core::HermitianFourierField;
+use muffintin_core::{Hartree, HermitianFourierField};
 use muffintin_dft::{
-    InterstitialField, MuffinTinField, NoncollinearXcRoute, RegionalScalarField,
+    InterstitialField, MuffinTinField, NoncollinearXcRoute, RadialEquation, RegionalScalarField,
     ScfExchangeCorrelation, ScfPotentialBuild, XcFunctional,
 };
 use muffintin_sphere::{HarmonicConvention, SphereField};
 use num_complex::Complex64;
-use numpy::{PyReadonlyArray1, PyReadonlyArray2};
+use numpy::ndarray::Array2;
+use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use crate::checkpoint::{RegionalFieldLayout, Structure};
+use crate::export::export_dict;
 use crate::scf::export_regional;
 
 fn py_error(error: impl std::fmt::Display) -> PyErr {
@@ -251,6 +253,116 @@ impl RegionalDensity {
 impl RegionalPotential {
     fn export_interstitial(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         export_regional(py, muffintin::potential_fourier(&self.inner.potential))
+    }
+
+    fn sample_scalar_radials(
+        &self,
+        py: Python<'_>,
+        site_index: usize,
+        radial_equation: &str,
+        l: u32,
+        energies: Vec<f64>,
+    ) -> PyResult<Py<PyDict>> {
+        let equation = match radial_equation {
+            "schroedinger" => RadialEquation::Schroedinger,
+            "scalar-koelling-harmon" => RadialEquation::ScalarKoellingHarmon,
+            _ => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown radial equation {radial_equation:?}; expected 'schroedinger' or 'scalar-koelling-harmon'"
+                )));
+            }
+        };
+        let energies = energies.into_iter().map(Hartree).collect::<Vec<_>>();
+        let samples = muffintin_dft::sample_regional_scalar_radials(
+            &self.inner.potential,
+            site_index,
+            equation,
+            l,
+            &energies,
+        )
+        .map_err(py_error)?;
+        let site_id = &self.structure.geometry().sites[samples.site_index].id;
+        let boundary_radial = samples
+            .boundary_radial
+            .iter()
+            .flat_map(|boundary| *boundary)
+            .collect::<Vec<_>>();
+        let energy_derivative_boundary_radial = samples
+            .energy_derivative_boundary_radial
+            .iter()
+            .flat_map(|boundary| *boundary)
+            .collect::<Vec<_>>();
+        let energy_count = samples.energies.len();
+        let dict = export_dict(py)?;
+        dict.set_item("site_index", samples.site_index)?;
+        dict.set_item("site_id", site_id)?;
+        dict.set_item("l", samples.angular_momentum)?;
+        dict.set_item(
+            "energies",
+            PyArray1::from_vec(
+                py,
+                samples.energies.iter().map(|value| value.get()).collect(),
+            ),
+        )?;
+        dict.set_item("mesh_first", samples.mesh_first.get())?;
+        dict.set_item("mesh_increment", samples.mesh_increment)?;
+        dict.set_item("mesh_count", samples.mesh_count)?;
+        dict.set_item(
+            "mesh_radii",
+            PyArray1::from_vec(
+                py,
+                samples
+                    .mesh_radii
+                    .iter()
+                    .map(|radius| radius.get())
+                    .collect(),
+            ),
+        )?;
+        dict.set_item(
+            "radial_samples",
+            PyArray2::from_owned_array(
+                py,
+                Array2::from_shape_vec((energy_count, samples.mesh_count), samples.radial_samples)
+                    .expect("one radial row is exported for every requested energy"),
+            ),
+        )?;
+        dict.set_item(
+            "small_radial_samples",
+            PyArray2::from_owned_array(
+                py,
+                Array2::from_shape_vec(
+                    (energy_count, samples.mesh_count),
+                    samples.small_radial_samples,
+                )
+                .expect("one small-component row is exported for every requested energy"),
+            ),
+        )?;
+        dict.set_item("boundary_radius", samples.boundary_radius.get())?;
+        dict.set_item(
+            "boundary_radial",
+            PyArray2::from_owned_array(
+                py,
+                Array2::from_shape_vec((energy_count, 2), boundary_radial)
+                    .expect("each radial solution has a value and derivative"),
+            ),
+        )?;
+        dict.set_item(
+            "log_derivative",
+            samples
+                .log_derivative
+                .iter()
+                .map(|value| value.map(|value| value.get()))
+                .collect::<Vec<_>>(),
+        )?;
+        dict.set_item(
+            "energy_derivative_boundary_radial",
+            PyArray2::from_owned_array(
+                py,
+                Array2::from_shape_vec((energy_count, 2), energy_derivative_boundary_radial)
+                    .expect("each energy derivative has a boundary value and derivative"),
+            ),
+        )?;
+        Ok(dict.unbind())
     }
 
     #[getter]

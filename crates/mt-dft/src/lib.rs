@@ -15,6 +15,7 @@ mod linearization;
 mod material_kernel;
 mod mixing;
 mod occupations;
+mod radial_sampling;
 mod regional;
 mod scalar;
 mod scf;
@@ -76,9 +77,13 @@ pub use material_kernel::{
     regular_k_points,
 };
 pub use mixing::{DensityMixer, MixAlgebraQuantity, MixRecord, MixStatus, MixStep, MixingError};
+pub use muffintin_sphere::RadialEquation;
 pub use occupations::{
     BandState, FermiDiracResult, GaussianResult, OccupationError, fermi_dirac, gaussian_occupation,
     gaussian_width_matching_fermi_dirac_temperature, solve_fermi_dirac, solve_gaussian,
+};
+pub use radial_sampling::{
+    RegionalScalarRadialSamples, RegionalScalarRadialSamplingError, sample_regional_scalar_radials,
 };
 pub use regional::{
     InterstitialField, MuffinTinField, RegionalDensity, RegionalError, RegionalPotential,
