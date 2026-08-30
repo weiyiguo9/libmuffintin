@@ -3,7 +3,7 @@
 use crate::scalar_product::{SCALAR_RADIAL_LO0, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT};
 use muffintin_auxiliary_ir::{ProductOrbitalKind, ProductRadialId};
 use muffintin_core::lm_from_index;
-use muffintin_lapw::{CompiledBasis, LocalOrbitalLayout};
+use muffintin_operators::lapw::{CompiledBasis, LocalOrbitalLayout};
 
 /// Map a scalar site-projection row to its [`ProductRadialId`] and $m$.
 ///
@@ -78,7 +78,7 @@ mod tests {
     use super::{lo_quantum_numbers, site_coordinate};
     use crate::scalar_product::SCALAR_RADIAL_LO0;
     use muffintin_core::Bohr;
-    use muffintin_lapw::{
+    use muffintin_operators::lapw::{
         ApwSiteGeometry, BasisLayout, CompiledBasis, LocalOrbitalLayout, Provenance,
     };
 

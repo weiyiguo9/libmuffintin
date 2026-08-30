@@ -5,7 +5,7 @@ use muffintin_auxiliary_ir::{
     TransferQ,
 };
 use muffintin_core::{Bohr, ExponentialMesh};
-use muffintin_lapw::Provenance;
+use muffintin_operators::lapw::Provenance;
 use muffintin_thc::{L2Engine, PerQFit, ThcError, validate_quadrature_weights};
 use thiserror::Error;
 

@@ -1,10 +1,16 @@
-//! Generic Hermitian operator containers, site projection, and eigensolution.
+//! Generic Hermitian operator containers, site projection, eigensolution,
+//! and method recipes.
+//!
+//! [`recipes`] holds basis-construction recipes; LAPW is one such recipe,
+//! and its facade and eigenproblem assembly live in [`lapw`].
 
 #![forbid(unsafe_code)]
 
 mod assemble;
 mod eigensolve;
+pub mod lapw;
 mod projection;
+pub mod recipes;
 mod soc;
 mod spinor;
 

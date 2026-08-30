@@ -9,7 +9,7 @@ use muffintin_envelope::{
     SpinorSiteLayout, compile_spinor,
 };
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, InterstitialGeometry, Kappa, KappaError};
-use muffintin_lapw::{InterstitialPauliPotential, PlaneWaveEnvelope};
+use muffintin_operators::lapw::{InterstitialPauliPotential, PlaneWaveEnvelope};
 use muffintin_sphere::{
     DiracError, DiracLocalOrbital, DiracSecondEnergyDerivative, RadialComponents,
     RadialIntegralError, RadialIntegralKernel, ValenceDiracSolution, ValenceDiracSpec,
@@ -687,7 +687,7 @@ mod tests {
     use super::*;
     use crate::build_full_spinor_site_blocks;
     use muffintin_core::{GVector, InverseBohr, Sphere, VolumeBohr3};
-    use muffintin_lapw::PlaneWave;
+    use muffintin_operators::lapw::PlaneWave;
     use muffintin_sphere::{HarmonicConvention, SphereField};
 
     fn mesh() -> ExponentialMesh {

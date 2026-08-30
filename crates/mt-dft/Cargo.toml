@@ -13,7 +13,6 @@ name = "muffintin_dft"
 libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-coulomb = { path = "../mt-coulomb" }
-libmuffintin-lapw = { path = "../mt-lapw" }
 libmuffintin-operators = { path = "../mt-operators" }
 libmuffintin-sphere = { path = "../mt-sphere" }
 libmuffintin-tensor = { path = "../mt-tensor" }

@@ -1,6 +1,6 @@
 //! SPEX-compatible LAPW (APW+lo) recipe.
 
-use crate::lapw_provenance;
+use super::lapw_provenance;
 use muffintin_envelope::{
     ApwBoundaryBasis, ApwSiteAugmentation, BasisBlock, BasisSpec, LocalOrbitalLayout,
 };

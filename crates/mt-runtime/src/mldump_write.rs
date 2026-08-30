@@ -17,7 +17,7 @@ use muffintin_io::{
     MldumpThcQRecordRefV1, MldumpThcSelectionRefV1, MldumpThcVertexTableRefV1,
     ScalarMldumpStreamV1, SpinorMldumpStreamV1, ValidationError,
 };
-use muffintin_lapw::Provenance;
+use muffintin_operators::lapw::Provenance;
 use muffintin_tensor::DenseEigenvectors;
 use muffintin_thc::{L2Engine, RankPolicy, Selection, SelectorStrategy};
 use num_complex::Complex64;

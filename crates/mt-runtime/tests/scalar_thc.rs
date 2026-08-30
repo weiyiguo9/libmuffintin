@@ -25,7 +25,7 @@ use muffintin_io::{
     RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
-use muffintin_lapw::{CompiledBasis, Provenance};
+use muffintin_operators::lapw::{CompiledBasis, Provenance};
 use muffintin_operators::CompiledSiteProjection;
 use muffintin_thc::{GridPath, L2Engine, SelectorStrategy, ThcError};
 use num_complex::Complex64;

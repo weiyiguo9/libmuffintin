@@ -8,7 +8,7 @@ use muffintin_auxiliary_ir::{
 };
 use muffintin_core::{InverseBohr, ReciprocalLattice};
 use muffintin_envelope::site_translation_phase;
-use muffintin_lapw::CompiledBasis;
+use muffintin_operators::lapw::CompiledBasis;
 use muffintin_mpb::{
     MpbError, PairVertexAccumulator, apply_overlap_cutoff, spex_mixed_product_basis,
 };

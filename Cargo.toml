@@ -3,12 +3,10 @@ resolver = "2"
 members = [
     "crates/mt-core",
     "crates/mt-io",
-    "crates/mt-lapw",
     "crates/mt-sphere",
     "crates/mt-tensor",
     "crates/mt-envelope",
     "crates/mt-operators",
-    "crates/mt-recipes",
     "crates/mt-auxiliary-ir",
     "crates/mt-mpb",
     "crates/mt-thc",

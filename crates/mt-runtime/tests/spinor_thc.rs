@@ -69,7 +69,7 @@ fn pauli_omega(channel: RelativisticChannel, harmonics: &[Complex64]) -> [Comple
 }
 
 fn site_channels(
-    compiled: &muffintin_lapw::SpinorCompiledBasis,
+    compiled: &muffintin_operators::lapw::SpinorCompiledBasis,
     site: usize,
 ) -> &[RelativisticChannel] {
     compiled.site_augmentations[site][0].channels.as_slice()

@@ -25,7 +25,7 @@ use muffintin_io::{
     SpexMaterialBasisRecipeV1, SpexMaterialChannelKind, SpexMaterialChannelV1,
     materialize_snapshot_v2, read_mldump_v1, read_spex_snapshot_hdf,
 };
-use muffintin_lapw::Provenance;
+use muffintin_operators::lapw::Provenance;
 use muffintin_mpb::DEFAULT_TOLERANCE;
 use muffintin_thc::RankPolicy;
 

@@ -9,7 +9,7 @@ use muffintin_io::{
     ScalarLocalOrbitalTableRefV1, ScalarOrbitalKRefV1, ScalarOrbitalsBeginV1,
     ScalarProductQRecordRefV1, ScalarProductSiteRefV1, ScalarProductsBeginV1, ValidationError,
 };
-use muffintin_lapw::CompiledBasis;
+use muffintin_operators::lapw::CompiledBasis;
 use muffintin_thc::L2Engine;
 use thiserror::Error;
 

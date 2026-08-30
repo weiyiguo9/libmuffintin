@@ -9,7 +9,7 @@ use muffintin_dft::{
     ScalarIterationBasis, ScalarRadialSite, ScfConfig, ScfRelativity,
     build_extended_snapshot_core_potentials,
 };
-use muffintin_lapw::{CompiledBasis, Provenance};
+use muffintin_operators::lapw::{CompiledBasis, Provenance};
 use muffintin_operators::Collinear;
 use muffintin_sphere::CorePotentialContinuationSpec;
 use muffintin_tensor::DenseEigenvectors;

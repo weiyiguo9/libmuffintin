@@ -10,7 +10,7 @@ use muffintin_dft::{
     ScfConfig, ScfRelativity, SpinorIterationBasis, SpinorRadialSite,
     build_extended_snapshot_core_potentials,
 };
-use muffintin_lapw::{Provenance, SpinorCompiledBasis};
+use muffintin_operators::lapw::{Provenance, SpinorCompiledBasis};
 use muffintin_sphere::CorePotentialContinuationSpec;
 use muffintin_tensor::DenseEigenvectors;
 use std::collections::BTreeSet;

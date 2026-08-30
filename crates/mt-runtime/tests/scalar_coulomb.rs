@@ -30,7 +30,7 @@ use muffintin_io::{
     RadialEquationTagV1, SiteSpinV1, SiteV1, SnapshotV1, SnapshotV2, SphericalChannelConventionV1,
     SpinTagV1,
 };
-use muffintin_lapw::Provenance;
+use muffintin_operators::lapw::Provenance;
 use muffintin_mpb::DEFAULT_TOLERANCE;
 use num_complex::Complex64;
 

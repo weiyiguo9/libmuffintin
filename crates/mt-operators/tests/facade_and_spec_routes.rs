@@ -2,7 +2,7 @@
 //!
 //! The facade path calls the canonical recipe facade. The explicit path
 //! constructs [`BasisSpec`] by hand and must not call
-//! `muffintin_recipes::lapw`. Both paths assemble through
+//! `muffintin_operators::recipes::lapw`. Both paths assemble through
 //! `assemble_compiled` / the shared operator layer.
 
 use muffintin_envelope::{
@@ -14,7 +14,7 @@ use muffintin_core::{
     Sphere, VolumeBohr3,
 };
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
-use muffintin_lapw::{
+use muffintin_operators::lapw::{
     DenseEigenvectors, InterstitialPotential, LapwSiteInput, RadialOverlapBlock,
     SiteOperatorBlocks, assemble_compiled, assemble_eigenproblem, solve_collinear_eigenproblems,
 };
@@ -175,8 +175,8 @@ fn solutions_match(
 }
 
 fn eigenproblems_match(
-    facade: &muffintin_lapw::LapwEigenproblem,
-    explicit: &muffintin_lapw::LapwEigenproblem,
+    facade: &muffintin_operators::lapw::LapwEigenproblem,
+    explicit: &muffintin_operators::lapw::LapwEigenproblem,
     overlap_threshold: f64,
 ) {
     matrices_match(&facade.overlap, &explicit.overlap, MATRIX_TOL);

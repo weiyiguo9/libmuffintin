@@ -8,7 +8,7 @@ use muffintin_auxiliary_ir::{
 };
 use muffintin_core::{InverseBohr, ReciprocalLattice, RelativisticChannel};
 use muffintin_envelope::site_translation_phase;
-use muffintin_lapw::SpinorCompiledBasis;
+use muffintin_operators::lapw::SpinorCompiledBasis;
 use muffintin_mpb::{
     DiracBlochVertexAccumulator, MpbError, apply_dirac_overlap_cutoff,
     untruncated_dirac_product_space,

@@ -1,6 +1,6 @@
 //! First-variation SRA spinor LAPW recipe.
 
-use crate::spinor_provenance;
+use super::spinor_provenance;
 use muffintin_envelope::{SpinorBasisSite, SpinorBasisSpec};
 use muffintin_core::VolumeBohr3;
 use muffintin_envelope::PlaneWaveEnvelope;

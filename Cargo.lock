@@ -995,7 +995,6 @@ dependencies = [
  "libmuffintin-core",
  "libmuffintin-coulomb",
  "libmuffintin-envelope",
- "libmuffintin-lapw",
  "libmuffintin-operators",
  "libmuffintin-sphere",
  "libmuffintin-tensor",
@@ -1025,20 +1024,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libmuffintin-lapw"
-version = "0.2.0"
-dependencies = [
- "libmuffintin-core",
- "libmuffintin-envelope",
- "libmuffintin-operators",
- "libmuffintin-recipes",
- "libmuffintin-sphere",
- "libmuffintin-tensor",
- "num-complex",
- "thiserror 2.0.20",
-]
-
-[[package]]
 name = "libmuffintin-mpb"
 version = "0.2.0"
 dependencies = [
@@ -1065,15 +1050,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libmuffintin-recipes"
-version = "0.2.0"
-dependencies = [
- "libmuffintin-core",
- "libmuffintin-envelope",
- "libmuffintin-sphere",
-]
-
-[[package]]
 name = "libmuffintin-runtime"
 version = "0.2.0"
 dependencies = [
@@ -1083,7 +1059,6 @@ dependencies = [
  "libmuffintin-dft",
  "libmuffintin-envelope",
  "libmuffintin-io",
- "libmuffintin-lapw",
  "libmuffintin-mpb",
  "libmuffintin-operators",
  "libmuffintin-sphere",

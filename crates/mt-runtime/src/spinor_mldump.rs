@@ -10,7 +10,7 @@ use muffintin_io::{
     SpinorPauliRowMapRefV1, SpinorProductQRecordRefV1, SpinorProductSiteRefV1,
     SpinorProductsBeginV1, SpinorSiteMatchRefV1, ValidationError,
 };
-use muffintin_lapw::SpinorCompiledBasis;
+use muffintin_operators::lapw::SpinorCompiledBasis;
 use muffintin_thc::L2Engine;
 use thiserror::Error;
 

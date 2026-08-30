@@ -10,7 +10,7 @@ use muffintin_core::{
     RelativisticChannel, Sphere, VolumeBohr3,
 };
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
-use muffintin_lapw::{
+use muffintin_operators::lapw::{
     InterstitialPauliPotential, InterstitialPotential, SiteOperatorBlocks,
     SpinorSiteOperatorBlocks, assemble_compiled, assemble_sra_spinor_compiled,
     solve_generalized_hermitian,

@@ -1,7 +1,7 @@
 //! Concrete scalar Koelling--Harmon LAPW first-variation builder.
 
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, InterstitialGeometry, Lm};
-use muffintin_lapw::{
+use muffintin_operators::lapw::{
     ApwBoundaryBasis, CompiledBasis, GeneralizedEigensolution, InterstitialPotential,
     LapwEigenproblem, LapwError, LapwSiteInput, LocalOrbitalLayout, PlaneWaveEnvelope,
     SiteOperatorBlocks, assemble_compiled, compile, lapw, solve_generalized_hermitian,
@@ -746,7 +746,7 @@ pub enum ScalarBuilderError {
 mod tests {
     use super::*;
     use muffintin_core::{GVector, InverseBohr, Sphere, VolumeBohr3};
-    use muffintin_lapw::{PlaneWave, RadialOverlapBlock, spex_spherical_radial_hamiltonian};
+    use muffintin_operators::lapw::{PlaneWave, RadialOverlapBlock, spex_spherical_radial_hamiltonian};
 
     fn mesh() -> ExponentialMesh {
         ExponentialMesh::new(Bohr(1.0e-5), 0.015, 801).unwrap()

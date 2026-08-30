@@ -22,7 +22,6 @@ libmuffintin-coulomb = { path = "../mt-coulomb" }
 libmuffintin-dft = { path = "../mt-dft" }
 libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-io = { path = "../mt-io" }
-libmuffintin-lapw = { path = "../mt-lapw" }
 libmuffintin-mpb = { path = "../mt-mpb" }
 libmuffintin-operators = { path = "../mt-operators" }
 libmuffintin-thc = { path = "../mt-thc" }
@@ -35,7 +34,6 @@ toml = "0.8.20"
 
 [dev-dependencies]
 libmuffintin-io = { path = "../mt-io" }
-libmuffintin-lapw = { path = "../mt-lapw" }
 libmuffintin-operators = { path = "../mt-operators" }
 libmuffintin-thc = { path = "../mt-thc" }
 num-complex.workspace = true

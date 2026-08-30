@@ -4,7 +4,7 @@ use muffintin_envelope::{SpinorCompiledBasis, SpinorSiteLayout};
 use muffintin_core::{
     ExponentialMesh, InterstitialGeometry, Lm, RelativisticChannel, SpinProjection, gaunt,
 };
-use muffintin_lapw::{
+use muffintin_operators::lapw::{
     GeneralizedEigensolution, InterstitialPauliPotential, LapwEigenproblem, LapwError,
     assemble_sra_spinor_compiled, solve_generalized_hermitian,
 };
@@ -520,7 +520,7 @@ pub enum SpinorFirstVariationError {
 mod tests {
     use super::*;
     use muffintin_core::{Bohr, GVector, InverseBohr, Kappa, Sphere, TwiceMu, VolumeBohr3};
-    use muffintin_lapw::{
+    use muffintin_operators::lapw::{
         ApwSiteGeometry, PlaneWave, Provenance, SpinorBasisLayout, SpinorCompiledBasis,
         SpinorPlaneWaveAugmentation, SpinorSiteLayout,
     };

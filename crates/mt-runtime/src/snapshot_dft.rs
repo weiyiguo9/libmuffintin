@@ -40,7 +40,7 @@ use muffintin_io::{
     PotentialV2, RadialBasisSpinV2, RadialEquationTagV1, RegionalFieldV2, SnapshotV2,
     SpexMaterialBasisRecipeV1, SpexMaterialChannelKind, SphericalChannelV2,
 };
-use muffintin_lapw::{Collinear, GeneralizedEigensolution, InterstitialPotential, LapwError};
+use muffintin_operators::lapw::{Collinear, GeneralizedEigensolution, InterstitialPotential, LapwError};
 use muffintin_operators::{
     CompiledSiteProjection, OperatorError, SiteSpinOrbitBlock, SocOperatorError,
     SpinorSiteOperatorBlocks,

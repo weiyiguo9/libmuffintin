@@ -4,7 +4,7 @@ use muffintin_core::{
     ExponentialMesh, FourierFieldError, FourierLayout, HermitianFourierField, InterstitialGeometry,
     MeshError, StepFunctionError,
 };
-use muffintin_lapw::{InterstitialPauliPotential, InterstitialPotential, LapwError};
+use muffintin_operators::lapw::{InterstitialPauliPotential, InterstitialPotential, LapwError};
 use muffintin_sphere::{SphereField, SphereFieldError};
 use num_complex::Complex64;
 use std::collections::BTreeMap;

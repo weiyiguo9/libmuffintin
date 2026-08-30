@@ -10,7 +10,7 @@ use crate::thc_grid::{
 };
 use muffintin_auxiliary_ir::{ProductOrbitalKind, ProductRadial, ProductRadialId, SiteRadialSet};
 use muffintin_core::{Bohr, GVector, InverseBohr, complex_spherical_harmonics, lm_index};
-use muffintin_lapw::{CompiledBasis, Provenance};
+use muffintin_operators::lapw::{CompiledBasis, Provenance};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
 use muffintin_tensor::DenseEigenvectors;
 use muffintin_thc::{PairBlock, RankPolicy, Selection, ThcError, fit_allq_l2_pair_blocks};
