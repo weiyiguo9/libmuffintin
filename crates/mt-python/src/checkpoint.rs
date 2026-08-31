@@ -18,7 +18,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyType};
 
 use crate::export::export_dict;
-use crate::regional::RegionalDensity;
+use crate::regional::{RegionalDensity, RegionalPotential};
 use crate::scf::export_regional;
 
 #[pyclass(name = "Checkpoint", module = "libmuffintin._native", frozen)]
@@ -419,6 +419,34 @@ impl CheckpointPhysics {
             density,
             Arc::new(structure),
         )))
+    }
+
+    #[pyo3(signature = (density, potential, annotations=None))]
+    fn restart_checkpoint(
+        &self,
+        density: PyRef<'_, RegionalDensity>,
+        potential: PyRef<'_, RegionalPotential>,
+        annotations: Option<BTreeMap<String, String>>,
+    ) -> PyResult<Checkpoint> {
+        let structure = muffintin::Structure::new(self.checkpoint.geometry.clone())
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        if density.structure.geometry() != potential.structure.geometry()
+            || density.structure.geometry() != structure.geometry()
+        {
+            return Err(PyValueError::new_err(
+                "restart density, potential, and checkpoint use different structures",
+            ));
+        }
+        let checkpoint = muffintin::checkpoint_v2_from_regional_state(
+            self.checkpoint.as_ref(),
+            density.inner.as_ref(),
+            &potential.inner.potential,
+            annotations.unwrap_or_default(),
+        )
+        .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        Ok(Checkpoint {
+            inner: Arc::new(checkpoint),
+        })
     }
 
     #[pyo3(signature = (site_id, l, energies, hard_radius=None))]

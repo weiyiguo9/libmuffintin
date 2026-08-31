@@ -34,6 +34,7 @@ pub fn sample_input() -> Input {
                         mesh: [4, 4, 4],
                         shift: [0.5, 0.5, 0.5],
                     },
+                    symmetry: muffintin::Symmetry::default(),
                     basis: Basis {
                         l_max: 8,
                         energy_generator: None,
@@ -204,6 +205,7 @@ pub fn supported_input() -> Input {
                     mesh: [1, 1, 1],
                     shift: [0.0; 3],
                 },
+                symmetry: muffintin::Symmetry::default(),
                 basis: Basis {
                     l_max: 1,
                     energy_generator: Some(ChannelEnergyGenerator::FrozenCheckpoint),

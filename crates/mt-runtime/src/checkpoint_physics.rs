@@ -5,13 +5,13 @@ use std::f64::consts::PI;
 
 use muffintin_core::{
     Bohr, ExponentialMesh, FourierFieldError, FourierLayout, Hartree, HermitianFourierField,
-    InterstitialGeometry, LatticeError, MeshError, ReciprocalLattice, Sphere,
-    StepFunctionError, VolumeBohr3,
+    InterstitialGeometry, LatticeError, MeshError, ReciprocalLattice, Sphere, StepFunctionError,
+    VolumeBohr3,
 };
 use muffintin_dft::{
     CheckpointSite, CheckpointSpin, InterstitialField, LinearizationEnergyGenerator,
     MaterialKernel, MuffinTinField, RadialRoute, RegionalDensity, RegionalPotential,
-    RegionalScalarField, ScfBasis, ScfChannelIdentity, ScfChannelTreatment,
+    RegionalScalarField, ScfBasis, ScfChannelIdentity, ScfChannelTreatment, ScfKSamplingProvenance,
     ScfResolvedChannelEnergy, ScfState, SpexBoundSpinorChannel, SpexSpinorMaterialBinding,
     channel_l, generate_frozen_checkpoint_energy,
 };
@@ -22,6 +22,7 @@ use muffintin_io::{
     SpexMaterialChannelKind, SphericalChannelV2,
 };
 use muffintin_sphere::{HarmonicConvention, RadialEquation, SphereField, SphereFieldError};
+use muffintin_symmetry::CrystalCell;
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -32,7 +33,7 @@ pub use atomic_checkpoint::{
     AtomicStart, AtomicStartError, AtomicStartRequest, RegionalFieldLayout,
     RegionalFieldLayoutError, Structure, materialize_atomic_start,
 };
-pub use convert_v2::checkpoint_v2_from_state;
+pub use convert_v2::{checkpoint_v2_from_regional_state, checkpoint_v2_from_state};
 use convert_v2::{convert_v2_site_bases, regional_density_from_v2, regional_potential_from_v2};
 pub use muffintin_dft::MaterialKernelError;
 
@@ -84,6 +85,21 @@ impl CheckpointPhysics {
                 )
             })
             .transpose()?;
+        let crystal_cell = CrystalCell {
+            lattice: converted.direct,
+            positions: checkpoint
+                .geometry
+                .sites
+                .iter()
+                .map(|site| site.fractional_position.map(|value| value.rem_euclid(1.0)))
+                .collect(),
+            atomic_numbers: checkpoint
+                .geometry
+                .sites
+                .iter()
+                .map(|site| site.atomic_number)
+                .collect(),
+        };
         Ok(Self {
             checkpoint_template: checkpoint.clone(),
             kernel: MaterialKernel::new(
@@ -93,6 +109,7 @@ impl CheckpointPhysics {
                 frozen_potential,
                 restart_density,
                 converted.nuclear_charges,
+                crystal_cell,
             )?,
         })
     }

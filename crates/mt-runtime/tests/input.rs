@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use muffintin::{
     ChannelEnergyGenerator, ChannelIdentity, ChannelProvenance, ChannelRecipeArtifact,
     ChannelRecipeError, ChannelRecipeRecord, ChannelScope, ChannelTreatment, ExchangeCorrelation,
-    InputError, InputValidationError, Mixing, NoncollinearXcRoute, Relativity, Task, input_to_toml,
-    load_input_path, parse_input_toml, prepare_input, prepare_input_with_recipes,
+    InputError, InputValidationError, Mixing, NoncollinearXcRoute, Relativity, Symmetry, Task,
+    input_to_toml, load_input_path, parse_input_toml, prepare_input, prepare_input_with_recipes,
 };
 use muffintin_core::Hartree;
 use muffintin_io::CheckpointFile;
@@ -107,6 +107,32 @@ fn envelope_channels_quoted_sites_and_explicit_empty_rows_are_preserved() {
             band_window: [0, 12]
         }
     ));
+}
+
+#[test]
+fn scf_symmetry_reduction_settings_roundtrip() {
+    let mut input = sample_input();
+    let Task::DftScf { symmetry, .. } = input.task.get_mut("scf").unwrap() else {
+        panic!("scf task changed kind")
+    };
+    *symmetry = Symmetry {
+        enabled: true,
+        symprec: 2.0e-6,
+        include_time_reversal: false,
+    };
+    let encoded = input_to_toml(&input).unwrap();
+    let decoded = parse_input_toml(&encoded).unwrap();
+    let Task::DftScf { symmetry, .. } = &decoded.task["scf"] else {
+        panic!("scf task changed kind")
+    };
+    assert_eq!(
+        *symmetry,
+        Symmetry {
+            enabled: true,
+            symprec: 2.0e-6,
+            include_time_reversal: false,
+        }
+    );
 }
 
 #[test]

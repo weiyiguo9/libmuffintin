@@ -2,15 +2,15 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use muffintin_core::Hartree;
+use muffintin_core::{Bohr, Hartree};
 use muffintin_dft::{
     AtomicNumber, BandPathPoint, BandPathRequest, BandPathResult, DosRequest, DosResult,
     FirstVariationWindow, LinearizationEnergyGenerator,
     NoncollinearXcRoute as ScfNoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
     ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfConvergence,
-    ScfCoreSite, ScfCoreState, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations,
-    ScfPhysics, ScfRelativity, ScfState, XcFunctional, fleur_default_atomic_configuration,
-    run_band_path, run_dos, run_scf,
+    ScfCoreSite, ScfCoreState, ScfExchangeCorrelation, ScfKMesh, ScfKReduction, ScfMixing,
+    ScfOccupations, ScfPhysics, ScfRelativity, ScfState, XcFunctional,
+    fleur_default_atomic_configuration, run_band_path, run_dos, run_scf,
 };
 use muffintin_io::{CheckpointFile, CheckpointV2, checkpoint_file_from_toml};
 
@@ -327,6 +327,7 @@ pub(crate) fn scf_config(
     let Task::DftScf {
         electron_count,
         k_mesh,
+        symmetry,
         basis,
         occupations,
         xc,
@@ -373,7 +374,17 @@ pub(crate) fn scf_config(
 
     Ok(ScfConfig {
         electron_count: *electron_count,
-        k_mesh: map_k_mesh(*k_mesh),
+        k_mesh: ScfKMesh {
+            reduction: if symmetry.enabled {
+                ScfKReduction::Symmetry {
+                    symprec: Bohr(symmetry.symprec),
+                    include_time_reversal: symmetry.include_time_reversal,
+                }
+            } else {
+                ScfKReduction::Full
+            },
+            ..map_k_mesh(*k_mesh)
+        },
         basis: ScfBasis {
             plane_wave_cutoff: basis.envelope.normalized_cutoff(),
             l_max: basis.l_max,
@@ -641,6 +652,7 @@ fn map_k_mesh(mesh: KMesh) -> ScfKMesh {
             .mesh
             .map(|division| usize::try_from(division).expect("u32 k-mesh division fits usize")),
         shift: mesh.shift,
+        reduction: ScfKReduction::Full,
     }
 }
 

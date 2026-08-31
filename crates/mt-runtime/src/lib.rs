@@ -43,9 +43,8 @@ pub use channel_token::{
 pub use checkpoint_physics::{
     AtomicStart, AtomicStartError, AtomicStartRequest, CheckpointPhysics, CheckpointPhysicsError,
     MaterialKernelError, RegionalFieldLayout, RegionalFieldLayoutError, Structure,
-    checkpoint_v2_from_state, materialize_atomic_start,
+    checkpoint_v2_from_regional_state, checkpoint_v2_from_state, materialize_atomic_start,
 };
-pub use muffintin_dft::ScalarRadialSamples;
 pub use dft_scf::{
     DftConvergenceDecision, DftCoreStep, DftEnergyRecord, DftLapwDensityAssembly, DftLapwSolution,
     DftOccupations, DftRegionalDensity, DftRegionalFourier, DftRegionalPotentialStep, DftScfError,
@@ -56,8 +55,9 @@ pub use error::{InputError, InputValidationError};
 pub use input::{
     BandPathPoint, Basis, BasisEnvelope, BasisEnvelopeKind, Convergence, EnergyWindow,
     ExchangeCorrelation, INPUT_FORMAT, INPUT_VERSION, Input, KMesh, Mixing, NoncollinearXcRoute,
-    Occupations, Relativity, Task, TaskKind, Workflow, input_to_toml, parse_input_toml,
+    Occupations, Relativity, Symmetry, Task, TaskKind, Workflow, input_to_toml, parse_input_toml,
 };
+pub use muffintin_dft::{ScalarRadialSamples, ScfKSamplingProvenance};
 pub use muffintin_prodbasis::thc::RankPolicy;
 pub use runner::{
     PreparedSource, PreparedTask, PreparedWorkflow, TaskResult, WorkflowResult,

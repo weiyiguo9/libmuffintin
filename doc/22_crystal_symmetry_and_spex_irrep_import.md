@@ -154,4 +154,4 @@ SPEX source anchors for the writer: operation storage `src/global.f:179`
 | `spexsym` v1 reader/writer | roundtrip and index-validation tests in `crates/mt-io/tests/spex_symmetry_v1.rs` |
 | SPEX stdout parser | `pymuffintin.spex_log` with an MnTe noncollinear fixture (8 magnetic operations, 4 time-reversal, 105-point IBZ); cross-language check: its `to_spexsym_v1` output is read back by `muffintin_io` (the ignored `SPEXSYM_FIXTURE` test) |
 | SPEX-side irrep dump | not implemented; deferred until a BSE-style consumer needs `irrep_sub` |
-| Consumption in SCF / BZ reduction | not implemented; no k-reduction or symmetrization claim |
+| Consumption in SCF / BZ reduction | implemented for regular-mesh scalar nonmagnetic LAPW SCF: exact orbit weights, full-mesh density layout, post-core regional projection, and checkpoint provenance; SOC/noncollinear consumption remains deferred |

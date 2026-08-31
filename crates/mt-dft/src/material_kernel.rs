@@ -15,10 +15,11 @@ use crate::{
     RegionalPotential, RegionalScalarField, RegularSpectrum, ScalarBuilderError,
     ScalarIterationBasis, ScalarLocalOrbitalRequest, ScalarSiteInput, ScfBasis, ScfChannelIdentity,
     ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfCoreSite, ScfEnergyContext,
-    ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfOccupations, ScfPhysics,
-    ScfPotentialBuild, ScfPotentialBuildError, ScfRelativity, ScfResolvedChannelEnergy, ScfState,
-    SecondVariationError, SpinorBuilderError, SpinorFirstVariationError, SpinorIterationBasis,
-    SpinorLinearizationEnergy, SpinorLocalOrbitalRequest, SpinorSiteInput, TetrahedronError,
+    ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfKReduction, ScfKSamplingProvenance,
+    ScfOccupations, ScfPhysics, ScfPotentialBuild, ScfPotentialBuildError, ScfRelativity,
+    ScfResolvedChannelEnergy, ScfState, SecondVariationError, SpinorBuilderError,
+    SpinorFirstVariationError, SpinorIterationBasis, SpinorLinearizationEnergy,
+    SpinorLocalOrbitalRequest, SpinorSiteInput, TetrahedronError,
     build_collinear_scalar_iteration_bases, build_extended_checkpoint_core_potentials,
     build_extended_core_potentials, build_scf_potential, build_spinor_iteration_basis,
     channel_kappas, channel_l, channel_n, generate_atomic_energy, generate_band_center_energy,
@@ -44,6 +45,11 @@ use muffintin_sphere::{
     CorePotentialContinuationSpec, CoreState, DiracError, ExtendedCorePotential, RadialEquation,
     SpexSpinOrbitPotential, SpinOrbitRadialError, spex_spin_orbit_radial_shell,
 };
+use muffintin_symmetry::kmesh::{
+    KMeshReduction, KMeshReductionError, RegularKMesh, reduce_regular_mesh,
+};
+use muffintin_symmetry::moyo_backend::{MoyoDetectionError, detect as detect_symmetry};
+use muffintin_symmetry::{CrystalCell, CrystalSymmetryTransform, SymmetryTransformError};
 use muffintin_tensor::{DenseEigenvectors, TensorError};
 use num_complex::Complex64;
 use thiserror::Error;
@@ -70,8 +76,18 @@ pub struct MaterialKernel {
     pub(super) frozen_potential: RegionalPotential,
     pub(super) restart_density: Option<RegionalDensity>,
     pub(super) nuclear_charges: Vec<f64>,
+    crystal_cell: CrystalCell,
+    prepared_symmetry: Option<PreparedSymmetrySampling>,
     core_potentials: BTreeMap<usize, ScfPotentialBuild>,
     pub(super) spex_spinor_binding: Option<SpexSpinorMaterialBinding>,
+}
+
+#[derive(Clone, Debug)]
+struct PreparedSymmetrySampling {
+    mesh: ScfKMesh,
+    reduction: KMeshReduction,
+    transforms: Vec<CrystalSymmetryTransform>,
+    spacegroup_number: Option<i32>,
 }
 
 #[derive(Clone, Debug)]
@@ -208,6 +224,10 @@ pub struct CheckpointOneParticle {
 pub struct CheckpointBandSolution {
     points: Vec<CheckpointKPoint>,
     states: Vec<BandState>,
+    reduction: Option<KMeshReduction>,
+    density_layout: Option<FourierLayout>,
+    symmetry_transforms: Vec<CrystalSymmetryTransform>,
+    spacegroup_number: Option<i32>,
 }
 
 impl CheckpointBandSolution {
@@ -247,6 +267,7 @@ impl MaterialKernel {
         frozen_potential: RegionalPotential,
         restart_density: Option<RegionalDensity>,
         nuclear_charges: Vec<f64>,
+        crystal_cell: CrystalCell,
     ) -> Result<Self, MaterialKernelError> {
         let kernel = Self {
             reciprocal,
@@ -255,6 +276,8 @@ impl MaterialKernel {
             frozen_potential,
             restart_density,
             nuclear_charges,
+            crystal_cell,
+            prepared_symmetry: None,
             core_potentials: BTreeMap::new(),
             spex_spinor_binding: None,
         };
@@ -354,6 +377,146 @@ impl MaterialKernel {
         &self.nuclear_charges
     }
 
+    pub const fn crystal_cell(&self) -> &CrystalCell {
+        &self.crystal_cell
+    }
+
+    fn reduced_sampling(
+        &mut self,
+        mesh: ScfKMesh,
+    ) -> Result<
+        Option<(KMeshReduction, Vec<CrystalSymmetryTransform>, Option<i32>)>,
+        MaterialKernelError,
+    > {
+        let ScfKReduction::Symmetry {
+            symprec,
+            include_time_reversal,
+        } = mesh.reduction
+        else {
+            return Ok(None);
+        };
+        if let Some(prepared) = &self.prepared_symmetry
+            && prepared.mesh == mesh
+        {
+            return Ok(Some((
+                prepared.reduction.clone(),
+                prepared.transforms.clone(),
+                prepared.spacegroup_number,
+            )));
+        }
+        let dataset = detect_symmetry(&self.crystal_cell, symprec)?;
+        let reduction = reduce_regular_mesh(
+            &dataset,
+            RegularKMesh {
+                divisions: mesh.divisions,
+                shift: mesh.shift,
+            },
+            include_time_reversal,
+        )?;
+        let active_operation_indices = reduction
+            .active_operations
+            .iter()
+            .map(|operation| operation.operation_index)
+            .collect::<BTreeSet<_>>();
+        let transforms = active_operation_indices
+            .into_iter()
+            .map(|index| dataset.operations[index].clone())
+            .map(|operation| {
+                CrystalSymmetryTransform::from_cell(operation, &self.crystal_cell, symprec)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        self.prepared_symmetry = Some(PreparedSymmetrySampling {
+            mesh,
+            reduction: reduction.clone(),
+            transforms: transforms.clone(),
+            spacegroup_number: dataset.spacegroup_number,
+        });
+        Ok(Some((reduction, transforms, dataset.spacegroup_number)))
+    }
+
+    fn symmetry_projected_potential(
+        &self,
+        potential: &RegionalPotential,
+        transforms: &[CrystalSymmetryTransform],
+    ) -> Result<RegionalPotential, MaterialKernelError> {
+        let scalar = potential.scalar().symmetry_average(transforms)?;
+        let magnetic = std::array::from_fn(|_| scalar.zero_like());
+        Ok(RegionalPotential::new(scalar, magnetic)?)
+    }
+
+    fn project_scalar_density(
+        &self,
+        density: &RegionalDensity,
+        transforms: &[CrystalSymmetryTransform],
+    ) -> Result<RegionalDensity, MaterialKernelError> {
+        let charge = density.charge().symmetry_average(transforms)?;
+        let zero = charge.zero_like();
+        Ok(RegionalDensity::new(
+            charge,
+            [zero.clone(), zero.clone(), zero],
+        )?)
+    }
+
+    fn require_symmetry_equivalent_config(
+        &self,
+        config: &ScfConfig,
+        transforms: &[CrystalSymmetryTransform],
+    ) -> Result<(), MaterialKernelError> {
+        for transform in transforms {
+            for (source, &target) in transform.site_map().iter().enumerate() {
+                let source_site = &self.sites[source];
+                let target_site = &self.sites[target];
+                if source_site.radius != target_site.radius
+                    || source_site.up.mesh != target_site.up.mesh
+                    || source_site.down.mesh != target_site.down.mesh
+                    || source_site.up.route != target_site.up.route
+                    || source_site.down.route != target_site.down.route
+                    || source_site.nonmagnetic_scalar != target_site.nonmagnetic_scalar
+                {
+                    return Err(MaterialKernelError::SymmetryEquivalentSiteMismatch {
+                        source_site: source_site.id.clone(),
+                        target_site: target_site.id.clone(),
+                    });
+                }
+                let source_core = config
+                    .core_sites
+                    .iter()
+                    .find(|site| site.id == source_site.id)
+                    .map(|site| &site.states);
+                let target_core = config
+                    .core_sites
+                    .iter()
+                    .find(|site| site.id == target_site.id)
+                    .map(|site| &site.states);
+                let source_channels = config
+                    .basis
+                    .channels
+                    .iter()
+                    .filter(|recipe| recipe.site == source_site.id)
+                    .collect::<Vec<_>>();
+                let target_channels = config
+                    .basis
+                    .channels
+                    .iter()
+                    .filter(|recipe| recipe.site == target_site.id)
+                    .collect::<Vec<_>>();
+                if source_core != target_core
+                    || source_channels.len() != target_channels.len()
+                    || source_channels
+                        .iter()
+                        .zip(target_channels)
+                        .any(|(source, target)| !equivalent_channel_recipe(source, target))
+                {
+                    return Err(MaterialKernelError::SymmetryEquivalentRecipeMismatch {
+                        source_site: source_site.id.clone(),
+                        target_site: target_site.id.clone(),
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn solve_points(
         &self,
         potential: &RegionalPotential,
@@ -364,17 +527,39 @@ impl MaterialKernel {
         if points.is_empty() {
             return Err(MaterialKernelError::EmptyKPointSet);
         }
+        let weights = vec![1.0 / points.len() as f64; points.len()];
+        self.solve_points_with_weights(potential, basis, points, &weights, relativity)
+    }
+
+    fn solve_points_with_weights(
+        &self,
+        potential: &RegionalPotential,
+        basis: &ScfBasis,
+        points: &[[f64; 3]],
+        weights: &[f64],
+        relativity: ScfRelativity,
+    ) -> Result<CheckpointBandSolution, MaterialKernelError> {
+        if points.is_empty() {
+            return Err(MaterialKernelError::EmptyKPointSet);
+        }
+        if points.len() != weights.len()
+            || weights
+                .iter()
+                .any(|weight| !weight.is_finite() || *weight <= 0.0)
+            || (weights.iter().sum::<f64>() - 1.0).abs() > 1.0e-12
+        {
+            return Err(MaterialKernelError::InvalidKPointWeights);
+        }
         if relativity == ScfRelativity::SpinorFirstVariation {
-            return self.solve_spinor_points(potential, basis, points);
+            return self.solve_spinor_points(potential, basis, points, weights);
         }
         self.require_collinear_route(potential)?;
         let site_inputs = self.scalar_site_inputs(potential, basis)?;
         let interstitial = collinear_interstitial_potential(potential)?;
-        let weight = 1.0 / points.len() as f64;
         let mut solved_points = Vec::with_capacity(points.len());
         let mut states = Vec::new();
 
-        for &k in points {
+        for (&k, &weight) in points.iter().zip(weights) {
             let envelope = self.plane_wave_envelope(k, basis.plane_wave_cutoff)?;
             let bases = build_collinear_scalar_iteration_bases(
                 &envelope,
@@ -475,6 +660,10 @@ impl MaterialKernel {
         Ok(CheckpointBandSolution {
             points: solved_points,
             states,
+            reduction: None,
+            density_layout: None,
+            symmetry_transforms: Vec::new(),
+            spacegroup_number: None,
         })
     }
 
@@ -483,13 +672,13 @@ impl MaterialKernel {
         potential: &RegionalPotential,
         basis: &ScfBasis,
         points: &[[f64; 3]],
+        weights: &[f64],
     ) -> Result<CheckpointBandSolution, MaterialKernelError> {
         let site_inputs = self.spinor_site_inputs(potential, basis)?;
         let interstitial = potential.to_lapw_interstitial()?;
-        let weight = 1.0 / points.len() as f64;
         let mut solved_points = Vec::with_capacity(points.len());
         let mut states = Vec::new();
-        for &k in points {
+        for (&k, &weight) in points.iter().zip(weights) {
             let envelope = self.plane_wave_envelope(k, basis.plane_wave_cutoff)?;
             let spinor_basis =
                 build_spinor_iteration_basis(&envelope, &self.geometry, &site_inputs)?;
@@ -523,6 +712,10 @@ impl MaterialKernel {
         Ok(CheckpointBandSolution {
             points: solved_points,
             states,
+            reduction: None,
+            density_layout: None,
+            symmetry_transforms: Vec::new(),
+            spacegroup_number: None,
         })
     }
 
@@ -1024,7 +1217,10 @@ impl MaterialKernel {
                 actual: occupations.len(),
             });
         }
-        let density_layout = self.density_layout(&bands.points)?;
+        let density_layout = match &bands.density_layout {
+            Some(layout) => layout.clone(),
+            None => self.density_layout(&bands.points)?,
+        };
         match &bands.points[0].solution {
             CheckpointKPointSolution::Collinear { bases, .. } => {
                 let up_points = bands
@@ -1215,10 +1411,21 @@ impl ScfPhysics for MaterialKernel {
     type BandSolution = CheckpointBandSolution;
 
     fn initial_density(&mut self, config: &ScfConfig) -> Result<RegionalDensity, Self::Error> {
-        if let Some(density) = &self.restart_density {
-            return Ok(density.clone());
+        if let Some(density) = self.restart_density.clone() {
+            if let Some((_, transforms, _)) = self.reduced_sampling(config.k_mesh)? {
+                if config.relativity != ScfRelativity::Scalar {
+                    return Err(MaterialKernelError::SymmetryReductionRequiresScalarNonmagnetic);
+                }
+                self.require_second_variation_route(&self.frozen_potential)?;
+                self.require_symmetry_equivalent_config(config, &transforms)?;
+                return self.project_scalar_density(&density, &transforms);
+            }
+            return Ok(density);
         }
         let meshes = self.channel_meshes(&config.basis)?;
+        if let Some((_, transforms, _)) = self.reduced_sampling(config.k_mesh)? {
+            self.require_symmetry_equivalent_config(config, &transforms)?;
+        }
         let initial_extended = build_extended_checkpoint_core_potentials(
             &self.frozen_potential,
             &self.geometry,
@@ -1235,17 +1442,12 @@ impl ScfPhysics for MaterialKernel {
             potential: self.frozen_potential.clone(),
             basis,
         };
-        let points = regular_k_points(config.k_mesh)?;
         let (bands, occupations) = {
             let mut passes = 0;
             loop {
                 passes += 1;
-                let bands = self.solve_points(
-                    &one_particle.potential,
-                    &one_particle.basis,
-                    &points,
-                    config.relativity,
-                )?;
+                let bands =
+                    self.solve_regular_bands(0, &one_particle, config.k_mesh, config.relativity)?;
                 let occupation = solve_initial_occupations(&bands.states, config)?;
                 match self.refine_spectral_basis(
                     &config.basis,
@@ -1285,6 +1487,9 @@ impl ScfPhysics for MaterialKernel {
                 )?;
                 density.add_scaled(1.0, &contribution.contribution.density)?;
             }
+        }
+        if !bands.symmetry_transforms.is_empty() {
+            density = self.project_scalar_density(&density, &bands.symmetry_transforms)?;
         }
         Ok(density)
     }
@@ -1368,16 +1573,90 @@ impl ScfPhysics for MaterialKernel {
         k_mesh: ScfKMesh,
         relativity: ScfRelativity,
     ) -> Result<Self::BandSolution, Self::Error> {
-        self.solve_points(
-            &one_particle.potential,
+        let Some((reduction, transforms, spacegroup_number)) = self.reduced_sampling(k_mesh)?
+        else {
+            return self.solve_points(
+                &one_particle.potential,
+                &one_particle.basis,
+                &regular_k_points(k_mesh)?,
+                relativity,
+            );
+        };
+        if relativity != ScfRelativity::Scalar {
+            return Err(MaterialKernelError::SymmetryReductionRequiresScalarNonmagnetic);
+        }
+        self.require_second_variation_route(&one_particle.potential)?;
+        let potential = self.symmetry_projected_potential(&one_particle.potential, &transforms)?;
+        let points = reduction
+            .irreducible_points
+            .iter()
+            .map(|point| point.fractional)
+            .collect::<Vec<_>>();
+        let weights = reduction
+            .irreducible_points
+            .iter()
+            .map(|point| point.weight)
+            .collect::<Vec<_>>();
+        let mut bands = self.solve_points_with_weights(
+            &potential,
             &one_particle.basis,
-            &regular_k_points(k_mesh)?,
+            &points,
+            &weights,
             relativity,
-        )
+        )?;
+        bands.density_layout = Some(production_density_layout(
+            self.reciprocal,
+            ScfKMesh {
+                reduction: ScfKReduction::Full,
+                ..k_mesh
+            },
+            one_particle.basis.plane_wave_cutoff,
+        )?);
+        bands.reduction = Some(reduction);
+        bands.symmetry_transforms = transforms;
+        bands.spacegroup_number = spacegroup_number;
+        Ok(bands)
     }
 
     fn band_states<'a>(&self, bands: &'a Self::BandSolution) -> &'a [BandState] {
         &bands.states
+    }
+
+    fn k_sampling_provenance(
+        &self,
+        bands: &Self::BandSolution,
+        mesh: ScfKMesh,
+    ) -> ScfKSamplingProvenance {
+        let Some(reduction) = &bands.reduction else {
+            return ScfKSamplingProvenance::Full {
+                divisions: mesh.divisions,
+                shift: mesh.shift,
+                point_count: mesh.divisions.into_iter().product(),
+            };
+        };
+        let ScfKReduction::Symmetry {
+            symprec,
+            include_time_reversal,
+        } = mesh.reduction
+        else {
+            unreachable!("a reduced band solution requires symmetry sampling")
+        };
+        ScfKSamplingProvenance::SymmetryReduced {
+            divisions: mesh.divisions,
+            shift: mesh.shift,
+            symprec,
+            include_time_reversal,
+            spacegroup_number: bands.spacegroup_number,
+            full_point_count: reduction.full_points.len(),
+            irreducible_point_count: reduction.irreducible_points.len(),
+            multiplicities: reduction
+                .irreducible_points
+                .iter()
+                .map(|point| point.multiplicity)
+                .collect(),
+            operation_count: bands.symmetry_transforms.len(),
+            symmetry_provenance: "moyo".to_owned(),
+        }
     }
 
     fn refine_one_particle(
@@ -1408,6 +1687,19 @@ impl ScfPhysics for MaterialKernel {
         occupations: &[f64],
     ) -> Result<RegionalDensity, Self::Error> {
         self.synthesize(bands, occupations)
+    }
+
+    fn project_output_density(
+        &mut self,
+        _iteration: usize,
+        bands: &Self::BandSolution,
+        density: RegionalDensity,
+    ) -> Result<RegionalDensity, Self::Error> {
+        if bands.symmetry_transforms.is_empty() {
+            Ok(density)
+        } else {
+            self.project_scalar_density(&density, &bands.symmetry_transforms)
+        }
     }
 
     fn energy_terms(
@@ -1850,6 +2142,15 @@ fn squared_norm(vector: [f64; 3]) -> f64 {
     vector.into_iter().map(|value| value * value).sum()
 }
 
+fn equivalent_channel_recipe(source: &ScfChannelRecipe, target: &ScfChannelRecipe) -> bool {
+    source.identity == target.identity
+        && source.treatment == target.treatment
+        && source.derivative_order == target.derivative_order
+        && source.generator == target.generator
+        && source.seed == target.seed
+        && source.provenance == target.provenance
+}
+
 /// Checkpoint conversion or concrete DFT-kernel failure.
 #[derive(Debug, Error)]
 pub enum MaterialKernelError {
@@ -1897,6 +2198,12 @@ pub enum MaterialKernelError {
     CorePotential(#[from] CorePotentialBuildError),
     #[error(transparent)]
     CoreStation(#[from] CoreStationError),
+    #[error(transparent)]
+    SymmetryDetection(#[from] MoyoDetectionError),
+    #[error(transparent)]
+    KMeshReduction(#[from] KMeshReductionError),
+    #[error(transparent)]
+    SymmetryTransform(#[from] SymmetryTransformError),
     #[error("material-kernel {component} has {actual} sites, expected {expected}")]
     TopologySiteCount {
         component: &'static str,
@@ -2029,10 +2336,26 @@ pub enum MaterialKernelError {
     EmptyPlaneWaveBasis { k: [f64; 3], cutoff: InverseBohr },
     #[error("regular k-point set is empty")]
     EmptyKPointSet,
+    #[error("k-point weights must be finite, positive, match the points, and sum to one")]
+    InvalidKPointWeights,
     #[error("regular k-point count overflows usize")]
     KPointCountOverflow,
     #[error("second variation requires a nonmagnetic scalar checkpoint and potential")]
     SecondVariationRequiresNonmagneticScalar,
+    #[error("symmetry-reduced SCF currently requires the scalar nonmagnetic route")]
+    SymmetryReductionRequiresScalarNonmagnetic,
+    #[error("symmetry maps site {source_site:?} to {target_site:?} with incompatible radial data")]
+    SymmetryEquivalentSiteMismatch {
+        source_site: String,
+        target_site: String,
+    },
+    #[error(
+        "symmetry maps site {source_site:?} to {target_site:?} with incompatible channel/core recipes"
+    )]
+    SymmetryEquivalentRecipeMismatch {
+        source_site: String,
+        target_site: String,
+    },
     #[error(
         "second-variation window starts at {start}; runtime requires start=0 so occupied lower scalar bands are not dropped"
     )]

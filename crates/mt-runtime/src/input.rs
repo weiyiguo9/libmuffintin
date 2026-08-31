@@ -98,6 +98,8 @@ pub enum Task {
         source: Option<String>,
         electron_count: f64,
         k_mesh: KMesh,
+        #[serde(default)]
+        symmetry: Symmetry,
         basis: Basis,
         occupations: Occupations,
         xc: ExchangeCorrelation,
@@ -143,6 +145,7 @@ impl Task {
             Self::DftScf {
                 electron_count,
                 k_mesh,
+                symmetry,
                 basis,
                 occupations,
                 mixing,
@@ -152,6 +155,7 @@ impl Task {
             } => {
                 positive(format!("{base}.electron-count"), *electron_count)?;
                 k_mesh.validate(&format!("{base}.k-mesh"))?;
+                symmetry.validate(&format!("{base}.symmetry"))?;
                 basis.validate(&format!("{base}.basis"))?;
                 occupations.validate(&format!("{base}.occupations"))?;
                 mixing.validate(&format!("{base}.mixing"))?;
@@ -224,6 +228,45 @@ impl fmt::Display for TaskKind {
 pub struct KMesh {
     pub mesh: [u32; 3],
     pub shift: [f64; 3],
+}
+
+/// Optional crystal-symmetry reduction of an SCF regular k mesh.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Symmetry {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_symprec")]
+    pub symprec: f64,
+    #[serde(default = "default_true")]
+    pub include_time_reversal: bool,
+}
+
+impl Default for Symmetry {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            symprec: default_symprec(),
+            include_time_reversal: true,
+        }
+    }
+}
+
+impl Symmetry {
+    fn validate(&self, path: &str) -> Result<(), InputValidationError> {
+        if self.enabled {
+            positive(format!("{path}.symprec"), self.symprec)?;
+        }
+        Ok(())
+    }
+}
+
+const fn default_symprec() -> f64 {
+    1.0e-5
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 impl KMesh {

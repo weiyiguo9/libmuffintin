@@ -45,6 +45,11 @@ electron-count = 14.0
 mesh = [8, 8, 8]
 shift = [0.5, 0.5, 0.5]
 
+[task.scf.symmetry]
+enabled = true
+symprec = 1.0e-5
+include-time-reversal = true
+
 [task.scf.basis]
 l-max = 8
 energy-generator = "atomic"
@@ -292,4 +297,4 @@ A bands task consumes an earlier `ScfState` and solves its frozen potential on t
 
 The implementation has focused gates for weighted occupations, Gaussian and logistic tails, scalar/4c radial identities, local orbitals and HDLOs labeled by signed $\kappa$, all seven radial-energy generators, band-center brackets and diagnostics, degeneracy averaging over signed $\kappa$, physical nonorthogonal `band-cog` projection, same-iteration spectral refinement, bitwise frozen anchors, recipe merge priority and editing, automatic rLO injection/removal, V1/V2 migration failure, V3 round-trip, plane-wave and sphere density synthesis, core $P^2+Q^2$ and spill, Weinert electronic and nuclear potentials, electrostatic boundary matching, LDA/PW92 free-atom convergence, periodic-image superposition with nonspherical muffin-tin projection, finite-layout charge closure, production-potential restart materialization, LDA/PBE functional derivatives, both noncollinear XC reductions, spin-rotation covariance, transverse Pauli blocks, four-component mixing, Checkpoint V1-to-V2 normalization and restart, SCF ordering and source reuse, scalar and SOC eigensolutions, and tetrahedron normalization. The unified CLI also executes a minimal one-site authored checkpoint through the runtime shell and delegated `MaterialKernel`; the atomic-checkpoint generator remains a library generator rather than another CLI input route.
 
-These gates close the DFT implementation contract and the orbital-configuration V2 extension at the library, TOML workflow, checkpoint/restart, and executable levels. They also close the public-library neutral atomic-start path and therefore the v0.2 implementation sequence. This closure does not claim a release tag, material acceptance, or cross-code validation. Si and SrVO3 scalar results, Pt or Au second-variation SOC, collinear and noncollinear magnetic fixtures, and a regular-mesh tetrahedron DOS still require frozen cross-code reference artifacts before the DFT route can be called cross-code accepted or production validated. Meta-GGA, hybrids, forces, SCF symmetry reduction, tetrahedron occupations, charged atomic starts, and magnetic moment initialization remain outside this contract.
+These gates close the DFT implementation contract and the orbital-configuration V2 extension at the library, TOML workflow, checkpoint/restart, and executable levels. They also close the public-library neutral atomic-start path and therefore the v0.2 implementation sequence. This closure does not claim a release tag, material acceptance, or cross-code validation. Si and SrVO3 scalar results, Pt or Au second-variation SOC, collinear and noncollinear magnetic fixtures, and a regular-mesh tetrahedron DOS still require frozen cross-code reference artifacts before the DFT route can be called cross-code accepted or production validated. Regular-mesh SCF symmetry reduction is implemented only for the scalar nonmagnetic route; it uses IBZ orbit weights, a full-mesh regional density layout, post-core symmetry projection, and restart provenance. Meta-GGA, hybrids, forces, SOC/noncollinear SCF symmetry reduction, tetrahedron occupations, charged atomic starts, and magnetic moment initialization remain outside this contract.

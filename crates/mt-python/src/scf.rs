@@ -555,6 +555,48 @@ impl ScfResult {
     fn total_energy(&self) -> f64 {
         self.inner.state.energy.total.get()
     }
+    fn k_sampling(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let dict = export_dict(py)?;
+        match &self.inner.state.k_sampling {
+            muffintin::ScfKSamplingProvenance::Full {
+                divisions,
+                shift,
+                point_count,
+            } => {
+                dict.set_item("kind", "full")?;
+                dict.set_item("divisions", divisions.to_vec())?;
+                dict.set_item("shift", shift.to_vec())?;
+                dict.set_item("full_point_count", *point_count)?;
+                dict.set_item("irreducible_point_count", *point_count)?;
+                dict.set_item("multiplicities", vec![1_usize; *point_count])?;
+            }
+            muffintin::ScfKSamplingProvenance::SymmetryReduced {
+                divisions,
+                shift,
+                symprec,
+                include_time_reversal,
+                spacegroup_number,
+                full_point_count,
+                irreducible_point_count,
+                multiplicities,
+                operation_count,
+                symmetry_provenance,
+            } => {
+                dict.set_item("kind", "symmetry-reduced")?;
+                dict.set_item("divisions", divisions.to_vec())?;
+                dict.set_item("shift", shift.to_vec())?;
+                dict.set_item("symprec_bohr", symprec.get())?;
+                dict.set_item("include_time_reversal", *include_time_reversal)?;
+                dict.set_item("spacegroup_number", *spacegroup_number)?;
+                dict.set_item("full_point_count", *full_point_count)?;
+                dict.set_item("irreducible_point_count", *irreducible_point_count)?;
+                dict.set_item("multiplicities", multiplicities)?;
+                dict.set_item("operation_count", *operation_count)?;
+                dict.set_item("symmetry_provenance", symmetry_provenance)?;
+            }
+        }
+        Ok(dict.unbind())
+    }
     fn energy_history<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
         PyArray1::from_vec(
             py,

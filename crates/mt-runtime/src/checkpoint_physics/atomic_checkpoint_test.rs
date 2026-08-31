@@ -73,6 +73,7 @@ fn neutral_atomic_start_uses_the_requested_regional_layout_and_restart_path() {
         k_mesh: ScfKMesh {
             divisions: [1, 1, 1],
             shift: [0.0; 3],
+            reduction: muffintin_dft::ScfKReduction::Full,
         },
         basis: ScfBasis {
             plane_wave_cutoff: InverseBohr(4.0),

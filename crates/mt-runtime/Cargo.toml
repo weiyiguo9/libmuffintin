@@ -24,6 +24,7 @@ libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-io = { path = "../mt-io" }
 libmuffintin-operators = { path = "../mt-operators" }
 libmuffintin-sphere = { path = "../mt-sphere" }
+libmuffintin-symmetry = { path = "../mt-symmetry", default-features = false }
 libmuffintin-tensor = { path = "../mt-tensor" }
 num-complex.workspace = true
 serde.workspace = true

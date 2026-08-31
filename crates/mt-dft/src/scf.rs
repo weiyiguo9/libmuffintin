@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use muffintin_core::{Hartree, InverseBohr, Kappa};
+use muffintin_core::{Bohr, Hartree, InverseBohr, Kappa};
 use thiserror::Error;
 
 use crate::soc::FirstVariationWindow;
@@ -26,6 +26,39 @@ static NEXT_SCF_LOOP_ID: AtomicU64 = AtomicU64::new(1);
 pub struct ScfKMesh {
     pub divisions: [usize; 3],
     pub shift: [f64; 3],
+    pub reduction: ScfKReduction,
+}
+
+/// Brillouin-zone sampling route for a regular SCF mesh.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ScfKReduction {
+    Full,
+    Symmetry {
+        symprec: Bohr,
+        include_time_reversal: bool,
+    },
+}
+
+/// Actual k-point sampling retained with a converged SCF state.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ScfKSamplingProvenance {
+    Full {
+        divisions: [usize; 3],
+        shift: [f64; 3],
+        point_count: usize,
+    },
+    SymmetryReduced {
+        divisions: [usize; 3],
+        shift: [f64; 3],
+        symprec: Bohr,
+        include_time_reversal: bool,
+        spacegroup_number: Option<i32>,
+        full_point_count: usize,
+        irreducible_point_count: usize,
+        multiplicities: Vec<usize>,
+        operation_count: usize,
+        symmetry_provenance: String,
+    },
 }
 
 /// LAPW basis controls that do not prescribe a concrete basis representation.
@@ -183,6 +216,11 @@ impl ScfConfig {
             if !shift.is_finite() {
                 return Err(ScfConfigError::NonFiniteKMeshShift { axis, shift });
             }
+        }
+        if let ScfKReduction::Symmetry { symprec, .. } = self.k_mesh.reduction
+            && (!symprec.get().is_finite() || symprec.get() <= 0.0)
+        {
+            return Err(ScfConfigError::InvalidSymmetryTolerance(symprec));
         }
         let plane_wave_cutoff = self.basis.plane_wave_cutoff.get();
         if !plane_wave_cutoff.is_finite() || plane_wave_cutoff <= 0.0 {
@@ -423,6 +461,7 @@ pub struct ScfState {
     pub chemical_potential: Hartree,
     pub energy: ScfEnergy,
     pub relativity: ScfRelativity,
+    pub k_sampling: ScfKSamplingProvenance,
     pub diagnostics: Vec<ScfIterationDiagnostic>,
 }
 
@@ -533,6 +572,18 @@ pub trait ScfPhysics {
 
     fn band_states<'a>(&self, bands: &'a Self::BandSolution) -> &'a [BandState];
 
+    fn k_sampling_provenance(
+        &self,
+        _bands: &Self::BandSolution,
+        mesh: ScfKMesh,
+    ) -> ScfKSamplingProvenance {
+        ScfKSamplingProvenance::Full {
+            divisions: mesh.divisions,
+            shift: mesh.shift,
+            point_count: mesh.divisions.into_iter().product(),
+        }
+    }
+
     /// Resolve generators that depend on the provisional spectrum in this outer iteration.
     ///
     /// Returning a replacement one-particle problem requests another band and
@@ -558,6 +609,17 @@ pub trait ScfPhysics {
         bands: &Self::BandSolution,
         occupations: &[f64],
     ) -> Result<RegionalDensity, Self::Error>;
+
+    /// Project the complete valence-plus-core output density into the sampling
+    /// symmetry subspace before energy evaluation and mixing.
+    fn project_output_density(
+        &mut self,
+        _iteration: usize,
+        _bands: &Self::BandSolution,
+        density: RegionalDensity,
+    ) -> Result<RegionalDensity, Self::Error> {
+        Ok(density)
+    }
 
     fn energy_terms(
         &mut self,
@@ -763,6 +825,7 @@ pub struct EnergyRecord {
     energy: ScfEnergy,
     density_rms: f64,
     energy_change: Option<Hartree>,
+    k_sampling: ScfKSamplingProvenance,
 }
 
 impl EnergyRecord {
@@ -1070,6 +1133,12 @@ impl ScfLoop {
                 source,
             })?;
         output_density.add_scaled(1.0, &occupied.core_density)?;
+        output_density = physics
+            .project_output_density(occupied.iteration, &occupied.bands, output_density)
+            .map_err(|source| ScfError::Kernel {
+                operation: "regional density symmetry projection",
+                source,
+            })?;
         self.phase = ScfLoopPhase::Energy;
         Ok(LapwDensityAssembly {
             loop_id: occupied.loop_id,
@@ -1091,6 +1160,7 @@ impl ScfLoop {
     ) -> Result<EnergyRecord, ScfError<P::Error>> {
         self.require_handle(density.loop_id, density.iteration, ScfLoopPhase::Energy)?;
         let materialized_basis = physics.retained_basis(&self.config.basis, &density.one_particle);
+        let k_sampling = physics.k_sampling_provenance(&density.bands, self.config.k_mesh);
         let terms = physics
             .energy_terms(ScfEnergyContext {
                 iteration: density.iteration,
@@ -1134,6 +1204,7 @@ impl ScfLoop {
             energy,
             density_rms,
             energy_change,
+            k_sampling,
         })
     }
 
@@ -1165,6 +1236,7 @@ impl ScfLoop {
                 chemical_potential: record.chemical_potential,
                 energy: record.energy,
                 relativity: self.config.relativity,
+                k_sampling: record.k_sampling,
                 diagnostics: self.diagnostics.clone(),
             }));
         }
@@ -1407,6 +1479,8 @@ pub enum ScfConfigError {
     ZeroKMeshDivision { axis: usize },
     #[error("SCF k-mesh shift on axis {axis} is not finite: {shift}")]
     NonFiniteKMeshShift { axis: usize, shift: f64 },
+    #[error("symmetry tolerance must be finite and positive, got {0}")]
+    InvalidSymmetryTolerance(Bohr),
     #[error("plane-wave cutoff must be finite and positive, got {0}")]
     InvalidPlaneWaveCutoff(InverseBohr),
     #[error("l_max must be positive")]
@@ -1969,6 +2043,7 @@ mod tests {
             k_mesh: ScfKMesh {
                 divisions: [2, 2, 2],
                 shift: [0.0; 3],
+                reduction: ScfKReduction::Full,
             },
             basis: ScfBasis {
                 plane_wave_cutoff: InverseBohr(4.0),

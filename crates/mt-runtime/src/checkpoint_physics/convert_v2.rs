@@ -11,6 +11,124 @@ pub fn checkpoint_v2_from_state(
     template: &CheckpointV2,
     state: &ScfState,
 ) -> Result<CheckpointV2, CheckpointPhysicsError> {
+    let mut meta = template.meta.clone();
+    meta.annotations
+        .retain(|key, _| !key.starts_with("scf.k_sampling."));
+    match &state.k_sampling {
+        ScfKSamplingProvenance::Full {
+            divisions,
+            shift,
+            point_count,
+        } => {
+            meta.annotations
+                .insert("scf.k_sampling.kind".to_owned(), "full".to_owned());
+            meta.annotations.insert(
+                "scf.k_sampling.divisions".to_owned(),
+                format!("{},{},{}", divisions[0], divisions[1], divisions[2]),
+            );
+            meta.annotations.insert(
+                "scf.k_sampling.shift".to_owned(),
+                format!("{},{},{}", shift[0], shift[1], shift[2]),
+            );
+            meta.annotations.insert(
+                "scf.k_sampling.full_point_count".to_owned(),
+                point_count.to_string(),
+            );
+        }
+        ScfKSamplingProvenance::SymmetryReduced {
+            divisions,
+            shift,
+            symprec,
+            include_time_reversal,
+            spacegroup_number,
+            full_point_count,
+            irreducible_point_count,
+            multiplicities,
+            operation_count,
+            symmetry_provenance,
+        } => {
+            meta.annotations.insert(
+                "scf.k_sampling.kind".to_owned(),
+                "symmetry-reduced".to_owned(),
+            );
+            meta.annotations.insert(
+                "scf.k_sampling.divisions".to_owned(),
+                format!("{},{},{}", divisions[0], divisions[1], divisions[2]),
+            );
+            meta.annotations.insert(
+                "scf.k_sampling.shift".to_owned(),
+                format!("{},{},{}", shift[0], shift[1], shift[2]),
+            );
+            meta.annotations.insert(
+                "scf.k_sampling.symprec_bohr".to_owned(),
+                symprec.get().to_string(),
+            );
+            meta.annotations.insert(
+                "scf.k_sampling.include_time_reversal".to_owned(),
+                include_time_reversal.to_string(),
+            );
+            if let Some(number) = spacegroup_number {
+                meta.annotations.insert(
+                    "scf.k_sampling.spacegroup_number".to_owned(),
+                    number.to_string(),
+                );
+            }
+            meta.annotations.insert(
+                "scf.k_sampling.full_point_count".to_owned(),
+                full_point_count.to_string(),
+            );
+            meta.annotations.insert(
+                "scf.k_sampling.irreducible_point_count".to_owned(),
+                irreducible_point_count.to_string(),
+            );
+            meta.annotations.insert(
+                "scf.k_sampling.multiplicities".to_owned(),
+                multiplicities
+                    .iter()
+                    .map(usize::to_string)
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
+            meta.annotations.insert(
+                "scf.k_sampling.operation_count".to_owned(),
+                operation_count.to_string(),
+            );
+            meta.annotations.insert(
+                "scf.k_sampling.symmetry_provenance".to_owned(),
+                symmetry_provenance.clone(),
+            );
+        }
+    }
+    checkpoint_v2_from_regional_fields(
+        template,
+        &state.density,
+        &state.potential,
+        Some(state.basis.plane_wave_cutoff.get()),
+        meta,
+    )
+}
+
+/// Build a restart checkpoint from method-neutral regional fields.
+pub fn checkpoint_v2_from_regional_state(
+    template: &CheckpointV2,
+    density: &RegionalDensity,
+    potential: &RegionalPotential,
+    annotations: BTreeMap<String, String>,
+) -> Result<CheckpointV2, CheckpointPhysicsError> {
+    let mut meta = template.meta.clone();
+    meta.annotations
+        .retain(|key, _| !key.starts_with("scf.k_sampling."));
+    meta.annotations.extend(annotations);
+    checkpoint_v2_from_regional_fields(template, density, potential, None, meta)
+}
+
+fn checkpoint_v2_from_regional_fields(
+    template: &CheckpointV2,
+    density: &RegionalDensity,
+    potential: &RegionalPotential,
+    plane_wave_cutoff: Option<f64>,
+    meta: muffintin_io::CheckpointMeta,
+) -> Result<CheckpointV2, CheckpointPhysicsError> {
     template.validate()?;
     let template_potential = match &template.initial {
         InitialV2::FrozenPotential { potential } | InitialV2::Restart { potential, .. } => {
@@ -18,35 +136,33 @@ pub fn checkpoint_v2_from_state(
         }
     };
     let mut potential_hints = template_potential.basis_hints;
-    potential_hints.plane_wave_cutoff = Some(state.basis.plane_wave_cutoff.get());
     let mut density_hints = match &template.initial {
         InitialV2::Restart { density, .. } => density.basis_hints,
         InitialV2::FrozenPotential { .. } => template_potential.basis_hints,
     };
-    density_hints.plane_wave_cutoff = Some(state.basis.plane_wave_cutoff.get());
+    if let Some(cutoff) = plane_wave_cutoff {
+        potential_hints.plane_wave_cutoff = Some(cutoff);
+        density_hints.plane_wave_cutoff = Some(cutoff);
+    }
     let angular_basis = template.meta.potential_convention.angular_basis;
     let density = DensityV2 {
         unit: FieldUnitV2::BohrMinus3,
         representation: FieldRepresentationV2::PeriodicExtension,
         angular_basis,
         basis_hints: density_hints,
-        n: regional_scalar_to_v2(
-            state.density.charge(),
-            &template.geometry.sites,
-            angular_basis,
-        )?,
+        n: regional_scalar_to_v2(density.charge(), &template.geometry.sites, angular_basis)?,
         mx: regional_scalar_to_v2(
-            &state.density.magnetization()[0],
+            &density.magnetization()[0],
             &template.geometry.sites,
             angular_basis,
         )?,
         my: regional_scalar_to_v2(
-            &state.density.magnetization()[1],
+            &density.magnetization()[1],
             &template.geometry.sites,
             angular_basis,
         )?,
         mz: regional_scalar_to_v2(
-            &state.density.magnetization()[2],
+            &density.magnetization()[2],
             &template.geometry.sites,
             angular_basis,
         )?,
@@ -56,29 +172,25 @@ pub fn checkpoint_v2_from_state(
         representation: FieldRepresentationV2::MaskedOperator,
         angular_basis,
         basis_hints: potential_hints,
-        v0: regional_scalar_to_v2(
-            state.potential.scalar(),
-            &template.geometry.sites,
-            angular_basis,
-        )?,
+        v0: regional_scalar_to_v2(potential.scalar(), &template.geometry.sites, angular_basis)?,
         bx: regional_scalar_to_v2(
-            &state.potential.magnetic()[0],
+            &potential.magnetic()[0],
             &template.geometry.sites,
             angular_basis,
         )?,
         by: regional_scalar_to_v2(
-            &state.potential.magnetic()[1],
+            &potential.magnetic()[1],
             &template.geometry.sites,
             angular_basis,
         )?,
         bz: regional_scalar_to_v2(
-            &state.potential.magnetic()[2],
+            &potential.magnetic()[2],
             &template.geometry.sites,
             angular_basis,
         )?,
     };
     let checkpoint = CheckpointV2::new(
-        template.meta.clone(),
+        meta,
         template.geometry.clone(),
         InitialV2::Restart { density, potential },
     );

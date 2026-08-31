@@ -2,13 +2,14 @@
 
 use muffintin_core::{
     ExponentialMesh, FourierFieldError, FourierLayout, HermitianFourierField, InterstitialGeometry,
-    MeshError, StepFunctionError,
+    MeshError, StepFunctionError, complex_spherical_harmonics, real_spherical_harmonics,
 };
 use muffintin_operators::lapw::{InterstitialPauliPotential, InterstitialPotential, LapwError};
-use muffintin_sphere::{SphereField, SphereFieldError};
+use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
+use muffintin_symmetry::CrystalSymmetryTransform;
 use num_complex::Complex64;
-use std::collections::BTreeMap;
-use std::f64::consts::TAU;
+use std::collections::{BTreeMap, BTreeSet};
+use std::f64::consts::{PI, TAU};
 use thiserror::Error;
 
 const REALITY_TOLERANCE: f64 = 1024.0 * f64::EPSILON;
@@ -257,6 +258,85 @@ impl RegionalScalarField {
         self.difference(other)?.residual_rms()
     }
 
+    /// Apply one active crystal operation to this physical scalar field.
+    ///
+    /// Interstitial coefficients use the input-cell affine operation, sites
+    /// follow the transform's explicit permutation, and muffin-tin channels
+    /// are rotated in their declared normalized-harmonic convention.  Time
+    /// reversal has no extra action on a physically real, time-even scalar.
+    pub fn transformed(&self, transform: &CrystalSymmetryTransform) -> Result<Self, RegionalError> {
+        self.validate_symmetry_transform(transform)?;
+        let operation = transform.operation();
+        let interstitial_coefficients = self
+            .interstitial
+            .layout()
+            .vectors()
+            .iter()
+            .map(|vector| {
+                let source = transpose_integer_action(operation.rotation, vector.index)?;
+                let coefficient = self.interstitial.coefficient(source).ok_or(
+                    RegionalError::SymmetryFourierLayoutNotClosed {
+                        target: vector.index,
+                        source_g: source,
+                    },
+                )?;
+                let phase = -TAU
+                    * vector
+                        .index
+                        .iter()
+                        .zip(operation.translation)
+                        .map(|(&index, translation)| f64::from(index) * translation)
+                        .sum::<f64>();
+                Ok((
+                    vector.index,
+                    coefficient * Complex64::from_polar(1.0, phase),
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>, RegionalError>>()?;
+        let interstitial = InterstitialField::new(
+            self.interstitial.layout().clone(),
+            interstitial_coefficients,
+        )?;
+
+        let mut muffin_tins = vec![None; self.muffin_tins.len()];
+        for (source, (&target, field)) in transform
+            .site_map()
+            .iter()
+            .zip(&self.muffin_tins)
+            .enumerate()
+        {
+            debug_assert!(muffin_tins[target].is_none(), "validated site permutation");
+            muffin_tins[target] = Some(rotate_muffin_tin(field, *transform.cartesian_rotation())?);
+            debug_assert!(source < self.muffin_tins.len());
+        }
+        Ok(Self {
+            geometry: self.geometry.clone(),
+            muffin_tins: muffin_tins
+                .into_iter()
+                .map(|field| field.expect("validated site permutation is complete"))
+                .collect(),
+            interstitial,
+        })
+    }
+
+    /// Project this scalar field onto the invariant subspace of `transforms`.
+    pub fn symmetry_average(
+        &self,
+        transforms: &[CrystalSymmetryTransform],
+    ) -> Result<Self, RegionalError> {
+        let (first, rest) = transforms
+            .split_first()
+            .ok_or(RegionalError::EmptySymmetryGroup)?;
+        let first = self.transformed(first)?;
+        let mut average = first.zero_like();
+        let scale = 1.0 / transforms.len() as f64;
+        average.add_scaled(scale, &first)?;
+        for transform in rest {
+            average.add_scaled(scale, &self.transformed(transform)?)?;
+        }
+        Ok(average)
+    }
+
     fn require_same_layout(&self, other: &Self) -> Result<(), RegionalError> {
         if self.geometry != other.geometry {
             return Err(RegionalError::InterstitialGeometryMismatch);
@@ -269,6 +349,37 @@ impl RegionalScalarField {
         }
         if self.interstitial.layout() != other.interstitial.layout() {
             return Err(RegionalError::Fourier(FourierFieldError::LayoutMismatch));
+        }
+        Ok(())
+    }
+
+    fn validate_symmetry_transform(
+        &self,
+        transform: &CrystalSymmetryTransform,
+    ) -> Result<(), RegionalError> {
+        if transform.site_map().len() != self.muffin_tins.len() {
+            return Err(RegionalError::SymmetrySiteCountMismatch {
+                transform: transform.site_map().len(),
+                field: self.muffin_tins.len(),
+            });
+        }
+        validate_direct_reciprocal_duality(transform.direct_lattice(), self.interstitial.layout())?;
+        let tolerance = transform.tolerance().get();
+        for (source, &target) in transform.site_map().iter().enumerate() {
+            let source_sphere = self.geometry.spheres()[source];
+            let target_sphere = self.geometry.spheres()[target];
+            if (source_sphere.radius.get() - target_sphere.radius.get()).abs() > tolerance {
+                return Err(RegionalError::SymmetryMuffinTinRadiusMismatch {
+                    source_site: source,
+                    target,
+                });
+            }
+            if self.muffin_tins[source].mesh != self.muffin_tins[target].mesh {
+                return Err(RegionalError::SymmetryMuffinTinMeshMismatch {
+                    source_site: source,
+                    target,
+                });
+            }
         }
         Ok(())
     }
@@ -371,6 +482,60 @@ impl RegionalDensity {
         self.difference(other)?.residual_rms()
     }
 
+    /// Apply one crystal operation to charge and axial magnetization.
+    ///
+    /// Charge is time-even.  Magnetization transforms as an axial Cartesian
+    /// vector, with an additional sign under an antiunitary operation.
+    pub fn transformed(&self, transform: &CrystalSymmetryTransform) -> Result<Self, RegionalError> {
+        let charge = self.charge.transformed(transform)?;
+        let spatial = self
+            .magnetization
+            .each_ref()
+            .map(|component| component.transformed(transform))
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
+        let rotation = transform.cartesian_rotation();
+        let determinant = determinant(*rotation);
+        let time_reversal = if transform.operation().time_reversal {
+            -1.0
+        } else {
+            1.0
+        };
+        let axial_sign = determinant * time_reversal;
+        let mut magnetization = Vec::with_capacity(3);
+        for row in rotation {
+            let mut component = spatial[0].zero_like();
+            for (weight, source) in row.iter().zip(&spatial) {
+                component.add_scaled(axial_sign * weight, source)?;
+            }
+            magnetization.push(component);
+        }
+        Self::new(
+            charge,
+            magnetization
+                .try_into()
+                .expect("three Cartesian rows produce three components"),
+        )
+    }
+
+    /// Project charge and magnetization onto the crystal-symmetry invariants.
+    pub fn symmetry_average(
+        &self,
+        transforms: &[CrystalSymmetryTransform],
+    ) -> Result<Self, RegionalError> {
+        let (first, rest) = transforms
+            .split_first()
+            .ok_or(RegionalError::EmptySymmetryGroup)?;
+        let first = self.transformed(first)?;
+        let mut average = first.zero_like();
+        let scale = 1.0 / transforms.len() as f64;
+        average.add_scaled(scale, &first)?;
+        for transform in rest {
+            average.add_scaled(scale, &self.transformed(transform)?)?;
+        }
+        Ok(average)
+    }
+
     fn require_same_layout(&self, other: &Self) -> Result<(), RegionalError> {
         self.charge.require_same_layout(&other.charge)?;
         for (left, right) in self.magnetization.iter().zip(&other.magnetization) {
@@ -430,6 +595,56 @@ impl RegionalPotential {
         Ok(difference)
     }
 
+    /// Apply one crystal operation to the scalar and axial magnetic fields.
+    pub fn transformed(&self, transform: &CrystalSymmetryTransform) -> Result<Self, RegionalError> {
+        let scalar = self.scalar.transformed(transform)?;
+        let spatial = self
+            .magnetic
+            .each_ref()
+            .map(|component| component.transformed(transform))
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
+        let rotation = transform.cartesian_rotation();
+        let time_reversal = if transform.operation().time_reversal {
+            -1.0
+        } else {
+            1.0
+        };
+        let axial_sign = determinant(*rotation) * time_reversal;
+        let mut magnetic = Vec::with_capacity(3);
+        for row in rotation {
+            let mut component = spatial[0].zero_like();
+            for (weight, source) in row.iter().zip(&spatial) {
+                component.add_scaled(axial_sign * weight, source)?;
+            }
+            magnetic.push(component);
+        }
+        Self::new(
+            scalar,
+            magnetic
+                .try_into()
+                .expect("three Cartesian rows produce three components"),
+        )
+    }
+
+    /// Project scalar and magnetic fields onto the crystal-symmetry invariants.
+    pub fn symmetry_average(
+        &self,
+        transforms: &[CrystalSymmetryTransform],
+    ) -> Result<Self, RegionalError> {
+        let (first, rest) = transforms
+            .split_first()
+            .ok_or(RegionalError::EmptySymmetryGroup)?;
+        let first = self.transformed(first)?;
+        let mut average = first.zero_like();
+        let scale = 1.0 / transforms.len() as f64;
+        average.add_scaled(scale, &first)?;
+        for transform in rest {
+            average.add_scaled(scale, &self.transformed(transform)?)?;
+        }
+        Ok(average)
+    }
+
     fn require_same_layout(&self, other: &Self) -> Result<(), RegionalError> {
         self.scalar.require_same_layout(&other.scalar)?;
         for (left, right) in self.magnetic.iter().zip(&other.magnetic) {
@@ -447,6 +662,195 @@ impl RegionalPotential {
             InterstitialPotential::try_from(self.magnetic[2].interstitial())?,
         ))
     }
+}
+
+fn transpose_integer_action(
+    rotation: [[i32; 3]; 3],
+    target: [i32; 3],
+) -> Result<[i32; 3], RegionalError> {
+    let component = |row| {
+        let value = (0..3).try_fold(0_i64, |sum, column| {
+            sum.checked_add(i64::from(rotation[column][row]) * i64::from(target[column]))
+        });
+        value
+            .and_then(|value| i32::try_from(value).ok())
+            .ok_or(RegionalError::SymmetryReciprocalIndexOverflow { target })
+    };
+    Ok([component(0)?, component(1)?, component(2)?])
+}
+
+fn rotate_muffin_tin(
+    source: &MuffinTinField,
+    rotation: [[f64; 3]; 3],
+) -> Result<MuffinTinField, RegionalError> {
+    let angular_momenta = source
+        .field
+        .channels()
+        .map(|(channel, _)| channel.l)
+        .collect::<BTreeSet<_>>();
+    let sample_count = source.field.sample_count().unwrap_or(0);
+    let mut channels = Vec::new();
+    for l in angular_momenta {
+        let dimension = usize::try_from(2 * l + 1).expect("u32 angular dimension fits usize");
+        let projection = harmonic_rotation(source.field.convention(), l, rotation);
+        for target_offset in 0..dimension {
+            let target_m = i32::try_from(target_offset).expect("angular offset fits i32")
+                - i32::try_from(l).expect("l fits i32");
+            let mut values = vec![Complex64::new(0.0, 0.0); sample_count];
+            for source_offset in 0..dimension {
+                let source_m = i32::try_from(source_offset).expect("angular offset fits i32")
+                    - i32::try_from(l).expect("l fits i32");
+                let Some(source_values) = source.field.channel(l, source_m) else {
+                    continue;
+                };
+                let weight = projection[target_offset * dimension + source_offset];
+                for (value, &source_value) in values.iter_mut().zip(source_values) {
+                    *value += weight * source_value;
+                }
+            }
+            channels.push(((l, target_m), values));
+        }
+    }
+    MuffinTinField::new(
+        source.mesh.clone(),
+        SphereField::new(source.field.convention(), channels)?,
+    )
+}
+
+/// Matrix of the active scalar action
+/// `Y_lm(R^-1 n) = sum_M D[M,m] Y_lM(n)`.
+fn harmonic_rotation(
+    convention: HarmonicConvention,
+    l: u32,
+    rotation: [[f64; 3]; 3],
+) -> Vec<Complex64> {
+    let dimension = usize::try_from(2 * l + 1).expect("u32 angular dimension fits usize");
+    let theta_order = usize::try_from(l + 1).expect("u32 quadrature order fits usize");
+    let phi_order = usize::try_from(4 * l + 2).expect("u32 quadrature order fits usize");
+    let phi_weight = TAU / phi_order as f64;
+    let mut matrix = vec![Complex64::new(0.0, 0.0); dimension * dimension];
+    for (z, z_weight) in gauss_legendre(theta_order) {
+        let radial = (1.0 - z * z).max(0.0).sqrt();
+        for phi_index in 0..phi_order {
+            let phi = TAU * (phi_index as f64 + 0.5) / phi_order as f64;
+            let target_direction = [radial * phi.cos(), radial * phi.sin(), z];
+            let source_direction: [f64; 3] = std::array::from_fn(|axis| {
+                (0..3)
+                    .map(|row| rotation[row][axis] * target_direction[row])
+                    .sum()
+            });
+            match convention {
+                HarmonicConvention::Complex => {
+                    let target = complex_spherical_harmonics(l, target_direction);
+                    let source = complex_spherical_harmonics(l, source_direction);
+                    let offset = usize::try_from(l * l).expect("u32 harmonic offset fits usize");
+                    for target_index in 0..dimension {
+                        for source_index in 0..dimension {
+                            matrix[target_index * dimension + source_index] += z_weight
+                                * phi_weight
+                                * target[offset + target_index].conj()
+                                * source[offset + source_index];
+                        }
+                    }
+                }
+                HarmonicConvention::Real => {
+                    let target = real_spherical_harmonics(l, target_direction);
+                    let source = real_spherical_harmonics(l, source_direction);
+                    let offset = usize::try_from(l * l).expect("u32 harmonic offset fits usize");
+                    for target_index in 0..dimension {
+                        for source_index in 0..dimension {
+                            matrix[target_index * dimension + source_index].re += z_weight
+                                * phi_weight
+                                * target[offset + target_index]
+                                * source[offset + source_index];
+                        }
+                    }
+                }
+            }
+        }
+    }
+    matrix
+}
+
+fn gauss_legendre(order: usize) -> Vec<(f64, f64)> {
+    let mut result = vec![(0.0, 0.0); order];
+    let half = order.div_ceil(2);
+    for index in 0..half {
+        let mut node = (PI * (index as f64 + 0.75) / (order as f64 + 0.5)).cos();
+        let node = loop {
+            let (polynomial, previous) = legendre_pair(order, node);
+            let derivative = order as f64 * (node * polynomial - previous) / (node * node - 1.0);
+            let next = node - polynomial / derivative;
+            if (next - node).abs() <= 8.0 * f64::EPSILON {
+                break next;
+            }
+            node = next;
+        };
+        let (_, previous) = legendre_pair(order, node);
+        let polynomial = legendre_pair(order, node).0;
+        let derivative = order as f64 * (node * polynomial - previous) / (node * node - 1.0);
+        let weight = 2.0 / ((1.0 - node * node) * derivative * derivative);
+        result[index] = (node, weight);
+        result[order - 1 - index] = (-node, weight);
+    }
+    result
+}
+
+fn legendre_pair(order: usize, x: f64) -> (f64, f64) {
+    let mut previous = 1.0;
+    if order == 0 {
+        return (previous, 0.0);
+    }
+    let mut current = x;
+    for degree in 2..=order {
+        let next = ((2 * degree - 1) as f64 * x * current - (degree - 1) as f64 * previous)
+            / degree as f64;
+        previous = current;
+        current = next;
+    }
+    (current, previous)
+}
+
+fn validate_direct_reciprocal_duality(
+    direct: &[[muffintin_core::Bohr; 3]; 3],
+    layout: &FourierLayout,
+) -> Result<(), RegionalError> {
+    let reciprocal = layout.reciprocal().basis();
+    let scale = direct
+        .iter()
+        .flatten()
+        .map(|value| value.get().abs())
+        .fold(1.0_f64, f64::max)
+        * reciprocal
+            .iter()
+            .flatten()
+            .map(|value| value.get().abs())
+            .fold(1.0_f64, f64::max);
+    let tolerance = 2048.0 * f64::EPSILON * scale;
+    for (direct_index, direct_vector) in direct.iter().enumerate() {
+        for (reciprocal_index, reciprocal_vector) in reciprocal.iter().enumerate() {
+            let dot = direct_vector
+                .iter()
+                .zip(reciprocal_vector)
+                .map(|(left, right)| left.get() * right.get())
+                .sum::<f64>();
+            let expected = if direct_index == reciprocal_index {
+                TAU
+            } else {
+                0.0
+            };
+            if (dot - expected).abs() > tolerance {
+                return Err(RegionalError::SymmetryLatticeMismatch);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn determinant(matrix: [[f64; 3]; 3]) -> f64 {
+    matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1])
+        - matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0])
+        + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0])
 }
 
 fn muffin_tin_inner_product(
@@ -579,6 +983,25 @@ pub enum RegionalError {
     NonFiniteMetric,
     #[error("physical squared norm is negative: {0}")]
     NegativeNorm(f64),
+    #[error("cannot average an empty symmetry-operation set")]
+    EmptySymmetryGroup,
+    #[error("symmetry transform has {transform} sites but regional field has {field}")]
+    SymmetrySiteCountMismatch { transform: usize, field: usize },
+    #[error("symmetry direct lattice is not dual to the field reciprocal lattice")]
+    SymmetryLatticeMismatch,
+    #[error("symmetry maps muffin tin {source_site} to {target} with a different radius")]
+    SymmetryMuffinTinRadiusMismatch { source_site: usize, target: usize },
+    #[error("symmetry maps muffin tin {source_site} to {target} with a different radial mesh")]
+    SymmetryMuffinTinMeshMismatch { source_site: usize, target: usize },
+    #[error("symmetry reciprocal action overflows i32 at target G={target:?}")]
+    SymmetryReciprocalIndexOverflow { target: [i32; 3] },
+    #[error(
+        "Fourier layout is not symmetry closed: target G={target:?} needs source G={source_g:?}"
+    )]
+    SymmetryFourierLayoutNotClosed {
+        target: [i32; 3],
+        source_g: [i32; 3],
+    },
     #[error(transparent)]
     Fourier(#[from] FourierFieldError),
     #[error(transparent)]
@@ -596,6 +1019,7 @@ mod tests {
     use super::*;
     use muffintin_core::{Bohr, GVector, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3};
     use muffintin_sphere::HarmonicConvention;
+    use muffintin_symmetry::{CrystalCell, SymmetryOperation};
 
     fn reciprocal() -> ReciprocalLattice {
         ReciprocalLattice::new([
@@ -636,6 +1060,14 @@ mod tests {
 
     fn geometry(spheres: Vec<Sphere>) -> InterstitialGeometry {
         InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), spheres).unwrap()
+    }
+
+    fn direct_lattice() -> [[Bohr; 3]; 3] {
+        [
+            [Bohr(TAU), Bohr(0.0), Bohr(0.0)],
+            [Bohr(0.0), Bohr(TAU), Bohr(0.0)],
+            [Bohr(0.0), Bohr(0.0), Bohr(TAU)],
+        ]
     }
 
     fn regional_scalar(
@@ -857,5 +1289,182 @@ mod tests {
         assert_eq!(converted.v0.coefficient([0; 3]), Complex64::new(0.25, 0.0));
         assert_eq!(converted.bx.coefficient([0; 3]), Complex64::new(-0.5, 0.0));
         assert_eq!(converted.by.coefficient([0; 3]), Complex64::new(0.75, 0.0));
+    }
+
+    #[test]
+    fn crystal_transform_rotates_fourier_and_complex_muffin_tin_channels() {
+        let operation = SymmetryOperation {
+            rotation: [[0, -1, 0], [1, 0, 0], [0, 0, 1]],
+            translation: [0.25, 0.25, 0.0],
+            time_reversal: false,
+        };
+        let cell = CrystalCell {
+            lattice: direct_lattice(),
+            positions: vec![[0.0, 0.25, 0.0]],
+            atomic_numbers: vec![6],
+        };
+        let transform =
+            CrystalSymmetryTransform::from_cell(operation, &cell, Bohr(1.0e-12)).unwrap();
+        assert_eq!(transform.site_map(), &[0]);
+
+        let mesh = ExponentialMesh::new(Bohr(0.01), 0.1, 7).unwrap();
+        let radial = vec![Complex64::new(1.0, 0.0); mesh.len()];
+        let muffin_tin = MuffinTinField::new(
+            mesh,
+            SphereField::new(
+                HarmonicConvention::Complex,
+                [
+                    ((1, -1), radial.iter().map(|value| -*value).collect()),
+                    ((1, 1), radial),
+                ],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let layout = layout(&[[-1, 0, 0], [0, -1, 0], [0; 3], [0, 1, 0], [1, 0, 0]]);
+        let x_coefficient = Complex64::new(2.0, 3.0);
+        let interstitial = interstitial(
+            layout,
+            [
+                ([-1, 0, 0], x_coefficient.conj()),
+                ([0, -1, 0], Complex64::new(0.0, 0.0)),
+                ([0; 3], Complex64::new(4.0, 0.0)),
+                ([0, 1, 0], Complex64::new(0.0, 0.0)),
+                ([1, 0, 0], x_coefficient),
+            ],
+        );
+        let sphere = Sphere {
+            center: [Bohr(0.0), Bohr(0.25 * TAU), Bohr(0.0)],
+            radius: Bohr(0.2),
+        };
+        let field =
+            RegionalScalarField::new(geometry(vec![sphere]), vec![muffin_tin], interstitial)
+                .unwrap();
+        let rotated = field.transformed(&transform).unwrap();
+
+        let expected_fourier = x_coefficient * Complex64::new(0.0, -1.0);
+        assert!(
+            (rotated.interstitial().coefficient([0, 1, 0]).unwrap() - expected_fourier).norm()
+                < 1.0e-13
+        );
+        let expected_m1 = Complex64::new(0.0, -1.0);
+        for &value in rotated.muffin_tins()[0].field().channel(1, 1).unwrap() {
+            assert!((value - expected_m1).norm() < 1.0e-13);
+        }
+        for &value in rotated.muffin_tins()[0].field().channel(1, -1).unwrap() {
+            assert!((value - expected_m1).norm() < 1.0e-13);
+        }
+    }
+
+    #[test]
+    fn site_permutation_enters_the_scalar_group_average() {
+        let cell = CrystalCell {
+            lattice: direct_lattice(),
+            positions: vec![[0.1, 0.0, 0.0], [0.4, 0.0, 0.0]],
+            atomic_numbers: vec![6, 6],
+        };
+        let identity = CrystalSymmetryTransform::from_cell(
+            SymmetryOperation {
+                rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                translation: [0.0; 3],
+                time_reversal: false,
+            },
+            &cell,
+            Bohr(1.0e-12),
+        )
+        .unwrap();
+        let inversion = CrystalSymmetryTransform::from_cell(
+            SymmetryOperation {
+                rotation: [[-1, 0, 0], [0, -1, 0], [0, 0, -1]],
+                translation: [0.5, 0.0, 0.0],
+                time_reversal: false,
+            },
+            &cell,
+            Bohr(1.0e-12),
+        )
+        .unwrap();
+        assert_eq!(inversion.site_map(), &[1, 0]);
+
+        let mesh = ExponentialMesh::new(Bohr(0.01), 0.1, 7).unwrap();
+        let muffin_tin = |value| {
+            MuffinTinField::new(
+                mesh.clone(),
+                SphereField::new(
+                    HarmonicConvention::Complex,
+                    [((0, 0), vec![Complex64::new(value, 0.0); mesh.len()])],
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        };
+        let spheres = cell
+            .positions
+            .iter()
+            .map(|position| Sphere {
+                center: [Bohr(position[0] * TAU), Bohr(0.0), Bohr(0.0)],
+                radius: Bohr(0.2),
+            })
+            .collect();
+        let field = RegionalScalarField::new(
+            geometry(spheres),
+            vec![muffin_tin(1.0), muffin_tin(2.0)],
+            interstitial(layout(&[[0; 3]]), [([0; 3], Complex64::new(0.0, 0.0))]),
+        )
+        .unwrap();
+        let average = field.symmetry_average(&[identity, inversion]).unwrap();
+        for muffin_tin in average.muffin_tins() {
+            for &value in muffin_tin.field().channel(0, 0).unwrap() {
+                assert!((value.re - 1.5).abs() < 1.0e-14);
+                assert!(value.im.abs() < 1.0e-14);
+            }
+        }
+    }
+
+    #[test]
+    fn antiunitary_identity_flips_axial_magnetization_only() {
+        let cell = CrystalCell {
+            lattice: direct_lattice(),
+            positions: Vec::new(),
+            atomic_numbers: Vec::new(),
+        };
+        let transform = CrystalSymmetryTransform::from_cell(
+            SymmetryOperation {
+                rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                translation: [0.0; 3],
+                time_reversal: true,
+            },
+            &cell,
+            Bohr(1.0e-12),
+        )
+        .unwrap();
+        let layout = layout(&[[0; 3]]);
+        let geometry = geometry(Vec::new());
+        let charge = g0_scalar(&geometry, &layout, 4.0);
+        let zero = charge.zero_like();
+        let density = RegionalDensity::new(
+            charge,
+            [g0_scalar(&geometry, &layout, 2.0), zero.clone(), zero],
+        )
+        .unwrap();
+        let transformed = density.transformed(&transform).unwrap();
+        assert_eq!(
+            transformed
+                .charge()
+                .interstitial()
+                .coefficient([0; 3])
+                .unwrap()
+                .re,
+            4.0
+        );
+        assert!(
+            (transformed.magnetization()[0]
+                .interstitial()
+                .coefficient([0; 3])
+                .unwrap()
+                .re
+                + 2.0)
+                .abs()
+                < 1.0e-14
+        );
     }
 }

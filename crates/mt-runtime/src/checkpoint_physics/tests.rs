@@ -1,10 +1,11 @@
 use super::*;
-use muffintin_core::Kappa;
+use muffintin_core::{InverseBohr, Kappa};
 use muffintin_dft::{
     BandPathPoint, BandPathRequest, FirstVariationWindow, LinearizationEnergyDiagnostic,
     NoncollinearXcRoute, ScfChannelRecipe, ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState,
-    ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations, ScfPhysics, ScfRelativity,
-    SpinorLocalOrbitalRequest, XcFunctional, build_extended_checkpoint_core_potentials, run_scf,
+    ScfExchangeCorrelation, ScfKMesh, ScfKReduction, ScfKSamplingProvenance, ScfMixing,
+    ScfOccupations, ScfPhysics, ScfRelativity, SpinorLocalOrbitalRequest, XcFunctional,
+    build_extended_checkpoint_core_potentials, run_scf,
 };
 use muffintin_io::{
     BasisHints, CheckpointFile, CheckpointMeta, CheckpointV1, Complex64V1, EnergyParameterV1,
@@ -110,6 +111,7 @@ fn config(relativity: ScfRelativity) -> ScfConfig {
         k_mesh: ScfKMesh {
             divisions: [1, 1, 1],
             shift: [0.0; 3],
+            reduction: muffintin_dft::ScfKReduction::Full,
         },
         basis: ScfBasis {
             plane_wave_cutoff: InverseBohr(0.5),
@@ -219,6 +221,7 @@ fn material_kernel_rejects_truncated_nuclear_topology_at_construction() {
         physics.kernel.frozen_potential().clone(),
         physics.kernel.restart_density().cloned(),
         Vec::new(),
+        physics.kernel.crystal_cell().clone(),
     )
     .unwrap_err();
     assert!(matches!(
@@ -496,6 +499,78 @@ fn scalar_single_site_checkpoint_runs_two_iteration_scf_smoke() {
     let state = run_scf(&mut physics.kernel, &config(ScfRelativity::Scalar), None).unwrap();
     assert_eq!(state.iterations(), 2);
     assert_eq!(state.relativity, ScfRelativity::Scalar);
+}
+
+#[test]
+fn scalar_full_and_symmetry_reduced_meshes_match() {
+    let mut full_config = config(ScfRelativity::Scalar);
+    full_config.k_mesh.divisions = [3, 3, 3];
+    let mut reduced_config = full_config.clone();
+    reduced_config.k_mesh.reduction = ScfKReduction::Symmetry {
+        symprec: Bohr(1.0e-5),
+        include_time_reversal: true,
+    };
+
+    let mut full_physics = CheckpointPhysics::new(&checkpoint()).unwrap();
+    let full = run_scf(&mut full_physics.kernel, &full_config, None).unwrap();
+    let mut reduced_physics = CheckpointPhysics::new(&checkpoint()).unwrap();
+    let reduced = run_scf(&mut reduced_physics.kernel, &reduced_config, None).unwrap();
+
+    let ScfKSamplingProvenance::SymmetryReduced {
+        full_point_count,
+        irreducible_point_count,
+        multiplicities,
+        ..
+    } = &reduced.k_sampling
+    else {
+        panic!("reduced SCF did not retain symmetry provenance")
+    };
+    assert_eq!(*full_point_count, 27);
+    assert!(*irreducible_point_count < *full_point_count);
+    assert_eq!(multiplicities.iter().sum::<usize>(), *full_point_count);
+    assert!((full.energy.total.get() - reduced.energy.total.get()).abs() < 1.0e-9);
+    assert!(full.density.difference_rms(&reduced.density).unwrap() < 1.0e-9);
+
+    let restart = reduced_physics.restart_checkpoint(&reduced).unwrap();
+    assert_eq!(
+        restart.meta.annotations["scf.k_sampling.kind"],
+        "symmetry-reduced"
+    );
+    assert_eq!(
+        restart.meta.annotations["scf.k_sampling.full_point_count"],
+        "27"
+    );
+
+    let full_annotations = BTreeMap::from([
+        ("scf.k_sampling.kind".to_owned(), "full".to_owned()),
+        (
+            "scf.k_sampling.full_point_count".to_owned(),
+            "27".to_owned(),
+        ),
+    ]);
+    let method_neutral_restart = checkpoint_v2_from_regional_state(
+        &restart,
+        &reduced.density,
+        &reduced.potential,
+        full_annotations,
+    )
+    .unwrap();
+    assert_eq!(
+        method_neutral_restart.meta.annotations["scf.k_sampling.kind"],
+        "full"
+    );
+    assert!(
+        !method_neutral_restart
+            .meta
+            .annotations
+            .contains_key("scf.k_sampling.multiplicities")
+    );
+    assert!(
+        !method_neutral_restart
+            .meta
+            .annotations
+            .contains_key("scf.k_sampling.symprec_bohr")
+    );
 }
 
 #[test]

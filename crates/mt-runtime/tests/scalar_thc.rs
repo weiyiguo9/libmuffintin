@@ -126,6 +126,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
         k_mesh: ScfKMesh {
             divisions,
             shift: [0.0; 3],
+            reduction: muffintin_dft::ScfKReduction::Full,
         },
         basis: ScfBasis {
             plane_wave_cutoff: InverseBohr(cutoff),

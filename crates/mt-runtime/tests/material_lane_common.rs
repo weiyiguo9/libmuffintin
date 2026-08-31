@@ -194,6 +194,7 @@ mod tests {
             k_mesh: ScfKMesh {
                 divisions: [1, 1, 1],
                 shift: [0.0; 3],
+                reduction: muffintin_dft::ScfKReduction::Full,
             },
             basis: ScfBasis {
                 plane_wave_cutoff: InverseBohr(1.0),

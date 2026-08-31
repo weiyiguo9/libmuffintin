@@ -82,9 +82,7 @@ pub use occupations::{
     BandState, FermiDiracResult, GaussianResult, OccupationError, fermi_dirac, gaussian_occupation,
     gaussian_width_matching_fermi_dirac_temperature, solve_fermi_dirac, solve_gaussian,
 };
-pub use radial_sampling::{
-    ScalarRadialSamples, ScalarRadialSamplingError, sample_scalar_radials,
-};
+pub use radial_sampling::{ScalarRadialSamples, ScalarRadialSamplingError, sample_scalar_radials};
 pub use regional::{
     InterstitialField, MuffinTinField, RegionalDensity, RegionalError, RegionalPotential,
     RegionalScalarField,
@@ -102,9 +100,10 @@ pub use scf::{
     RegionalPotentialStep, ScfBasis, ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe,
     ScfChannelTreatment, ScfConfig, ScfConfigError, ScfConvergence, ScfCoreSite, ScfCoreState,
     ScfEnergyContext, ScfEnergyTerms, ScfError, ScfExchangeCorrelation, ScfIterationDiagnostic,
-    ScfKMesh, ScfLoop, ScfMixing, ScfOccupations, ScfPhysics, ScfRelativity,
-    ScfResolvedChannelEnergy, ScfState, channel_kappas, channel_l, channel_n, run_band_path,
-    run_dos, run_scf, scalar_component_energy, spin_resolved_energy, spinor_kappas_for_l,
+    ScfKMesh, ScfKReduction, ScfKSamplingProvenance, ScfLoop, ScfMixing, ScfOccupations,
+    ScfPhysics, ScfRelativity, ScfResolvedChannelEnergy, ScfState, channel_kappas, channel_l,
+    channel_n, run_band_path, run_dos, run_scf, scalar_component_energy, spin_resolved_energy,
+    spinor_kappas_for_l,
 };
 pub use soc::{
     FirstVariationRoute, FirstVariationSubspace, FirstVariationWindow,

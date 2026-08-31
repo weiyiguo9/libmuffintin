@@ -313,6 +313,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
         k_mesh: ScfKMesh {
             divisions: [1, 1, 1],
             shift: [0.0; 3],
+            reduction: muffintin_dft::ScfKReduction::Full,
         },
         basis: ScfBasis {
             plane_wave_cutoff: InverseBohr(fields.plane_wave_cutoff.min(0.5)),
