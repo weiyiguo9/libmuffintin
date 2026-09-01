@@ -253,8 +253,8 @@ fn gamma_sampled_coulomb_uses_full_parent_grid_and_keeps_head_as_metadata() {
     let thc = build_scalar_thc(std::slice::from_ref(&input), &grid, &thc_spec()).unwrap();
     let result = build_scalar_coulomb(&[input], &thc, &coulomb_spec(), &[]).unwrap();
     assert_eq!(result.spin, 0);
-    assert_eq!(result.records.len(), 1);
-    let record = &result.records[0];
+    assert_eq!(result.records().len(), 1);
+    let record = &result.records()[0];
     assert_eq!(record.q_index, 0);
     assert_eq!(record.sampled.n_grid(), 6);
     assert_eq!(record.sampled.zeta().len(), 6 * record.operator.dimension());
@@ -308,8 +308,8 @@ fn finite_q_preserves_transfer_q_and_rejects_dropped_umklapp() {
     let grid = parent_grid(&q15);
     let thc = build_scalar_thc(&[q0.clone(), q15.clone()], &grid, &thc_spec()).unwrap();
     let result = build_scalar_coulomb(&[q0, q15.clone()], &thc, &coulomb_spec(), &[]).unwrap();
-    assert_eq!(result.records.len(), 2);
-    let finite = &result.records[1];
+    assert_eq!(result.records().len(), 2);
+    let finite = &result.records()[1];
     assert_eq!(finite.q_index, 1);
     assert_eq!(finite.q, q15.source.q);
     assert_eq!(finite.operator.q(), q15.source.q);
@@ -364,8 +364,8 @@ fn matched_pair_reports_quadratic_and_action_and_rejects_mismatch() {
             right: 0,
         }
     );
-    let vertex = &result.records[0].vertices[diagnostic.column];
-    let matrix = result.records[0].operator.matrix();
+    let vertex = &result.records()[0].vertices[diagnostic.column];
+    let matrix = result.records()[0].operator.matrix();
     let coefficients = vertex.coefficients();
     let independent_quadratic = dense_quadratic(matrix, coefficients);
     let independent_thc_action = dense_action_norm(matrix, coefficients);

@@ -9,7 +9,7 @@ use muffintin::{
     build_scalar_thc, write_scalar_mldump,
 };
 use muffintin_core::InverseBohr;
-use muffintin_coulomb::{AuxiliaryKind, InterpolationProjection, assemble_point_charge_oracle};
+use muffintin_coulomb::InterpolationProjection;
 use muffintin_io::{
     MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON, MLDUMP_STATUS_ABSENT_NOT_COMPUTED,
     MLDUMP_THC_ENGINE_QRCP, MldumpGeometryV1, MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1,
@@ -199,7 +199,7 @@ fn write_scalar_mldump_roundtrip_matches_runtime_quadratic() {
         MLDUMP_STATUS_ABSENT_NOT_COMPUTED
     );
 
-    for (q, record) in coulomb.records.iter().enumerate() {
+    for (q, record) in coulomb.records().iter().enumerate() {
         let stored_body = &scalar.coulomb.q_records[q].body;
         for (vertex_index, vertex) in record.vertices.iter().enumerate() {
             let stored = &scalar.thc.q_records[q].vertices[vertex_index];
@@ -241,7 +241,7 @@ fn write_scalar_mldump_rejects_tampered_header_before_create() {
 fn write_scalar_mldump_rejects_mismatched_coulomb_spec_before_create() {
     let path = fixture_path("libmuffintin-runtime-scalar-mldump-spec.h5");
     let _ = std::fs::remove_file(&path);
-    let (inputs, thc, mut coulomb, spec) = build_path();
+    let (inputs, thc, coulomb, spec) = build_path();
     let header = header_from_inputs(&inputs);
     let mismatched = ScalarCoulombSpec {
         request: spec.request.clone(),
@@ -258,54 +258,6 @@ fn write_scalar_mldump_rejects_mismatched_coulomb_spec_before_create() {
     assert!(
         !path.exists(),
         "mismatched Coulomb spec must not create {}",
-        path.display()
-    );
-
-    coulomb.records.swap(0, 1);
-    let error = write_scalar_mldump(&path, &header, &inputs, &thc, &coulomb, &spec).unwrap_err();
-    match error {
-        ScalarMldumpError::Coulomb(ScalarCoulombError::CoulombRecord { index }) => {
-            assert_eq!(index, 0);
-        }
-        other => panic!("expected Coulomb record mismatch, got {other}"),
-    }
-    assert!(
-        !path.exists(),
-        "reordered Coulomb records must not create {}",
-        path.display()
-    );
-}
-
-#[test]
-fn write_scalar_mldump_rejects_point_charge_oracle_operator_before_create() {
-    let path = fixture_path("libmuffintin-runtime-scalar-mldump-oracle.h5");
-    let _ = std::fs::remove_file(&path);
-    let (inputs, thc, mut coulomb, spec) = build_path();
-    let header = header_from_inputs(&inputs);
-    let request = spec
-        .request
-        .clone()
-        .with_interpolation(spec.projection)
-        .unwrap();
-    let original = &coulomb.records[0];
-    let oracle = assemble_point_charge_oracle(&original.auxiliary, &request).unwrap();
-    assert_eq!(oracle.dimension(), original.operator.dimension());
-    assert_eq!(oracle.q(), original.q);
-    assert_eq!(oracle.cell(), spec.request.cell());
-    assert_eq!(oracle.reciprocal(), spec.request.reciprocal());
-    assert_eq!(oracle.layout(), &original.auxiliary.layout());
-    assert_eq!(oracle.kind(), AuxiliaryKind::PointChargeOracle);
-    coulomb.records[0].operator = oracle;
-    let error = write_scalar_mldump(&path, &header, &inputs, &thc, &coulomb, &spec).unwrap_err();
-    match error {
-        ScalarMldumpError::Coulomb(ScalarCoulombError::CoulombRecord { index }) => {
-            assert_eq!(index, 0);
-        }
-        other => panic!("expected Coulomb record mismatch, got {other}"),
-    }
-    assert!(
-        !path.exists(),
-        "point-charge oracle operator must not create {}",
         path.display()
     );
 }

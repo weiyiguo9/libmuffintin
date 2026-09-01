@@ -5,16 +5,21 @@ use crate::scalar_coulomb::{
     sampled_from_thc_record, vertex_action_norm,
 };
 use crate::spinor_mpb::SpinorMpbResult;
-use crate::spinor_product::{SpinorProductInput, SpinorQSliceError, require_spinor_q_slice};
+use crate::spinor_product::{
+    SpinorFrozenOrbitals, SpinorKMinusQ, SpinorProductInput, SpinorQSliceError,
+    require_spinor_q_slice,
+};
 use crate::spinor_thc::SpinorThcResult;
 use crate::thc_grid::{ThcQRecord, records_match_parent_grid};
-use muffintin_core::ExponentialMesh;
+use muffintin_core::{ExponentialMesh, ReciprocalLattice};
 use muffintin_coulomb::{
     AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, InterpolationProjection,
     SampledAuxiliaryFunctions, assemble_coulomb, assemble_sampled_coulomb,
 };
 use muffintin_prodbasis::thc::{L2Engine, SelectorStrategy};
-use muffintin_prodbasis::{OrbitalPair, PairColumnLayout, PairVertex, TransferQ};
+use muffintin_prodbasis::{
+    DiracProductSource, OrbitalPair, PairColumnLayout, PairVertex, TransferQ,
+};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -92,6 +97,48 @@ pub struct SpinorCoulombResult {
     ///
     /// Not caller-forgeable through a public struct literal.
     pub(crate) context: SpinorCoulombSpec,
+    frozen_context: SpinorCoulombFrozenContext,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SpinorCoulombFrozenContext {
+    orbitals: SpinorFrozenOrbitals,
+    sources: Vec<DiracProductSource>,
+    k_minus_q: Vec<Vec<SpinorKMinusQ>>,
+    pair_columns: Vec<PairColumnLayout>,
+    reciprocal: ReciprocalLattice,
+}
+
+impl SpinorCoulombFrozenContext {
+    fn new(inputs: &[SpinorProductInput], first: &SpinorProductInput) -> Self {
+        Self {
+            orbitals: first.orbitals.clone(),
+            sources: inputs.iter().map(|input| input.source.clone()).collect(),
+            k_minus_q: inputs.iter().map(|input| input.k_minus_q.clone()).collect(),
+            pair_columns: inputs.iter().map(|input| input.pair_columns).collect(),
+            reciprocal: first.reciprocal,
+        }
+    }
+
+    fn matches(&self, inputs: &[SpinorProductInput]) -> bool {
+        let Some(first) = inputs.first() else {
+            return false;
+        };
+        self.orbitals == first.orbitals
+            && self.reciprocal == first.reciprocal
+            && self.sources.len() == inputs.len()
+            && self
+                .sources
+                .iter()
+                .zip(&self.k_minus_q)
+                .zip(&self.pair_columns)
+                .zip(inputs)
+                .all(|(((source, k_minus_q), pair_columns), input)| {
+                    source == &input.source
+                        && k_minus_q == &input.k_minus_q
+                        && pair_columns == &input.pair_columns
+                })
+    }
 }
 
 impl SpinorCoulombResult {
@@ -101,6 +148,18 @@ impl SpinorCoulombResult {
     /// replacement operators cannot be installed through this accessor.
     pub fn records(&self) -> &[SpinorCoulombQRecord] {
         &self.records
+    }
+
+    pub(crate) fn frozen_inputs_match(&self, inputs: &[SpinorProductInput]) -> bool {
+        self.frozen_context.matches(inputs)
+    }
+
+    pub(crate) fn frozen_k_minus_q(&self) -> &[Vec<SpinorKMinusQ>] {
+        &self.frozen_context.k_minus_q
+    }
+
+    pub(crate) const fn sealed_spec(&self) -> &SpinorCoulombSpec {
+        &self.context
     }
 }
 
@@ -129,6 +188,8 @@ pub enum SpinorCoulombError {
     RecordCount { actual: usize, expected: usize },
     #[error("spinor Coulomb THC result is not bound to the frozen product partition")]
     Partition,
+    #[error("spinor Coulomb result does not match the frozen product inputs used to construct it")]
+    FrozenContextMismatch,
     #[error("spinor Coulomb THC record {index} does not match the frozen q-slice context")]
     ThcRecord { index: usize },
     #[error("spinor Coulomb THC record {index} is not bound to the parent grid used to fit zeta")]
@@ -256,6 +317,7 @@ pub fn build_spinor_coulomb(
         records,
         diagnostics,
         context: spec.clone(),
+        frozen_context: SpinorCoulombFrozenContext::new(inputs, first),
     })
 }
 
@@ -371,6 +433,9 @@ pub(crate) fn require_spinor_coulomb_export_context(
     spec: &SpinorCoulombSpec,
 ) -> Result<(), SpinorCoulombError> {
     let first = require_spinor_q_slice(inputs)?;
+    if !coulomb.frozen_context.matches(inputs) {
+        return Err(SpinorCoulombError::FrozenContextMismatch);
+    }
     if spec != &coulomb.context {
         return Err(SpinorCoulombError::SpecMismatch);
     }

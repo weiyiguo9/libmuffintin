@@ -96,6 +96,8 @@ pub enum ScalarThcError {
     InvalidSpin(u8),
     #[error("scalar THC grid is not bound to the frozen product partition")]
     GridPartitionMismatch,
+    #[error("scalar THC natural grid reciprocal lattice does not match the frozen product input")]
+    GridReciprocalMismatch,
     #[error("scalar THC grid point {index} is outside the frozen product geometry")]
     GridPoint { index: usize },
     #[error(
@@ -143,6 +145,9 @@ pub fn build_scalar_thc(
     spec: &ScalarThcSpec,
 ) -> Result<ScalarThcResult, ScalarThcError> {
     let first = require_scalar_q_slice(inputs)?;
+    if !grid.natural_reciprocal_matches(&first.reciprocal) {
+        return Err(ScalarThcError::GridReciprocalMismatch);
+    }
     let samples = sample_scalar_orbitals(first, grid, spec.spin)?;
     let blocks = pair_blocks(inputs, grid, &samples)?;
     let cartesian = grid.cartesian();

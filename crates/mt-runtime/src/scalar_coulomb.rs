@@ -1,7 +1,10 @@
 //! Scalar sampled-$\zeta$ Coulomb bridge from scalar THC and optional mixed-product pairs.
 
 use crate::scalar_mpb::ScalarMpbResult;
-use crate::scalar_product::{ScalarProductInput, ScalarQSliceError, require_scalar_q_slice};
+use crate::scalar_product::{
+    ScalarFrozenOrbitals, ScalarKMinusQ, ScalarProductInput, ScalarQSliceError,
+    require_scalar_q_slice,
+};
 use crate::scalar_thc::ScalarThcResult;
 use crate::thc_grid::{ThcParentGrid, ThcQRecord, ThcRegion, records_match_parent_grid};
 use muffintin_core::{ExponentialMesh, VolumeBohr3};
@@ -85,12 +88,77 @@ pub struct ScalarCoulombPairDiagnostic {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarCoulombResult {
     pub spin: u8,
-    pub records: Vec<ScalarCoulombQRecord>,
+    pub(crate) records: Vec<ScalarCoulombQRecord>,
     pub diagnostics: Vec<ScalarCoulombPairDiagnostic>,
     /// Effective request and projection used by [`build_scalar_coulomb`].
     ///
     /// Not caller-forgeable through a public struct literal.
     pub(crate) context: ScalarCoulombSpec,
+    frozen_context: ScalarCoulombFrozenContext,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ScalarCoulombFrozenContext {
+    orbitals: ScalarFrozenOrbitals,
+    sources: Vec<AuxiliarySource>,
+    k_minus_q: Vec<Vec<ScalarKMinusQ>>,
+    pair_columns: Vec<PairColumnLayout>,
+    reciprocal: muffintin_core::ReciprocalLattice,
+}
+
+impl ScalarCoulombFrozenContext {
+    fn new(inputs: &[ScalarProductInput], first: &ScalarProductInput) -> Self {
+        Self {
+            orbitals: first.orbitals.clone(),
+            sources: inputs.iter().map(|input| input.source.clone()).collect(),
+            k_minus_q: inputs.iter().map(|input| input.k_minus_q.clone()).collect(),
+            pair_columns: inputs.iter().map(|input| input.pair_columns).collect(),
+            reciprocal: first.reciprocal,
+        }
+    }
+
+    fn matches(&self, inputs: &[ScalarProductInput]) -> bool {
+        let Some(first) = inputs.first() else {
+            return false;
+        };
+        self.orbitals == first.orbitals
+            && self.reciprocal == first.reciprocal
+            && self.sources.len() == inputs.len()
+            && self
+                .sources
+                .iter()
+                .zip(&self.k_minus_q)
+                .zip(&self.pair_columns)
+                .zip(inputs)
+                .all(|(((source, k_minus_q), pair_columns), input)| {
+                    source == &input.source
+                        && k_minus_q == &input.k_minus_q
+                        && pair_columns == &input.pair_columns
+                })
+    }
+}
+
+impl ScalarCoulombResult {
+    /// Sealed sampled-$\zeta$ $V^q$ records in production $q$ order.
+    ///
+    /// Populated only by [`build_scalar_coulomb`]. The slice is read-only so
+    /// exchange contractions cannot consume caller-modified vertices or
+    /// Coulomb operators.
+    pub fn records(&self) -> &[ScalarCoulombQRecord] {
+        &self.records
+    }
+
+    pub(crate) fn frozen_inputs_match(&self, inputs: &[ScalarProductInput]) -> bool {
+        self.frozen_context.matches(inputs)
+    }
+
+    pub(crate) fn frozen_k_minus_q(&self) -> &[Vec<ScalarKMinusQ>] {
+        &self.frozen_context.k_minus_q
+    }
+
+    pub(crate) const fn sealed_spec(&self) -> &ScalarCoulombSpec {
+        &self.context
+    }
 }
 
 /// Scalar Coulomb stage-boundary error.
@@ -112,6 +180,8 @@ pub enum ScalarCoulombError {
     InvalidSpin(u8),
     #[error("scalar Coulomb THC result is not bound to the frozen product partition")]
     Partition,
+    #[error("scalar Coulomb result does not match the frozen product inputs used to construct it")]
+    FrozenInputMismatch,
     #[error("scalar Coulomb THC record {index} does not match the frozen q-slice context")]
     ThcRecord { index: usize },
     #[error("scalar Coulomb THC record {index} is not bound to the parent grid used to fit zeta")]
@@ -227,6 +297,7 @@ pub fn build_scalar_coulomb(
         records,
         diagnostics,
         context: spec.clone(),
+        frozen_context: ScalarCoulombFrozenContext::new(inputs, first),
     })
 }
 
@@ -334,6 +405,9 @@ pub(crate) fn require_scalar_coulomb_export_context(
     spec: &ScalarCoulombSpec,
 ) -> Result<(), ScalarCoulombError> {
     let first = require_scalar_q_slice(inputs)?;
+    if !coulomb.frozen_context.matches(inputs) {
+        return Err(ScalarCoulombError::FrozenInputMismatch);
+    }
     if spec != &coulomb.context {
         return Err(ScalarCoulombError::SpecMismatch);
     }

@@ -120,8 +120,8 @@ fn write_scalar_coqui_cholesky_matches_independent_quadratic() {
         L2Engine::FullColumnPivotedQr
     );
     assert_eq!(inputs[1].source.q.umklapp.index, [1, 0, 0]);
-    assert!(coulomb.records[0].operator.gamma().is_some());
-    assert!(coulomb.records[1].operator.gamma().is_none());
+    assert!(coulomb.records()[0].operator.gamma().is_some());
+    assert!(coulomb.records()[1].operator.gamma().is_none());
     let factor = ScalarCoquiCholeskySpec { tolerance: 1.0e-10 };
     write_scalar_coqui_cholesky(&path, &inputs, &thc, &coulomb, &spec, factor).unwrap();
     let read = read_coqui_cholesky(&path).unwrap();
@@ -166,7 +166,7 @@ fn write_scalar_coqui_cholesky_matches_independent_quadratic() {
 
     let np = read.header.np as usize;
     let mut saw_negative = false;
-    for (q, record) in coulomb.records.iter().enumerate() {
+    for (q, record) in coulomb.records().iter().enumerate() {
         let stored = &read.records[q].values;
         for (column, vertex) in record.vertices.iter().enumerate() {
             let (k, i, j) = record.layout.decode(column);

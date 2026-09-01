@@ -11,6 +11,7 @@ mod checkpoint_physics;
 mod dft_scf;
 mod error;
 mod input;
+mod isdf_exchange;
 mod mldump_header;
 mod mldump_write;
 mod q_mesh;
@@ -57,6 +58,10 @@ pub use input::{
     ExchangeCorrelation, INPUT_FORMAT, INPUT_VERSION, Input, KMesh, Mixing, NoncollinearXcRoute,
     Occupations, Relativity, Symmetry, Task, TaskKind, Workflow, input_to_toml, parse_input_toml,
 };
+pub use isdf_exchange::{
+    GammaExchangeTreatment, IsdfExchangeBandMatrix, IsdfExchangeError, IsdfExchangeResult,
+    IsdfExchangeSpec, build_scalar_isdf_exchange, build_spinor_isdf_exchange,
+};
 pub use muffintin_dft::{ScalarRadialSamples, ScfKSamplingProvenance};
 pub use muffintin_prodbasis::thc::RankPolicy;
 pub use runner::{
@@ -101,5 +106,6 @@ pub use spinor_product::{
 };
 pub use spinor_thc::{SpinorThcError, SpinorThcResult, SpinorThcSpec, build_spinor_thc};
 pub use thc_grid::{
-    ThcCandidates, ThcEngine, ThcGridError, ThcParentGrid, ThcPoint, ThcQRecord, ThcRegion,
+    NaturalThcGridError, NaturalThcGridSpec, ThcCandidates, ThcEngine, ThcGridError, ThcParentGrid,
+    ThcPoint, ThcQRecord, ThcRegion, build_natural_thc_parent_grid,
 };

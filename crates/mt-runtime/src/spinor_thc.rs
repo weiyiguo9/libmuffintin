@@ -76,6 +76,8 @@ pub enum SpinorThcError {
     KMinusQWrap { q_index: usize, k_index: usize },
     #[error("spinor THC grid is not bound to the frozen product partition")]
     GridPartitionMismatch,
+    #[error("spinor THC natural grid reciprocal lattice does not match the frozen product input")]
+    GridReciprocalMismatch,
     #[error("spinor THC grid point {index} is outside the frozen product geometry")]
     GridPoint { index: usize },
     #[error(
@@ -146,6 +148,9 @@ pub fn build_spinor_thc(
     spec: &SpinorThcSpec,
 ) -> Result<SpinorThcResult, SpinorThcError> {
     let first = require_spinor_q_slice(inputs)?;
+    if !grid.natural_reciprocal_matches(&first.reciprocal) {
+        return Err(SpinorThcError::GridReciprocalMismatch);
+    }
     if grid.partition() != &first.source.partition {
         return Err(SpinorThcError::GridPartitionMismatch);
     }
