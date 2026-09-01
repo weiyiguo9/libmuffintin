@@ -1,8 +1,9 @@
 # 23. Core–valence exchange and the unified Hartree–Fock driver
 
 This document is a contract: formulas, IR shapes, stage boundaries, and
-acceptance gates. It changes no production code. It defines the plan that
-lifts two explicit exclusions of [18](18_lapw_mpb_thc_integration.md) §4 —
+acceptance gates. A1 is implemented as described in section 4.1; later stages
+remain planned. The contract lifts two explicit exclusions of
+[18](18_lapw_mpb_thc_integration.md) §4 —
 core–valence products and the self-consistent Fock loop — and it replaces the
 earlier frozen-core staging idea with a relaxed core at FlapwMBPT parity.
 The route is spinor-first: the core is inherently four-component Dirac
@@ -267,8 +268,7 @@ more numerous VV columns dominate AllQL2 selection and hide a bad core fit.
 
 ## 3. Implementation
 
-Bindings named here are planned unless marked existing. No production code
-changes with this document.
+Bindings named here are planned unless marked existing or A1.
 
 ### 3.1 Existing seams
 
@@ -278,6 +278,9 @@ changes with this document.
 | Per-iteration core station | `solve_regional_core` in `crates/mt-dft/src/core_station.rs` | exists; discards $P/Q$ after density synthesis |
 | Core radials in the product IR | `DiracSiteRadialSet::cores`, `ProductOrbitalKind::Core` in `crates/mt-prodbasis/src/dirac.rs` | exists; runtime emits empty `cores` |
 | Exchange contraction | `build_scalar_isdf_exchange`, `build_spinor_isdf_exchange`, `GammaExchangeTreatment` in `crates/mt-runtime/src/isdf_exchange.rs` | exists; square valence layout only |
+| Exact full-VV exchange | `build_spinor_mpb_exchange` in `crates/mt-runtime/src/isdf_exchange.rs` | A1; requires every VV column exactly once and seals the full live orbital payload |
+| Nonorthogonal feedback lift | `lift_band_hermitian_feedback` in `crates/mt-operators/src/eigensolve.rs` | A1; forms `S C K C^H S` and re-solves the retained original H0/S problem |
+| Gamma valence HF driver | `run_gamma_valence_hf` in `crates/mt-runtime/src/hf_scf.rs` | A1; spinor-first, one k point, finite Gamma body, no core states |
 | Sharp-core fixture flag | `PairColumnLayout::core_orbital` in `crates/mt-prodbasis/src/pair_layout.rs` | fixture-only; must not model real cores |
 | Molecular AO oracle | `solve_restricted_hf` in `crates/mt-hf/src/lib.rs` | exists; external comparison only |
 
@@ -363,25 +366,38 @@ flowchart LR
 
 #### A1 — Gamma valence-only SCF
 
-A1 plans the first executable driver stage as a Gamma-centered
+A1 implements the first executable driver stage as a Gamma-centered
 molecule-in-box, valence-only Hartree–Fock SCF loop. It fixes `n_k = 1` and
 uses `GammaExchangeTreatment::FiniteBody`; core exchange and core relaxation
 remain outside this stage. Whenever the valence orbitals change, the driver
-rebuilds the VV MPB vertices and, when selected, the THC-compressed Coulomb
-vertices, contracts the new VV exchange, and feeds its Hermitian band-basis
-Fock matrix into the next valence solve. Frozen vertices are not reused across
-an orbital update.
+rebuilds every VV MPB vertex, assembles the MPB Coulomb body, contracts the new
+VV exchange, and feeds its Hermitian band-basis Fock matrix into the next
+valence solve. The MPB frozen identity includes the complete eigenvector and
+basis payload, so a rotated live orbital set rejects an old context. THC
+remains an optional frozen-orbital backend and does not define A1 feedback.
 
-Bring-up tunes the explicit density or Hartree-potential mixing choice, while
-reporting the anti-Hermitian residual and checking the direct-energy and
-valence eigenvalue identities of section 1.1 at every iteration. The AO
+Within one fixed nuclear-plus-Hartree potential, each k-point frame retains
+its original local H0/S problem. A fresh band matrix is lifted as
+$S C K C^\dagger S$, added to H0, and solved again; it is never added to old Fock
+eigenvalues. The inner Fock iteration may rebuild vertices as orbitals rotate
+because its radial basis is fixed. After regional density mixing, the next
+outer iteration rebuilds the Hartree potential and rematerializes the radial
+basis before starting a new inner loop, so feedback is never moved between
+incompatible radial frames.
+
+The driver reports the anti-Hermitian residual, Fock fixed-point residual,
+regional density RMS, electron count, exchange and total energies, the direct
+exchange/eigenvalue/total-energy identities of section 1.1, and the
+$C^\dagger (S C K C^\dagger S) C = K$ residual. Its first global solve is also
+checked against $\mathrm{diag}(\varepsilon_0)+K$. The first driver rebuild is compared with an
+independent one-shot full-VV rebuild before any orbital update. The AO
 restricted Hartree–Fock Kr Dyall v2z fixture is an external numerical oracle
 only; it does not supply the production loop, basis, or convergence policy.
-A1 exits when a frozen-orbital one-shot VV evaluation equals the first SCF
-iteration before any orbital update, the feedback matrix remains Hermitian at
-the stated tolerance, and the SCF reaches a fixed point under the chosen
-mixing specification. These are planned acceptance gates, not implementation
-claims.
+A1 returns only when these algebraic gates and both the inner Fock and outer
+regional-density fixed points pass the requested tolerances. A bounded
+`FockNotConverged` or `NotConverged` is explicit otherwise. This is an
+implementation and pipeline gate only: no single cell is called converged
+with respect to molecule box size, basis, product cutoff, or physical energy.
 
 #### A2 — Regular k-mesh valence-only SCF
 

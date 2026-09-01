@@ -5,11 +5,14 @@ use crate::scalar_product::{
     ScalarKMinusQ, ScalarProductInput, ScalarQSliceError, require_scalar_q_slice,
 };
 use crate::spinor_coulomb::{SpinorCoulombQRecord, SpinorCoulombResult};
+use crate::spinor_mpb::SpinorMpbResult;
 use crate::spinor_product::{
     SpinorKMinusQ, SpinorProductInput, SpinorQSliceError, require_spinor_q_slice,
 };
 use muffintin_core::Hartree;
-use muffintin_coulomb::{AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest};
+use muffintin_coulomb::{
+    AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, assemble_coulomb,
+};
 use muffintin_prodbasis::{
     AuxiliaryPartition, CompiledAuxiliaryBasis, OrbitalPair, PairColumnLayout, PairVertex,
     TransferQ,
@@ -94,6 +97,22 @@ pub enum IsdfExchangeError {
     QContext { index: usize },
     #[error("ISDF exchange inputs do not match the frozen context sealed by Coulomb construction")]
     FrozenInputContext,
+    #[error("exact MPB exchange received {actual} q results for {expected} frozen inputs")]
+    MpbCount { actual: usize, expected: usize },
+    #[error("exact MPB exchange result at q index {index} does not match its frozen input")]
+    MpbContext { index: usize },
+    #[error(
+        "exact MPB exchange q index {q_index} contains {actual} vertices, expected every one of {expected} VV columns"
+    )]
+    MpbVertexCount {
+        q_index: usize,
+        actual: usize,
+        expected: usize,
+    },
+    #[error("exact MPB exchange q index {q_index} repeats VV column {column}")]
+    MpbDuplicateColumn { q_index: usize, column: usize },
+    #[error("exact MPB exchange q index {q_index} is missing VV column {column}")]
+    MpbMissingColumn { q_index: usize, column: usize },
     #[error("ISDF exchange k-minus-q map is invalid at q={q_index}, k={k_index}")]
     KMinusQ { q_index: usize, k_index: usize },
     #[error("ISDF exchange received {actual} k weights for {expected} k points")]
@@ -177,6 +196,100 @@ pub fn build_spinor_isdf_exchange(
         .iter()
         .map(spinor_record)
         .collect::<Vec<_>>();
+    contract_exchange(first.pair_columns, &maps, &records, spec)
+}
+
+/// Build the canonical exact mixed-product VV exchange contribution.
+///
+/// Every [`SpinorMpbResult`] must contain every square-layout band-pair column
+/// exactly once. The Coulomb body is assembled directly on the retained MPB;
+/// a separated Gamma head is handled only through [`GammaExchangeTreatment`].
+pub fn build_spinor_mpb_exchange(
+    inputs: &[SpinorProductInput],
+    mpb: &[SpinorMpbResult],
+    request: &CoulombRequest,
+    spec: &IsdfExchangeSpec,
+) -> Result<IsdfExchangeResult, IsdfExchangeError> {
+    let first = require_spinor_q_slice(inputs).map_err(spinor_q_slice_error)?;
+    if mpb.len() != inputs.len() {
+        return Err(IsdfExchangeError::MpbCount {
+            actual: mpb.len(),
+            expected: inputs.len(),
+        });
+    }
+    if request.reciprocal() != &first.reciprocal {
+        return Err(IsdfExchangeError::MpbContext { index: 0 });
+    }
+    let expected = first
+        .pair_columns
+        .n_columns()
+        .map_err(|_| IsdfExchangeError::MpbContext { index: 0 })?;
+    let mut ordered_vertices = Vec::with_capacity(mpb.len());
+    let mut operators = Vec::with_capacity(mpb.len());
+    for (q_index, (input, result)) in inputs.iter().zip(mpb).enumerate() {
+        if !result.frozen_input_identity().matches(input)
+            || result.reciprocal != input.reciprocal
+            || result.pair_columns != input.pair_columns
+            || result.auxiliary.q != input.source.q
+            || result.auxiliary.partition != input.source.partition
+        {
+            return Err(IsdfExchangeError::MpbContext { index: q_index });
+        }
+        if result.vertices.len() != expected {
+            return Err(IsdfExchangeError::MpbVertexCount {
+                q_index,
+                actual: result.vertices.len(),
+                expected,
+            });
+        }
+        let mut columns = vec![None; expected];
+        for selected in &result.vertices {
+            if selected.column >= expected
+                || input.pair_columns.decode(selected.column)
+                    != (selected.k, selected.left_band, selected.right_band)
+                || selected.vertex.pair()
+                    != (OrbitalPair::Bloch {
+                        k_index: selected.k,
+                        left: selected.left_band,
+                        right: selected.right_band,
+                    })
+            {
+                return Err(IsdfExchangeError::MpbContext { index: q_index });
+            }
+            if columns[selected.column]
+                .replace(selected.vertex.clone())
+                .is_some()
+            {
+                return Err(IsdfExchangeError::MpbDuplicateColumn {
+                    q_index,
+                    column: selected.column,
+                });
+            }
+        }
+        let columns = columns
+            .into_iter()
+            .enumerate()
+            .map(|(column, vertex)| {
+                vertex.ok_or(IsdfExchangeError::MpbMissingColumn { q_index, column })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        ordered_vertices.push(columns);
+        operators.push(assemble_coulomb(&result.auxiliary, request)?);
+    }
+    let records = ordered_vertices
+        .iter()
+        .zip(&operators)
+        .map(|(vertices, operator)| ExchangeRecord {
+            layout: first.pair_columns,
+            vertices,
+            operator,
+        })
+        .collect::<Vec<_>>();
+    let maps = inputs
+        .iter()
+        .map(|input| input.k_minus_q.clone())
+        .collect::<Vec<_>>();
+    let maps = spinor_maps(&maps, first.pair_columns.n_k)?;
     contract_exchange(first.pair_columns, &maps, &records, spec)
 }
 

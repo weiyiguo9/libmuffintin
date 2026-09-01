@@ -10,6 +10,7 @@ mod channel_token;
 mod checkpoint_physics;
 mod dft_scf;
 mod error;
+mod hf_scf;
 mod input;
 mod isdf_exchange;
 mod mldump_header;
@@ -53,6 +54,10 @@ pub use dft_scf::{
     run_dft_scf,
 };
 pub use error::{InputError, InputValidationError};
+pub use hf_scf::{
+    GammaValenceHfError, GammaValenceHfIterationDiagnostic, GammaValenceHfResult,
+    GammaValenceHfSpec, run_gamma_valence_hf,
+};
 pub use input::{
     BandPathPoint, Basis, BasisEnvelope, BasisEnvelopeKind, Convergence, EnergyWindow,
     ExchangeCorrelation, INPUT_FORMAT, INPUT_VERSION, Input, KMesh, Mixing, NoncollinearXcRoute,
@@ -61,6 +66,7 @@ pub use input::{
 pub use isdf_exchange::{
     GammaExchangeTreatment, IsdfExchangeBandMatrix, IsdfExchangeError, IsdfExchangeResult,
     IsdfExchangeSpec, build_scalar_isdf_exchange, build_spinor_isdf_exchange,
+    build_spinor_mpb_exchange,
 };
 pub use muffintin_dft::{ScalarRadialSamples, ScfKSamplingProvenance};
 pub use muffintin_prodbasis::thc::RankPolicy;

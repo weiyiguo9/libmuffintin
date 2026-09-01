@@ -116,7 +116,6 @@ impl CheckpointPhysics {
                 return Err(CheckpointPhysicsError::SpinorProductRejectsSocSecondVariation);
             }
         }
-        let transfer = canonical_transfer_q(q_fractional, *self.reciprocal())?;
         let meshes = self.kernel.channel_meshes(&config.basis)?;
         let extended = build_extended_checkpoint_core_potentials(
             self.frozen_potential(),
@@ -132,23 +131,42 @@ impl CheckpointPhysics {
             &extended,
         )?;
         let k_fractional = regular_k_points(config.k_mesh)?;
-        let mut k_minus_q = Vec::with_capacity(k_fractional.len());
-        for (k_index, &k_frac) in k_fractional.iter().enumerate() {
-            let mapped =
-                map_k_minus_q(k_index, k_frac, transfer, &k_fractional, *self.reciprocal())?;
-            k_minus_q.push(SpinorKMinusQ {
-                k_index: mapped.k_index,
-                kq_index: mapped.kq_index,
-                umklapp: mapped.umklapp,
-            });
-        }
         let bands = self.kernel.solve_points(
             self.frozen_potential(),
             &basis,
             &k_fractional,
             ScfRelativity::SpinorFirstVariation,
         )?;
-        emit_spinor_product_input(self, &bands, &k_fractional, transfer.q, k_minus_q)
+        self.spinor_product_input_from_bands(&bands, &k_fractional, q_fractional)
+    }
+
+    /// Build a Dirac product input from one current live spinor band solution.
+    ///
+    /// The supplied k points are the exact ordered points used to create
+    /// `bands`; no frozen-potential solve occurs here. This is the feedback
+    /// seam used by self-consistent Fock iterations so every orbital update
+    /// produces fresh pair vertices.
+    pub fn spinor_product_input_from_bands(
+        &self,
+        bands: &CheckpointBandSolution,
+        k_fractional: &[[f64; 3]],
+        q_fractional: [f64; 3],
+    ) -> Result<SpinorProductInput, CheckpointPhysicsError> {
+        if bands.points().len() != k_fractional.len() || k_fractional.is_empty() {
+            return Err(CheckpointPhysicsError::SpinorProductKSliceMismatch);
+        }
+        let transfer = canonical_transfer_q(q_fractional, *self.reciprocal())?;
+        let mut k_minus_q = Vec::with_capacity(k_fractional.len());
+        for (k_index, &k_frac) in k_fractional.iter().enumerate() {
+            let mapped =
+                map_k_minus_q(k_index, k_frac, transfer, k_fractional, *self.reciprocal())?;
+            k_minus_q.push(SpinorKMinusQ {
+                k_index: mapped.k_index,
+                kq_index: mapped.kq_index,
+                umklapp: mapped.umklapp,
+            });
+        }
+        emit_spinor_product_input(self, bands, k_fractional, transfer.q, k_minus_q)
     }
 }
 

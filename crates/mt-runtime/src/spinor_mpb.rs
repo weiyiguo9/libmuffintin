@@ -1,6 +1,6 @@
 //! Selected-band spinor mixed-product bridge from frozen [`SpinorProductInput`].
 
-use crate::spinor_product::{SpinorBandWindow, SpinorProductInput};
+use crate::spinor_product::SpinorProductInput;
 use muffintin_core::{InverseBohr, ReciprocalLattice, RelativisticChannel};
 use muffintin_envelope::site_translation_phase;
 use muffintin_operators::lapw::SpinorCompiledBasis;
@@ -407,16 +407,16 @@ fn raw_mt_pairs(
 /// used to construct a [`SpinorMpbResult`].
 ///
 /// Compared by derived [`PartialEq`] on transfer q, product partition,
-/// pair-column layout, reciprocal lattice, band window, and per-k orbital
-/// counts. This is not a hash of eigenvector coefficients.
+/// pair-column layout, reciprocal lattice, and the complete frozen orbital
+/// payload. Rotating orbitals therefore invalidates every MPB/Coulomb context
+/// built from the old coefficients.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SpinorFrozenInputIdentity {
     q: TransferQ,
     partition: AuxiliaryPartition,
     pair_columns: PairColumnLayout,
     reciprocal: ReciprocalLattice,
-    band_window: SpinorBandWindow,
-    available_bands: Vec<usize>,
+    orbitals: crate::spinor_product::SpinorFrozenOrbitals,
 }
 
 impl SpinorFrozenInputIdentity {
@@ -425,8 +425,7 @@ impl SpinorFrozenInputIdentity {
             && self.partition == input.source.partition
             && self.pair_columns == input.pair_columns
             && self.reciprocal == input.reciprocal
-            && self.band_window == input.orbitals.band_window
-            && self.available_bands == input.orbitals.available_bands
+            && self.orbitals == input.orbitals
     }
 }
 
@@ -436,7 +435,6 @@ fn spinor_frozen_input_identity(input: &SpinorProductInput) -> SpinorFrozenInput
         partition: input.source.partition.clone(),
         pair_columns: input.pair_columns,
         reciprocal: input.reciprocal,
-        band_window: input.orbitals.band_window,
-        available_bands: input.orbitals.available_bands.clone(),
+        orbitals: input.orbitals.clone(),
     }
 }

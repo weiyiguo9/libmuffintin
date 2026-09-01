@@ -219,6 +219,16 @@ pub struct CheckpointOneParticle {
     basis: ScfBasis,
 }
 
+impl CheckpointOneParticle {
+    pub const fn potential(&self) -> &RegionalPotential {
+        &self.potential
+    }
+
+    pub const fn basis(&self) -> &ScfBasis {
+        &self.basis
+    }
+}
+
 /// Concrete regular-mesh solutions retained for occupations and density synthesis.
 #[derive(Clone, Debug)]
 pub struct CheckpointBandSolution {
@@ -256,8 +266,9 @@ impl CheckpointBandSolution {
             });
         }
         let mut updated = self.clone();
+        let (points, states) = (&mut updated.points, &mut updated.states);
         for (point_index, (point, band_feedback)) in
-            updated.points.iter_mut().zip(feedback).enumerate()
+            points.iter_mut().zip(feedback).enumerate()
         {
             let CheckpointKPointSolution::Spinor {
                 eigenproblem,
@@ -266,9 +277,7 @@ impl CheckpointBandSolution {
                 ..
             } = &mut point.solution
             else {
-                return Err(MaterialKernelError::FeedbackRequiresSpinor {
-                    point: point_index,
-                });
+                return Err(MaterialKernelError::FeedbackRequiresSpinor { point: point_index });
             };
             let lifted = lift_band_hermitian_feedback(
                 &eigenproblem.overlap,
@@ -278,11 +287,10 @@ impl CheckpointBandSolution {
             let fock = DenseHermitianMatrix::from_upper_triangle(
                 eigenproblem.hamiltonian.dimension(),
                 Axis::GlobalBasis,
-                |row, column| {
-                    eigenproblem.hamiltonian.at(row, column) + lifted.at(row, column)
-                },
+                |row, column| eigenproblem.hamiltonian.at(row, column) + lifted.at(row, column),
             )?;
-            let solved = solve_generalized_hermitian(&fock, &eigenproblem.overlap, OVERLAP_THRESHOLD)?;
+            let solved =
+                solve_generalized_hermitian(&fock, &eigenproblem.overlap, OVERLAP_THRESHOLD)?;
             if solved.eigenvalues.len() != occupations.len() {
                 return Err(MaterialKernelError::FeedbackBandCount {
                     point: point_index,
@@ -291,7 +299,7 @@ impl CheckpointBandSolution {
                 });
             }
             point.energies = solved.eigenvalues.clone();
-            for (state, &energy) in updated.states[occupations.clone()]
+            for (state, &energy) in states[occupations.clone()]
                 .iter_mut()
                 .zip(&solved.eigenvalues)
             {
@@ -600,6 +608,37 @@ impl MaterialKernel {
         self.solve_points_with_weights(potential, basis, points, &weights, relativity)
     }
 
+    /// Materialize one local-potential radial/basis problem without entering
+    /// the DFT XC/core cache used by [`ScfPhysics`].
+    pub fn materialize_checkpoint_one_particle(
+        &self,
+        potential: &RegionalPotential,
+        requested: &ScfBasis,
+    ) -> Result<CheckpointOneParticle, MaterialKernelError> {
+        let meshes = self.channel_meshes(requested)?;
+        let extended = build_extended_checkpoint_core_potentials(
+            potential,
+            &self.geometry,
+            &self.nuclear_charges,
+            &meshes,
+            CorePotentialContinuationSpec::default(),
+        )?;
+        let basis = self.materialize_nonspectral_basis(potential, requested, &extended)?;
+        Ok(CheckpointOneParticle {
+            potential: potential.clone(),
+            basis,
+        })
+    }
+
+    /// Synthesize the valence-only regional density of a retained band solve.
+    pub fn synthesize_bands(
+        &self,
+        bands: &CheckpointBandSolution,
+        occupations: &[f64],
+    ) -> Result<RegionalDensity, MaterialKernelError> {
+        self.synthesize(bands, occupations)
+    }
+
     fn solve_points_with_weights(
         &self,
         potential: &RegionalPotential,
@@ -904,7 +943,7 @@ impl MaterialKernel {
             .ok_or_else(|| MaterialKernelError::UnknownCoreSite(site.to_owned()))
     }
 
-    fn refine_spectral_basis(
+    pub fn refine_spectral_basis(
         &self,
         requested: &ScfBasis,
         one_particle: &CheckpointOneParticle,
