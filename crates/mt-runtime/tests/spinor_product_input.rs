@@ -664,3 +664,42 @@ fn core_sidecar_keeps_exact_mt_prefix_total_norm_spill_and_flat_mu_order() {
         })
     ));
 }
+
+#[test]
+fn replacing_core_sidecars_discards_the_stale_core_frame() {
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let plain = physics
+        .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
+        .unwrap();
+    let old = core_sidecar(
+        &plain,
+        CoreShellOccupations::MuResolved(vec![
+            (TwiceMu::new(-1).unwrap(), 0.25),
+            (TwiceMu::new(1).unwrap(), 0.25),
+        ]),
+    );
+    let attached = plain
+        .with_core_sidecars(std::slice::from_ref(&old))
+        .unwrap();
+    let mut fresh = core_sidecar(
+        &attached,
+        CoreShellOccupations::MuResolved(vec![
+            (TwiceMu::new(-1).unwrap(), 0.75),
+            (TwiceMu::new(1).unwrap(), 0.75),
+        ]),
+    );
+    fresh.shells[0].energy = Hartree(-0.625);
+    fresh.shells[0].p[0] *= 1.01;
+    let replaced = attached
+        .replace_core_sidecars(std::slice::from_ref(&fresh))
+        .unwrap();
+    assert_eq!(replaced.core.sidecars, vec![fresh.clone()]);
+    assert_eq!(replaced.core.orbitals.len(), 2);
+    assert_eq!(replaced.core.orbitals[0].occupation, 0.75);
+    assert_eq!(replaced.core.orbitals[0].energy, Hartree(-0.625));
+    assert_eq!(replaced.source.radials[0].cores.len(), 1);
+    assert_eq!(
+        replaced.source.radials[0].cores[0].samples.large[0],
+        fresh.shells[0].p[0]
+    );
+}

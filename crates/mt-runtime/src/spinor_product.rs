@@ -264,6 +264,23 @@ impl CheckpointPhysics {
 }
 
 impl SpinorProductInput {
+    /// Replace the complete core table with fresh sidecars.
+    ///
+    /// Existing core radials and flat orbitals are removed before the same
+    /// exact validation and MT-prefix materialization used by
+    /// [`Self::with_core_sidecars`]. This is the relaxed-core update seam;
+    /// it never appends new shell data to a stale core frame.
+    pub fn replace_core_sidecars(
+        mut self,
+        sidecars: &[CoreShellOrbitals],
+    ) -> Result<Self, SpinorCoreInputError> {
+        for site in &mut self.source.radials {
+            site.cores.clear();
+        }
+        self.core = SpinorCoreTable::default();
+        self.with_core_sidecars(sidecars)
+    }
+
     /// Attach exact M0 core sidecars without resampling or MT renormalization.
     pub fn with_core_sidecars(
         mut self,
