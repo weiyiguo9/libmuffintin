@@ -21,9 +21,7 @@ pub struct KPointOperation {
     /// Index into [`SymmetryDataset::operations`].
     pub operation_index: usize,
     /// Whether an additional time-reversal action was appended to the dataset operation.
-    /// The total reciprocal-space sign is negative when this differs from the
-    /// dataset operation's own `time_reversal` flag.
-    pub time_reversal: bool,
+    pub appended_time_reversal: bool,
 }
 
 /// One point in the complete regular mesh.
@@ -82,11 +80,11 @@ pub enum KMeshReductionError {
         determinant: i128,
     },
     #[error(
-        "symmetry operation {operation_index} with additional time reversal {time_reversal} does not preserve regular k-mesh point {mesh_index:?}"
+        "symmetry operation {operation_index} with appended time reversal {appended_time_reversal} does not preserve regular k-mesh point {mesh_index:?}"
     )]
     IncompatibleShift {
         operation_index: usize,
-        time_reversal: bool,
+        appended_time_reversal: bool,
         mesh_index: [usize; 3],
     },
     #[error("no symmetry operation preserves the requested regular k mesh")]
@@ -139,7 +137,7 @@ pub fn reduce_regular_mesh(
             let negative = operation.time_reversal ^ appended_time_reversal;
             let operation = KPointOperation {
                 operation_index,
-                time_reversal: appended_time_reversal,
+                appended_time_reversal,
             };
             let mut mapping = Vec::with_capacity(point_count);
             let mut compatible = true;
@@ -488,7 +486,7 @@ mod tests {
         assert_eq!(without.irreducible_points.len(), 3);
         assert_eq!(with.irreducible_points.len(), 2);
         assert_eq!(with.full_points[2].representative, 1);
-        assert_eq!(with.full_points[2].parent_operation.time_reversal, true);
+        assert!(with.full_points[2].parent_operation.appended_time_reversal);
     }
 
     #[test]

@@ -81,6 +81,12 @@ graph LR
   apply rotations as `rotations[i] @ x + translations[i]`, moyo returns the
   same layout via `rotation_as_array`, and the SPEX `rot`/`transl` pair is
   already in that basis.
+- The Python SPEX-log `atom_map` matches periodic fractional coordinates with
+  a Chebyshev residual threshold of `1e-6`. Rust
+  `CrystalSymmetryTransform::from_cell` instead matches periodic Cartesian
+  Euclidean distances against its caller-supplied tolerance in Bohr. The maps
+  have the same index meaning, but their residuals and tolerance values are
+  not interchangeable for cross-validation.
 
 The import has two tiers:
 
