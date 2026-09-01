@@ -2,9 +2,9 @@
 
 This document is a contract: formulas, IR shapes, stage boundaries, and
 acceptance gates. A1 and A2 are implemented as described in section 4.1, and
-M0, M1, and M2 are implemented as described in section 4.2. The frozen-data
-M3b radial-action and diagnostic substrate is also implemented; connecting it
-to the M3a relaxed-core solve remains pending. The other M3 work and later
+M0, M1, and M2 are implemented as described in section 4.2. M3a and M3b are
+also implemented, including the shared relaxed-core loop with fresh CC and VC
+actions at every inner iteration. The remaining M3 work and later
 compression/export stages remain planned. The contract lifts two explicit exclusions of
 [18](18_lapw_mpb_thc_integration.md) §4 —
 core–valence products and the self-consistent Fock loop — and it replaces the
@@ -157,19 +157,25 @@ where $\hat h^{\mathrm{Dirac}}$ is the radial four-component operator of
 nuclear plus Hartree potential of the full density on the extended mesh —
 with no exchange–correlation surrogate — and $\hat K^{\mathrm{sph}}_c$ is the
 channel-reduced exchange kernel. Its core–core part is the relativistic
-closed-subshell Slater form: with
+closed-subshell Slater form. Production keeps the two charge sectors distinct:
 
 ```math
-Y_L(c',c;r)=\int_0^{\infty}
+Y_L^{PP}(c',c;r)=\int_0^{\infty}
 \frac{\min(r,r')^{L}}{\max(r,r')^{L+1}}
-\left[P_{c'}(r')P_c(r')+Q_{c'}(r')Q_c(r')\right]dr',
+P_{c'}(r')P_c(r')\,dr',
 ```
 
-the kernel acting on $P_c$ is
-$-\sum_{c'}\sum_L A_L(\kappa_c,\kappa_{c'})\,Y_L(c',c;r)\,P_{c'}(r)$,
-with the same kernel multiplying $Q_{c'}$ in the small-component equation and
-$A_L$ the closed-subshell-averaged Dirac angular factor. The core–valence
-part is built from the site-projected occupied valence density matrix,
+```math
+Y_L^{QQ}(c',c;r)=\int_0^{\infty}
+\frac{\min(r,r')^{L}}{\max(r,r')^{L+1}}
+Q_{c'}(r')Q_c(r')\,dr'.
+```
+
+PP angular contractions use $\Omega_\kappa$ and QQ contractions use
+$\Omega_{-\kappa}$. Their contributions to the P and Q output actions are
+formed separately, and their Coulomb interference is retained in the total
+trace; no one combined $Y_L^{PP+QQ}$ or common angular factor is used. The
+core–valence part is built from the site-projected occupied valence density matrix,
 reduced to $l/\kappa$ channels by the same Clebsch–Gordan contraction
 (the FlapwMBPT `t_x`/`t1_x` construction); the valence input itself is not
 spherically restricted — only the operator acting on the core is. The core
@@ -249,7 +255,7 @@ section 1.4; solve the valence problem with the Fock feedback
 $K_v[D_v]+K_v[D_c]$ from the previous iteration's orbitals; form occupations;
 rebuild all four exchange sectors; synthesize the density.
 
-Mixing follows the FlapwMBPT contract: the core density is excluded from
+As a deliberate repository M3c design, the core density is excluded from
 Pulay/Anderson mixing and is replaced fresh each iteration; only the valence
 part of the regional density is mixed under the physical metric of
 [17](17_minimal_dft_scf.md) §3. If density mixing of the Fock fixed point
@@ -335,17 +341,18 @@ Verified against the local source tree `FlapwMBPT.2106` (see
 |---|---|
 | Core re-solved every iteration in HF | `src/core_all.F` called unconditionally from the `src/solid_scf.F` main loop |
 | Core sees Hartree plus explicit exchange, no XC surrogate | `src/cor_new.F` (`key1=1` branch), `src/f_ex_new.F` |
-| Channel-reduced radial exchange kernels, CC and CV | `src/t_t1_x.F` (`t_x`, `t1_x`) with full valence density-matrix input |
+| Channel-reduced radial exchange kernels, CC and VC core-target action | `src/t_t1_x.F` (`t_x`, `t1_x`) with full valence density-matrix input |
 | Exact nonlocal CV exchange in the valence Fock matrix | `src/sigx_cor_ar.F` accumulated with VV in `src/sigx_bnd_a_box.F`, rebuilt via `src/update_sx.F` |
-| Core density excluded from mixing, fresh replacement | `src/mixro1.F` subtract-then-restore around Pulay mixing |
 | Muffin-tin-confined core with decay diagnostics | `src/cor_new.F` (`psi_nre`, `r_nre_core`), `src/rad_hf_check.F` |
 
-One deliberate divergence: FlapwMBPT builds CV exchange from direct on-site
+Two deliberate divergences are explicit. FlapwMBPT builds CV exchange from direct on-site
 Slater integrals and bypasses its mixed basis; this contract routes all four
 sectors through the MPB auxiliary basis so the same Coulomb operator, Gamma
 policy, and THC compression cover every sector, and so inter-site CV coupling
 needs no separate machinery. The FlapwMBPT route confirms that muffin-tin-only
-CV exchange is adequate under a spill gate.
+CV exchange is adequate under a spill gate. This repository's M3c also mixes
+only valence density and replaces core density fresh. The inspected
+`src/mixro1.F` instead mixes total density and is not evidence for that choice.
 
 ## 4. Milestones and acceptance gates
 
@@ -447,8 +454,8 @@ no claim of a converged periodic Hartree–Fock limit.
 | M0 | Implemented: core station retains and outputs the `CoreShellOrbitals` sidecar | sidecar radials bit-identical to the density path; `norm_mt` and spill reported per shell; no consumer change |
 | M1 | Implemented: rectangular MPB CV/VC/CC vertices over `ExchangePairLayout`; runtime core producer fills `DiracSiteRadialSet::cores` | cross-trace residual at numerical tolerance; occupation factors applied exactly once; PP/QQ sectors only; Bloch/site phase locked by a single-shell analytic fixture; CV constant-mode residual reported |
 | M2 | Implemented: sector-aware one-shot exact-MPB traces and exchange energies on one converged frozen DFT snapshot, plus an independent trace-only radial Slater oracle | VV adapter reproduces the square contraction; CV and VC are contracted independently; MPB-versus-MT numerical residuals and physical core spill are separate gates |
-| M3a | Channel-reduced radial core-core Fock kernel with per-shell inner self-consistency; depends on M1 | converged core shells; radial Slater CC trace matches the MPB CC trace within the spill allowance |
-| M3b | Frozen-data substrate implemented: complete site-valence density, channel-reduced radial CV action, CV/VC-only exact MPB contraction, and per-core $\delta_c$; relaxed-core hookup awaits M3a | production action trace matches the independent radial CV oracle and both MPB cross traces; weighted $\delta_c$ closure and shell spill gated |
+| M3a | Implemented: channel-reduced radial core-core Fock kernel with per-shell inner self-consistency | converged core shells; MPB CC matches the MT radial trace numerically; final CC action matches the extended radial trace numerically; extended-minus-MT spill is reported separately |
+| M3b | Implemented: complete site-valence density, channel-reduced radial VC action, CV/VC-only exact MPB contraction, per-core $\delta_c$, and shared CC+VC core relaxation | production VC action trace matches the legacy radial `cv_mt` oracle and both MPB cross traces; weighted $\delta_c$ closure, action imaginary residual, and shell spill gated; final VC action rebuilt from final core radials |
 | M3c | Unified Track A2 valence driver and relaxed core with full CV feedback | fixed point under the doc/17 density metric; valence eigenvalue identity of section 1.1; core convergence reported per iteration; fresh-core replacement with only valence-density mixing; molecule route compared against the AO oracle fixture |
 | M4 | Core-aware THC selection and fit, MPB as oracle | `residual_vv/cv/vc/cc` reported separately; core columns never dropped by pooled selection; rank scaling reported |
 | M5 | MLDUMP/pyexport v2 with sector energies and exchange provenance | schema versioned; v1 files remain exchange-absent |
@@ -527,10 +534,12 @@ SCF convergence claim.
 M3a may begin as soon as M1 closes and does not wait for Track A2. It adds the
 channel-reduced radial core-core Fock kernel and a per-shell inner iteration
 at fixed outer potential. The independent MPB CC contraction remains its
-oracle: the converged radial Slater CC trace must reproduce the MPB CC trace
-within the spill allowance.
+oracle: MPB CC must match the MT radial trace at the explicit numerical
+tolerance, while the final CC action independently matches the extended radial
+trace. The extended-minus-MT trace difference is reported as spill evidence
+and is never folded into either numerical tolerance.
 
-The implemented frozen-data part of M3b follows M2. It builds the complete
+M3b follows M2. It builds the complete
 Hermitian site-valence density as
 $D_{ab}=\sum_{kn}w_k f_{kn}d^*_{akn}d_{bkn}$ exactly once, with no $q$ weight,
 spin multiplier, or overlap insertion. The production radial action keeps the
@@ -546,9 +555,11 @@ against $T_{vc}^{\mathrm{MPB}}-T_{cv}^{\mathrm{radial}}$, alongside explicit
 production-action versus radial-oracle and MPB CV/VC numerical gates and the
 independent dimensionless shell-spill gate. All builders seal the complete
 orbital, basis, radial, q-map, request where applicable, weight, and occupation
-context. Feeding the returned physical action into the M3a inner core solve is
-the remaining relaxed-core hookup; M3b itself performs no core solve, mixing,
-or SCF update.
+context. The shared fixed-potential core loop holds that valence density fixed,
+rebuilds the VC action from the latest core Picard iterate, adds fresh CC and
+VC before action mixing and energy prediction, and reports their traces
+separately. The returned VC action remains exactly zero outside the muffin tin.
+M3b still performs no density mixing or outer SCF update.
 
 M3c is the full merge. It combines the Track A2 valence driver with the
 relaxed Fock core, gives both the valence and core equations their complete
