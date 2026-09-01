@@ -929,8 +929,13 @@ fn frozen_site_density_and_cv_only_contraction_apply_weights_once_and_close_delt
     )
     .unwrap();
     assert!(comparison.vc_action_legacy_radial_residual.get() < 1.0e-8);
-    assert!(comparison.vc_action_cross_cv_mpb_residual.get() < 1.0e-8);
-    assert!(comparison.vc_action_mpb_residual.get() < 1.0e-8);
+    assert!(comparison.mpb_cross_trace_residual.get() < 1.0e-8);
+    assert!(comparison.vc_action_cross_cv_mpb_difference.get().abs() > 1.0e-4);
+    assert!(comparison.vc_action_mpb_difference.get().abs() > 1.0e-4);
+    assert!(
+        (comparison.vc_action_mpb_difference.get() - comparison.weighted_delta_target.get()).abs()
+            < 1.0e-8
+    );
     assert!(comparison.weighted_delta_closure_residual.get() < 1.0e-8);
     assert_eq!(comparison.deltas.len(), input.core.orbitals.len());
 }

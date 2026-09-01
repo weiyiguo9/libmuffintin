@@ -455,7 +455,7 @@ no claim of a converged periodic Hartree–Fock limit.
 | M1 | Implemented: rectangular MPB CV/VC/CC vertices over `ExchangePairLayout`; runtime core producer fills `DiracSiteRadialSet::cores` | cross-trace residual at numerical tolerance; occupation factors applied exactly once; PP/QQ sectors only; Bloch/site phase locked by a single-shell analytic fixture; CV constant-mode residual reported |
 | M2 | Implemented: sector-aware one-shot exact-MPB traces and exchange energies on one converged frozen DFT snapshot, plus an independent trace-only radial Slater oracle | VV adapter reproduces the square contraction; CV and VC are contracted independently; MPB-versus-MT numerical residuals and physical core spill are separate gates |
 | M3a | Implemented: channel-reduced radial core-core Fock kernel with per-shell inner self-consistency | converged core shells; MPB CC matches the MT radial trace numerically; final CC action matches the extended radial trace numerically; extended-minus-MT spill is reported separately |
-| M3b | Implemented: complete site-valence density, channel-reduced radial VC action, CV/VC-only exact MPB contraction, per-core $\delta_c$, and shared CC+VC core relaxation | production VC action trace matches the legacy radial `cv_mt` oracle and both MPB cross traces; weighted $\delta_c$ closure, action imaginary residual, and shell spill gated; final VC action rebuilt from final core radials |
+| M3b | Implemented: complete site-valence density, channel-reduced radial VC action, CV/VC-only exact MPB contraction, per-core $\delta_c$, and shared CC+VC core relaxation | production VC action matches the independent radial oracle; MPB CV and VC traces agree; their finite-body difference from the spherical on-site action is reported and closes through weighted $\delta_c$; imaginary residual and shell spill gated; final VC action rebuilt from final core radials |
 | M3c | Unified Track A2 valence driver and relaxed core with full CV feedback | fixed point under the doc/17 density metric; valence eigenvalue identity of section 1.1; core convergence reported per iteration; fresh-core replacement with only valence-density mixing; molecule route compared against the AO oracle fixture |
 | M4 | Core-aware THC selection and fit, MPB as oracle | `residual_vv/cv/vc/cc` reported separately; core columns never dropped by pooled selection; rank scaling reported |
 | M5 | MLDUMP/pyexport v2 with sector energies and exchange provenance | schema versioned; v1 files remain exchange-absent |
@@ -551,9 +551,12 @@ The CV/VC-only exact-MPB contraction exposes the VC diagonal weighted over
 $k$ for every flat core spin orbital. M3b reports
 $\delta_c=\langle\varphi_c|K_c^{\mathrm{exact}}-K_c^{\mathrm{sph}}|\varphi_c\rangle$
 per core target without bounding an individual $\delta_c$. It gates only the weighted closure
-against $T_{vc}^{\mathrm{MPB}}-T_{cv}^{\mathrm{radial}}$, alongside explicit
-production-action versus radial-oracle and MPB CV/VC numerical gates and the
-independent dimensionless shell-spill gate. All builders seal the complete
+against $T_{vc}^{\mathrm{MPB}}-T_{vc}^{\mathrm{radial}}$, alongside explicit
+production-action versus independent-radial, MPB CV-versus-VC cross-trace,
+imaginary-residual, and dimensionless shell-spill gates. The full finite-body
+MPB traces are not required to equal the spherical on-site radial action;
+their differences are physical diagnostics closed by the weighted $\delta_c$.
+All builders seal the complete
 orbital, basis, radial, q-map, request where applicable, weight, and occupation
 context. The shared fixed-potential core loop holds that valence density fixed,
 rebuilds the VC action from the latest core Picard iterate, adds fresh CC and

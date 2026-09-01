@@ -113,12 +113,14 @@ pub struct FrozenCoreValenceComparison {
     pub radial_oracle: RadialSlaterTraces,
     /// Production VC action versus the legacy `radial.cv_mt` oracle field.
     pub vc_action_legacy_radial_residual: Hartree,
-    /// Production VC action versus the symmetric MPB CV cross trace.
-    pub vc_action_cross_cv_mpb_residual: Hartree,
-    pub vc_action_mpb_residual: Hartree,
+    /// Full finite-body MPB CV trace minus the spherical on-site VC action trace.
+    pub vc_action_cross_cv_mpb_difference: Hartree,
+    /// Full finite-body MPB VC trace minus the spherical on-site VC action trace.
+    pub vc_action_mpb_difference: Hartree,
+    pub mpb_cross_trace_residual: Hartree,
     pub deltas: Vec<CoreValenceDeltaDiagnostic>,
     pub weighted_delta: Hartree,
-    /// $T_{vc}^{\mathrm{MPB}}-T_{cv}^{\mathrm{radial}}$.
+    /// $T_{vc}^{\mathrm{MPB}}-T_{vc}^{\mathrm{radial}}$.
     pub weighted_delta_target: Hartree,
     pub weighted_delta_closure_residual: Hartree,
     pub shell_spill: Vec<CoreShellSpillDiagnostic>,
@@ -366,12 +368,12 @@ pub fn compare_frozen_core_valence(
     let actions = build_frozen_radial_valence_core_actions(densities)?.actions;
     let radial_oracle = with_radial_sites(densities, |sites| Ok(radial_slater_traces(sites)?))?;
     let action_radial = (actions.action_trace.get() - radial_oracle.cv_mt.total.get()).abs();
-    let action_cv = (actions.action_trace.get() - exchange.cv.trace.get()).abs();
-    let action_vc = (actions.action_trace.get() - exchange.vc.trace.get()).abs();
+    let action_cv_difference = exchange.cv.trace.get() - actions.action_trace.get();
+    let action_vc_difference = exchange.vc.trace.get() - actions.action_trace.get();
+    let mpb_cross_trace = (exchange.cv.trace.get() - exchange.vc.trace.get()).abs();
     for (quantity, residual) in [
         ("VC action/legacy radial CV trace", action_radial),
-        ("VC action/MPB CV cross trace", action_cv),
-        ("VC action/MPB VC trace", action_vc),
+        ("MPB CV/VC cross trace", mpb_cross_trace),
         ("VC action imaginary trace", actions.imaginary_residual),
         (
             "radial imaginary trace",
@@ -479,8 +481,9 @@ pub fn compare_frozen_core_valence(
         actions,
         radial_oracle,
         vc_action_legacy_radial_residual: Hartree(action_radial),
-        vc_action_cross_cv_mpb_residual: Hartree(action_cv),
-        vc_action_mpb_residual: Hartree(action_vc),
+        vc_action_cross_cv_mpb_difference: Hartree(action_cv_difference),
+        vc_action_mpb_difference: Hartree(action_vc_difference),
+        mpb_cross_trace_residual: Hartree(mpb_cross_trace),
         deltas,
         weighted_delta,
         weighted_delta_target,
