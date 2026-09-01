@@ -8,9 +8,9 @@ use muffintin_coulomb::{
     core_core_fock_actions,
 };
 use muffintin_sphere::{
-    CoreBracketSearch, CoreDiracExchangeAction, CoreDiracSolution, CoreDiracSpec, CoreState,
-    DiracError, EnergyBracket, ExtendedCorePotential, isolate_core_dirac_bracket, solve_core_dirac,
-    solve_core_dirac_with_action,
+    CoreBracketSearch, CoreDiracExchangeAction, CoreDiracSolution, CoreDiracSourcedSpec,
+    CoreDiracSpec, CoreState, DiracError, EnergyBracket, ExtendedCorePotential,
+    isolate_core_dirac_bracket, solve_core_dirac, solve_core_dirac_with_action,
 };
 use thiserror::Error;
 
@@ -264,10 +264,23 @@ pub fn relax_core_core_at_fixed_potential(
             .zip(&action)
             .enumerate()
         {
+            let action_expectation = initial.extended_mesh.integrate(
+                &shell
+                    .p
+                    .iter()
+                    .zip(&shell.q)
+                    .zip(shell_action.p.iter().zip(&shell_action.q))
+                    .map(|((p, q), (action_p, action_q))| p * action_p + q * action_q)
+                    .collect::<Vec<_>>(),
+            )? / shell.norm_total.sqrt();
+            let sourced_spec = CoreDiracSourcedSpec::new(
+                *solve_spec,
+                Hartree(shell.energy.get() + action_expectation),
+            );
             let mut solution = solve_core_dirac_with_action(
                 &initial.extended_mesh,
                 &potential,
-                solve_spec,
+                sourced_spec,
                 CoreDiracExchangeAction {
                     p: &shell_action.p,
                     q: &shell_action.q,
