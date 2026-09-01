@@ -40,10 +40,18 @@ pub fn write_spex_symmetry_v1(
     import: &SpexSymmetryImport,
 ) -> Result<(), IoError> {
     let n_ops = import.operations.len();
-    let n_sites = import.atom_map.first().map_or(0, Vec::len);
     let n_kpt = import.kpoints.len();
     require_len("operations.inverse", import.inverse.len(), n_ops)?;
     require_len("operations.atom_map", import.atom_map.len(), n_ops)?;
+    let n_sites = import.atom_map.first().map_or(0, Vec::len);
+    if n_sites == 0 {
+        return Err(ValidationError::InvalidValue {
+            path: "operations.atom_map".to_owned(),
+            expected: "at least one site".to_owned(),
+            actual: "zero sites".to_owned(),
+        }
+        .into());
+    }
     require_len("kpoints.parent", import.parent.len(), n_kpt)?;
     require_len(
         "kpoints.parent_operation",
@@ -116,7 +124,7 @@ pub fn write_spex_symmetry_v1(
     write_i64_attr(
         &kpoints,
         "irreducible_count",
-        i64::try_from(import.irreducible_count).unwrap_or(i64::MAX),
+        import.irreducible_count as i64,
     )?;
     write_f64_dataset(
         &kpoints,
@@ -141,29 +149,13 @@ pub fn write_spex_symmetry_v1(
     )?;
 
     let irreps = file.create_group("irreps")?;
-    write_i64_attr(
-        &irreps,
-        "block_count",
-        i64::try_from(import.irreps.len()).unwrap_or(i64::MAX),
-    )?;
+    write_i64_attr(&irreps, "block_count", import.irreps.len() as i64)?;
     for (index, block) in import.irreps.iter().enumerate() {
         let group = irreps.create_group(&format!("block{index}"))?;
         let path = format!("irreps[{index}]");
-        write_i64_attr(
-            &group,
-            "kpoint_index",
-            i64::try_from(block.kpoint_index).unwrap_or(i64::MAX),
-        )?;
-        write_i64_attr(
-            &group,
-            "spin",
-            i64::try_from(block.spin).unwrap_or(i64::MAX),
-        )?;
-        write_i64_attr(
-            &group,
-            "subspace_count",
-            i64::try_from(block.subspaces.len()).unwrap_or(i64::MAX),
-        )?;
+        write_i64_attr(&group, "kpoint_index", block.kpoint_index as i64)?;
+        write_i64_attr(&group, "spin", block.spin as i64)?;
+        write_i64_attr(&group, "subspace_count", block.subspaces.len() as i64)?;
         let n_little = block.little_group.len();
         write_i32_dataset(
             &group,
@@ -196,11 +188,7 @@ pub fn write_spex_symmetry_v1(
                 &["little_group_operation", "row", "column", "complex"],
             )?;
             let dataset = group.dataset(&format!("subspace{sub_index}"))?;
-            write_i64_attr(
-                &dataset,
-                "first_band",
-                i64::try_from(subspace.first_band).unwrap_or(i64::MAX),
-            )?;
+            write_i64_attr(&dataset, "first_band", subspace.first_band as i64)?;
         }
     }
     Ok(())
@@ -239,6 +227,14 @@ pub fn read_spex_symmetry_v1(path: impl AsRef<Path>) -> Result<SpexSymmetryFileV
             expected: "[operation, site]".to_owned(),
             actual: "rank < 2".to_owned(),
         })?;
+    if n_sites == 0 {
+        return Err(ValidationError::InvalidValue {
+            path: "/symmetry/atom_map/shape".to_owned(),
+            expected: "nonzero site extent".to_owned(),
+            actual: "[operation, 0]".to_owned(),
+        }
+        .into());
+    }
     let rotations = read_i32_dataset(
         &symmetry,
         "rotations",
@@ -290,15 +286,9 @@ pub fn read_spex_symmetry_v1(path: impl AsRef<Path>) -> Result<SpexSymmetryFileV
     }
     let inverse = indices("/symmetry/inverse", &inverse, n_ops)?;
     let atom_map = atom_map
-        .chunks_exact(n_sites.max(1))
-        .take(if n_sites == 0 { 0 } else { n_ops })
+        .chunks_exact(n_sites)
         .map(|chunk| indices("/symmetry/atom_map", chunk, n_sites))
         .collect::<Result<Vec<_>, _>>()?;
-    let atom_map = if n_sites == 0 {
-        vec![Vec::new(); n_ops]
-    } else {
-        atom_map
-    };
 
     let kpoints_group = file.group("kpoints")?;
     let n_kpt = leading_extent(&kpoints_group, "fractional")?;
@@ -311,6 +301,14 @@ pub fn read_spex_symmetry_v1(path: impl AsRef<Path>) -> Result<SpexSymmetryFileV
         )?,
         n_kpt + 1,
     )?;
+    if n_kpt > 0 && irreducible_count == 0 {
+        return Err(ValidationError::InvalidValue {
+            path: "/kpoints/@irreducible_count".to_owned(),
+            expected: "positive when k-points are present".to_owned(),
+            actual: "0".to_owned(),
+        }
+        .into());
+    }
     let fractional = read_f64_dataset(
         &kpoints_group,
         "fractional",
@@ -324,7 +322,7 @@ pub fn read_spex_symmetry_v1(path: impl AsRef<Path>) -> Result<SpexSymmetryFileV
     let parent = indices(
         "/kpoints/parent",
         &read_i32_dataset(&kpoints_group, "parent", &[n_kpt], &["kpoint"])?,
-        irreducible_count.max(1),
+        irreducible_count,
     )?;
     let parent_operation = indices(
         "/kpoints/parent_operation",
@@ -333,10 +331,9 @@ pub fn read_spex_symmetry_v1(path: impl AsRef<Path>) -> Result<SpexSymmetryFileV
     )?;
 
     let irreps_group = file.group("irreps")?;
-    let block_count = index(
+    let block_count = nonnegative(
         "/irreps/@block_count",
         read_i64_attr(&irreps_group, "block_count", "/irreps/@block_count")?,
-        usize::MAX,
     )?;
     let mut irreps = Vec::with_capacity(block_count);
     for block in 0..block_count {
@@ -347,15 +344,13 @@ pub fn read_spex_symmetry_v1(path: impl AsRef<Path>) -> Result<SpexSymmetryFileV
             read_i64_attr(&group, "kpoint_index", &format!("{path}/@kpoint_index"))?,
             n_kpt,
         )?;
-        let spin = index(
+        let spin = nonnegative(
             &format!("{path}/@spin"),
             read_i64_attr(&group, "spin", &format!("{path}/@spin"))?,
-            usize::MAX,
         )?;
-        let subspace_count = index(
+        let subspace_count = nonnegative(
             &format!("{path}/@subspace_count"),
             read_i64_attr(&group, "subspace_count", &format!("{path}/@subspace_count"))?,
-            usize::MAX,
         )?;
         let n_little = leading_extent(&group, "little_group")?;
         let little_group = indices(
@@ -385,10 +380,9 @@ pub fn read_spex_symmetry_v1(path: impl AsRef<Path>) -> Result<SpexSymmetryFileV
                     .into());
                 }
             };
-            let first_band = index(
+            let first_band = nonnegative(
                 &format!("{sub_path}/@first_band"),
                 read_i64_attr(&dataset, "first_band", &format!("{sub_path}/@first_band"))?,
-                usize::MAX,
             )?;
             let packed = read_f64_dataset(
                 &group,
@@ -476,11 +470,7 @@ fn to_i32(path: &str, values: &[usize]) -> Result<Vec<i32>, ValidationError> {
 }
 
 fn index(path: &str, value: i64, bound: usize) -> Result<usize, IoError> {
-    let converted = usize::try_from(value).map_err(|_| ValidationError::InvalidValue {
-        path: path.to_owned(),
-        expected: "nonnegative index".to_owned(),
-        actual: value.to_string(),
-    })?;
+    let converted = nonnegative(path, value)?;
     if converted < bound {
         Ok(converted)
     } else {
@@ -491,6 +481,17 @@ fn index(path: &str, value: i64, bound: usize) -> Result<usize, IoError> {
         }
         .into())
     }
+}
+
+fn nonnegative(path: &str, value: i64) -> Result<usize, IoError> {
+    usize::try_from(value).map_err(|_| {
+        ValidationError::InvalidValue {
+            path: path.to_owned(),
+            expected: "nonnegative value representable as usize".to_owned(),
+            actual: value.to_string(),
+        }
+        .into()
+    })
 }
 
 fn indices(path: &str, values: &[i32], bound: usize) -> Result<Vec<usize>, IoError> {

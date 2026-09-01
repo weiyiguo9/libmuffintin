@@ -61,16 +61,18 @@ impl SpexSymmetryImport {
     /// Orbit representatives come from the imported atom map; space-group
     /// classification stays absent because SPEX does not re-derive it.
     pub fn dataset(&self) -> SymmetryDataset {
-        let sites = self.atom_map.first().map_or(0, Vec::len);
-        let equivalent_atoms = (0..sites)
-            .map(|site| {
-                self.atom_map
-                    .iter()
-                    .map(|map| map[site])
-                    .min()
-                    .unwrap_or(site)
-            })
-            .collect();
+        let equivalent_atoms = match self.atom_map.first() {
+            Some(first_map) => (0..first_map.len())
+                .map(|site| {
+                    self.atom_map[1..]
+                        .iter()
+                        .fold(first_map[site], |representative, map| {
+                            representative.min(map[site])
+                        })
+                })
+                .collect(),
+            None => Vec::new(),
+        };
         SymmetryDataset {
             operations: self.operations.clone(),
             equivalent_atoms,

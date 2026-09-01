@@ -2,7 +2,7 @@
 
 use thiserror::Error;
 
-use crate::SymmetryDataset;
+use crate::{SymmetryDataset, integer_determinant};
 
 /// A regular reciprocal-space mesh with points `(i + shift) / divisions`.
 ///
@@ -98,8 +98,8 @@ pub enum KMeshReductionError {
         full_index: usize,
         representative: usize,
     },
-    #[error("regular k-mesh integer arithmetic overflowed")]
-    ArithmeticOverflow,
+    #[error("regular k-mesh point count overflowed usize")]
+    PointCountOverflow,
 }
 
 #[derive(Clone, Debug)]
@@ -127,12 +127,8 @@ pub fn reduce_regular_mesh(
         .divisions
         .into_iter()
         .try_fold(1_usize, usize::checked_mul)
-        .ok_or(KMeshReductionError::ArithmeticOverflow)?;
-    let common_denominator = mesh
-        .divisions
-        .into_iter()
-        .try_fold(1_i128, checked_lcm)
-        .ok_or(KMeshReductionError::ArithmeticOverflow)?;
+        .ok_or(KMeshReductionError::PointCountOverflow)?;
+    let common_denominator = mesh.divisions.into_iter().fold(1_i128, lcm);
 
     let mut actions =
         Vec::with_capacity(dataset.operations.len() * if include_time_reversal { 2 } else { 1 });
@@ -263,9 +259,7 @@ fn reciprocal_rotation(
     operation_index: usize,
 ) -> Result<[[i128; 3]; 3], KMeshReductionError> {
     let w = rotation.map(|row| row.map(i128::from));
-    let determinant = w[0][0] * (w[1][1] * w[2][2] - w[1][2] * w[2][1])
-        - w[0][1] * (w[1][0] * w[2][2] - w[1][2] * w[2][0])
-        + w[0][2] * (w[1][0] * w[2][1] - w[1][1] * w[2][0]);
+    let determinant = integer_determinant(rotation);
     if determinant.abs() != 1 {
         return Err(KMeshReductionError::NonUnimodularRotation {
             operation_index,
@@ -300,40 +294,30 @@ fn map_mesh_index(
     negative: bool,
     common_denominator: i128,
 ) -> Option<[usize; 3]> {
-    let divisions_i128 = [
-        i128::try_from(divisions[0]).ok()?,
-        i128::try_from(divisions[1]).ok()?,
-        i128::try_from(divisions[2]).ok()?,
-    ];
-    let mesh_index_i128 = [
-        i128::try_from(mesh_index[0]).ok()?,
-        i128::try_from(mesh_index[1]).ok()?,
-        i128::try_from(mesh_index[2]).ok()?,
-    ];
+    let divisions_i128 = divisions.map(|division| division as i128);
+    let mesh_index_i128 = mesh_index.map(|index| index as i128);
     let sign = if negative { -1_i128 } else { 1_i128 };
     let mut mapped = [0_usize; 3];
     for target_axis in 0..3 {
         let mut numerator = 0_i128;
         for source_axis in 0..3 {
-            let doubled_index = mesh_index_i128[source_axis]
-                .checked_mul(2)?
-                .checked_add(shift[source_axis])?;
+            let doubled_index = 2 * mesh_index_i128[source_axis] + shift[source_axis];
             let term = reciprocal[target_axis][source_axis]
-                .checked_mul(doubled_index)?
-                .checked_mul(common_denominator / divisions_i128[source_axis])?
-                .checked_mul(divisions_i128[target_axis])?;
-            numerator = numerator.checked_add(term)?;
+                * doubled_index
+                * (common_denominator / divisions_i128[source_axis])
+                * divisions_i128[target_axis];
+            numerator += term;
         }
-        numerator = numerator.checked_mul(sign)?;
+        numerator *= sign;
         if numerator.rem_euclid(common_denominator) != 0 {
             return None;
         }
-        let doubled_division = divisions_i128[target_axis].checked_mul(2)?;
+        let doubled_division = 2 * divisions_i128[target_axis];
         let residue = (numerator / common_denominator).rem_euclid(doubled_division);
         if residue.rem_euclid(2) != shift[target_axis] {
             return None;
         }
-        mapped[target_axis] = usize::try_from((residue - shift[target_axis]) / 2).ok()?;
+        mapped[target_axis] = ((residue - shift[target_axis]) / 2) as usize;
     }
     Some(mapped)
 }
@@ -354,9 +338,9 @@ const fn unflatten(index: usize, divisions: [usize; 3]) -> [usize; 3] {
     [first, rest % divisions[1], rest / divisions[1]]
 }
 
-fn checked_lcm(left: i128, right: usize) -> Option<i128> {
-    let right = i128::try_from(right).ok()?;
-    left.checked_div(gcd(left, right))?.checked_mul(right)
+fn lcm(left: i128, right: usize) -> i128 {
+    let right = right as i128;
+    left / gcd(left, right) * right
 }
 
 const fn gcd(mut left: i128, mut right: i128) -> i128 {

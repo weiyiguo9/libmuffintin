@@ -72,7 +72,6 @@ pub struct SymmetryDataset {
 pub struct CrystalSymmetryTransform {
     operation: SymmetryOperation,
     direct_lattice: [[Bohr; 3]; 3],
-    positions: Vec<[f64; 3]>,
     cartesian_rotation: [[f64; 3]; 3],
     site_map: Vec<usize>,
     tolerance: Bohr,
@@ -122,47 +121,6 @@ impl CrystalSymmetryTransform {
         Ok(Self {
             operation,
             direct_lattice: cell.lattice,
-            positions: cell.positions.clone(),
-            cartesian_rotation,
-            site_map,
-            tolerance,
-        })
-    }
-
-    /// Compile an imported operation with its authoritative site map.
-    pub fn with_site_map(
-        operation: SymmetryOperation,
-        cell: &CrystalCell,
-        site_map: Vec<usize>,
-        tolerance: Bohr,
-    ) -> Result<Self, SymmetryTransformError> {
-        validate_cell(cell, tolerance)?;
-        validate_permutation(&site_map)?;
-        if site_map.len() != cell.positions.len() {
-            return Err(SymmetryTransformError::SiteMapCount {
-                expected: cell.positions.len(),
-                actual: site_map.len(),
-            });
-        }
-        for (source, (&position, &target)) in cell.positions.iter().zip(&site_map).enumerate() {
-            if cell.atomic_numbers[source] != cell.atomic_numbers[target]
-                || periodic_cartesian_distance(
-                    affine_fractional(&operation, position),
-                    cell.positions[target],
-                    cell.lattice,
-                ) > tolerance.get()
-            {
-                return Err(SymmetryTransformError::InvalidSiteMap {
-                    source_site: source,
-                    target,
-                });
-            }
-        }
-        let cartesian_rotation = cartesian_rotation(&operation, cell.lattice)?;
-        Ok(Self {
-            operation,
-            direct_lattice: cell.lattice,
-            positions: cell.positions.clone(),
             cartesian_rotation,
             site_map,
             tolerance,
@@ -175,10 +133,6 @@ impl CrystalSymmetryTransform {
 
     pub const fn direct_lattice(&self) -> &[[Bohr; 3]; 3] {
         &self.direct_lattice
-    }
-
-    pub fn positions(&self) -> &[[f64; 3]] {
-        &self.positions
     }
 
     pub const fn cartesian_rotation(&self) -> &[[f64; 3]; 3] {
@@ -206,6 +160,10 @@ pub enum SymmetryTransformError {
     InvalidTolerance(f64),
     #[error("crystal lattice is singular")]
     SingularLattice,
+    #[error("crystal cell has a non-finite fractional position")]
+    NonFinitePosition,
+    #[error("crystal cell has a non-finite lattice vector")]
+    NonFiniteLattice,
     #[error("symmetry operation has a non-finite translation")]
     NonFiniteTranslation,
     #[error("fractional rotation is not unimodular")]
@@ -216,12 +174,8 @@ pub enum SymmetryTransformError {
     UnmappedSite { source_site: usize },
     #[error("site {source_site} has multiple images within the symmetry tolerance")]
     AmbiguousSite { source_site: usize },
-    #[error("site map has {actual} entries, expected {expected}")]
-    SiteMapCount { expected: usize, actual: usize },
     #[error("site map is not a permutation at target site {target}")]
     NonPermutationSiteMap { target: usize },
-    #[error("site map sends site {source_site} to incompatible site {target}")]
-    InvalidSiteMap { source_site: usize, target: usize },
 }
 
 fn validate_cell(cell: &CrystalCell, tolerance: Bohr) -> Result<(), SymmetryTransformError> {
@@ -239,13 +193,16 @@ fn validate_cell(cell: &CrystalCell, tolerance: Bohr) -> Result<(), SymmetryTran
         .iter()
         .flatten()
         .any(|value| !value.is_finite())
-        || cell
-            .lattice
-            .iter()
-            .flatten()
-            .any(|value| !value.get().is_finite())
     {
-        return Err(SymmetryTransformError::SingularLattice);
+        return Err(SymmetryTransformError::NonFinitePosition);
+    }
+    if cell
+        .lattice
+        .iter()
+        .flatten()
+        .any(|value| !value.get().is_finite())
+    {
+        return Err(SymmetryTransformError::NonFiniteLattice);
     }
     Ok(())
 }
@@ -293,11 +250,10 @@ fn cartesian_rotation(
     if operation.translation.iter().any(|value| !value.is_finite()) {
         return Err(SymmetryTransformError::NonFiniteTranslation);
     }
-    let w = operation.rotation.map(|row| row.map(f64::from));
-    let determinant = determinant(w);
-    if (determinant.abs() - 1.0).abs() != 0.0 {
+    if integer_determinant(operation.rotation).abs() != 1 {
         return Err(SymmetryTransformError::NonUnimodularRotation);
     }
+    let w = operation.rotation.map(|row| row.map(f64::from));
     let a_t: [[f64; 3]; 3] =
         std::array::from_fn(|row| std::array::from_fn(|column| lattice[column][row].get()));
     let inverse = inverse(a_t).ok_or(SymmetryTransformError::SingularLattice)?;
@@ -320,6 +276,13 @@ fn cartesian_rotation(
         }
     }
     Ok(rotation)
+}
+
+pub(crate) fn integer_determinant(matrix: [[i32; 3]; 3]) -> i128 {
+    let matrix = matrix.map(|row| row.map(i128::from));
+    matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1])
+        - matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0])
+        + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0])
 }
 
 fn determinant(matrix: [[f64; 3]; 3]) -> f64 {
