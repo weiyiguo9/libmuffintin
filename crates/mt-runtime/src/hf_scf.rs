@@ -669,7 +669,6 @@ fn lifting_identity(
         let CheckpointKPointSolution::Spinor {
             eigenproblem,
             solution,
-            occupations: state_range,
             ..
         } = &point.solution
         else {
