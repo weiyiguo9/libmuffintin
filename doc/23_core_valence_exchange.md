@@ -1,8 +1,9 @@
 # 23. Core–valence exchange and the unified Hartree–Fock driver
 
 This document is a contract: formulas, IR shapes, stage boundaries, and
-acceptance gates. A1 and A2 are implemented as described in section 4.1;
-later core stages remain planned. The contract lifts two explicit exclusions of
+acceptance gates. A1 and A2 are implemented as described in section 4.1, and
+M0, M1, and M2 are implemented as described in section 4.2. The relaxed-core
+M3 stages and later compression/export stages remain planned. The contract lifts two explicit exclusions of
 [18](18_lapw_mpb_thc_integration.md) §4 —
 core–valence products and the self-consistent Fock loop — and it replaces the
 earlier frozen-core staging idea with a relaxed core at FlapwMBPT parity.
@@ -268,20 +269,24 @@ more numerous VV columns dominate AllQL2 selection and hide a bad core fit.
 
 ## 3. Implementation
 
-Bindings named here are planned unless marked existing or A1.
+Bindings named here are planned unless marked existing or assigned to the
+implemented A1, A2, M0, M1, or M2 milestones.
 
 ### 3.1 Existing seams
 
 | Seam | Anchor | Status |
 |---|---|---|
 | Core radial solve | `solve_core_dirac`, `CoreDiracSolution` in `crates/mt-sphere/src/core_dirac.rs` | exists; reports physical $P/Q$, `norm_mt`, `spill` |
-| Per-iteration core station | `solve_regional_core` in `crates/mt-dft/src/core_station.rs` | exists; discards $P/Q$ after density synthesis |
-| Core radials in the product IR | `DiracSiteRadialSet::cores`, `ProductOrbitalKind::Core` in `crates/mt-prodbasis/src/dirac.rs` | exists; runtime emits empty `cores` |
-| Exchange contraction | `build_scalar_isdf_exchange`, `build_spinor_isdf_exchange`, `GammaExchangeTreatment` in `crates/mt-runtime/src/isdf_exchange.rs` | exists; square valence layout only |
+| Per-iteration core station | `solve_regional_core`, `CoreShellOrbitals` in `crates/mt-dft/src/core_station.rs` | M0; retains physical $P/Q$, occupations, norms, spill, and provenance beside the unchanged density path |
+| Core radials in the product IR | `DiracSiteRadialSet::cores`, `ProductOrbitalKind::Core` in `crates/mt-prodbasis/src/dirac.rs` | M1; runtime fills the core table from the retained sidecar |
+| Rectangular sector layout and vertices | `ExchangePairLayout` in `crates/mt-prodbasis/src/pair_layout.rs`, `build_spinor_exchange_mpb` in `crates/mt-runtime/src/spinor_exchange_mpb.rs` | M1; independent CV, VC, and CC layouts with muffin-tin PP/QQ core products |
+| Exchange contraction | `build_scalar_isdf_exchange`, `build_spinor_isdf_exchange`, `contract_rectangular_exchange` in `crates/mt-runtime/src/isdf_exchange.rs` | exists; square valence and rectangular occupied-target contractions |
 | Exact full-VV exchange | `build_spinor_mpb_exchange` in `crates/mt-runtime/src/isdf_exchange.rs` | A1; requires every VV column exactly once and seals the full live orbital payload |
 | Nonorthogonal feedback lift | `lift_band_hermitian_feedback` in `crates/mt-operators/src/eigensolve.rs` | A1; forms `S C K C^H S` and re-solves the retained original H0/S problem |
 | Gamma valence HF driver | `run_gamma_valence_hf` in `crates/mt-runtime/src/hf_scf.rs` | A1; spinor-first, one k point, finite Gamma body, no core states |
 | Full-BZ valence HF engine | `run_valence_hf` in `crates/mt-runtime/src/hf_scf.rs` | A2; explicit full regular mesh, complete fresh canonical q slice, no core states |
+| Frozen sector exchange | `build_frozen_spinor_sector_exchange` in `crates/mt-runtime/src/spinor_sector_exchange.rs` | M2; one-shot VV/CV/VC/CC accounting on one sealed frozen snapshot |
+| Independent radial comparison | `radial_slater_traces` in `crates/mt-coulomb`, `compare_frozen_sector_radial` in `crates/mt-runtime/src/spinor_sector_exchange.rs` | M2; trace-only MT oracle with numerical and spill gates kept separate |
 | Sharp-core fixture flag | `PairColumnLayout::core_orbital` in `crates/mt-prodbasis/src/pair_layout.rs` | fixture-only; must not model real cores |
 | Molecular AO oracle | `solve_restricted_hf` in `crates/mt-hf/src/lib.rs` | exists; external comparison only |
 
@@ -436,8 +441,8 @@ no claim of a converged periodic Hartree–Fock limit.
 
 | Milestone | Deliverable | Exit gates |
 |---|---|---|
-| M0 | Core station retains and outputs the `CoreShellOrbitals` sidecar | sidecar radials bit-identical to the density path; `norm_mt` and spill reported per shell; no consumer change |
-| M1 | Rectangular MPB CV/VC/CC vertices over `ExchangePairLayout`; runtime core producer fills `DiracSiteRadialSet::cores` | cross-trace residual at numerical tolerance; occupation factors applied exactly once; PP/QQ sectors only; Bloch/site phase locked by a single-shell analytic fixture; CV constant-mode residual reported |
+| M0 | Implemented: core station retains and outputs the `CoreShellOrbitals` sidecar | sidecar radials bit-identical to the density path; `norm_mt` and spill reported per shell; no consumer change |
+| M1 | Implemented: rectangular MPB CV/VC/CC vertices over `ExchangePairLayout`; runtime core producer fills `DiracSiteRadialSet::cores` | cross-trace residual at numerical tolerance; occupation factors applied exactly once; PP/QQ sectors only; Bloch/site phase locked by a single-shell analytic fixture; CV constant-mode residual reported |
 | M2 | Implemented: sector-aware one-shot exact-MPB traces and exchange energies on one converged frozen DFT snapshot, plus an independent trace-only radial Slater oracle | VV adapter reproduces the square contraction; CV and VC are contracted independently; MPB-versus-MT numerical residuals and physical core spill are separate gates |
 | M3a | Channel-reduced radial core-core Fock kernel with per-shell inner self-consistency; depends on M1 | converged core shells; radial Slater CC trace matches the MPB CC trace within the spill allowance |
 | M3b | Channel-reduced core-valence kernel and CV feedback into core relaxation, with an exact MPB VC diagnostic; depends on M2 | radial CV trace matches the MPB CV and VC cross traces; $\delta_c$ reported |
@@ -447,7 +452,7 @@ no claim of a converged periodic Hartree–Fock limit.
 
 ### 4.2 Core-sector track and relaxed-core merge
 
-M0 is the immediate Track B entry point. It introduces only the planned
+M0 is the implemented Track B entry point. It introduces only the
 `CoreShellOrbitals` sidecar at the core-station boundary. For every solved
 shell, the sidecar retains the existing extended mesh, physical $P/Q$
 radials, energy, `norm_total`, `norm_mt`, spill, occupations, and solve
@@ -460,7 +465,7 @@ M0 is independent of the Track A valence work: either track may land first,
 and neither blocks progress or changes the acceptance gates of the other.
 They meet only at the later relaxed-core merge stages specified below.
 
-M1 adds planned rectangular MPB vertices for the CV, VC, and CC sectors,
+M1 implements rectangular MPB vertices for the CV, VC, and CC sectors,
 each enumerated by its own `ExchangePairLayout`. The runtime product input
 fills `DiracSiteRadialSet::cores` from the M0 sidecar. Any column with a core
 member has empty interstitial support and carries only the muffin-tin PP and

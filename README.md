@@ -86,8 +86,10 @@ exact contracts and derivations.
   spinor product-input, mixed-product, THC, sampled-Coulomb, natural-grid,
   frozen-orbital ISDF exchange bridges, exact full-VV MPB exchange, and the
   full-regular-BZ spinor-first valence-only HF SCF engine with a strict Gamma
-  wrapper; and the runtime-owned MLDUMP and CoQui writers. The bridge
-  contracts live in
+  wrapper; retained Dirac core-orbital sidecars, rectangular VV/CV/VC/CC MPB
+  vertices, frozen one-shot sector exchange, and its independent radial
+  Slater-trace comparison; and the runtime-owned MLDUMP and CoQui writers. The
+  bridge contracts live in
   [`doc/17`](doc/17_minimal_dft_scf.md)–[`doc/20`](doc/20_sm_dy_full_spinor_material_demo.md).
 
 All in-memory energies are Hartree and all lengths are Bohr; producer-specific
@@ -163,7 +165,11 @@ self-consistent Fock feedback on a caller-specified finite full-BZ mesh. The
 Gamma API is the `1x1x1`, zero-shift wrapper over that engine. This is not a
 box-size, basis, product-cutoff, or k-mesh convergence result and is not a
 converged periodic HF claim. Core exchange and core relaxation remain outside
-that route; ISDF/THC remains a frozen-orbital optional backend.
+that route; ISDF/THC remains a frozen-orbital optional backend. M0, M1, and M2
+are implemented separately: they retain core radials, build rectangular core
+sectors, and evaluate frozen one-shot sector exchange with radial trace gates.
+They do not relax the core, feed core exchange into the valence driver, or
+establish core-aware SCF convergence.
 
 Crystal symmetry is currently detection and classification only: the
 `libmuffintin-symmetry` dataset is not yet consumed by the SCF loop, and no
