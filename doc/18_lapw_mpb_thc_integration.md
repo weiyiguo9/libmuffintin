@@ -358,6 +358,44 @@ reciprocal lattice and pair-column layout, before mixed-product Coulomb
 assembly; THC vertices must carry the compiled auxiliary provenance at the
 shared record helper. Matched pairs are compared by the section 1.4 metric.
 
+### 2.8 Natural-grid molecule-in-box exchange
+
+`build_natural_thc_parent_grid` constructs one deterministic parent support
+from the existing Weinert partition. Every stored muffin-tin radial shell is
+crossed with a Fibonacci angular rule and retains its exact radial index;
+midpoint-rule uniform-cell points are assigned to the interstitial only after
+periodic nearest-image sphere masking. The direct cell volume and the
+partition volume, the site/mesh count, and every mesh endpoint/muffin-tin
+radius are checked. This is natural regional quadrature, not a second smooth
+partition. Adaptive interpolation points are then selected from that parent
+support by the existing AllQL2 QRCP or pivoted-Cholesky engine; this function
+does not claim adaptive parent-mesh refinement.
+
+For one scalar spin channel or one full-first-variation spinor manifold,
+`build_scalar_isdf_exchange` and `build_spinor_isdf_exchange` contract the
+sampled-$\zeta$ Weinert operators into the frozen band basis:
+
+```math
+K^x_{j j'}(k)
+=-
+\sum_q w_{k-q}\sum_i f_i(k-q)
+\left(C^q_{k i j}\right)^\dagger V^q C^q_{k i j'},
+```
+
+```math
+E_x
+=\frac12\sum_k w_k\sum_j f_j(k)K^x_{jj}(k).
+```
+
+The caller supplies positive normalized $k$ weights and occupations in
+$[0,1]$. The complete canonical $q$ slice, $k-q$ maps, pair-column layouts,
+vertices, and Coulomb operators are checked before contraction. Molecule-in-box
+Gamma calculations must explicitly select the finite Weinert/SPEX body,
+corresponding to the periodic neutralizing-background convention, or reject
+Gamma. The separated divergent head is never inserted. Cell-size convergence
+and a later isolated/truncated-Coulomb route remain caller-visible physics
+choices.
+
 ## 3. Implementation
 
 ### 3.1 Packages and kernel ownership
@@ -524,6 +562,14 @@ Muffin-tin reconstruction uses [`CompiledSiteProjection::spinor`] and
 does not implement core-valence products, HDF5/CoQui, material/SPEX
 acceptance, a principal-angle engine, or GW/RPA.
 
+`NaturalThcGridSpec` controls only the Fibonacci angular count and uniform
+interstitial divisions. `IsdfExchangeSpec` owns normalized $k$ weights,
+fractional occupations, and an explicit Gamma policy. `IsdfExchangeResult`
+returns the frozen-orbital exchange energy, one Hermitian band-space exchange
+matrix per $k$, and the measured anti-Hermitian residual. These exchange
+matrices are ready for a later SCF Fock update; this stage does not yet insert
+them into `MaterialKernel` or claim self-consistent Hartree–Fock.
+
 ### 3.10 Scalar MLDUMP materialization
 
 `write_scalar_mldump(path, header, inputs, thc, coulomb, spec)` is the
@@ -611,3 +657,13 @@ reaching into checkpoint solver internals.
 The spinor THC/Coulomb stage additionally does not implement core-valence
 products, HDF5/CoQui output, material/SPEX acceptance, a principal-angle
 engine, or GW/RPA.
+
+The natural-grid exchange consumer is frozen-orbital exact exchange. It does
+not yet implement a self-consistent Fock loop, isolated/truncated Coulomb,
+analytic Gamma-head integration, forces, or direct uncompressed ERI reference
+for a material-sized orbital window.
+
+The core–valence exchange sectors and the self-consistent unified
+Hartree–Fock driver that would lift these exclusions are specified as a
+contract in [23](23_core_valence_exchange.md); until those milestones land,
+the exclusions above remain accurate.

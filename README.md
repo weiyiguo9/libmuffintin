@@ -67,6 +67,11 @@ exact contracts and derivations.
   occupations and mixing, total energy and SCF state machines,
   frozen-potential bands, tetrahedron DOS, channel-energy generators,
   free-atom LDA, and the periodic neutral-atom superposition.
+- `libmuffintin-hf`: a finite-basis closed-shell restricted Hartree–Fock
+  state machine over caller-supplied overlap, one-electron, and real
+  chemist-order four-index integrals. It performs genuine Fock feedback,
+  density mixing, generalized eigensolves, and energy/density convergence;
+  it is not yet connected to the periodic LAPW product/Coulomb pipeline.
 - `libmuffintin-io`: versioned, human-diffable TOML checkpoint and grid
   formats; the MLDUMP v1 HDF5 interchange schema (`libmuffintin.mldump`,
   neither CoQui-native nor SPEX-native); the SPEX `spex.snapshot_hdf` v1
@@ -78,8 +83,9 @@ exact contracts and derivations.
   checkpoint/IO/orchestration shell, which delegates DFT/SCF physics to
   `MaterialKernel`; the explicit-layout neutral atomic-start generator
   `materialize_atomic_start`; the runtime-owned frozen scalar and
-  spinor product-input, mixed-product, THC, and sampled-Coulomb bridges; and
-  the runtime-owned MLDUMP and CoQui writers. The bridge contracts live in
+  spinor product-input, mixed-product, THC, sampled-Coulomb, natural-grid,
+  and frozen-orbital ISDF exchange bridges; and the runtime-owned MLDUMP and
+  CoQui writers. The bridge contracts live in
   [`doc/17`](doc/17_minimal_dft_scf.md)–[`doc/20`](doc/20_sm_dy_full_spinor_material_demo.md).
 
 All in-memory energies are Hartree and all lengths are Bohr; producer-specific
@@ -94,6 +100,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test -p libmuffintin-core --features rstsr
 cargo test -p libmuffintin-tensor
 cargo test -p libmuffintin-operators
+cargo test -p libmuffintin-hf
 ```
 
 The workspace MSRV is Rust 1.89, set by `libmuffintin-symmetry`'s moyo
@@ -145,6 +152,13 @@ production DFT-SCF loop through one global entry plus linear staged handles.
 The separate backend-neutral `pymuffintin` research package consumes those
 exports; it is not part of this workspace. Neither package is published, and
 this work adds no importer, wheel, or material-accuracy claim.
+
+[`examples/relativistic_hf`](examples/relativistic_hf/) contains an external
+PySCF NR/sf-X2C1e/X2C1e/4c-DC HF comparison and its Kr/Dyall-v2z report. It is
+a Gaussian-basis quantum-chemistry diagnostic, not a Koelling–Harmon versus
+FRA-LAPW acceptance test. The periodic ISDF exchange path remains
+frozen-orbital, valence-only, and explicit about its finite Gamma-body
+convention; it is not presented as a self-consistent periodic HF result.
 
 Crystal symmetry is currently detection and classification only: the
 `libmuffintin-symmetry` dataset is not yet consumed by the SCF loop, and no
