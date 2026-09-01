@@ -162,7 +162,7 @@ Y_L(c',c;r)=\int_0^{\infty}
 ```
 
 the kernel acting on $P_c$ is
-$-\sum_{c'}\sum_L A_L(\kappa_c,\kappa_{c'})\,Y_L(c',c;r)\,P_{c'}(r)/r$,
+$-\sum_{c'}\sum_L A_L(\kappa_c,\kappa_{c'})\,Y_L(c',c;r)\,P_{c'}(r)$,
 with the same kernel multiplying $Q_{c'}$ in the small-component equation and
 $A_L$ the closed-subshell-averaged Dirac angular factor. The core–valence
 part is built from the site-projected occupied valence density matrix,
@@ -343,6 +343,8 @@ Track A first closes the valence-only Fock loop; Track B builds the core
 sidecar and rectangular exchange sectors. They join only at the relaxed-core
 driver milestone:
 
+### 4.1 Valence track and staging graph
+
 ```mermaid
 flowchart LR
     S["contract baseline"] --> A1["A1: Gamma valence SCF"]
@@ -350,13 +352,16 @@ flowchart LR
     S --> M0["M0: core sidecar"]
     M0 --> M1["M1: rectangular core vertices"]
     M1 --> M2["M2: one-shot sector exchange"]
-    A2 --> M3["M3: relaxed-core HF SCF"]
-    M2 --> M3
-    M3 --> M4["M4: core-aware THC"]
+    M1 --> M3A["M3a: radial core-core relaxation"]
+    M2 --> M3B["M3b: core-valence relaxation"]
+    A2 --> M3C["M3c: unified relaxed-core HF SCF"]
+    M3A --> M3C
+    M3B --> M3C
+    M3C --> M4["M4: core-aware THC"]
     M4 --> M5["M5: exchange export"]
 ```
 
-### A1 — Gamma valence-only SCF
+#### A1 — Gamma valence-only SCF
 
 A1 plans the first executable driver stage as a Gamma-centered
 molecule-in-box, valence-only Hartree–Fock SCF loop. It fixes `n_k = 1` and
@@ -378,7 +383,7 @@ the stated tolerance, and the SCF reaches a fixed point under the chosen
 mixing specification. These are planned acceptance gates, not implementation
 claims.
 
-### A2 — Regular k-mesh valence-only SCF
+#### A2 — Regular k-mesh valence-only SCF
 
 A2 plans to extend the A1 loop unchanged to a regular crystal $k$ mesh. After
 every orbital update, each iteration traverses the full set of canonical $q$
