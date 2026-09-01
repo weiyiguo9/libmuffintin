@@ -1,0 +1,632 @@
+//! Production muffin-tin radial core-valence exchange action.
+
+use crate::radial_slater::{
+    BorrowedCoreShell, BorrowedValenceRadial, ClosedCoreOccupations, RadialSlaterSite,
+};
+use crate::{CoulombError, radial_primitive};
+use muffintin_core::{ExponentialMesh, Hartree, Lm, RelativisticChannel, spinor_gaunt};
+use num_complex::Complex64;
+use std::f64::consts::PI;
+use thiserror::Error;
+
+const HERMITICITY_TOLERANCE: f64 = 1.0e-10;
+
+/// Spherical core-valence Fock action for one physical core shell.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RadialCoreValenceShellAction {
+    pub site_index: usize,
+    /// Index in [`RadialSlaterSite::cores`].
+    pub shell_index: usize,
+    pub kappa: muffintin_core::Kappa,
+    /// Real physical radial Fock action on P; samples beyond the muffin-tin mesh are zero.
+    pub p: Vec<f64>,
+    /// Real physical radial Fock action on Q; samples beyond the muffin-tin mesh are zero.
+    pub q: Vec<f64>,
+    /// Target-magnetic-channel-averaged expectation before applying any core occupation.
+    pub spherical_expectation: Hartree,
+    /// Sum over target mu with each retained core occupation applied once.
+    pub action_trace: Hartree,
+    /// Absolute imaginary part discarded from the Hermitian action trace.
+    pub imaginary_residual: f64,
+}
+
+/// Production radial core-valence actions and their occupied-core trace.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RadialCoreValenceActions {
+    pub shells: Vec<RadialCoreValenceShellAction>,
+    pub action_trace: Hartree,
+    pub imaginary_residual: f64,
+}
+
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum RadialCoreValenceError {
+    #[error(transparent)]
+    Coulomb(#[from] CoulombError),
+    #[error(
+        "radial core-valence site {site} extended mesh is not an exact prefix extension of its MT mesh"
+    )]
+    MeshPrefix { site: usize },
+    #[error("radial core-valence site {site} has an inconsistent P/Q radial length")]
+    RadialLength { site: usize },
+    #[error("radial core-valence site {site} has invalid explicit radial normalization {value}")]
+    Normalization { site: usize, value: f64 },
+    #[error("radial core-valence site {site} core shell uses ExplicitCollinear occupations")]
+    ExplicitCollinear { site: usize },
+    #[error(
+        "radial core-valence site {site} core shell does not contain every magnetic channel exactly once"
+    )]
+    MagneticChannels { site: usize },
+    #[error(
+        "radial core-valence site {site} core shell is not closed: magnetic occupations differ"
+    )]
+    OpenShell { site: usize },
+    #[error("radial core-valence site {site} has an invalid core occupation {value}")]
+    Occupation { site: usize, value: f64 },
+    #[error(
+        "radial core-valence site {site} valence density has dimension {actual}, expected {expected}"
+    )]
+    DensityDimension {
+        site: usize,
+        actual: usize,
+        expected: usize,
+    },
+    #[error("radial core-valence site {site} valence density is not finite Hermitian")]
+    DensityNotHermitian { site: usize },
+}
+
+#[derive(Clone, Copy)]
+struct OrbitalRef<'a> {
+    channel: RelativisticChannel,
+    p: &'a [f64],
+    q: &'a [f64],
+    normalization: f64,
+}
+
+/// Apply the spherical core-valence exchange kernel to physical core P/Q.
+///
+/// The valence density is already weighted by $w_k f_{kn}$. The returned action
+/// contains the negative Fock sign and does not contain a core occupation.
+/// Core occupations enter only [`RadialCoreValenceShellAction::action_trace`].
+pub fn radial_core_valence_actions(
+    sites: &[RadialSlaterSite<'_>],
+) -> Result<RadialCoreValenceActions, RadialCoreValenceError> {
+    let mut result = RadialCoreValenceActions::default();
+    let mut trace = Complex64::new(0.0, 0.0);
+    for site in sites {
+        validate_site(site)?;
+        let valence = site
+            .valence
+            .orbitals
+            .iter()
+            .map(valence_ref)
+            .collect::<Vec<_>>();
+        for (shell_index, shell) in site.cores.iter().enumerate() {
+            let occupations = closed_occupations(site.site_index, shell)?;
+            let degeneracy = occupations.len() as f64;
+            let mut average_p = vec![Complex64::new(0.0, 0.0); site.mt_mesh.len()];
+            let mut average_q = vec![Complex64::new(0.0, 0.0); site.mt_mesh.len()];
+            let mut average_expectation = Complex64::new(0.0, 0.0);
+            let mut shell_trace = Complex64::new(0.0, 0.0);
+            for &(twice_mu, occupation) in &occupations {
+                let core = OrbitalRef {
+                    channel: RelativisticChannel::new(shell.kappa, twice_mu)
+                        .expect("kappa supplies its own valid magnetic channels"),
+                    p: &shell.p[..site.mt_mesh.len()],
+                    q: &shell.q[..site.mt_mesh.len()],
+                    normalization: shell.normalization,
+                };
+                let (p, q) = action_for_mu(site.mt_mesh, core, &valence, site.valence.matrix)?;
+                let expectation = action_expectation(site.mt_mesh, core, &p, &q)?;
+                for (average, value) in average_p.iter_mut().zip(&p) {
+                    *average += *value / degeneracy;
+                }
+                for (average, value) in average_q.iter_mut().zip(&q) {
+                    *average += *value / degeneracy;
+                }
+                average_expectation += expectation / degeneracy;
+                shell_trace += occupation * expectation;
+            }
+            let mut p = average_p.iter().map(|value| value.re).collect::<Vec<_>>();
+            let mut q = average_q.iter().map(|value| value.re).collect::<Vec<_>>();
+            p.resize(site.extended_mesh.len(), 0.0);
+            q.resize(site.extended_mesh.len(), 0.0);
+            result.shells.push(RadialCoreValenceShellAction {
+                site_index: site.site_index,
+                shell_index,
+                kappa: shell.kappa,
+                p,
+                q,
+                spherical_expectation: Hartree(average_expectation.re),
+                action_trace: Hartree(shell_trace.re),
+                imaginary_residual: shell_trace.im.abs(),
+            });
+            trace += shell_trace;
+        }
+    }
+    result.action_trace = Hartree(trace.re);
+    result.imaginary_residual = trace.im.abs();
+    Ok(result)
+}
+
+fn action_for_mu(
+    mesh: &ExponentialMesh,
+    core: OrbitalRef<'_>,
+    valence: &[OrbitalRef<'_>],
+    density: &[Complex64],
+) -> Result<(Vec<Complex64>, Vec<Complex64>), RadialCoreValenceError> {
+    let n = valence.len();
+    let l_max = valence
+        .iter()
+        .map(|orbital| pair_l_max(core.channel, orbital.channel))
+        .max()
+        .unwrap_or(0);
+    let mut p = vec![Complex64::new(0.0, 0.0); mesh.len()];
+    let mut q = vec![Complex64::new(0.0, 0.0); mesh.len()];
+    for (inner_index, inner) in valence.iter().copied().enumerate() {
+        for l in 0..=l_max {
+            for m in -(l as i32)..=(l as i32) {
+                let source = physical_pair_radial(mesh, inner, core, l, m)?;
+                if source.iter().all(|value| *value == 0.0) {
+                    continue;
+                }
+                let potential = radial_multipole_potential(mesh, l, &source)?;
+                for (outer_index, outer) in valence.iter().copied().enumerate() {
+                    let weight = density[inner_index * n + outer_index];
+                    if weight == Complex64::new(0.0, 0.0) {
+                        continue;
+                    }
+                    let pp = density_angular(core.channel, l, m, outer.channel)?;
+                    let qq = density_angular(
+                        core.channel.opposite_kappa(),
+                        l,
+                        m,
+                        outer.channel.opposite_kappa(),
+                    )?;
+                    let outer_norm = outer.normalization.sqrt();
+                    for index in 0..mesh.len() {
+                        let radius = mesh.radii()[index].get();
+                        p[index] -= weight
+                            * (pp * outer.p[index] / (radius * outer_norm) * potential[index]);
+                        q[index] -= weight
+                            * (qq * outer.q[index] / (radius * outer_norm) * potential[index]);
+                    }
+                }
+            }
+        }
+    }
+    Ok((p, q))
+}
+
+/// Pair density with a normalized valence factor and the physical target core.
+fn physical_pair_radial(
+    mesh: &ExponentialMesh,
+    left: OrbitalRef<'_>,
+    core: OrbitalRef<'_>,
+    l: u32,
+    m: i32,
+) -> Result<Vec<f64>, RadialCoreValenceError> {
+    let pp = density_angular(core.channel, l, m, left.channel)?;
+    let qq = density_angular(
+        core.channel.opposite_kappa(),
+        l,
+        m,
+        left.channel.opposite_kappa(),
+    )?;
+    let left_norm = left.normalization.sqrt();
+    Ok(mesh
+        .radii()
+        .iter()
+        .enumerate()
+        .map(|(index, radius)| {
+            (pp * left.p[index] * core.p[index] + qq * left.q[index] * core.q[index])
+                / (radius.get() * left_norm)
+        })
+        .collect())
+}
+
+fn radial_multipole_potential(
+    mesh: &ExponentialMesh,
+    l: u32,
+    source: &[f64],
+) -> Result<Vec<f64>, RadialCoreValenceError> {
+    let mut outward = Vec::with_capacity(mesh.len());
+    let mut inward = Vec::with_capacity(mesh.len());
+    for (radius, &value) in mesh.radii().iter().zip(source) {
+        let power = radius.get().powi(l as i32);
+        outward.push(value * power * radius.get());
+        inward.push(if l == 0 { value } else { value / power });
+    }
+    let outward = radial_primitive(mesh, &outward, false)?;
+    let inward = radial_primitive(mesh, &inward, true)?;
+    let factor = 4.0 * PI / (2.0 * f64::from(l) + 1.0);
+    Ok(mesh
+        .radii()
+        .iter()
+        .enumerate()
+        .map(|(index, radius)| {
+            let power = radius.get().powi(l as i32);
+            let inner = if l == 0 {
+                outward[index]
+            } else {
+                outward[index] / power
+            };
+            factor * (inner + inward[index] * power * radius.get())
+        })
+        .collect())
+}
+
+fn action_expectation(
+    mesh: &ExponentialMesh,
+    core: OrbitalRef<'_>,
+    p: &[Complex64],
+    q: &[Complex64],
+) -> Result<Complex64, RadialCoreValenceError> {
+    let real = core
+        .p
+        .iter()
+        .zip(core.q)
+        .zip(p.iter().zip(q))
+        .map(|((&core_p, &core_q), (action_p, action_q))| {
+            (core_p * action_p.re + core_q * action_q.re) / core.normalization
+        })
+        .collect::<Vec<_>>();
+    let imaginary = core
+        .p
+        .iter()
+        .zip(core.q)
+        .zip(p.iter().zip(q))
+        .map(|((&core_p, &core_q), (action_p, action_q))| {
+            (core_p * action_p.im + core_q * action_q.im) / core.normalization
+        })
+        .collect::<Vec<_>>();
+    Ok(Complex64::new(
+        mesh.integrate(&real)?,
+        mesh.integrate(&imaginary)?,
+    ))
+}
+
+fn validate_site(site: &RadialSlaterSite<'_>) -> Result<(), RadialCoreValenceError> {
+    if site.extended_mesh.len() < site.mt_mesh.len()
+        || site.extended_mesh.radii()[..site.mt_mesh.len()] != site.mt_mesh.radii()[..]
+    {
+        return Err(RadialCoreValenceError::MeshPrefix {
+            site: site.site_index,
+        });
+    }
+    for core in site.cores {
+        validate_radial(
+            site.site_index,
+            site.extended_mesh.len(),
+            core.p,
+            core.q,
+            core.normalization,
+        )?;
+    }
+    for valence in site.valence.orbitals {
+        validate_radial(
+            site.site_index,
+            site.mt_mesh.len(),
+            valence.p,
+            valence.q,
+            valence.normalization,
+        )?;
+    }
+    let n = site.valence.orbitals.len();
+    let expected = n.checked_mul(n).unwrap_or(usize::MAX);
+    if site.valence.matrix.len() != expected {
+        return Err(RadialCoreValenceError::DensityDimension {
+            site: site.site_index,
+            actual: site.valence.matrix.len(),
+            expected,
+        });
+    }
+    for row in 0..n {
+        for column in 0..n {
+            let value = site.valence.matrix[row * n + column];
+            let reverse = site.valence.matrix[column * n + row].conj();
+            if !value.re.is_finite()
+                || !value.im.is_finite()
+                || (value - reverse).norm() > HERMITICITY_TOLERANCE
+            {
+                return Err(RadialCoreValenceError::DensityNotHermitian {
+                    site: site.site_index,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_radial(
+    site: usize,
+    expected: usize,
+    p: &[f64],
+    q: &[f64],
+    normalization: f64,
+) -> Result<(), RadialCoreValenceError> {
+    if p.len() != expected
+        || q.len() != expected
+        || p.iter().chain(q).any(|value| !value.is_finite())
+    {
+        return Err(RadialCoreValenceError::RadialLength { site });
+    }
+    if !normalization.is_finite() || normalization <= 0.0 {
+        return Err(RadialCoreValenceError::Normalization {
+            site,
+            value: normalization,
+        });
+    }
+    Ok(())
+}
+
+fn closed_occupations(
+    site: usize,
+    shell: &BorrowedCoreShell<'_>,
+) -> Result<Vec<(muffintin_core::TwiceMu, f64)>, RadialCoreValenceError> {
+    let ClosedCoreOccupations::MuResolved(occupations) = shell.occupations else {
+        return Err(RadialCoreValenceError::ExplicitCollinear { site });
+    };
+    let expected = shell.kappa.twice_mu_values().collect::<Vec<_>>();
+    if occupations.len() != expected.len()
+        || expected
+            .iter()
+            .any(|mu| occupations.iter().filter(|(found, _)| found == mu).count() != 1)
+    {
+        return Err(RadialCoreValenceError::MagneticChannels { site });
+    }
+    let reference = occupations[0].1;
+    if let Some(&(_, value)) = occupations
+        .iter()
+        .find(|(_, value)| !value.is_finite() || !(0.0..=1.0).contains(value))
+    {
+        return Err(RadialCoreValenceError::Occupation { site, value });
+    }
+    if occupations
+        .iter()
+        .any(|(_, value)| value.to_bits() != reference.to_bits())
+    {
+        return Err(RadialCoreValenceError::OpenShell { site });
+    }
+    Ok(expected
+        .into_iter()
+        .map(|mu| {
+            let occupation = occupations
+                .iter()
+                .find_map(|(found, value)| (*found == mu).then_some(*value))
+                .expect("magnetic channel set was validated");
+            (mu, occupation)
+        })
+        .collect())
+}
+
+fn valence_ref(radial: &BorrowedValenceRadial<'_>) -> OrbitalRef<'_> {
+    OrbitalRef {
+        channel: radial.channel,
+        p: radial.p,
+        q: radial.q,
+        normalization: radial.normalization,
+    }
+}
+
+fn pair_l_max(left: RelativisticChannel, right: RelativisticChannel) -> u32 {
+    (left.kappa().large_l() + right.kappa().large_l())
+        .max(left.kappa().small_l() + right.kappa().small_l())
+}
+
+fn density_angular(
+    left: RelativisticChannel,
+    l: u32,
+    m: i32,
+    right: RelativisticChannel,
+) -> Result<f64, RadialCoreValenceError> {
+    let field = Lm::new(l, -m).map_err(CoulombError::from)?;
+    let phase = if m.unsigned_abs().is_multiple_of(2) {
+        1.0
+    } else {
+        -1.0
+    };
+    Ok(phase * spinor_gaunt(left, field, right))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{PreweightedSiteValenceDensity, radial_slater_traces};
+    use muffintin_core::{Bohr, Kappa, TwiceMu};
+
+    fn fixture(
+        occupation: f64,
+    ) -> (
+        ExponentialMesh,
+        ExponentialMesh,
+        Vec<f64>,
+        Vec<f64>,
+        Vec<f64>,
+        Vec<f64>,
+        Vec<f64>,
+        Vec<f64>,
+        [(TwiceMu, f64); 2],
+    ) {
+        let first = Bohr(1.0e-4);
+        let increment = (1.2_f64 / first.get()).ln() / 30.0;
+        let mt = ExponentialMesh::new(first, increment, 25).unwrap();
+        let extended = ExponentialMesh::new(first, increment, 31).unwrap();
+        let core_p = extended
+            .radii()
+            .iter()
+            .map(|r| r.get() * (-r.get()).exp())
+            .collect();
+        let core_q = extended
+            .radii()
+            .iter()
+            .map(|r| 0.2 * r.get().powi(2) * (-r.get()).exp())
+            .collect();
+        let p0 = mt
+            .radii()
+            .iter()
+            .map(|r| r.get() * (-0.7 * r.get()).exp())
+            .collect::<Vec<_>>();
+        let q0 = p0.iter().map(|value| 0.15 * value).collect();
+        let p1 = mt
+            .radii()
+            .iter()
+            .map(|r| r.get().powi(2) * (-0.8 * r.get()).exp())
+            .collect::<Vec<_>>();
+        let q1 = p1.iter().map(|value| -0.1 * value).collect();
+        let occupations = [
+            (TwiceMu::new(-1).unwrap(), occupation),
+            (TwiceMu::new(1).unwrap(), occupation),
+        ];
+        (mt, extended, core_p, core_q, p0, q0, p1, q1, occupations)
+    }
+
+    #[test]
+    fn complex_hermitian_density_action_trace_matches_independent_oracle() {
+        let (mt, extended, core_p, core_q, p0, q0, p1, q1, occupations) = fixture(0.4);
+        let core_norm = extended
+            .integrate(
+                &core_p
+                    .iter()
+                    .zip(&core_q)
+                    .map(|(p, q)| p * p + q * q)
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+        let channel =
+            RelativisticChannel::new(Kappa::new(-1).unwrap(), TwiceMu::new(-1).unwrap()).unwrap();
+        let norm = |p: &[f64], q: &[f64]| {
+            mt.integrate(
+                &p.iter()
+                    .zip(q)
+                    .map(|(p, q)| p * p + q * q)
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap()
+        };
+        let cores = [BorrowedCoreShell {
+            kappa: Kappa::new(-1).unwrap(),
+            p: &core_p,
+            q: &core_q,
+            normalization: core_norm,
+            occupations: ClosedCoreOccupations::MuResolved(&occupations),
+        }];
+        let orbitals = [
+            BorrowedValenceRadial {
+                channel,
+                p: &p0,
+                q: &q0,
+                normalization: norm(&p0, &q0),
+            },
+            BorrowedValenceRadial {
+                channel,
+                p: &p1,
+                q: &q1,
+                normalization: norm(&p1, &q1),
+            },
+        ];
+        let density = [
+            Complex64::new(0.7, 0.0),
+            Complex64::new(0.1, 0.2),
+            Complex64::new(0.1, -0.2),
+            Complex64::new(0.4, 0.0),
+        ];
+        let site = RadialSlaterSite {
+            site_index: 0,
+            mt_mesh: &mt,
+            extended_mesh: &extended,
+            cores: &cores,
+            valence: PreweightedSiteValenceDensity {
+                orbitals: &orbitals,
+                matrix: &density,
+            },
+        };
+        let oracle = radial_slater_traces(&[site]).unwrap();
+        let action = radial_core_valence_actions(&[site]).unwrap();
+        assert!((action.action_trace.get() - oracle.cv_mt.total.get()).abs() < 1.0e-12);
+        assert!(action.imaginary_residual < 1.0e-12);
+        assert!(
+            action.shells[0].p[mt.len()..]
+                .iter()
+                .all(|value| *value == 0.0)
+        );
+        assert!(
+            action.shells[0].q[mt.len()..]
+                .iter()
+                .all(|value| *value == 0.0)
+        );
+
+        let mut nonhermitian = density;
+        nonhermitian[2].im = 0.2;
+        let invalid = RadialSlaterSite {
+            valence: PreweightedSiteValenceDensity {
+                orbitals: &orbitals,
+                matrix: &nonhermitian,
+            },
+            ..site
+        };
+        assert!(matches!(
+            radial_core_valence_actions(&[invalid]),
+            Err(RadialCoreValenceError::DensityNotHermitian { site: 0 })
+        ));
+    }
+
+    #[test]
+    fn core_occupation_is_applied_once_after_the_physical_action() {
+        let build = |occupation| {
+            let (mt, extended, core_p, core_q, p0, q0, _, _, occupations) = fixture(occupation);
+            let core_norm = extended
+                .integrate(
+                    &core_p
+                        .iter()
+                        .zip(&core_q)
+                        .map(|(p, q)| p * p + q * q)
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
+            let valence_norm = mt
+                .integrate(
+                    &p0.iter()
+                        .zip(&q0)
+                        .map(|(p, q)| p * p + q * q)
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
+            let channel =
+                RelativisticChannel::new(Kappa::new(-1).unwrap(), TwiceMu::new(-1).unwrap())
+                    .unwrap();
+            let cores = [BorrowedCoreShell {
+                kappa: Kappa::new(-1).unwrap(),
+                p: &core_p,
+                q: &core_q,
+                normalization: core_norm,
+                occupations: ClosedCoreOccupations::MuResolved(&occupations),
+            }];
+            let orbitals = [BorrowedValenceRadial {
+                channel,
+                p: &p0,
+                q: &q0,
+                normalization: valence_norm,
+            }];
+            let density = [Complex64::new(0.5, 0.0)];
+            let site = RadialSlaterSite {
+                site_index: 0,
+                mt_mesh: &mt,
+                extended_mesh: &extended,
+                cores: &cores,
+                valence: PreweightedSiteValenceDensity {
+                    orbitals: &orbitals,
+                    matrix: &density,
+                },
+            };
+            radial_core_valence_actions(&[site]).unwrap()
+        };
+        let quarter = build(0.25);
+        let half = build(0.5);
+        assert_eq!(quarter.shells[0].p, half.shells[0].p);
+        assert_eq!(
+            quarter.shells[0].spherical_expectation,
+            half.shells[0].spherical_expectation
+        );
+        assert!((half.action_trace.get() - 2.0 * quarter.action_trace.get()).abs() < 1.0e-12);
+    }
+}

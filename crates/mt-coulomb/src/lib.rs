@@ -24,6 +24,7 @@ mod math;
 mod moments;
 mod operator;
 mod primitive;
+mod radial_core_valence;
 mod radial_slater;
 mod spec;
 mod structure;
@@ -52,6 +53,10 @@ pub use moments::{
 };
 pub use operator::{AuxiliaryKind, CoulombOperator, GammaHead};
 pub use primitive::{intra_sphere_poisson, radial_primitive};
+pub use radial_core_valence::{
+    RadialCoreValenceActions, RadialCoreValenceError, RadialCoreValenceShellAction,
+    radial_core_valence_actions,
+};
 pub use radial_slater::{
     BorrowedCoreShell, BorrowedValenceRadial, ClosedCoreOccupations, PreweightedSiteValenceDensity,
     RadialSlaterComponents, RadialSlaterError, RadialSlaterSite, RadialSlaterTraces,
