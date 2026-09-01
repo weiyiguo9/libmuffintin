@@ -338,6 +338,46 @@ CV exchange is adequate under a spill gate.
 
 ## 4. Milestones and acceptance gates
 
+The driver and core-sector work advance as two mostly independent tracks.
+Track A first closes the valence-only Fock loop; Track B builds the core
+sidecar and rectangular exchange sectors. They join only at the relaxed-core
+driver milestone:
+
+```mermaid
+flowchart LR
+    S["contract baseline"] --> A1["A1: Gamma valence SCF"]
+    A1 --> A2["A2: k-mesh valence SCF"]
+    S --> M0["M0: core sidecar"]
+    M0 --> M1["M1: rectangular core vertices"]
+    M1 --> M2["M2: one-shot sector exchange"]
+    A2 --> M3["M3: relaxed-core HF SCF"]
+    M2 --> M3
+    M3 --> M4["M4: core-aware THC"]
+    M4 --> M5["M5: exchange export"]
+```
+
+### A1 — Gamma valence-only SCF
+
+A1 plans the first executable driver stage as a Gamma-centered
+molecule-in-box, valence-only Hartree–Fock SCF loop. It fixes `n_k = 1` and
+uses `GammaExchangeTreatment::FiniteBody`; core exchange and core relaxation
+remain outside this stage. Whenever the valence orbitals change, the driver
+rebuilds the VV MPB vertices and, when selected, the THC-compressed Coulomb
+vertices, contracts the new VV exchange, and feeds its Hermitian band-basis
+Fock matrix into the next valence solve. Frozen vertices are not reused across
+an orbital update.
+
+Bring-up tunes the explicit density or Hartree-potential mixing choice, while
+reporting the anti-Hermitian residual and checking the direct-energy and
+valence eigenvalue identities of section 1.1 at every iteration. The AO
+restricted Hartree–Fock Kr Dyall v2z fixture is an external numerical oracle
+only; it does not supply the production loop, basis, or convergence policy.
+A1 exits when a frozen-orbital one-shot VV evaluation equals the first SCF
+iteration before any orbital update, the feedback matrix remains Hermitian at
+the stated tolerance, and the SCF reaches a fixed point under the chosen
+mixing specification. These are planned acceptance gates, not implementation
+claims.
+
 | Milestone | Deliverable | Exit gates |
 |---|---|---|
 | M0 | Core station retains and outputs the `CoreShellOrbitals` sidecar | sidecar radials bit-identical to the density path; `norm_mt` and spill reported per shell; no consumer change |
