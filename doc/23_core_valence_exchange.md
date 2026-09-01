@@ -184,13 +184,17 @@ spherically restricted — only the operator acting on the core is. The core
 solve iterates this kernel to inner self-consistency per shell.
 
 The channel reduction is forced by solving a one-dimensional radial equation.
-Two exactness statements bound its cost:
+Two statements bound its cost and comparison scope:
 
 - For uniform $\mu$ occupation per shell (spherical $D_c$), every energy
   trace of section 1.1 picks up only the spherical component of the exchange
-  operator, so the traces from the radial Slater route and from the exact
-  rectangular MPB route agree in exact arithmetic. Their difference is a
-  numerical gate, not a model tolerance.
+  operator. Traces agree in exact arithmetic only when both routes use the
+  same Coulomb body. The production MPB `FiniteBody` contraction includes the
+  finite periodic/background body with the separated divergent Gamma head
+  omitted, while the radial Slater route uses isolated onsite $1/r$.
+  MPB-minus-radial CC/CV/VC values are therefore signed physical diagnostics,
+  not numerical gates. The sampled radial action and its independent extended
+  radial trace do use the same body and retain a numerical identity gate.
 - The neglected nonspherical remainder affects only core orbital relaxation
   in a nonspherical environment. It is measured, per core spin orbital, as
 
@@ -458,8 +462,8 @@ no claim of a converged periodic Hartree–Fock limit.
 |---|---|---|
 | M0 | Implemented: core station retains and outputs the `CoreShellOrbitals` sidecar | sidecar radials bit-identical to the density path; `norm_mt` and spill reported per shell; no consumer change |
 | M1 | Implemented: rectangular MPB CV/VC/CC vertices over `ExchangePairLayout`; runtime core producer fills `DiracSiteRadialSet::cores` | cross-trace residual at numerical tolerance; occupation factors applied exactly once; PP/QQ sectors only; Bloch/site phase locked by a single-shell analytic fixture; CV constant-mode residual reported |
-| M2 | Implemented: sector-aware one-shot exact-MPB traces and exchange energies on one converged frozen DFT snapshot, plus an independent trace-only radial Slater oracle | VV adapter reproduces the square contraction; CV and VC are contracted independently; MPB-versus-MT numerical residuals and physical core spill are separate gates |
-| M3a | Implemented: channel-reduced radial core-core Fock kernel with per-shell inner self-consistency | converged core shells; MPB CC matches the MT radial trace numerically; final CC action matches the extended radial trace numerically; extended-minus-MT spill is reported separately |
+| M2 | Implemented: sector-aware one-shot exact-MPB traces and exchange energies on one converged frozen DFT snapshot, plus an independent trace-only radial Slater oracle | VV adapter reproduces the square contraction; CV and VC are contracted independently; signed finite-body MPB-minus-onsite-radial differences are reported; radial imaginary residual and physical core spill are separate gates |
+| M3a | Implemented: channel-reduced radial core-core Fock kernel with per-shell inner self-consistency | converged core shells; finite-body MPB-minus-onsite-radial CC difference is reported; final CC action matches the extended radial trace numerically; extended-minus-MT spill is reported separately |
 | M3b | Implemented: complete site-valence density, channel-reduced radial VC action, CV/VC-only exact MPB contraction, per-core $\delta_c$, and shared CC+VC core relaxation | production VC action matches the independent radial oracle; MPB CV and VC traces agree; their finite-body difference from the spherical on-site action is reported and closes through weighted $\delta_c$; imaginary residual and shell spill gated; final VC action rebuilt from final core radials |
 | M3c | Implemented internally: unified Track A2 valence driver and relaxed core with full CV feedback | bounded neutral closed-shell synthetic pipeline gates the density fixed point, valence eigenvalue identity, core convergence, fresh-core replacement, valence-only mixing, VV+CV feedback, and Gamma/generic parity; external Kr AO comparison remains blocked by the missing checked-in LAPW molecule/box-series fixture and acceptance tolerance |
 | M4 | Core-aware THC selection and fit, MPB as oracle | `residual_vv/cv/vc/cc` reported separately; core columns never dropped by pooled selection; rank scaling reported |
@@ -518,18 +522,21 @@ MPB radial products or a sampled radial Fock kernel. `ExplicitCollinear` and
 non-closed mu occupations are rejected because the required magnetic trace is
 not inferable from them.
 
-`compare_frozen_sector_radial` checks CC, CV, and VC against the MT radial
-trace with one explicit numerical tolerance. The extended-minus-MT CC
-difference remains a reported Hartree spill allowance, while each shell's
-dimensionless `spill` is checked against a separate threshold. No conversion
-of dimensionless norm spill into an invented energy allowance is made.
+`compare_frozen_sector_radial` reports signed CC, CV, and VC finite-body
+MPB-minus-onsite-radial differences. Its explicit numerical tolerance gates
+the radial imaginary residual, not differences between unlike Coulomb bodies.
+The extended-minus-MT CC difference remains a reported Hartree spill
+allowance, while each shell's dimensionless `spill` is checked against a
+separate threshold. No conversion of dimensionless norm spill into an
+invented energy allowance is made.
 
 The VV result must reproduce the existing square-layout frozen-orbital
 contraction. The rectangular CV and VC cross traces must agree at numerical
-tolerance. Independent channel-reduced radial Slater traces for both CC and
-CV must match their MPB traces at the explicit MT numerical tolerance. The
-extended-minus-MT CC difference and dimensionless per-shell spill are reported
-and gated separately rather than absorbed into a looser numerical tolerance.
+tolerance. Independent channel-reduced radial Slater traces for CC and CV
+provide onsite reference values; their signed differences from finite-body
+MPB traces are reported rather than gated. The extended-minus-MT CC difference
+and dimensionless per-shell spill are reported and gated separately rather
+than absorbed into a looser numerical tolerance.
 
 M2 remains strictly frozen and one-shot. It does not call `run_gamma_valence_hf`,
 the regular-k Track A2 driver, any mixer, any core solver, or any orbital/density
@@ -539,10 +546,11 @@ SCF convergence claim.
 M3a may begin as soon as M1 closes and does not wait for Track A2. It adds the
 channel-reduced radial core-core Fock kernel and a per-shell inner iteration
 at fixed outer potential. The independent MPB CC contraction remains its
-oracle: MPB CC must match the MT radial trace at the explicit numerical
-tolerance, while the final CC action independently matches the extended radial
-trace. The extended-minus-MT trace difference is reported as spill evidence
-and is never folded into either numerical tolerance.
+finite-body oracle, but its signed difference from the isolated onsite MT
+radial trace is physical and is not gated. The final CC action independently
+matches the extended radial trace at the explicit numerical tolerance. The
+extended-minus-MT trace difference is reported as spill evidence and is never
+folded into that tolerance.
 
 M3b follows M2. It builds the complete
 Hermitian site-valence density as

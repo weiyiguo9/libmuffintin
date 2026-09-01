@@ -174,7 +174,8 @@ pub struct RelaxedCoreHfIterationDiagnostic {
     /// Per-core exact-minus-spherical VC expectations from the final rebuilt frame.
     pub delta_c: Vec<CoreValenceDeltaDiagnostic>,
     pub weighted_delta_closure_residual: Hartree,
-    pub cc_mpb_mt_residual: Hartree,
+    /// Signed finite-body MPB CC trace minus the isolated onsite radial trace.
+    pub cc_mpb_mt_difference: Hartree,
     pub cc_action_extended_residual: Hartree,
     pub cc_extended_spill_allowance: Hartree,
 }
@@ -692,16 +693,10 @@ pub fn run_relaxed_core_hf(
                 maximum_shell_spill: spec.maximum_core_shell_spill,
             },
         )?;
-        let cc_mpb_mt_residual = Hartree(
-            (fixed.exchange.exchange.cc.trace.get()
-                - core_valence_comparison.radial_oracle.cc_mt.total.get())
-            .abs(),
+        let cc_mpb_mt_difference = Hartree(
+            fixed.exchange.exchange.cc.trace.get()
+                - core_valence_comparison.radial_oracle.cc_mt.total.get(),
         );
-        require_relaxed_gate(
-            "CC MPB/radial trace",
-            cc_mpb_mt_residual.get(),
-            spec.sector_numerical_tolerance.get(),
-        )?;
         let final_cc_action_trace = Hartree(
             core_relaxations
                 .iter()
@@ -807,7 +802,7 @@ pub fn run_relaxed_core_hf(
             delta_c: core_valence_comparison.deltas.clone(),
             weighted_delta_closure_residual: core_valence_comparison
                 .weighted_delta_closure_residual,
-            cc_mpb_mt_residual,
+            cc_mpb_mt_difference,
             cc_action_extended_residual,
             cc_extended_spill_allowance: core_valence_comparison.radial_oracle.cc_spill_allowance,
         });

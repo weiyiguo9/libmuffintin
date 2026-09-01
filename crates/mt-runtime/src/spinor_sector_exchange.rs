@@ -73,9 +73,9 @@ pub struct SectorRadialComparisonSpec {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SectorRadialComparison {
     pub radial: RadialSlaterTraces,
-    pub cc_mpb_mt_residual: Hartree,
-    pub cv_mpb_mt_residual: Hartree,
-    pub vc_mpb_mt_residual: Hartree,
+    pub cc_mpb_mt_difference: Hartree,
+    pub cv_mpb_mt_difference: Hartree,
+    pub vc_mpb_mt_difference: Hartree,
     pub shell_spill: Vec<CoreShellSpillDiagnostic>,
     pub maximum_measured_shell_spill: f64,
     pub shell_spill_threshold: f64,
@@ -87,8 +87,8 @@ pub struct CoreCoreRadialComparison {
     pub radial: RadialSlaterTraces,
     pub mpb_cc_trace: Hartree,
     pub action_cc_trace: Hartree,
-    /// Numerical MPB-versus-MT radial residual; no spill allowance is added.
-    pub cc_mpb_mt_residual: Hartree,
+    /// Signed finite-body MPB CC trace minus the isolated onsite radial trace.
+    pub cc_mpb_mt_difference: Hartree,
     /// Numerical final-action-versus-extended-radial identity residual.
     pub cc_action_extended_residual: Hartree,
     /// Measured extended-minus-MT radial trace difference, reported separately.
@@ -322,9 +322,10 @@ pub fn build_frozen_spinor_sector_exchange(
 
 /// Compare an independent radial trace with all three core-member MPB traces.
 ///
-/// Numerical residuals are checked only against the MT radial values. The
-/// extended-minus-MT CC allowance and dimensionless shell spill remain separate
-/// diagnostics; no conversion from a norm spill to Hartree is made.
+/// MPB-minus-MT values are signed physical diagnostics because finite-body MPB
+/// and isolated onsite radial contractions do not use the same Coulomb body.
+/// The radial imaginary residual and dimensionless shell spill remain gated;
+/// no conversion from a norm spill to Hartree is made.
 pub fn compare_frozen_sector_radial(
     exchange: &FrozenSpinorSectorExchange,
     radial: &RadialSlaterTraces,
@@ -337,22 +338,15 @@ pub fn compare_frozen_sector_radial(
     {
         return Err(FrozenSpinorSectorExchangeError::RadialTolerance);
     }
-    let cc = (exchange.cc.trace.get() - radial.cc_mt.total.get()).abs();
-    let cv = (exchange.cv.trace.get() - radial.cv_mt.total.get()).abs();
-    let vc = (exchange.vc.trace.get() - radial.cv_mt.total.get()).abs();
-    for (sector, residual) in [
-        ("CC", cc),
-        ("CV", cv),
-        ("VC", vc),
-        ("CV imaginary", radial.cv_imaginary_residual),
-    ] {
-        if residual > spec.numerical_tolerance.get() {
-            return Err(FrozenSpinorSectorExchangeError::RadialNumerical {
-                sector,
-                residual,
-                tolerance: spec.numerical_tolerance.get(),
-            });
-        }
+    let cc = exchange.cc.trace.get() - radial.cc_mt.total.get();
+    let cv = exchange.cv.trace.get() - radial.cv_mt.total.get();
+    let vc = exchange.vc.trace.get() - radial.cv_mt.total.get();
+    if radial.cv_imaginary_residual > spec.numerical_tolerance.get() {
+        return Err(FrozenSpinorSectorExchangeError::RadialNumerical {
+            sector: "CV imaginary",
+            residual: radial.cv_imaginary_residual,
+            tolerance: spec.numerical_tolerance.get(),
+        });
     }
     let mut shell_spill = Vec::new();
     for orbital in exchange
@@ -392,22 +386,23 @@ pub fn compare_frozen_sector_radial(
         .fold(0.0_f64, f64::max);
     Ok(SectorRadialComparison {
         radial: radial.clone(),
-        cc_mpb_mt_residual: Hartree(cc),
-        cv_mpb_mt_residual: Hartree(cv),
-        vc_mpb_mt_residual: Hartree(vc),
+        cc_mpb_mt_difference: Hartree(cc),
+        cv_mpb_mt_difference: Hartree(cv),
+        vc_mpb_mt_difference: Hartree(vc),
         shell_spill,
         maximum_measured_shell_spill,
         shell_spill_threshold: spec.maximum_shell_spill,
     })
 }
 
-/// Gate a fresh M3a relaxed-core result against CC-only MPB and radial traces.
+/// Compare a fresh M3a relaxed-core result against CC-only MPB and radial traces.
 ///
-/// The MPB numerical residual is measured against the MT radial trace. The
+/// The full finite-body MPB CC trace and the isolated onsite radial trace are
+/// different physical Coulomb bodies when the occupied CC pair has a nonzero
+/// monopole, so their signed difference is reported rather than gated. The
 /// final sampled radial action is independently checked against the extended
 /// radial trace. `cc_spill_allowance` and dimensionless shell spill are never
-/// folded into either numerical tolerance. The converged result may also carry
-/// M3b VC evidence, but this helper gates only its CC component.
+/// folded into the action numerical tolerance.
 pub fn compare_relaxed_core_core_radial(
     relaxed: &CoreFixedPotentialResult,
     mpb_cc_trace: Hartree,
@@ -421,14 +416,7 @@ pub fn compare_relaxed_core_core_radial(
     {
         return Err(FrozenSpinorSectorExchangeError::RadialTolerance);
     }
-    let mpb_mt = (mpb_cc_trace.get() - radial.cc_mt.total.get()).abs();
-    if mpb_mt > spec.numerical_tolerance.get() {
-        return Err(FrozenSpinorSectorExchangeError::RadialNumerical {
-            sector: "CC",
-            residual: mpb_mt,
-            tolerance: spec.numerical_tolerance.get(),
-        });
-    }
+    let mpb_mt = mpb_cc_trace.get() - radial.cc_mt.total.get();
     let action_extended =
         (relaxed.final_cc_trace.total.get() - radial.cc_extended.total.get()).abs();
     if action_extended > spec.numerical_tolerance.get() {
@@ -466,7 +454,7 @@ pub fn compare_relaxed_core_core_radial(
         radial: radial.clone(),
         mpb_cc_trace,
         action_cc_trace: relaxed.final_cc_trace.total,
-        cc_mpb_mt_residual: Hartree(mpb_mt),
+        cc_mpb_mt_difference: Hartree(mpb_mt),
         cc_action_extended_residual: Hartree(action_extended),
         extended_spill_allowance: radial.cc_spill_allowance,
         shell_spill,
