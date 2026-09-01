@@ -11,6 +11,7 @@ members = [
     "crates/mt-prodbasis",
     "crates/mt-coulomb",
     "crates/mt-dft",
+    "crates/mt-hf",
     "crates/mt-runtime",
     "crates/mt-python",
 ]

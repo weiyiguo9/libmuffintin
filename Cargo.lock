@@ -1050,6 +1050,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "libmuffintin-hf"
+version = "0.2.0"
+dependencies = [
+ "libmuffintin-core",
+ "libmuffintin-operators",
+ "libmuffintin-tensor",
+ "num-complex",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "libmuffintin-io"
 version = "0.2.0"
 dependencies = [

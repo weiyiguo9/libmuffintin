@@ -1,0 +1,79 @@
+{
+  "input": {
+    "atom": "Kr",
+    "charge": 0,
+    "spin": 0,
+    "basis": "dyall-v2z",
+    "nuclear_model": "gaussian",
+    "gaunt": false,
+    "breit": false
+  },
+  "results": [
+    {
+      "method": "NR-HF",
+      "energy_hartree": -2752.0056371133683,
+      "homo_hartree": -0.5194868111692776,
+      "converged": true,
+      "matrix_dimension": 83,
+      "seconds": 0.294502606000151
+    },
+    {
+      "method": "sf-X2C1e-HF",
+      "energy_hartree": -2788.2286143357933,
+      "homo_hartree": -0.5181654425296978,
+      "converged": true,
+      "matrix_dimension": 83,
+      "seconds": 0.371549590000086
+    },
+    {
+      "method": "X2C1e-HF",
+      "energy_hartree": -2788.333794024127,
+      "homo_hartree": -0.5087629061096073,
+      "converged": true,
+      "matrix_dimension": 166,
+      "seconds": 7.310737116999917
+    },
+    {
+      "method": "4c-DC-HF",
+      "energy_hartree": -2788.8131510712383,
+      "homo_hartree": -0.5094557127963845,
+      "converged": true,
+      "matrix_dimension": 332,
+      "seconds": 35.34102513000016
+    }
+  ],
+  "deltas": {
+    "sf-X2C1e - NR": {
+      "energy_hartree": -36.222977222425015,
+      "energy_millihartree": -36222.97722242502,
+      "energy_ev": -985.6774241787791,
+      "homo_ev": 0.03595627242493453,
+      "homo_mev": 35.95627242493453
+    },
+    "X2C1e - sf-X2C1e": {
+      "energy_hartree": -0.10517968833391933,
+      "energy_millihartree": -105.17968833391933,
+      "energy_ev": -2.862085124486181,
+      "homo_ev": 0.2558560502189855,
+      "homo_mev": 255.8560502189855
+    },
+    "4c-DC - X2C1e": {
+      "energy_hartree": -0.47935704711107974,
+      "energy_millihartree": -479.35704711107974,
+      "energy_ev": -13.043969758672501,
+      "homo_ev": -0.018852230347692248,
+      "homo_mev": -18.85223034769225
+    },
+    "4c-DC - NR": {
+      "energy_hartree": -36.807513957870015,
+      "energy_millihartree": -36807.51395787002,
+      "energy_ev": -1001.5834790619379,
+      "homo_ev": 0.2729600922962278,
+      "homo_mev": 272.9600922962278
+    }
+  },
+  "interpretation": {
+    "4c-DC - X2C1e": "Residual between full Dirac-Coulomb HF and one-electron X2C HF; it includes missing two-electron picture-change effects in X2C1e.",
+    "warning": "This is not a direct Koelling-Harmon-versus-FRA LAPW benchmark."
+  }
+}
