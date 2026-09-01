@@ -97,7 +97,8 @@ impl<'a> DiracPairVertexAccumulator<'a> {
 ///
 /// Muffin-tin PP/QQ terms reuse the Dirac mixed-product primitive, including the site phase
 /// $\exp(+i q\cdot R_a)$ once. Interstitial terms reuse the shared raw-support
-/// $\Theta_I$ helper. Construction accepts only [`OrbitalPair::Bloch`].
+/// $\Theta_I$ helper. Construction accepts [`OrbitalPair::Bloch`] and
+/// rectangular [`OrbitalPair::Exchange`] identities.
 #[derive(Debug)]
 pub struct DiracBlochVertexAccumulator<'a> {
     source: &'a DiracProductSource,
@@ -116,7 +117,10 @@ impl<'a> DiracBlochVertexAccumulator<'a> {
         pair: OrbitalPair,
     ) -> Result<Self, MpbError> {
         require_matching_dirac_context(source, raw, auxiliary)?;
-        if !matches!(pair, OrbitalPair::Bloch { .. }) {
+        if !matches!(
+            pair,
+            OrbitalPair::Bloch { .. } | OrbitalPair::Exchange { .. }
+        ) {
             return Err(MpbError::ExpectedDiracBlochPair);
         }
         Ok(Self {

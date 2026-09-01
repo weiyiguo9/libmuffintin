@@ -5,8 +5,8 @@ use crate::mpb::{MpbError, auxiliary_interstitial_support};
 use crate::{
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, CoupledChannel, CutoffKind, CutoffRecord,
     DiracChargeSector, DiracPairChannel, DiracProductSource, DiracRadial, DiracRadialId,
-    DiracRawProductSpace, DiracRawRadialProduct, DiracSiteRadialSet, MixedProductAuxiliary,
-    ProductOrbitalKind, SiteAuxiliaryBlock,
+    DiracRadialNormalization, DiracRawProductSpace, DiracRawRadialProduct, DiracSiteRadialSet,
+    MixedProductAuxiliary, ProductOrbitalKind, SiteAuxiliaryBlock,
 };
 use muffintin_core::{ExponentialMesh, InverseBohr, ReciprocalLattice};
 use muffintin_envelope::Provenance;
@@ -289,6 +289,16 @@ fn enumerate_site_channel(
             );
         }
     }
+    for left in &radials.cores {
+        for right in &radials.cores {
+            record_unique_pair(
+                (ProductOrbitalKind::Core, left),
+                (ProductOrbitalKind::Core, right),
+                &mut seen,
+                &mut pairs,
+            );
+        }
+    }
     let mut products = Vec::new();
     for sector in [DiracChargeSector::LargeLarge, DiracChargeSector::SmallSmall] {
         for &(left, right) in &pairs {
@@ -402,6 +412,9 @@ fn sector_product(
 }
 
 fn one_particle_norm(mesh: &ExponentialMesh, radial: &DiracRadial) -> Result<f64, MpbError> {
+    if let DiracRadialNormalization::Explicit(value) = radial.normalization {
+        return Ok(value);
+    }
     let integrand = radial
         .samples
         .large

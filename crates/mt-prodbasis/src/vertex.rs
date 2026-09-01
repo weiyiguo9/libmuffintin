@@ -1,7 +1,8 @@
 //! Pair vertices onto a compiled auxiliary basis.
 
 use crate::{
-    AuxiliaryIrError, AuxiliaryLayout, CompiledAuxiliaryBasis, ProductRadialId, TransferQ,
+    AuxiliaryIrError, AuxiliaryLayout, CompiledAuxiliaryBasis, ExchangeSpace, ProductRadialId,
+    TransferQ,
 };
 use muffintin_core::GVector;
 use muffintin_envelope::Provenance;
@@ -40,6 +41,14 @@ pub enum OrbitalPair {
         k_index: usize,
         left: usize,
         right: usize,
+    },
+    /// Rectangular exchange pair with explicit occupied and target spaces.
+    Exchange {
+        k_index: usize,
+        occupied_space: ExchangeSpace,
+        occupied: usize,
+        target_space: ExchangeSpace,
+        target: usize,
     },
 }
 

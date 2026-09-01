@@ -2,6 +2,92 @@
 
 use crate::AuxiliaryIrError;
 
+/// One side of a rectangular exchange pair.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ExchangeSpace {
+    Valence,
+    Core,
+}
+
+/// Stable rectangular $(k,i,j)$ exchange-pair flattening.
+///
+/// `i` belongs to `occupied_space` at $k-q$, `j` belongs to
+/// `target_space` at $k$, and the column is
+/// $(k N_{\mathrm{occupied}} + i)N_{\mathrm{target}} + j$.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ExchangePairLayout {
+    pub occupied_space: ExchangeSpace,
+    pub target_space: ExchangeSpace,
+    pub n_k: usize,
+    pub n_occupied: usize,
+    pub n_target: usize,
+}
+
+impl ExchangePairLayout {
+    pub const fn new(
+        occupied_space: ExchangeSpace,
+        target_space: ExchangeSpace,
+        n_k: usize,
+        n_occupied: usize,
+        n_target: usize,
+    ) -> Self {
+        Self {
+            occupied_space,
+            target_space,
+            n_k,
+            n_occupied,
+            n_target,
+        }
+    }
+
+    /// Number of rectangular pair columns per q.
+    pub fn n_columns(&self) -> Result<usize, AuxiliaryIrError> {
+        checked_layout_len(&[self.n_k, self.n_occupied, self.n_target])
+    }
+
+    /// Checked column index of $(k,i,j)$.
+    pub fn encode(
+        &self,
+        k: usize,
+        occupied: usize,
+        target: usize,
+    ) -> Result<usize, AuxiliaryIrError> {
+        if k >= self.n_k || occupied >= self.n_occupied || target >= self.n_target {
+            return Err(AuxiliaryIrError::ExchangePairCoordinate {
+                k,
+                occupied,
+                target,
+                n_k: self.n_k,
+                n_occupied: self.n_occupied,
+                n_target: self.n_target,
+            });
+        }
+        k.checked_mul(self.n_occupied)
+            .and_then(|value| value.checked_add(occupied))
+            .and_then(|value| value.checked_mul(self.n_target))
+            .and_then(|value| value.checked_add(target))
+            .ok_or_else(|| AuxiliaryIrError::DimensionOverflow {
+                dimensions: vec![self.n_k, self.n_occupied, self.n_target],
+            })
+    }
+
+    /// Checked inverse of [`Self::encode`].
+    pub fn decode(&self, column: usize) -> Result<(usize, usize, usize), AuxiliaryIrError> {
+        let n_columns = self.n_columns()?;
+        if column >= n_columns {
+            return Err(AuxiliaryIrError::ExchangePairColumn { column, n_columns });
+        }
+        let block = self.n_occupied.checked_mul(self.n_target).ok_or_else(|| {
+            AuxiliaryIrError::DimensionOverflow {
+                dimensions: vec![self.n_k, self.n_occupied, self.n_target],
+            }
+        })?;
+        let k = column / block;
+        let rem = column % block;
+        Ok((k, rem / self.n_target, rem % self.n_target))
+    }
+}
+
 /// Stable $(k,i,j)$ flattening of pair columns.
 ///
 /// Column index is $k\cdot N_{\mathrm{orb}}^2 + i\cdot N_{\mathrm{orb}} + j$.
@@ -81,7 +167,7 @@ fn checked_layout_len(dimensions: &[usize]) -> Result<usize, AuxiliaryIrError> {
 
 #[cfg(test)]
 mod tests {
-    use super::PairColumnLayout;
+    use super::{ExchangePairLayout, ExchangeSpace, PairColumnLayout};
     use crate::AuxiliaryIrError;
 
     #[test]
@@ -116,5 +202,30 @@ mod tests {
         ok.require_core_orbital().unwrap();
         assert!(ok.is_core(ok.encode(0, 1, 0)));
         assert!(ok.is_valence(ok.encode(0, 0, 0)));
+    }
+
+    #[test]
+    fn rectangular_exchange_layout_checks_roundtrip_bounds_and_overflow() {
+        let layout = ExchangePairLayout::new(ExchangeSpace::Core, ExchangeSpace::Valence, 3, 2, 5);
+        let column = layout.encode(2, 1, 4).unwrap();
+        assert_eq!(column, (2 * 2 + 1) * 5 + 4);
+        assert_eq!(layout.decode(column).unwrap(), (2, 1, 4));
+        assert_eq!(layout.n_columns().unwrap(), 30);
+        assert!(matches!(
+            layout.encode(3, 0, 0),
+            Err(AuxiliaryIrError::ExchangePairCoordinate { .. })
+        ));
+        assert!(matches!(
+            layout.decode(30),
+            Err(AuxiliaryIrError::ExchangePairColumn {
+                column: 30,
+                n_columns: 30
+            })
+        ));
+        assert!(matches!(
+            ExchangePairLayout::new(ExchangeSpace::Core, ExchangeSpace::Core, usize::MAX, 2, 2,)
+                .n_columns(),
+            Err(AuxiliaryIrError::DimensionOverflow { .. })
+        ));
     }
 }

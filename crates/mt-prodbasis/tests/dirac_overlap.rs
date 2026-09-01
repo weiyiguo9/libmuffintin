@@ -12,9 +12,10 @@ use muffintin_prodbasis::mpb::{
 };
 use muffintin_prodbasis::{
     AuxiliaryPartition, AuxiliaryRegion, ChannelSpectrum, CompiledAuxiliaryBasis,
-    DiracChargeSector, DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples,
-    DiracSiteRadialSet, InterstitialPairSpec, MixedProductAuxiliary, OrbitalPair,
-    ProductOrbitalKind, RawInterstitialPairComponent, RawInterstitialPairSupport, TransferQ,
+    DiracChargeSector, DiracProductSource, DiracRadial, DiracRadialId, DiracRadialNormalization,
+    DiracRadialSamples, DiracSiteRadialSet, InterstitialPairSpec, MixedProductAuxiliary,
+    OrbitalPair, ProductOrbitalKind, RawInterstitialPairComponent, RawInterstitialPairSupport,
+    TransferQ,
 };
 use num_complex::Complex64;
 
@@ -114,16 +115,19 @@ fn union_source() -> DiracProductSource {
                     kappa: kappa(-1),
                     n: 0,
                     samples: samples(0, 0.35),
+                    normalization: DiracRadialNormalization::OnMesh,
                 },
                 DiracRadial {
                     kappa: kappa(-1),
                     n: 1,
                     samples: samples(1, 0.28),
+                    normalization: DiracRadialNormalization::OnMesh,
                 },
                 DiracRadial {
                     kappa: kappa(1),
                     n: 0,
                     samples: samples(2, 0.40),
+                    normalization: DiracRadialNormalization::OnMesh,
                 },
             ],
             cores: Vec::new(),

@@ -11,8 +11,9 @@ use muffintin_prodbasis::mpb::{
 use muffintin_prodbasis::{
     AuxiliaryInterstitialSupport, AuxiliaryPartition, AuxiliaryRepresentation,
     CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracProductSource, DiracRadial,
-    DiracRadialId, DiracRadialSamples, DiracSiteRadialSet, MixedProductAuxiliary, MtAuxiliaryMode,
-    ProductOrbitalKind, RawInterstitialPairSupport, SiteAuxiliaryBlock, TransferQ,
+    DiracRadialId, DiracRadialNormalization, DiracRadialSamples, DiracSiteRadialSet,
+    MixedProductAuxiliary, MtAuxiliaryMode, ProductOrbitalKind, RawInterstitialPairSupport,
+    SiteAuxiliaryBlock, TransferQ,
 };
 use num_complex::Complex64;
 use std::collections::BTreeSet;
@@ -78,6 +79,31 @@ fn source(radials: Vec<DiracRadial>) -> DiracProductSource {
             mesh: mesh(),
             valence: radials,
             cores: Vec::new(),
+        }],
+        q,
+        RawInterstitialPairSupport::empty(q),
+        Provenance::default(),
+    )
+    .unwrap()
+}
+
+fn source_with_core(
+    valence: DiracRadial,
+    core_normalization: DiracRadialNormalization,
+) -> DiracProductSource {
+    let q = q_gamma();
+    let core = DiracRadial {
+        kappa: valence.kappa,
+        n: 1,
+        samples: valence.samples.clone(),
+        normalization: core_normalization,
+    };
+    DiracProductSource::new(
+        partition(),
+        vec![DiracSiteRadialSet {
+            mesh: mesh(),
+            valence: vec![valence],
+            cores: vec![core],
         }],
         q,
         RawInterstitialPairSupport::empty(q),
@@ -256,6 +282,7 @@ fn pp_omega_kappa_and_qq_omega_minus_kappa_coefficients_differ() {
         kappa: kappa(-2),
         n: 0,
         samples: samples(0, 0.45),
+        normalization: DiracRadialNormalization::OnMesh,
     }]);
     let raw = untruncated_dirac_product_space(&source, 2).unwrap();
     let auxiliary = auxiliary(&source, &[2]);
@@ -319,11 +346,81 @@ fn pp_omega_kappa_and_qq_omega_minus_kappa_coefficients_differ() {
 }
 
 #[test]
+fn explicit_core_normalization_is_not_replaced_by_mt_norm_and_cc_is_enumerated() {
+    let radial = DiracRadial {
+        kappa: kappa(-1),
+        n: 0,
+        samples: samples(0, 0.25),
+        normalization: DiracRadialNormalization::OnMesh,
+    };
+    let norm_mt = mesh()
+        .integrate(
+            &radial
+                .samples
+                .large
+                .iter()
+                .zip(&radial.samples.small)
+                .map(|(p, q)| p * p + q * q)
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+    let on_mesh = source_with_core(radial.clone(), DiracRadialNormalization::OnMesh);
+    let all_space = source_with_core(radial, DiracRadialNormalization::Explicit(4.0 * norm_mt));
+    let raw_on_mesh = untruncated_dirac_product_space(&on_mesh, 0).unwrap();
+    let raw_all_space = untruncated_dirac_product_space(&all_space, 0).unwrap();
+    let product = |raw: &muffintin_prodbasis::DiracRawProductSpace,
+                   left: ProductOrbitalKind,
+                   right: ProductOrbitalKind| {
+        raw.radial_products
+            .iter()
+            .find(|product| {
+                product.channel.sector == DiracChargeSector::LargeLarge
+                    && product.channel.left.kind == left
+                    && product.channel.right.kind == right
+            })
+            .unwrap()
+            .samples
+            .clone()
+    };
+    let cv_on_mesh = product(
+        &raw_on_mesh,
+        ProductOrbitalKind::Core,
+        ProductOrbitalKind::Valence,
+    );
+    let cv_all_space = product(
+        &raw_all_space,
+        ProductOrbitalKind::Core,
+        ProductOrbitalKind::Valence,
+    );
+    let cc_on_mesh = product(
+        &raw_on_mesh,
+        ProductOrbitalKind::Core,
+        ProductOrbitalKind::Core,
+    );
+    let cc_all_space = product(
+        &raw_all_space,
+        ProductOrbitalKind::Core,
+        ProductOrbitalKind::Core,
+    );
+    for (explicit, mt) in cv_all_space.iter().zip(&cv_on_mesh) {
+        assert!((*explicit - 0.5 * mt).abs() < 1.0e-14);
+    }
+    for (explicit, mt) in cc_all_space.iter().zip(&cc_on_mesh) {
+        assert!((*explicit - 0.25 * mt).abs() < 1.0e-14);
+    }
+    assert!(raw_all_space.radial_products.iter().all(|product| matches!(
+        product.channel.sector,
+        DiracChargeSector::LargeLarge | DiracChargeSector::SmallSmall
+    )));
+}
+
+#[test]
 fn pp_and_qq_accumulate_separately_and_merged_angular_differs() {
     let source = source(vec![DiracRadial {
         kappa: kappa(-2),
         n: 0,
         samples: samples(0, 0.45),
+        normalization: DiracRadialNormalization::OnMesh,
     }]);
     let raw = untruncated_dirac_product_space(&source, 2).unwrap();
     let auxiliary = auxiliary(&source, &[2]);
@@ -365,6 +462,7 @@ fn same_orbital_diagonal_scalar_charge_is_real_and_nonnegative() {
         kappa: kappa(-1),
         n: 0,
         samples: samples(0, 0.3),
+        normalization: DiracRadialNormalization::OnMesh,
     }]);
     let raw = untruncated_dirac_product_space(&source, 2).unwrap();
     assert!(raw.radial_products.iter().all(|product| {
@@ -393,6 +491,7 @@ fn dirac_context_rejects_auxiliary_partition_mismatch() {
         kappa: kappa(-1),
         n: 0,
         samples: samples(0, 0.3),
+        normalization: DiracRadialNormalization::OnMesh,
     }]);
     let raw = untruncated_dirac_product_space(&source, 0).unwrap();
     let mut auxiliary = auxiliary(&source, &[0]);
@@ -419,11 +518,13 @@ fn scaling_physical_q_suppresses_qq_relative_to_pp() {
         kappa: kappa(-1),
         n: 0,
         samples: samples(0, 0.4),
+        normalization: DiracRadialNormalization::OnMesh,
     }]);
     let small = source(vec![DiracRadial {
         kappa: kappa(-1),
         n: 0,
         samples: samples(0, 0.04),
+        normalization: DiracRadialNormalization::OnMesh,
     }]);
     let raw_full = untruncated_dirac_product_space(&full, 0).unwrap();
     let raw_small = untruncated_dirac_product_space(&small, 0).unwrap();
@@ -453,6 +554,7 @@ fn mixed_mu_nonzero_m_uses_density_coefficient_not_ylm_slot() {
         kappa: kappa(-2),
         n: 0,
         samples: samples(0, 0.45),
+        normalization: DiracRadialNormalization::OnMesh,
     }]);
     let raw = untruncated_dirac_product_space(&source, 2).unwrap();
     let auxiliary = auxiliary(&source, &[2]);
@@ -582,11 +684,13 @@ fn coupled_channel_radial_index_restarts_in_each_site_l_block() {
                 kappa: kappa(-2),
                 n: 0,
                 samples: samples(n0, 0.4),
+                normalization: DiracRadialNormalization::OnMesh,
             },
             DiracRadial {
                 kappa: kappa(-2),
                 n: 1,
                 samples: samples(n1, 0.35),
+                normalization: DiracRadialNormalization::OnMesh,
             },
         ],
         cores: Vec::new(),

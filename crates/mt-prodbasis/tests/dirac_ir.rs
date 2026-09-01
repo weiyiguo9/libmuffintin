@@ -6,9 +6,9 @@ use muffintin_core::{
 use muffintin_envelope::Provenance;
 use muffintin_prodbasis::{
     AuxiliaryPartition, CoupledChannel, DiracChargeSector, DiracPairChannel, DiracProductError,
-    DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples, DiracRawProductSpace,
-    DiracRawRadialProduct, DiracSiteRadialSet, ProductOrbitalKind, RawInterstitialPairSupport,
-    TransferQ,
+    DiracProductSource, DiracRadial, DiracRadialId, DiracRadialNormalization, DiracRadialSamples,
+    DiracRawProductSpace, DiracRawRadialProduct, DiracSiteRadialSet, ProductOrbitalKind,
+    RawInterstitialPairSupport, TransferQ,
 };
 
 fn mesh() -> ExponentialMesh {
@@ -82,6 +82,7 @@ fn dirac_source_requires_equal_length_physical_p_and_q() {
                     large: large.clone(),
                     small: vec![0.1; n - 1],
                 },
+                normalization: DiracRadialNormalization::OnMesh,
             }],
             cores: Vec::new(),
         }],
@@ -127,6 +128,7 @@ fn dirac_raw_rejects_signed_kappa_identity_mismatch() {
         kappa: kappa(-1),
         n: 0,
         samples: samples(0.3),
+        normalization: DiracRadialNormalization::OnMesh,
     }]);
     let n = mesh().len();
     let raw = DiracRawProductSpace::new(

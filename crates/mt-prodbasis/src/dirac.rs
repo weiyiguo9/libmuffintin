@@ -79,12 +79,22 @@ pub struct DiracRadialSamples {
     pub small: Vec<f64>,
 }
 
+/// Normalization used by every raw product containing one Dirac radial.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DiracRadialNormalization {
+    /// Compute $\int_{0}^{R_{\mathrm{MT}}}(P^2+Q^2)\,dr$ on the stored mesh.
+    OnMesh,
+    /// Use a caller-retained all-space norm without renormalizing the MT prefix.
+    Explicit(f64),
+}
+
 /// One valence or core Dirac radial on a site mesh.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DiracRadial {
     pub kappa: Kappa,
     pub n: usize,
     pub samples: DiracRadialSamples,
+    pub normalization: DiracRadialNormalization,
 }
 
 /// Dirac radials belonging to one muffin-tin site.
@@ -182,6 +192,17 @@ impl DiracProductSource {
                             kind,
                             kappa: function.kappa.get(),
                             n: function.n,
+                        });
+                    }
+                    if let DiracRadialNormalization::Explicit(value) = function.normalization
+                        && (!value.is_finite() || value <= 0.0)
+                    {
+                        return Err(DiracProductError::InvalidExplicitNormalization {
+                            site,
+                            kind,
+                            kappa: function.kappa.get(),
+                            n: function.n,
+                            value,
                         });
                     }
                 }
@@ -512,6 +533,16 @@ pub enum DiracProductError {
         kind: ProductOrbitalKind,
         kappa: i32,
         n: usize,
+    },
+    #[error(
+        "site {site} Dirac radial ({kind:?}, kappa={kappa}, n={n}) has invalid explicit normalization {value}"
+    )]
+    InvalidExplicitNormalization {
+        site: usize,
+        kind: ProductOrbitalKind,
+        kappa: i32,
+        n: usize,
+        value: f64,
     },
     #[error("duplicate Dirac radial (site {site}, {kind:?}, kappa={kappa}, n={n})")]
     DuplicateDiracRadial {

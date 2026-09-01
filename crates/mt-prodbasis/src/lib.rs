@@ -30,10 +30,10 @@ pub use auxiliary::{
 };
 pub use dirac::{
     DiracChargeSector, DiracMtPairSpec, DiracPairChannel, DiracPairVertex, DiracProductError,
-    DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples, DiracRawProductSpace,
-    DiracRawRadialProduct, DiracSiteRadialSet,
+    DiracProductSource, DiracRadial, DiracRadialId, DiracRadialNormalization, DiracRadialSamples,
+    DiracRawProductSpace, DiracRawRadialProduct, DiracSiteRadialSet,
 };
-pub use pair_layout::PairColumnLayout;
+pub use pair_layout::{ExchangePairLayout, ExchangeSpace, PairColumnLayout};
 pub use partition::{AuxiliaryPartition, PartitionSite};
 pub use raw::{
     ChannelSpectrum, CoupledChannel, PairChannel, RawInterstitialPairComponent,
@@ -79,6 +79,19 @@ pub enum AuxiliaryIrError {
     NonFinitePairComponent,
     #[error("storage length overflow for dimensions {dimensions:?}")]
     DimensionOverflow { dimensions: Vec<usize> },
+    #[error(
+        "exchange pair coordinate (k={k}, occupied={occupied}, target={target}) is outside ({n_k}, {n_occupied}, {n_target})"
+    )]
+    ExchangePairCoordinate {
+        k: usize,
+        occupied: usize,
+        target: usize,
+        n_k: usize,
+        n_occupied: usize,
+        n_target: usize,
+    },
+    #[error("exchange pair column {column} is outside 0..{n_columns}")]
+    ExchangePairColumn { column: usize, n_columns: usize },
     #[error("core orbital index {index} is outside n_orb={n_orb}")]
     InvalidCoreOrbital { index: usize, n_orb: usize },
     #[error("duplicate overlap spectrum for site {site} and L={l}")]
