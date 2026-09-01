@@ -401,7 +401,9 @@ limit.
 | M0 | Core station retains and outputs the `CoreShellOrbitals` sidecar | sidecar radials bit-identical to the density path; `norm_mt` and spill reported per shell; no consumer change |
 | M1 | Rectangular MPB CV/VC/CC vertices over `ExchangePairLayout`; runtime core producer fills `DiracSiteRadialSet::cores` | cross-trace residual at numerical tolerance; occupation factors applied exactly once; PP/QQ sectors only; Bloch/site phase locked by a single-shell analytic fixture; CV constant-mode residual reported |
 | M2 | Sector-aware one-shot exchange energies $E_x^{vv},E_x^{cv},E_x^{cc}$ on converged DFT orbitals, molecule and crystal | VV sector reproduces the existing square contraction; closed-shell CC trace from the radial Slater route matches the MPB CC trace within the spill allowance |
-| M3 | Unified `hf-scf` driver with relaxed core at FlapwMBPT parity (sections 1.4, 2.1, 2.2) | fixed point under the doc/17 density metric; valence eigenvalue identity of section 1.1; $\delta_c$ and core convergence reported per iteration; fresh-core replacement mixing; molecule route compared against the AO oracle fixture |
+| M3a | Channel-reduced radial core-core Fock kernel with per-shell inner self-consistency; depends on M1 | converged core shells; radial Slater CC trace matches the MPB CC trace within the spill allowance |
+| M3b | Channel-reduced core-valence kernel and CV feedback into core relaxation, with an exact MPB VC diagnostic; depends on M2 | radial CV trace matches the MPB CV and VC cross traces; $\delta_c$ reported |
+| M3c | Unified Track A2 valence driver and relaxed core with full CV feedback | fixed point under the doc/17 density metric; valence eigenvalue identity of section 1.1; core convergence reported per iteration; fresh-core replacement with only valence-density mixing; molecule route compared against the AO oracle fixture |
 | M4 | Core-aware THC selection and fit, MPB as oracle | `residual_vv/cv/vc/cc` reported separately; core columns never dropped by pooled selection; rank scaling reported |
 | M5 | MLDUMP/pyexport v2 with sector energies and exchange provenance | schema versioned; v1 files remain exchange-absent |
 
@@ -447,11 +449,30 @@ CV must match their MPB traces within the recorded core-spill allowance;
 that allowance is reported rather than absorbed into a looser numerical
 tolerance.
 
-M3 bring-up may run the driver against a core solved in the current
-DFT-style local potential to isolate valence Fock machinery, but that
-configuration is a test harness only: it carries an uncancelled core
-self-interaction and is not a shippable mode. The production exit criterion
-for M3 is the relaxed Fock core.
+M3a may begin as soon as M1 closes and does not wait for Track A2. It adds the
+channel-reduced radial core-core Fock kernel and a per-shell inner iteration
+at fixed outer potential. The independent MPB CC contraction remains its
+oracle: the converged radial Slater CC trace must reproduce the MPB CC trace
+within the spill allowance.
+
+M3b follows M2. It extends the channel reduction to core-valence exchange,
+feeds that CV term into the inner core relaxation, and retains the exact MPB
+VC contraction as a diagnostic. The radial CV trace must match both MPB
+cross traces, and $\delta_c$ is reported rather than silently folded into a
+convergence tolerance.
+
+M3c is the full merge. It combines the Track A2 valence driver with the
+relaxed Fock core, gives both the valence and core equations their complete
+CV feedback, replaces the core density fresh on every outer iteration, and
+mixes only the valence density. Its exit gates are the common fixed point,
+the valence eigenvalue identity of section 1.1, explicit core convergence,
+and the molecule-in-box comparison against the AO oracle fixture.
+
+Before M3c, bring-up may run the valence driver against a core solved in the
+current DFT-style local potential solely as a test harness. That core carries
+an uncancelled core self-interaction, so the configuration is not a
+publishable result or a shippable mode. The production exit is M3c with the
+relaxed Fock core.
 
 ## 5. Explicit exclusions
 
