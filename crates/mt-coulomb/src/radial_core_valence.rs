@@ -292,8 +292,8 @@ fn action_expectation(
         })
         .collect::<Vec<_>>();
     Ok(Complex64::new(
-        mesh.integrate(&real)?,
-        mesh.integrate(&imaginary)?,
+        mesh.integrate(&real).map_err(CoulombError::from)?,
+        mesh.integrate(&imaginary).map_err(CoulombError::from)?,
     ))
 }
 
@@ -411,7 +411,7 @@ fn closed_occupations(
         .collect())
 }
 
-fn valence_ref(radial: &BorrowedValenceRadial<'_>) -> OrbitalRef<'_> {
+fn valence_ref<'a>(radial: &BorrowedValenceRadial<'a>) -> OrbitalRef<'a> {
     OrbitalRef {
         channel: radial.channel,
         p: radial.p,
