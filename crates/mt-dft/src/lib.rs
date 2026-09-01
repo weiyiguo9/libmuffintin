@@ -48,8 +48,8 @@ pub use core_station::{
     CoreFixedPotentialIteration, CoreFixedPotentialResult, CoreFixedPotentialShellResidual,
     CoreFixedPotentialSpec, CoreLocalOneBodyError, CoreLocalOneBodyShellTrace,
     CoreLocalOneBodyTrace, CoreRelaxationError, CoreShellOccupations, CoreShellOrbital,
-    CoreShellOrbitals, CoreShellOrbitalsProvenance, CoreSiteRequest, CoreStateRequest,
-    CoreStationError, FixedSiteValenceDensity, RegionalCoreResult,
+    CoreShellOrbitals, CoreShellOrbitalsProvenance, CoreSiteRequest, CoreSourcedSearchProvenance,
+    CoreStateRequest, CoreStationError, FixedSiteValenceDensity, RegionalCoreResult,
     build_regional_core_contribution_from_sidecar, core_local_one_body_trace,
     relax_core_at_fixed_potential, solve_regional_core,
 };

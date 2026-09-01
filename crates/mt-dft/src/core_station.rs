@@ -65,7 +65,17 @@ pub enum CoreShellOccupations {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoreShellOrbitalsProvenance {
     pub extended_potential: Vec<Hartree>,
+    /// Exact isolated homogeneous specifications that produced the sidecar shells.
     pub solve_specs: Vec<CoreDiracSpec>,
+    /// Broad physical windows retained for prediction-centered sourced Fock solves.
+    pub sourced_searches: Vec<CoreSourcedSearchProvenance>,
+}
+
+/// Root-search provenance for one source-driven core-shell update.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CoreSourcedSearchProvenance {
+    pub energy_window: EnergyBracket,
+    pub intervals: usize,
 }
 
 /// Bound-core radial sidecar for one physical site.
@@ -166,6 +176,7 @@ pub(crate) struct SolvedRegionalCoreSite {
 struct SolvedBoundCoreState {
     solution: CoreDiracSolution,
     spec: CoreDiracSpec,
+    sourced_search: CoreSourcedSearchProvenance,
 }
 
 /// Solve all requested sites from one complete regional potential build.
@@ -456,13 +467,11 @@ pub fn relax_core_at_fixed_potential(
         let mut maximum_energy_change = 0.0_f64;
         let mut maximum_radial_residual = 0.0_f64;
 
-        for (shell_index, ((shell, solve_spec), shell_action)) in current
-            .shells
-            .iter()
-            .zip(&initial.provenance.solve_specs)
-            .zip(&action)
-            .enumerate()
-        {
+        for shell_index in 0..current.shells.len() {
+            let shell = &current.shells[shell_index];
+            let solve_spec = initial.provenance.solve_specs[shell_index];
+            let sourced_search = initial.provenance.sourced_searches[shell_index];
+            let shell_action = &action[shell_index];
             let action_expectation = initial.extended_mesh.integrate(
                 &shell
                     .p
@@ -473,9 +482,13 @@ pub fn relax_core_at_fixed_potential(
                     .collect::<Vec<_>>(),
             )? / shell.norm_total.sqrt();
             let sourced_spec = CoreDiracSourcedSpec::new(
-                *solve_spec,
+                CoreDiracSpec {
+                    bracket: sourced_search.energy_window,
+                    ..solve_spec
+                },
                 Hartree(shell.energy.get() + action_expectation),
-            );
+            )
+            .with_search_intervals(sourced_search.intervals);
             let mut solution = solve_core_dirac_with_action(
                 &initial.extended_mesh,
                 &potential,
@@ -618,10 +631,17 @@ fn validate_core_core_sidecar(sidecar: &CoreShellOrbitals) -> Result<(), CoreRel
             actual: sidecar.provenance.solve_specs.len(),
         });
     }
-    for (shell_index, (shell, spec)) in sidecar
+    if sidecar.provenance.sourced_searches.len() != sidecar.shells.len() {
+        return Err(CoreRelaxationError::SourcedSearchCount {
+            expected: sidecar.shells.len(),
+            actual: sidecar.provenance.sourced_searches.len(),
+        });
+    }
+    for (shell_index, ((shell, spec), search)) in sidecar
         .shells
         .iter()
         .zip(&sidecar.provenance.solve_specs)
+        .zip(&sidecar.provenance.sourced_searches)
         .enumerate()
     {
         if shell.state != spec.state {
@@ -630,6 +650,9 @@ fn validate_core_core_sidecar(sidecar: &CoreShellOrbitals) -> Result<(), CoreRel
                 orbital: shell.state,
                 solve_spec: spec.state,
             });
+        }
+        if search.intervals == 0 {
+            return Err(CoreRelaxationError::SourcedSearchIntervals { shell: shell_index });
         }
         uniform_mu_occupation(shell_index, shell)?;
     }
@@ -875,6 +898,7 @@ fn build_regional_core_site(
         density,
     )?;
     let solve_specs = solved.iter().map(|solved| solved.spec).collect();
+    let sourced_searches = solved.iter().map(|solved| solved.sourced_search).collect();
     let shells = solved
         .into_iter()
         .zip(occupations)
@@ -899,6 +923,7 @@ fn build_regional_core_site(
             provenance: CoreShellOrbitalsProvenance {
                 extended_potential: extended.values.iter().copied().map(Hartree).collect(),
                 solve_specs,
+                sourced_searches,
             },
         },
     })
@@ -938,14 +963,22 @@ fn solve_bound_core_state(
         continuum - 2.0 * nuclear_charge * nuclear_charge,
         continuum - 1.0e-8 * atomic_scale,
     )?;
+    let search_intervals = 512;
     let bracket = isolate_core_dirac_bracket(
         &extended.mesh,
         &extended.values,
-        CoreBracketSearch::new(state, muffin_tin_radius, window).with_intervals(512),
+        CoreBracketSearch::new(state, muffin_tin_radius, window).with_intervals(search_intervals),
     )?;
     let spec = CoreDiracSpec::new(state, bracket, muffin_tin_radius);
     let solution = solve_core_dirac(&extended.mesh, &extended.values, spec)?;
-    Ok(SolvedBoundCoreState { solution, spec })
+    Ok(SolvedBoundCoreState {
+        solution,
+        spec,
+        sourced_search: CoreSourcedSearchProvenance {
+            energy_window: window,
+            intervals: search_intervals,
+        },
+    })
 }
 
 pub(crate) fn extend_core_mesh(
@@ -1022,6 +1055,10 @@ pub enum CoreRelaxationError {
     PotentialLength { expected: usize, actual: usize },
     #[error("core sidecar has {actual} solve specs, expected {expected}")]
     SolveSpecCount { expected: usize, actual: usize },
+    #[error("core sidecar has {actual} sourced searches, expected {expected}")]
+    SourcedSearchCount { expected: usize, actual: usize },
+    #[error("core shell {shell} sourced search interval count must be positive")]
+    SourcedSearchIntervals { shell: usize },
     #[error(
         "core shell {shell} state {orbital:?} does not match provenance solve state {solve_spec:?}"
     )]
@@ -1217,7 +1254,14 @@ mod tests {
             &request,
             &extended,
             &muffin_tin_mesh,
-            vec![SolvedBoundCoreState { solution, spec }],
+            vec![SolvedBoundCoreState {
+                solution,
+                spec,
+                sourced_search: CoreSourcedSearchProvenance {
+                    energy_window: EnergyBracket::from_values(-2.0, -1.0e-8).unwrap(),
+                    intervals: 512,
+                },
+            }],
             occupations,
         )
         .unwrap();
@@ -1310,6 +1354,10 @@ mod tests {
             vec![SolvedBoundCoreState {
                 solution: solver_oracle.clone(),
                 spec,
+                sourced_search: CoreSourcedSearchProvenance {
+                    energy_window: EnergyBracket::from_values(-2.0, -1.0e-8).unwrap(),
+                    intervals: 512,
+                },
             }],
             explicit_request
                 .states
@@ -1396,6 +1444,10 @@ mod tests {
             provenance: CoreShellOrbitalsProvenance {
                 extended_potential: potential.into_iter().map(Hartree).collect(),
                 solve_specs: vec![solve_spec],
+                sourced_searches: vec![CoreSourcedSearchProvenance {
+                    energy_window: EnergyBracket::from_values(-2.0, -1.0e-8).unwrap(),
+                    intervals: 512,
+                }],
             },
         };
         let provenance = initial.provenance.clone();

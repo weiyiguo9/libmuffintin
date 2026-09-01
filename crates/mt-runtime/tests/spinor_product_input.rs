@@ -299,6 +299,7 @@ fn core_sidecar(
         provenance: CoreShellOrbitalsProvenance {
             extended_potential: Vec::new(),
             solve_specs: Vec::new(),
+            sourced_searches: Vec::new(),
         },
     }
 }

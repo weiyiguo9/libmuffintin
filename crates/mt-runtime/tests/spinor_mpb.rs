@@ -250,6 +250,7 @@ fn core_sidecar(input: &muffintin::SpinorProductInput, occupation: f64) -> CoreS
         provenance: CoreShellOrbitalsProvenance {
             extended_potential: Vec::new(),
             solve_specs: Vec::new(),
+            sourced_searches: Vec::new(),
         },
     }
 }
