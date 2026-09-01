@@ -426,7 +426,7 @@ limit.
 |---|---|---|
 | M0 | Core station retains and outputs the `CoreShellOrbitals` sidecar | sidecar radials bit-identical to the density path; `norm_mt` and spill reported per shell; no consumer change |
 | M1 | Rectangular MPB CV/VC/CC vertices over `ExchangePairLayout`; runtime core producer fills `DiracSiteRadialSet::cores` | cross-trace residual at numerical tolerance; occupation factors applied exactly once; PP/QQ sectors only; Bloch/site phase locked by a single-shell analytic fixture; CV constant-mode residual reported |
-| M2 | Sector-aware one-shot exchange energies $E_x^{vv},E_x^{cv},E_x^{cc}$ on converged DFT orbitals, molecule and crystal | VV sector reproduces the existing square contraction; closed-shell CC trace from the radial Slater route matches the MPB CC trace within the spill allowance |
+| M2 | Implemented: sector-aware one-shot exact-MPB traces and exchange energies on one converged frozen DFT snapshot, plus an independent trace-only radial Slater oracle | VV adapter reproduces the square contraction; CV and VC are contracted independently; MPB-versus-MT numerical residuals and physical core spill are separate gates |
 | M3a | Channel-reduced radial core-core Fock kernel with per-shell inner self-consistency; depends on M1 | converged core shells; radial Slater CC trace matches the MPB CC trace within the spill allowance |
 | M3b | Channel-reduced core-valence kernel and CV feedback into core relaxation, with an exact MPB VC diagnostic; depends on M2 | radial CV trace matches the MPB CV and VC cross traces; $\delta_c$ reported |
 | M3c | Unified Track A2 valence driver and relaxed core with full CV feedback | fixed point under the doc/17 density metric; valence eigenvalue identity of section 1.1; core convergence reported per iteration; fresh-core replacement with only valence-density mixing; molecule route compared against the AO oracle fixture |
@@ -468,12 +468,41 @@ without entering an SCF loop, updating orbitals, or feeding exchange back
 into a density. It may therefore proceed in parallel with Track A and does
 not require the Track A valence driver.
 
+The implementation surface is `build_frozen_spinor_sector_exchange`. A single
+`SectorOccupations` snapshot supplies k weights plus valence and flat-core
+occupations. The shared rectangular exact-MPB kernel applies the occupied-side
+factor once and the target trace applies its density factor once; there is no
+q weight. The result stores independent `Tvv`, `Tcv`, `Tvc`, and `Tcc` sector
+records, the cross average and mismatch, Hermiticity residuals, and a private
+copy of the complete frozen orbital/core/q/request context for freshness
+checks. The existing VV API is an adapter to the same rectangular kernel.
+
+`radial_slater_traces` is an independent trace-only Coulomb oracle. It borrows
+physical P/Q arrays, expands explicitly mu-resolved closed shells, uses
+`Omega_kappa` for PP and `Omega_-kappa` for QQ, and consumes a preweighted
+Hermitian site-valence density matrix. It returns MT and extended CC traces,
+their measured absolute difference, and the MT CV trace. It never constructs
+MPB radial products or a sampled radial Fock kernel. `ExplicitCollinear` and
+non-closed mu occupations are rejected because the required magnetic trace is
+not inferable from them.
+
+`compare_frozen_sector_radial` checks CC, CV, and VC against the MT radial
+trace with one explicit numerical tolerance. The extended-minus-MT CC
+difference remains a reported Hartree spill allowance, while each shell's
+dimensionless `spill` is checked against a separate threshold. No conversion
+of dimensionless norm spill into an invented energy allowance is made.
+
 The VV result must reproduce the existing square-layout frozen-orbital
 contraction. The rectangular CV and VC cross traces must agree at numerical
 tolerance. Independent channel-reduced radial Slater traces for both CC and
-CV must match their MPB traces within the recorded core-spill allowance;
-that allowance is reported rather than absorbed into a looser numerical
-tolerance.
+CV must match their MPB traces at the explicit MT numerical tolerance. The
+extended-minus-MT CC difference and dimensionless per-shell spill are reported
+and gated separately rather than absorbed into a looser numerical tolerance.
+
+M2 remains strictly frozen and one-shot. It does not call `run_gamma_valence_hf`,
+the regular-k Track A2 driver, any mixer, any core solver, or any orbital/density
+feedback path. Passing its focused algebraic and radial-oracle gates is not an
+SCF convergence claim.
 
 M3a may begin as soon as M1 closes and does not wait for Track A2. It adds the
 channel-reduced radial core-core Fock kernel and a per-shell inner iteration
