@@ -1151,17 +1151,20 @@ mod tests {
             },
         )
         .unwrap();
-        let rotated_conjugate = rotated.as_tensor().conjugate();
-        let rotated_band_feedback = DenseHermitianMatrix::from_tensor(
-            einsum(
-                "ia,ij,jb->ab",
-                &[
-                    &rotated_conjugate,
-                    band_feedback.as_tensor(),
-                    rotated.as_tensor(),
-                ],
-            )
-            .unwrap(),
+        let rotated_band_feedback = DenseHermitianMatrix::from_upper_triangle(
+            2,
+            Axis::Band,
+            |row, column| {
+                let mut value = Complex64::default();
+                for left in 0..2 {
+                    for right in 0..2 {
+                        value += rotated.at(left, row).conj()
+                            * band_feedback.at(left, right)
+                            * rotated.at(right, column);
+                    }
+                }
+                value
+            },
         )
         .unwrap();
         let original_global =
