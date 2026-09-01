@@ -1,8 +1,8 @@
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, Kappa};
 use muffintin_sphere::{
-    CoreDiracExchangeAction, CoreDiracSpec, CoreState, DiracError, EnergyBracket,
-    SPEX_SPEED_OF_LIGHT, ValenceDiracSpec, solve_core_dirac, solve_core_dirac_with_action,
-    solve_valence_dirac,
+    CoreDiracExchangeAction, CoreDiracSourcedSpec, CoreDiracSpec, CoreState, DiracError,
+    EnergyBracket, SPEX_SPEED_OF_LIGHT, ValenceDiracSpec, solve_core_dirac,
+    solve_core_dirac_with_action, solve_valence_dirac,
 };
 
 fn extended_mesh(first: f64, last: f64, increment: f64) -> ExponentialMesh {
@@ -69,7 +69,7 @@ fn zero_exchange_action_is_identical_to_homogeneous_core_solve() {
     let with_action = solve_core_dirac_with_action(
         &mesh,
         &potential,
-        spec,
+        CoreDiracSourcedSpec::new(spec, homogeneous.energy),
         CoreDiracExchangeAction {
             p: &zeros,
             q: &zeros,
@@ -104,7 +104,8 @@ fn manufactured_exchange_action_closes_source_equations_and_norm_root() {
 
     // If H0 psi0 = E0 psi0, the fixed action K psi = delta psi0 makes
     // psi0 the unit-norm source-driven solution at E0 + delta. The other
-    // norm root E0 - delta is excluded by this bracket.
+    // norm root E0 - delta shares this provenance window; the explicit
+    // Picard prediction selects the physical positive-action branch.
     let delta = 0.04;
     let action_p = homogeneous
         .p
@@ -119,14 +120,14 @@ fn manufactured_exchange_action_closes_source_equations_and_norm_root() {
     let expected_energy = homogeneous.energy.get() + delta;
     let driven_spec = CoreDiracSpec::new(
         state,
-        EnergyBracket::from_values(expected_energy - 0.015, expected_energy + 0.02).unwrap(),
+        EnergyBracket::from_values(-0.56, -0.44).unwrap(),
         muffin_tin_radius,
     )
     .with_tolerances(1.0e-10, 1.0e-8, 160);
     let driven = solve_core_dirac_with_action(
         &mesh,
         &potential,
-        driven_spec,
+        CoreDiracSourcedSpec::new(driven_spec, Hartree(expected_energy)),
         CoreDiracExchangeAction {
             p: &action_p,
             q: &action_q,

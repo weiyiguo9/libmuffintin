@@ -36,11 +36,11 @@ use std::collections::BTreeMap;
 use thiserror::Error;
 
 pub use core_dirac::{
-    CoreBracketSearch, CoreDiracExchangeAction, CoreDiracSolution, CoreDiracSpec, CoreState,
-    DiracBoundaryTrace, DiracEnergyDerivative, DiracError, DiracLocalOrbital,
-    DiracSecondEnergyDerivative, EnergyBracket, RelativisticRole, ValenceDiracSolution,
-    ValenceDiracSpec, isolate_core_dirac_bracket, solve_core_dirac, solve_core_dirac_with_action,
-    solve_valence_dirac,
+    CoreBracketSearch, CoreDiracExchangeAction, CoreDiracSolution, CoreDiracSourcedSpec,
+    CoreDiracSpec, CoreState, DiracBoundaryTrace, DiracEnergyDerivative, DiracError,
+    DiracLocalOrbital, DiracSecondEnergyDerivative, EnergyBracket, RelativisticRole,
+    ValenceDiracSolution, ValenceDiracSpec, isolate_core_dirac_bracket, solve_core_dirac,
+    solve_core_dirac_with_action, solve_valence_dirac,
 };
 pub use core_potential::{
     CenteredSphericalFourierMode, CorePotentialContinuationError, CorePotentialContinuationSpec,

@@ -114,6 +114,35 @@ pub struct CoreDiracExchangeAction<'a> {
     pub q: &'a [f64],
 }
 
+/// Root-selection controls for a source-driven core Dirac update.
+///
+/// The core bracket is a provenance-preserving search window and may contain
+/// both norm roots on opposite sides of a homogeneous pole. The predicted
+/// energy identifies the physical Picard branch, normally as the previous
+/// core energy plus the old-orbital expectation value of the signed action.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CoreDiracSourcedSpec {
+    pub core: CoreDiracSpec,
+    pub predicted_energy: Hartree,
+    /// Number of equal scan intervals across `core.bracket`.
+    pub search_intervals: usize,
+}
+
+impl CoreDiracSourcedSpec {
+    pub const fn new(core: CoreDiracSpec, predicted_energy: Hartree) -> Self {
+        Self {
+            core,
+            predicted_energy,
+            search_intervals: 512,
+        }
+    }
+
+    pub const fn with_search_intervals(mut self, search_intervals: usize) -> Self {
+        self.search_intervals = search_intervals;
+        self
+    }
+}
+
 /// Input contract for the regular fixed-energy four-component valence path.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ValenceDiracSpec {
@@ -585,6 +614,28 @@ pub enum DiracError {
         index: usize,
         value: f64,
     },
+    #[error(
+        "source-driven core prediction {predicted} Ha must lie in the finite search window [{lower}, {upper}] Ha"
+    )]
+    InvalidSourcedPrediction {
+        predicted: f64,
+        lower: f64,
+        upper: f64,
+    },
+    #[error("source-driven core search requires at least one interval, got {0}")]
+    InvalidSourcedSearchIntervals(usize),
+    #[error(
+        "no node-compatible source-driven norm root was found in [{lower}, {upper}] Ha using {intervals} intervals"
+    )]
+    SourcedNormRootNotFound {
+        lower: f64,
+        upper: f64,
+        intervals: usize,
+    },
+    #[error(
+        "source-driven core prediction {predicted} Ha is equidistant from {candidates} node-compatible norm roots"
+    )]
+    SourcedNormRootAmbiguous { predicted: f64, candidates: usize },
     #[error("energy is not finite: {0}")]
     NonFiniteEnergy(f64),
     #[error("speed of light must be finite and positive, got {0}")]
@@ -739,71 +790,90 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
 /// `RADSCH`/`RADSCH_b`, the solver integrates homogeneous and source-driven
 /// branches from both boundaries and combines them with the `inhomo` match.
 /// The energy root is the `rad_eq` convention: the unnormalized physical
-/// radial norm is one. The bracket must isolate that norm root and the final
-/// node count must agree with `spec.state`.
+/// radial norm is one. The sourced specification scans the preserved core
+/// energy window for node-compatible norm roots and selects the unique root
+/// nearest its explicit physical Picard prediction.
 ///
 /// An exactly zero action is the homogeneous problem and is evaluated by
 /// [`solve_core_dirac`], preserving its root, normalization, and diagnostics.
-pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSpec>>(
+pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSourcedSpec>>(
     mesh: &ExponentialMesh,
     potential: &[f64],
     spec: S,
     action: CoreDiracExchangeAction<'_>,
 ) -> Result<CoreDiracSolution, DiracError> {
-    let spec = spec.borrow();
+    let sourced = spec.borrow();
+    let spec = &sourced.core;
     validate_inputs(mesh, potential, spec)?;
+    validate_sourced_spec(sourced)?;
     validate_exchange_action(mesh, action)?;
     if action.p.iter().chain(action.q).all(|&value| value == 0.0) {
         return solve_core_dirac(mesh, potential, spec);
     }
 
-    let (mut lower, mut upper) = spec.bracket.values();
+    let (window_lower, window_upper) = spec.bracket.values();
+    let step = (window_upper - window_lower) / sourced.search_intervals as f64;
+    let mut lower = window_lower;
     let mut lower_shot = shoot_with_action(mesh, potential, spec.state.kappa, lower, action)?;
-    let mut upper_shot = shoot_with_action(mesh, potential, spec.state.kappa, upper, action)?;
-    if lower_shot.root_residual == 0.0 {
-        return finalize_driven_solution(mesh, spec, lower, lower_shot);
+    let mut previous_exact_root = false;
+    let mut candidates = Vec::new();
+    for interval in 1..=sourced.search_intervals {
+        let upper = if interval == sourced.search_intervals {
+            window_upper
+        } else {
+            window_lower + interval as f64 * step
+        };
+        let upper_shot = shoot_with_action(mesh, potential, spec.state.kappa, upper, action)?;
+        let sign_change = !previous_exact_root
+            && (lower_shot.root_residual == 0.0
+                || upper_shot.root_residual == 0.0
+                || lower_shot.root_residual.signum() != upper_shot.root_residual.signum());
+        if sign_change {
+            match solve_driven_bracket(
+                mesh,
+                potential,
+                spec,
+                action,
+                lower,
+                upper,
+                lower_shot.clone(),
+                upper_shot.clone(),
+            ) {
+                Ok(solution) => candidates.push(solution),
+                Err(DiracError::NodeCountMismatch { .. }) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        previous_exact_root = upper_shot.root_residual == 0.0;
+        lower = upper;
+        lower_shot = upper_shot;
     }
-    if upper_shot.root_residual == 0.0 {
-        return finalize_driven_solution(mesh, spec, upper, upper_shot);
-    }
-    if lower_shot.root_residual.signum() == upper_shot.root_residual.signum() {
-        return Err(DiracError::RootNotBracketed {
-            lower,
-            upper,
-            f_lower: lower_shot.root_residual,
-            f_upper: upper_shot.root_residual,
+
+    if candidates.is_empty() {
+        return Err(DiracError::SourcedNormRootNotFound {
+            lower: window_lower,
+            upper: window_upper,
+            intervals: sourced.search_intervals,
         });
     }
-
-    for _ in 0..spec.max_iterations {
-        let energy = lower + 0.5 * (upper - lower);
-        let shot = shoot_with_action(mesh, potential, spec.state.kappa, energy, action)?;
-        if shot.root_residual == 0.0 {
-            return finalize_driven_solution(mesh, spec, energy, shot);
-        }
-        if shot.root_residual.signum() == lower_shot.root_residual.signum() {
-            lower = energy;
-            lower_shot = shot;
-        } else {
-            upper = energy;
-            upper_shot = shot;
-        }
-        // FlapwMBPT `rad_eq` converges the source-driven norm root from the
-        // energy step, not the homogeneous Wronskian tolerance. Retain the
-        // endpoint with the smaller |norm - 1| so the final normalization
-        // perturbs the fixed-source equation as little as the bracket allows.
-        if 0.5 * (upper - lower) <= spec.energy_tolerance {
-            return if lower_shot.root_residual.abs() <= upper_shot.root_residual.abs() {
-                finalize_driven_solution(mesh, spec, lower, lower_shot)
-            } else {
-                finalize_driven_solution(mesh, spec, upper, upper_shot)
-            };
+    let predicted = sourced.predicted_energy.get();
+    candidates.sort_by(|left, right| {
+        (left.energy.get() - predicted)
+            .abs()
+            .total_cmp(&(right.energy.get() - predicted).abs())
+    });
+    if candidates.len() > 1 {
+        let first = (candidates[0].energy.get() - predicted).abs();
+        let second = (candidates[1].energy.get() - predicted).abs();
+        let tie_tolerance = 128.0 * f64::EPSILON * first.max(second).max(1.0);
+        if (first - second).abs() <= tie_tolerance {
+            return Err(DiracError::SourcedNormRootAmbiguous {
+                predicted,
+                candidates: candidates.len(),
+            });
         }
     }
-
-    Err(DiracError::RootDidNotConverge {
-        iterations: spec.max_iterations,
-    })
+    Ok(candidates.remove(0))
 }
 
 /// Isolate the unique adjacent shooting interval with the requested node count.
@@ -1294,6 +1364,24 @@ fn validate_exchange_action(
     Ok(())
 }
 
+fn validate_sourced_spec(spec: &CoreDiracSourcedSpec) -> Result<(), DiracError> {
+    let predicted = spec.predicted_energy.get();
+    let (lower, upper) = spec.core.bracket.values();
+    if !predicted.is_finite() || predicted < lower || predicted > upper {
+        return Err(DiracError::InvalidSourcedPrediction {
+            predicted,
+            lower,
+            upper,
+        });
+    }
+    if spec.search_intervals == 0 {
+        return Err(DiracError::InvalidSourcedSearchIntervals(
+            spec.search_intervals,
+        ));
+    }
+    Ok(())
+}
+
 fn shoot(
     mesh: &ExponentialMesh,
     potential: &[f64],
@@ -1438,6 +1526,63 @@ fn shoot_with_action(
         p,
         q_hat,
         matching_residual,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn solve_driven_bracket(
+    mesh: &ExponentialMesh,
+    potential: &[f64],
+    spec: &CoreDiracSpec,
+    action: CoreDiracExchangeAction<'_>,
+    mut lower: f64,
+    mut upper: f64,
+    mut lower_shot: DrivenShot,
+    mut upper_shot: DrivenShot,
+) -> Result<CoreDiracSolution, DiracError> {
+    if lower_shot.root_residual == 0.0 {
+        return finalize_driven_solution(mesh, spec, lower, lower_shot);
+    }
+    if upper_shot.root_residual == 0.0 {
+        return finalize_driven_solution(mesh, spec, upper, upper_shot);
+    }
+    if lower_shot.root_residual.signum() == upper_shot.root_residual.signum() {
+        return Err(DiracError::RootNotBracketed {
+            lower,
+            upper,
+            f_lower: lower_shot.root_residual,
+            f_upper: upper_shot.root_residual,
+        });
+    }
+
+    for _ in 0..spec.max_iterations {
+        let energy = lower + 0.5 * (upper - lower);
+        let shot = shoot_with_action(mesh, potential, spec.state.kappa, energy, action)?;
+        if shot.root_residual == 0.0 {
+            return finalize_driven_solution(mesh, spec, energy, shot);
+        }
+        if shot.root_residual.signum() == lower_shot.root_residual.signum() {
+            lower = energy;
+            lower_shot = shot;
+        } else {
+            upper = energy;
+            upper_shot = shot;
+        }
+        // FlapwMBPT `rad_eq` converges the source-driven norm root from the
+        // energy step, not the homogeneous Wronskian tolerance. Retain the
+        // endpoint with the smaller |norm - 1| so the final normalization
+        // perturbs the fixed-source equation as little as the bracket allows.
+        if 0.5 * (upper - lower) <= spec.energy_tolerance {
+            return if lower_shot.root_residual.abs() <= upper_shot.root_residual.abs() {
+                finalize_driven_solution(mesh, spec, lower, lower_shot)
+            } else {
+                finalize_driven_solution(mesh, spec, upper, upper_shot)
+            };
+        }
+    }
+
+    Err(DiracError::RootDidNotConverge {
+        iterations: spec.max_iterations,
     })
 }
 
