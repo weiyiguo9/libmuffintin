@@ -567,6 +567,108 @@ impl CoreDiracSolution {
     }
 }
 
+/// Evaluate the rest-energy-subtracted local radial Dirac Hamiltonian.
+///
+/// `p` and `q` are the physical reduced components in the convention
+/// `Psi = (P Omega_kappa, i Q Omega_-kappa) / r`. The first derivatives are
+/// evaluated with the fifth-order SPEX logarithmic-mesh stencil, and the
+/// returned value is the direct radial quadrature
+/// `integral (P H0_P + Q H0_Q) dr`.
+pub fn dirac_local_hamiltonian_expectation(
+    mesh: &ExponentialMesh,
+    potential: &[f64],
+    kappa: Kappa,
+    p: &[f64],
+    q: &[f64],
+) -> Result<Hartree, DiracLocalHamiltonianError> {
+    for (component, values) in [("potential", potential), ("P", p), ("Q", q)] {
+        if values.len() != mesh.len() {
+            return Err(DiracLocalHamiltonianError::SampleCount {
+                component,
+                expected: mesh.len(),
+                actual: values.len(),
+            });
+        }
+        for (index, &value) in values.iter().enumerate() {
+            if !value.is_finite() {
+                return Err(DiracLocalHamiltonianError::NonFiniteSample {
+                    component,
+                    index,
+                    value,
+                });
+            }
+        }
+    }
+    let p_derivative = logarithmic_mesh_derivative(mesh, p);
+    let q_derivative = logarithmic_mesh_derivative(mesh, q);
+    let kappa = f64::from(kappa.get());
+    let integrand = mesh
+        .radii()
+        .iter()
+        .zip(potential)
+        .zip(p.iter().zip(q))
+        .zip(p_derivative.iter().zip(&q_derivative))
+        .map(
+            |(((radius, &potential), (&p, &q)), (&p_derivative, &q_derivative))| {
+                let inverse_radius = radius.get().recip();
+                let h_p = potential * p
+                    + SPEX_SPEED_OF_LIGHT * (-q_derivative + kappa * inverse_radius * q);
+                let h_q = SPEX_SPEED_OF_LIGHT * (p_derivative + kappa * inverse_radius * p)
+                    + (potential - 2.0 * C_SQUARED) * q;
+                p * h_p + q * h_q
+            },
+        )
+        .collect::<Vec<_>>();
+    mesh.integrate(&integrand)
+        .map(Hartree)
+        .map_err(|error| DiracLocalHamiltonianError::Quadrature(error.to_string()))
+}
+
+fn logarithmic_mesh_derivative(mesh: &ExponentialMesh, values: &[f64]) -> Vec<f64> {
+    let n = mesh.len();
+    let h12 = 12.0 * mesh.increment();
+    let mut derivative = vec![0.0; n];
+    derivative[0] = (-25.0 * values[0] + 48.0 * values[1] - 36.0 * values[2] + 16.0 * values[3]
+        - 3.0 * values[4])
+        / (h12 * mesh.radii()[0].get());
+    derivative[1] = (-3.0 * values[0] - 10.0 * values[1] + 18.0 * values[2] - 6.0 * values[3]
+        + values[4])
+        / (h12 * mesh.radii()[1].get());
+    for index in 2..n - 2 {
+        derivative[index] = (values[index - 2] - values[index + 2]
+            + 8.0 * (values[index + 1] - values[index - 1]))
+            / (h12 * mesh.radii()[index].get());
+    }
+    derivative[n - 2] = (-values[n - 5] + 6.0 * values[n - 4] - 18.0 * values[n - 3]
+        + 10.0 * values[n - 2]
+        + 3.0 * values[n - 1])
+        / (h12 * mesh.radii()[n - 2].get());
+    derivative[n - 1] = (3.0 * values[n - 5] - 16.0 * values[n - 4] + 36.0 * values[n - 3]
+        - 48.0 * values[n - 2]
+        + 25.0 * values[n - 1])
+        / (h12 * mesh.radii()[n - 1].get());
+    derivative
+}
+
+/// Invalid physical radial input or quadrature failure for a local Dirac trace.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum DiracLocalHamiltonianError {
+    #[error("local Dirac Hamiltonian {component} has {actual} samples, expected {expected}")]
+    SampleCount {
+        component: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("local Dirac Hamiltonian {component}[{index}] is not finite: {value}")]
+    NonFiniteSample {
+        component: &'static str,
+        index: usize,
+        value: f64,
+    },
+    #[error("local Dirac Hamiltonian quadrature failed: {0}")]
+    Quadrature(String),
+}
+
 /// Diagnosable input, shooting, and feature-boundary errors.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum DiracError {
