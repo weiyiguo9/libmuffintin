@@ -5,10 +5,13 @@ use std::f64::consts::PI;
 
 use muffintin::{
     CheckpointPhysics, CheckpointPhysicsError, SPINOR_RADIAL_LO0, SPINOR_RADIAL_P,
-    SPINOR_RADIAL_PDOT,
+    SPINOR_RADIAL_PDOT, SpinorCoreInputError,
 };
-use muffintin_core::{Bohr, Hartree, InverseBohr, Kappa, ReciprocalLattice, TwiceMu};
+use muffintin_core::{
+    Bohr, ExponentialMesh, Hartree, InverseBohr, Kappa, ReciprocalLattice, TwiceMu,
+};
 use muffintin_dft::{
+    CoreShellOccupations, CoreShellOrbital, CoreShellOrbitals, CoreShellOrbitalsProvenance,
     FirstVariationWindow, LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis,
     ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig,
     ScfConvergence, ScfCoreSite, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations,
@@ -21,8 +24,8 @@ use muffintin_io::{
     LinearizationV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
     RadialEquationTag, SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag,
 };
-use muffintin_prodbasis::{DiracRadial, ProductOrbitalKind};
-use muffintin_sphere::{SPEX_SPEED_OF_LIGHT, ValenceDiracSpec, solve_valence_dirac};
+use muffintin_prodbasis::{DiracRadial, DiracRadialNormalization, ProductOrbitalKind};
+use muffintin_sphere::{CoreState, SPEX_SPEED_OF_LIGHT, ValenceDiracSpec, solve_valence_dirac};
 use num_complex::Complex64;
 
 fn hydrogen_spinor_checkpoint() -> CheckpointV2 {
@@ -254,6 +257,50 @@ fn samples_close(left: &[f64], right: &[f64]) -> bool {
             .iter()
             .zip(right)
             .all(|(a, b)| (a - b).abs() <= 1.0e-12 * (1.0 + a.abs() + b.abs()))
+}
+
+fn core_sidecar(
+    input: &muffintin::SpinorProductInput,
+    occupations: CoreShellOccupations,
+) -> CoreShellOrbitals {
+    let mesh = &input.source.radials[0].mesh;
+    let extended_mesh =
+        ExponentialMesh::new(mesh.first(), mesh.increment(), mesh.len() + 7).unwrap();
+    let source = find_radial(input, -1, SPINOR_RADIAL_P);
+    let mut p = source.samples.large.clone();
+    let mut q = source.samples.small.clone();
+    p.resize(extended_mesh.len(), 0.0);
+    q.resize(extended_mesh.len(), 0.0);
+    let norm_mt = mesh
+        .integrate(
+            &source
+                .samples
+                .large
+                .iter()
+                .zip(&source.samples.small)
+                .map(|(p, q)| p * p + q * q)
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+    CoreShellOrbitals {
+        site_index: 0,
+        site_id: "H-1".to_owned(),
+        extended_mesh,
+        shells: vec![CoreShellOrbital {
+            state: CoreState::new(1, Kappa::new(-1).unwrap()).unwrap(),
+            energy: Hartree(-0.5),
+            p,
+            q,
+            norm_total: norm_mt + 0.125,
+            norm_mt,
+            spill: 0.125,
+            occupations,
+        }],
+        provenance: CoreShellOrbitalsProvenance {
+            extended_potential: Vec::new(),
+            solve_specs: Vec::new(),
+        },
+    }
 }
 
 #[test]
@@ -532,4 +579,73 @@ fn differing_per_k_counts_keep_full_eigenvector_rows() {
                     .unwrap_or(0)
         );
     }
+}
+
+#[test]
+fn core_sidecar_keeps_exact_mt_prefix_total_norm_spill_and_flat_mu_order() {
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let input = physics
+        .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
+        .unwrap();
+    let sidecar = core_sidecar(
+        &input,
+        CoreShellOccupations::MuResolved(vec![
+            (TwiceMu::new(1).unwrap(), 0.25),
+            (TwiceMu::new(-1).unwrap(), 0.75),
+        ]),
+    );
+    let attached = input
+        .with_core_sidecars(std::slice::from_ref(&sidecar))
+        .unwrap();
+    assert_eq!(attached.core.sidecars, vec![sidecar.clone()]);
+    assert_eq!(
+        attached
+            .core
+            .orbitals
+            .iter()
+            .map(|orbital| (
+                orbital.site_index,
+                orbital.n,
+                orbital.kappa.get(),
+                orbital.twice_mu.get()
+            ))
+            .collect::<Vec<_>>(),
+        vec![(0, 1, -1, -1), (0, 1, -1, 1)]
+    );
+    assert_eq!(attached.core.orbitals[0].spill, 0.125);
+    let core = &attached.source.radials[0].cores[0];
+    assert_eq!(
+        core.normalization,
+        DiracRadialNormalization::Explicit(sidecar.shells[0].norm_total)
+    );
+    assert!(
+        core.samples
+            .large
+            .iter()
+            .zip(&sidecar.shells[0].p)
+            .all(|(mt, extended)| mt.to_bits() == extended.to_bits())
+    );
+    assert!(
+        core.samples
+            .small
+            .iter()
+            .zip(&sidecar.shells[0].q)
+            .all(|(mt, extended)| mt.to_bits() == extended.to_bits())
+    );
+
+    let explicit = core_sidecar(
+        &attached,
+        CoreShellOccupations::ExplicitCollinear { up: 1.0, down: 1.0 },
+    );
+    let plain = physics
+        .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
+        .unwrap();
+    assert!(matches!(
+        plain.with_core_sidecars(&[explicit]),
+        Err(SpinorCoreInputError::ExplicitCollinear {
+            site: 0,
+            n: 1,
+            kappa: -1
+        })
+    ));
 }

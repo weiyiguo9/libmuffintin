@@ -26,6 +26,7 @@ mod scalar_thc;
 mod single_dft_scf;
 mod site_coords;
 mod spinor_coulomb;
+mod spinor_exchange_mpb;
 mod spinor_mldump;
 mod spinor_mpb;
 mod spinor_product;
@@ -101,14 +102,19 @@ pub use spinor_coulomb::{
     SpinorCoulombPairDiagnostic, SpinorCoulombPairMatch, SpinorCoulombQRecord, SpinorCoulombResult,
     SpinorCoulombSpec, build_spinor_coulomb,
 };
+pub use spinor_exchange_mpb::{
+    SpinorExchangeMpbDiagnostics, SpinorExchangeMpbError, SpinorExchangeMpbPairVertex,
+    SpinorExchangeMpbResult, SpinorExchangeMpbSector, SpinorExchangeMpbSpec,
+    SpinorGammaConstantModeDiagnostic, build_spinor_exchange_mpb,
+};
 pub use spinor_mldump::{SpinorMldumpError, write_spinor_mldump};
 pub use spinor_mpb::{
     SPINOR_MPB_NSPIN, SpinorMpbError, SpinorMpbPairVertex, SpinorMpbResult, SpinorMpbSelection,
     SpinorMpbSpec, build_spinor_mpb,
 };
 pub use spinor_product::{
-    SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, SpinorBandWindow, SpinorFrozenOrbitals,
-    SpinorKMinusQ, SpinorProductInput,
+    SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, SpinorBandWindow, SpinorCoreInputError,
+    SpinorCoreOrbital, SpinorCoreTable, SpinorFrozenOrbitals, SpinorKMinusQ, SpinorProductInput,
 };
 pub use spinor_thc::{SpinorThcError, SpinorThcResult, SpinorThcSpec, build_spinor_thc};
 pub use thc_grid::{

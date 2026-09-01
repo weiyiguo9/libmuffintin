@@ -3,11 +3,12 @@
 use std::collections::BTreeMap;
 
 use muffintin::{
-    CheckpointPhysics, SPINOR_MPB_NSPIN, SPINOR_RADIAL_LO0, SpinorMpbError, SpinorMpbSelection,
-    SpinorMpbSpec, build_spinor_mpb,
+    CheckpointPhysics, SPINOR_MPB_NSPIN, SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SpinorExchangeMpbSpec,
+    SpinorMpbError, SpinorMpbSelection, SpinorMpbSpec, build_spinor_exchange_mpb, build_spinor_mpb,
 };
-use muffintin_core::{Hartree, InverseBohr, Kappa};
+use muffintin_core::{ExponentialMesh, Hartree, InverseBohr, Kappa, ReciprocalLattice, TwiceMu};
 use muffintin_dft::{
+    CoreShellOccupations, CoreShellOrbital, CoreShellOrbitals, CoreShellOrbitalsProvenance,
     LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
     ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfConvergence,
     ScfCoreSite, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations, ScfRelativity,
@@ -24,8 +25,10 @@ use muffintin_io::{
 use muffintin_operators::CompiledSiteProjection;
 use muffintin_prodbasis::mpb::{DEFAULT_TOLERANCE, DiracBlochVertexAccumulator};
 use muffintin_prodbasis::{
-    CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, OrbitalPair,
+    CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, ExchangeSpace, OrbitalPair,
+    ProductOrbitalKind,
 };
+use muffintin_sphere::CoreState;
 use num_complex::Complex64;
 
 fn hydrogen_spinor_checkpoint() -> CheckpointV2 {
@@ -196,6 +199,94 @@ fn mpb_spec(k: usize) -> SpinorMpbSpec {
             right_band: 0,
         }],
     }
+}
+
+fn core_sidecar(input: &muffintin::SpinorProductInput, occupation: f64) -> CoreShellOrbitals {
+    let mesh = &input.source.radials[0].mesh;
+    let extended_mesh =
+        ExponentialMesh::new(mesh.first(), mesh.increment(), mesh.len() + 7).unwrap();
+    let radial = input.source.radials[0]
+        .valence
+        .iter()
+        .find(|radial| radial.kappa == Kappa::new(-1).unwrap() && radial.n == SPINOR_RADIAL_P)
+        .unwrap();
+    let mut p = radial.samples.large.clone();
+    let mut q = radial.samples.small.clone();
+    p.resize(extended_mesh.len(), 0.0);
+    q.resize(extended_mesh.len(), 0.0);
+    let norm_mt = mesh
+        .integrate(
+            &radial
+                .samples
+                .large
+                .iter()
+                .zip(&radial.samples.small)
+                .map(|(p, q)| p * p + q * q)
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+    CoreShellOrbitals {
+        site_index: 0,
+        site_id: "H-1".to_owned(),
+        extended_mesh,
+        shells: vec![CoreShellOrbital {
+            state: CoreState::new(1, Kappa::new(-1).unwrap()).unwrap(),
+            energy: Hartree(-0.5),
+            p,
+            q,
+            norm_total: norm_mt + 0.01,
+            norm_mt,
+            spill: 0.01,
+            occupations: CoreShellOccupations::MuResolved(vec![
+                (TwiceMu::new(-1).unwrap(), occupation),
+                (TwiceMu::new(1).unwrap(), occupation),
+            ]),
+        }],
+        provenance: CoreShellOrbitalsProvenance {
+            extended_potential: Vec::new(),
+            solve_specs: Vec::new(),
+        },
+    }
+}
+
+fn exchange_spec() -> SpinorExchangeMpbSpec {
+    SpinorExchangeMpbSpec {
+        product_l_max: 2,
+        product_g_max: InverseBohr(1.5),
+        overlap_tolerance: DEFAULT_TOLERANCE,
+    }
+}
+
+fn fractional_cartesian(reciprocal: ReciprocalLattice, fractional: [f64; 3]) -> [InverseBohr; 3] {
+    std::array::from_fn(|axis| {
+        InverseBohr(
+            fractional
+                .iter()
+                .zip(reciprocal.basis())
+                .map(|(&coefficient, basis)| coefficient * basis[axis].get())
+                .sum(),
+        )
+    })
+}
+
+fn minimal_cv_trace(
+    input: &muffintin::SpinorProductInput,
+    result: &muffintin::SpinorExchangeMpbResult,
+) -> f64 {
+    result
+        .cv
+        .vertices
+        .iter()
+        .map(|record| {
+            input.core.orbitals[record.occupied].occupation
+                * record
+                    .vertex
+                    .coefficients()
+                    .iter()
+                    .map(Complex64::norm_sqr)
+                    .sum::<f64>()
+        })
+        .sum()
 }
 
 fn max_abs_diff(left: &[Complex64], right: &[Complex64]) -> f64 {
@@ -570,4 +661,133 @@ fn finite_q_two_pauli_interstitial_matches_independent_theta_oracle() {
     assert!(max_abs_diff(interstitial, &reversed_g) > 1.0e-8);
     assert!(max_abs_diff(interstitial, &flipped_wrap) > 1.0e-8);
     assert!(max_abs_diff(interstitial, &double_umklapp) > 1.0e-8);
+}
+
+#[test]
+fn rectangular_core_vertices_are_mt_only_pp_qq_and_occupation_free() {
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let plain = physics
+        .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
+        .unwrap();
+    let low = plain
+        .clone()
+        .with_core_sidecars(&[core_sidecar(&plain, 0.25)])
+        .unwrap();
+    let high = plain
+        .clone()
+        .with_core_sidecars(&[core_sidecar(&plain, 0.5)])
+        .unwrap();
+    let low_result = build_spinor_exchange_mpb(&low, &exchange_spec()).unwrap();
+    let high_result = build_spinor_exchange_mpb(&high, &exchange_spec()).unwrap();
+    assert_eq!(low_result.cv.layout.occupied_space, ExchangeSpace::Core);
+    assert_eq!(low_result.cv.layout.target_space, ExchangeSpace::Valence);
+    assert_eq!(low_result.vc.layout.occupied_space, ExchangeSpace::Valence);
+    assert_eq!(low_result.vc.layout.target_space, ExchangeSpace::Core);
+    assert_eq!(low_result.cc.layout.occupied_space, ExchangeSpace::Core);
+    assert_eq!(low_result.cc.layout.target_space, ExchangeSpace::Core);
+    assert!(
+        low_result
+            .raw
+            .interstitial_pair_support
+            .components
+            .is_empty()
+    );
+    assert!(
+        low_result
+            .raw
+            .radial_products
+            .iter()
+            .all(|product| matches!(
+                product.channel.sector,
+                DiracChargeSector::LargeLarge | DiracChargeSector::SmallSmall
+            ))
+    );
+    assert!(low_result.raw.radial_products.iter().any(|product| {
+        product.channel.left.kind == ProductOrbitalKind::Core
+            && product.channel.right.kind == ProductOrbitalKind::Core
+    }));
+    for sector in [&low_result.cv, &low_result.vc, &low_result.cc] {
+        assert!(sector.vertices.iter().all(|record| {
+            record
+                .vertex
+                .interstitial()
+                .iter()
+                .all(|value| value.norm() == 0.0)
+        }));
+    }
+    assert_eq!(low_result.cv.vertices, high_result.cv.vertices);
+    assert_eq!(low_result.vc.vertices, high_result.vc.vertices);
+    assert_eq!(low_result.cc.vertices, high_result.cc.vertices);
+    let low_trace = minimal_cv_trace(&low, &low_result);
+    let high_trace = minimal_cv_trace(&high, &high_result);
+    assert!((high_trace - 2.0 * low_trace).abs() < 1.0e-12 * high_trace.max(1.0));
+    assert!(
+        low_result
+            .diagnostics
+            .cv
+            .iter()
+            .chain(&low_result.diagnostics.vc)
+            .all(|diagnostic| diagnostic.coupling.is_some()
+                && diagnostic.direct_overlap.is_some()
+                && diagnostic.residual.is_some())
+    );
+    assert!(low_result.diagnostics.max_residual.unwrap() < 1.0e-9);
+}
+
+#[test]
+fn finite_q_core_phase_uses_k_minus_q_wrap_and_gamma_couplings_are_conjugate() {
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let gamma_plain = physics
+        .spinor_product_input(&spinor_config([2, 1, 1], 1.0), [0.0; 3])
+        .unwrap();
+    let sidecar = core_sidecar(&gamma_plain, 1.0);
+    let gamma = gamma_plain
+        .with_core_sidecars(std::slice::from_ref(&sidecar))
+        .unwrap();
+    let finite = physics
+        .spinor_product_input(&spinor_config([2, 1, 1], 1.0), [1.5, 0.0, 0.0])
+        .unwrap()
+        .with_core_sidecars(&[sidecar])
+        .unwrap();
+    assert_eq!(finite.k_minus_q[0].umklapp.index, [-1, 0, 0]);
+    let gamma_result = build_spinor_exchange_mpb(&gamma, &exchange_spec()).unwrap();
+    let finite_result = build_spinor_exchange_mpb(&finite, &exchange_spec()).unwrap();
+    assert!(
+        finite_result
+            .diagnostics
+            .cv
+            .iter()
+            .chain(&finite_result.diagnostics.vc)
+            .all(|diagnostic| diagnostic.coupling.is_none()
+                && diagnostic.direct_overlap.is_none()
+                && diagnostic.residual.is_none())
+    );
+    assert_eq!(finite_result.diagnostics.max_residual, None);
+
+    let core = 0;
+    let gamma_column = gamma_result.cc.layout.encode(0, core, core).unwrap();
+    let finite_column = finite_result.cc.layout.encode(0, core, core).unwrap();
+    let gamma_vertex = &gamma_result.cc.vertices[gamma_column].vertex;
+    let finite_vertex = &finite_result.cc.vertices[finite_column].vertex;
+    let k = finite.orbitals.k_fractional[0];
+    let kq = finite.orbitals.k_fractional[finite.k_minus_q[0].kq_index];
+    let delta = std::array::from_fn(|axis| k[axis] - kq[axis]);
+    let expected = site_translation_phase(
+        fractional_cartesian(finite.reciprocal, delta),
+        finite.source.partition.sites()[0].position,
+    );
+    assert!(gamma_vertex.mt().iter().any(|value| value.norm() > 1.0e-12));
+    assert!(
+        finite_vertex
+            .mt()
+            .iter()
+            .zip(gamma_vertex.mt())
+            .all(|(got, reference)| (*got - expected * reference).norm() < 1.0e-9)
+    );
+    for cv in &gamma_result.diagnostics.cv {
+        let (k, core, valence) = gamma_result.cv.layout.decode(cv.column).unwrap();
+        let reverse = gamma_result.vc.layout.encode(k, valence, core).unwrap();
+        let vc = &gamma_result.diagnostics.vc[reverse];
+        assert!((cv.coupling.unwrap() - vc.coupling.unwrap().conj()).norm() < 1.0e-9);
+    }
 }

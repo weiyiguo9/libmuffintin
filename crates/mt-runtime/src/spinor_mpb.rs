@@ -1,8 +1,9 @@
 //! Selected-band spinor mixed-product bridge from frozen [`SpinorProductInput`].
 
-use crate::spinor_product::SpinorProductInput;
+use crate::spinor_product::{
+    SpinorCoreTable, SpinorKMinusQ, SpinorProductInput, spinor_pair_site_phases,
+};
 use muffintin_core::{InverseBohr, ReciprocalLattice, RelativisticChannel};
-use muffintin_envelope::site_translation_phase;
 use muffintin_operators::lapw::SpinorCompiledBasis;
 use muffintin_operators::{CompiledSiteProjection, OperatorError};
 use muffintin_prodbasis::mpb::{
@@ -242,6 +243,7 @@ fn contract_selection(
         left_ev: &input.orbitals.eigenvectors[mapped.kq_index],
         right_ev: &input.orbitals.eigenvectors[mapped.k_index],
         wrap: mapped.umklapp,
+        mapped,
     };
     if pair.left_ev.rows() != pair.left_basis.layout.dimension()
         || pair.right_ev.rows() != pair.right_basis.layout.dimension()
@@ -281,6 +283,7 @@ struct BandPair<'a> {
     left_ev: &'a DenseEigenvectors,
     right_ev: &'a DenseEigenvectors,
     wrap: muffintin_core::GVector,
+    mapped: SpinorKMinusQ,
 }
 
 fn add_muffin_tin_terms(
@@ -291,7 +294,7 @@ fn add_muffin_tin_terms(
 ) -> Result<(), SpinorMpbError> {
     let known_pp = raw_mt_pairs(raw, DiracChargeSector::LargeLarge);
     let known_qq = raw_mt_pairs(raw, DiracChargeSector::SmallSmall);
-    for (site, region) in input.source.partition.sites().iter().enumerate() {
+    for site in 0..input.source.partition.site_count() {
         let left_channels = site_channels(pair.left_basis, site)?;
         let right_channels = site_channels(pair.right_basis, site)?;
         let left_proj = CompiledSiteProjection::spinor(pair.left_basis, site, left_channels)?;
@@ -301,7 +304,9 @@ fn add_muffin_tin_terms(
         if left_site.coordinate_count() != right_site.coordinate_count() {
             return Err(SpinorMpbError::IncompatiblePairLayout);
         }
-        let phase = site_translation_phase(input.source.q.cartesian, region.position).conj();
+        let phase = spinor_pair_site_phases(input, pair.mapped, site)
+            .ok_or(SpinorMpbError::IncompatiblePairLayout)?
+            .auxiliary_compensation;
         for left_coord in 0..left_site.coordinate_count() {
             let Some((left_id, left_mu)) = input.site_projection_identity(site, left_coord) else {
                 return Err(SpinorMpbError::IncompatiblePairLayout);
@@ -417,6 +422,7 @@ pub(crate) struct SpinorFrozenInputIdentity {
     pair_columns: PairColumnLayout,
     reciprocal: ReciprocalLattice,
     orbitals: crate::spinor_product::SpinorFrozenOrbitals,
+    core: SpinorCoreTable,
 }
 
 impl SpinorFrozenInputIdentity {
@@ -426,6 +432,7 @@ impl SpinorFrozenInputIdentity {
             && self.pair_columns == input.pair_columns
             && self.reciprocal == input.reciprocal
             && self.orbitals == input.orbitals
+            && self.core == input.core
     }
 }
 
@@ -436,5 +443,6 @@ fn spinor_frozen_input_identity(input: &SpinorProductInput) -> SpinorFrozenInput
         pair_columns: input.pair_columns,
         reciprocal: input.reciprocal,
         orbitals: input.orbitals.clone(),
+        core: input.core.clone(),
     }
 }

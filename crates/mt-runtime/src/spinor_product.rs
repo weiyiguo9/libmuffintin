@@ -2,19 +2,22 @@
 
 use muffintin_core::{Hartree, Kappa, ReciprocalLattice, TwiceMu};
 use muffintin_dft::{
-    CheckpointBandSolution, CheckpointKPointSolution, MaterialKernelError, ScfConfig,
-    ScfRelativity, SpinorIterationBasis, SpinorRadialSite,
+    CheckpointBandSolution, CheckpointKPointSolution, CoreShellOccupations, CoreShellOrbitals,
+    MaterialKernelError, ScfConfig, ScfRelativity, SpinorIterationBasis, SpinorRadialSite,
     build_extended_checkpoint_core_potentials, regular_k_points,
 };
+use muffintin_envelope::site_translation_phase;
 use muffintin_operators::lapw::{Provenance, SpinorCompiledBasis};
 use muffintin_prodbasis::{
-    AuxiliaryPartition, DiracProductSource, DiracRadial, DiracRadialId, DiracRadialSamples,
-    DiracSiteRadialSet, PairColumnLayout, ProductOrbitalKind, RawInterstitialPairSupport,
-    TransferQ,
+    AuxiliaryPartition, DiracProductSource, DiracRadial, DiracRadialId, DiracRadialNormalization,
+    DiracRadialSamples, DiracSiteRadialSet, PairColumnLayout, ProductOrbitalKind,
+    RawInterstitialPairSupport, TransferQ,
 };
 use muffintin_sphere::CorePotentialContinuationSpec;
 use muffintin_tensor::DenseEigenvectors;
-use std::collections::BTreeSet;
+use num_complex::Complex64;
+use std::collections::{BTreeSet, HashSet};
+use thiserror::Error;
 
 use crate::checkpoint_physics::{CheckpointPhysics, CheckpointPhysicsError};
 use crate::q_mesh::{
@@ -74,6 +77,28 @@ pub struct SpinorFrozenOrbitals {
     pub band_window: SpinorBandWindow,
 }
 
+/// One caller-retained core spin orbital in canonical flat order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpinorCoreOrbital {
+    pub site_index: usize,
+    pub n: u32,
+    pub kappa: Kappa,
+    pub twice_mu: TwiceMu,
+    pub occupation: f64,
+    pub radial: DiracRadialId,
+    pub energy: Hartree,
+    pub norm_total: f64,
+    pub norm_mt: f64,
+    pub spill: f64,
+}
+
+/// Preserved M0 sidecars plus the canonical `site -> n -> kappa -> twice_mu` table.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SpinorCoreTable {
+    pub sidecars: Vec<CoreShellOrbitals>,
+    pub orbitals: Vec<SpinorCoreOrbital>,
+}
+
 /// Frozen spinor first-variation solve plus Dirac product input at one $q$.
 ///
 /// `source` is the method-neutral [`DiracProductSource`]. Valence radials use
@@ -81,7 +106,8 @@ pub struct SpinorFrozenOrbitals {
 /// from [`SPINOR_RADIAL_LO0`] in each shell's request order. Radial identity
 /// $(site, kind, \kappa, n)$ is $\mu$-degenerate. Pair columns use
 /// [`PairColumnLayout`] indexing $k\cdot N_{\mathrm{orb}}^2+i\cdot N_{\mathrm{orb}}+j$
-/// with left band at $k-q$ and right band at $k$. Cores are empty.
+/// with left band at $k-q$ and right band at $k$. Caller-provided core
+/// sidecars remain in [`SpinorCoreTable`].
 /// `reciprocal` is the exact lattice used to fold $q_{\mathrm{in}}$ and
 /// $G_{\mathrm{wrap}}$.
 #[derive(Clone, Debug, PartialEq)]
@@ -91,6 +117,48 @@ pub struct SpinorProductInput {
     pub k_minus_q: Vec<SpinorKMinusQ>,
     pub pair_columns: PairColumnLayout,
     pub reciprocal: ReciprocalLattice,
+    pub core: SpinorCoreTable,
+}
+
+/// Core-sidecar rejection at the spinor product boundary.
+#[derive(Debug, Error)]
+pub enum SpinorCoreInputError {
+    #[error(transparent)]
+    Checkpoint(#[from] CheckpointPhysicsError),
+    #[error("core sidecar site index {site} is outside 0..{site_count}")]
+    SiteIndex { site: usize, site_count: usize },
+    #[error("core sidecar site index {0} appears more than once")]
+    DuplicateSite(usize),
+    #[error(
+        "core sidecar site {site} extended mesh is not an exact prefix extension of its muffin-tin mesh"
+    )]
+    MeshPrefix { site: usize },
+    #[error(
+        "core sidecar site {site} n={n} kappa={kappa} has inconsistent P/Q and extended-mesh lengths"
+    )]
+    RadialLength { site: usize, n: u32, kappa: i32 },
+    #[error("core sidecar site {site} duplicates n={n} kappa={kappa}")]
+    DuplicateShell { site: usize, n: u32, kappa: i32 },
+    #[error(
+        "core sidecar site {site} n={n} kappa={kappa} uses ExplicitCollinear occupations; rectangular spinor exchange requires MuResolved"
+    )]
+    ExplicitCollinear { site: usize, n: u32, kappa: i32 },
+    #[error(
+        "core sidecar site {site} n={n} kappa={kappa} does not contain each magnetic channel exactly once"
+    )]
+    MagneticChannels { site: usize, n: u32, kappa: i32 },
+    #[error(
+        "core sidecar site {site} n={n} kappa={kappa} 2mu={twice_mu} has invalid occupation {occupation}"
+    )]
+    Occupation {
+        site: usize,
+        n: u32,
+        kappa: i32,
+        twice_mu: i64,
+        occupation: f64,
+    },
+    #[error(transparent)]
+    Product(#[from] muffintin_prodbasis::DiracProductError),
 }
 
 impl CheckpointPhysics {
@@ -168,9 +236,139 @@ impl CheckpointPhysics {
         }
         emit_spinor_product_input(self, bands, k_fractional, transfer.q, k_minus_q)
     }
+
+    /// Build the spinor product input and attach caller-owned M0 core sidecars.
+    pub fn spinor_product_input_with_cores(
+        &self,
+        config: &ScfConfig,
+        q_fractional: [f64; 3],
+        sidecars: &[CoreShellOrbitals],
+    ) -> Result<SpinorProductInput, SpinorCoreInputError> {
+        Ok(self
+            .spinor_product_input(config, q_fractional)?
+            .with_core_sidecars(sidecars)?)
+    }
 }
 
 impl SpinorProductInput {
+    /// Attach exact M0 core sidecars without resampling or MT renormalization.
+    pub fn with_core_sidecars(
+        mut self,
+        sidecars: &[CoreShellOrbitals],
+    ) -> Result<Self, SpinorCoreInputError> {
+        let site_count = self.source.radials.len();
+        let mut seen_sites = HashSet::new();
+        let mut seen_shells = HashSet::new();
+        let mut shell_refs = Vec::new();
+        for sidecar in sidecars {
+            let site = sidecar.site_index;
+            if site >= site_count {
+                return Err(SpinorCoreInputError::SiteIndex { site, site_count });
+            }
+            if !seen_sites.insert(site) {
+                return Err(SpinorCoreInputError::DuplicateSite(site));
+            }
+            let mesh = &self.source.radials[site].mesh;
+            if sidecar.extended_mesh.len() < mesh.len()
+                || sidecar.extended_mesh.radii()[..mesh.len()] != mesh.radii()[..]
+            {
+                return Err(SpinorCoreInputError::MeshPrefix { site });
+            }
+            for shell in &sidecar.shells {
+                if shell.p.len() != sidecar.extended_mesh.len()
+                    || shell.q.len() != sidecar.extended_mesh.len()
+                {
+                    return Err(SpinorCoreInputError::RadialLength {
+                        site,
+                        n: shell.state.n,
+                        kappa: shell.state.kappa.get(),
+                    });
+                }
+                if !seen_shells.insert((site, shell.state.n, shell.state.kappa)) {
+                    return Err(SpinorCoreInputError::DuplicateShell {
+                        site,
+                        n: shell.state.n,
+                        kappa: shell.state.kappa.get(),
+                    });
+                }
+                let CoreShellOccupations::MuResolved(occupations) = &shell.occupations else {
+                    return Err(SpinorCoreInputError::ExplicitCollinear {
+                        site,
+                        n: shell.state.n,
+                        kappa: shell.state.kappa.get(),
+                    });
+                };
+                let mut occupations = occupations.clone();
+                occupations.sort_by_key(|(twice_mu, _)| *twice_mu);
+                let expected = shell.state.kappa.twice_mu_values().collect::<Vec<_>>();
+                if occupations.len() != expected.len()
+                    || occupations
+                        .iter()
+                        .map(|(twice_mu, _)| *twice_mu)
+                        .ne(expected.iter().copied())
+                {
+                    return Err(SpinorCoreInputError::MagneticChannels {
+                        site,
+                        n: shell.state.n,
+                        kappa: shell.state.kappa.get(),
+                    });
+                }
+                for &(twice_mu, occupation) in &occupations {
+                    if !occupation.is_finite() || !(0.0..=1.0).contains(&occupation) {
+                        return Err(SpinorCoreInputError::Occupation {
+                            site,
+                            n: shell.state.n,
+                            kappa: shell.state.kappa.get(),
+                            twice_mu: twice_mu.get(),
+                            occupation,
+                        });
+                    }
+                }
+                shell_refs.push((site, shell, occupations));
+            }
+        }
+        shell_refs.sort_by_key(|(site, shell, _)| (*site, shell.state.n, shell.state.kappa));
+        let mut flat = Vec::new();
+        for (site, shell, occupations) in shell_refs {
+            let mt_len = self.source.radials[site].mesh.len();
+            let radial = DiracRadialId {
+                site,
+                kind: ProductOrbitalKind::Core,
+                kappa: shell.state.kappa,
+                n: shell.state.n as usize,
+            };
+            self.source.radials[site].cores.push(DiracRadial {
+                kappa: shell.state.kappa,
+                n: radial.n,
+                samples: DiracRadialSamples {
+                    large: shell.p[..mt_len].to_vec(),
+                    small: shell.q[..mt_len].to_vec(),
+                },
+                normalization: DiracRadialNormalization::Explicit(shell.norm_total),
+            });
+            for (twice_mu, occupation) in occupations {
+                flat.push(SpinorCoreOrbital {
+                    site_index: site,
+                    n: shell.state.n,
+                    kappa: shell.state.kappa,
+                    twice_mu,
+                    occupation,
+                    radial,
+                    energy: shell.energy,
+                    norm_total: shell.norm_total,
+                    norm_mt: shell.norm_mt,
+                    spill: shell.spill,
+                });
+            }
+        }
+        self.core = SpinorCoreTable {
+            sidecars: sidecars.to_vec(),
+            orbitals: flat,
+        };
+        self.source.validate()?;
+        Ok(self)
+    }
+
     /// Pauli plane-wave eigenbasis row $\mathrm{spin}\,N_G+G$ at k-point `k`.
     ///
     /// Both spin blocks share [`SpinorCompiledBasis::plane_waves`] labels.
@@ -387,6 +585,7 @@ pub(crate) fn require_spinor_q_slice(
             || input.pair_columns != first.pair_columns
             || input.source.partition != first.source.partition
             || input.source.radials != first.source.radials
+            || input.core != first.core
             || input.reciprocal != first.reciprocal
             || input.k_minus_q.len() != n_k
         {
@@ -501,9 +700,52 @@ fn emit_spinor_product_input(
         k_minus_q,
         pair_columns,
         reciprocal: *physics.reciprocal(),
+        core: SpinorCoreTable::default(),
     };
     input.validate()?;
     Ok(input)
+}
+
+pub(crate) struct SpinorPairSitePhases {
+    pub left_bloch: Complex64,
+    pub right_bloch: Complex64,
+    pub auxiliary_compensation: Complex64,
+}
+
+pub(crate) fn spinor_pair_site_phases(
+    input: &SpinorProductInput,
+    mapped: SpinorKMinusQ,
+    site: usize,
+) -> Option<SpinorPairSitePhases> {
+    let position = input.source.partition.sites().get(site)?.position;
+    let left_k = fractional_reciprocal(
+        *input.orbitals.k_fractional.get(mapped.kq_index)?,
+        input.reciprocal,
+    );
+    let right_k = fractional_reciprocal(
+        *input.orbitals.k_fractional.get(mapped.k_index)?,
+        input.reciprocal,
+    );
+    Some(SpinorPairSitePhases {
+        left_bloch: site_translation_phase(left_k, position),
+        right_bloch: site_translation_phase(right_k, position),
+        auxiliary_compensation: site_translation_phase(input.source.q.cartesian, position).conj(),
+    })
+}
+
+fn fractional_reciprocal(
+    fractional: [f64; 3],
+    reciprocal: ReciprocalLattice,
+) -> [muffintin_core::InverseBohr; 3] {
+    std::array::from_fn(|axis| {
+        muffintin_core::InverseBohr(
+            fractional
+                .iter()
+                .zip(reciprocal.basis())
+                .map(|(&coefficient, basis)| coefficient * basis[axis].get())
+                .sum(),
+        )
+    })
 }
 
 fn raw_pair_support(
@@ -559,6 +801,7 @@ fn valence_radials(site: &SpinorRadialSite) -> Vec<DiracRadial> {
                 large: solution.p.clone(),
                 small: solution.q.clone(),
             },
+            normalization: DiracRadialNormalization::OnMesh,
         });
         valence.push(DiracRadial {
             kappa: solution.kappa,
@@ -567,6 +810,7 @@ fn valence_radials(site: &SpinorRadialSite) -> Vec<DiracRadial> {
                 large: solution.energy_derivative.p.clone(),
                 small: solution.energy_derivative.q.clone(),
             },
+            normalization: DiracRadialNormalization::OnMesh,
         });
         for (ordinal, local) in locals.iter().enumerate() {
             valence.push(DiracRadial {
@@ -576,6 +820,7 @@ fn valence_radials(site: &SpinorRadialSite) -> Vec<DiracRadial> {
                     large: local.orbital.p.clone(),
                     small: local.orbital.q.clone(),
                 },
+                normalization: DiracRadialNormalization::OnMesh,
             });
         }
     }
