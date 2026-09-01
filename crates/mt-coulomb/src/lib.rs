@@ -54,8 +54,8 @@ pub use moments::{
 pub use operator::{AuxiliaryKind, CoulombOperator, GammaHead};
 pub use primitive::{intra_sphere_poisson, radial_primitive};
 pub use radial_core_valence::{
-    RadialCoreValenceActions, RadialCoreValenceError, RadialCoreValenceShellAction,
-    radial_core_valence_actions,
+    RadialValenceCoreActions, RadialValenceCoreError, RadialValenceCoreShellAction,
+    radial_valence_core_actions,
 };
 pub use radial_slater::{
     BorrowedCoreShell, BorrowedValenceRadial, ClosedCoreOccupations, PreweightedSiteValenceDensity,
