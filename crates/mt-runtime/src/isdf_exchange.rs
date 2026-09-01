@@ -350,7 +350,15 @@ fn scalar_q_slice_error(error: ScalarQSliceError) -> IsdfExchangeError {
             q_count: actual,
             k_count: expected,
         },
-        ScalarQSliceError::IncompatibleInputs => IsdfExchangeError::QContext { index: 0 },
+        ScalarQSliceError::IncompatibleInputs | ScalarQSliceError::NonFiniteQSlice => {
+            IsdfExchangeError::QContext { index: 0 }
+        }
+        ScalarQSliceError::CanonicalQMismatch { q_index } => {
+            IsdfExchangeError::QContext { index: q_index }
+        }
+        ScalarQSliceError::KMinusQWrap { q_index, k_index } => {
+            IsdfExchangeError::KMinusQ { q_index, k_index }
+        }
     }
 }
 

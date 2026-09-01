@@ -212,7 +212,10 @@ impl From<ScalarQSliceError> for ScalarThcError {
             ScalarQSliceError::IncompleteQSlice { actual, expected } => {
                 Self::IncompleteQSlice { actual, expected }
             }
-            ScalarQSliceError::IncompatibleInputs => Self::IncompatibleInputs,
+            ScalarQSliceError::IncompatibleInputs
+            | ScalarQSliceError::NonFiniteQSlice
+            | ScalarQSliceError::CanonicalQMismatch { .. }
+            | ScalarQSliceError::KMinusQWrap { .. } => Self::IncompatibleInputs,
         }
     }
 }

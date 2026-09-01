@@ -12,6 +12,16 @@ use crate::checkpoint_physics::CheckpointPhysicsError;
 
 const MESH_COORD_TOLERANCE: f64 = 1.0e-12;
 
+/// Failure while validating one canonical q record against its ordered k mesh.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CanonicalQMapError {
+    NonFiniteQSlice,
+    CanonicalQMismatch,
+    IncompatibleMap,
+    KMinusQWrap { k_index: usize },
+    GammaTarget,
+}
+
 /// Requested $q_{\mathrm{in}}$, folded $q_{\mathrm{canonical}}$, and `TransferQ`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CanonicalTransfer {
@@ -84,6 +94,79 @@ pub(crate) fn map_k_minus_q(
     })
 }
 
+/// Validate one canonical q and its complete ordered k-minus-q map.
+///
+/// The q record at `q_index` must equal the matching ordered k point in
+/// Cartesian reciprocal coordinates. Every map entry must retain its k index,
+/// point inside the mesh, and satisfy the stored integer Umklapp relation.
+pub(crate) fn validate_canonical_q_map(
+    k_fractional: &[[f64; 3]],
+    reciprocal: ReciprocalLattice,
+    stored_q: [InverseBohr; 3],
+    q_index: usize,
+    maps: impl IntoIterator<Item = (usize, usize, [i32; 3])>,
+) -> Result<(), CanonicalQMapError> {
+    let n_k = k_fractional.len();
+    let q_canonical = *k_fractional
+        .get(q_index)
+        .ok_or(CanonicalQMapError::IncompatibleMap)?;
+    let expected_q = fractional_to_reciprocal(q_canonical, reciprocal.basis());
+    if stored_q
+        .iter()
+        .chain(&expected_q)
+        .any(|component| !component.get().is_finite())
+        || q_canonical.iter().any(|component| !component.is_finite())
+    {
+        return Err(CanonicalQMapError::NonFiniteQSlice);
+    }
+    if stored_q
+        .iter()
+        .zip(expected_q)
+        .any(|(stored, expected)| !scale_aware_eq(stored.get(), expected.get()))
+    {
+        return Err(CanonicalQMapError::CanonicalQMismatch);
+    }
+
+    let mut actual = 0;
+    let mut q_target = None;
+    for (k_index, (stored_k_index, kq_index, umklapp)) in maps.into_iter().enumerate() {
+        actual += 1;
+        if k_index >= n_k || stored_k_index != k_index || kq_index >= n_k {
+            return Err(CanonicalQMapError::IncompatibleMap);
+        }
+        let k = k_fractional[k_index];
+        let kq = k_fractional[kq_index];
+        for axis in 0..3 {
+            let residual = k[axis] - q_canonical[axis] - kq[axis] - f64::from(umklapp[axis]);
+            if !k[axis].is_finite()
+                || !kq[axis].is_finite()
+                || !residual.is_finite()
+                || !scale_aware_eq(residual, 0.0)
+            {
+                return Err(if !k[axis].is_finite() || !kq[axis].is_finite() {
+                    CanonicalQMapError::NonFiniteQSlice
+                } else {
+                    CanonicalQMapError::KMinusQWrap { k_index }
+                });
+            }
+        }
+        if k_index == q_index {
+            q_target = Some(kq_index);
+        }
+    }
+    if actual != n_k {
+        return Err(CanonicalQMapError::IncompatibleMap);
+    }
+    let q_target = q_target.ok_or(CanonicalQMapError::IncompatibleMap)?;
+    if k_fractional[q_target]
+        .iter()
+        .any(|component| component.abs() > MESH_COORD_TOLERANCE)
+    {
+        return Err(CanonicalQMapError::GammaTarget);
+    }
+    Ok(())
+}
+
 fn fold_to_unit_cell(fractional: [f64; 3]) -> ([f64; 3], [i32; 3]) {
     let mut folded = [0.0; 3];
     let mut wrap = [0; 3];
@@ -116,4 +199,9 @@ fn fractional_to_reciprocal(
                 .sum(),
         )
     })
+}
+
+fn scale_aware_eq(left: f64, right: f64) -> bool {
+    let scale = left.abs().max(right.abs()).max(1.0);
+    (left - right).abs() <= MESH_COORD_TOLERANCE * scale
 }

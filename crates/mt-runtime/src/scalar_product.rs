@@ -17,7 +17,9 @@ use muffintin_tensor::DenseEigenvectors;
 use std::collections::BTreeSet;
 
 use crate::checkpoint_physics::{CheckpointPhysics, CheckpointPhysicsError};
-use crate::q_mesh::{canonical_transfer_q, map_k_minus_q};
+use crate::q_mesh::{
+    CanonicalQMapError, canonical_transfer_q, map_k_minus_q, validate_canonical_q_map,
+};
 
 /// ProductRadial $n$ for the scalar linearization function $u$.
 pub const SCALAR_RADIAL_U: usize = 0;
@@ -373,12 +375,19 @@ pub(crate) enum ScalarQSliceError {
     EmptySlice,
     IncompleteQSlice { actual: usize, expected: usize },
     IncompatibleInputs,
+    NonFiniteQSlice,
+    CanonicalQMismatch { q_index: usize },
+    KMinusQWrap { q_index: usize, k_index: usize },
 }
 
 pub(crate) fn require_scalar_q_slice(
     inputs: &[ScalarProductInput],
 ) -> Result<&ScalarProductInput, ScalarQSliceError> {
     let first = inputs.first().ok_or(ScalarQSliceError::EmptySlice)?;
+    first
+        .source
+        .validate()
+        .map_err(|_| ScalarQSliceError::IncompatibleInputs)?;
     let n_k = first.orbitals.k_fractional.len();
     if inputs.len() != n_k {
         return Err(ScalarQSliceError::IncompleteQSlice {
@@ -387,6 +396,12 @@ pub(crate) fn require_scalar_q_slice(
         });
     }
     for (iq, input) in inputs.iter().enumerate() {
+        if iq > 0 {
+            input
+                .source
+                .validate()
+                .map_err(|_| ScalarQSliceError::IncompatibleInputs)?;
+        }
         if input.orbitals != first.orbitals
             || input.pair_columns != first.pair_columns
             || input.source.partition != first.source.partition
@@ -396,20 +411,31 @@ pub(crate) fn require_scalar_q_slice(
         {
             return Err(ScalarQSliceError::IncompatibleInputs);
         }
-        let mapped = input
-            .k_minus_q
-            .iter()
-            .find(|mapped| mapped.k_index == iq)
-            .ok_or(ScalarQSliceError::IncompatibleInputs)?;
-        if !input.orbitals.k_fractional[mapped.kq_index]
-            .iter()
-            .all(|component| component.abs() <= 1.0e-12)
-        {
-            return Err(ScalarQSliceError::IncompleteQSlice {
+        validate_canonical_q_map(
+            &first.orbitals.k_fractional,
+            first.reciprocal,
+            input.source.q.cartesian,
+            iq,
+            input
+                .k_minus_q
+                .iter()
+                .map(|mapped| (mapped.k_index, mapped.kq_index, mapped.umklapp.index)),
+        )
+        .map_err(|error| match error {
+            CanonicalQMapError::NonFiniteQSlice => ScalarQSliceError::NonFiniteQSlice,
+            CanonicalQMapError::CanonicalQMismatch => {
+                ScalarQSliceError::CanonicalQMismatch { q_index: iq }
+            }
+            CanonicalQMapError::IncompatibleMap => ScalarQSliceError::IncompatibleInputs,
+            CanonicalQMapError::KMinusQWrap { k_index } => ScalarQSliceError::KMinusQWrap {
+                q_index: iq,
+                k_index,
+            },
+            CanonicalQMapError::GammaTarget => ScalarQSliceError::IncompleteQSlice {
                 actual: iq,
                 expected: n_k,
-            });
-        }
+            },
+        })?;
     }
     Ok(first)
 }

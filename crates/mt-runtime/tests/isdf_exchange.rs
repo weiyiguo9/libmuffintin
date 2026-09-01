@@ -8,6 +8,7 @@ use muffintin::{
 };
 use muffintin_core::{Bohr, Cell, ReciprocalLattice};
 use muffintin_operators::lapw::Provenance;
+use num_complex::Complex64;
 
 #[path = "scalar_hydrogen.rs"]
 #[allow(unused_imports)]
@@ -141,8 +142,117 @@ fn scalar_two_k_exchange_rejects_a_map_changed_after_coulomb_construction() {
             &coulomb,
             &occupied_first_band(2, inputs[0].pair_columns.n_orb),
         ),
-        Err(IsdfExchangeError::FrozenInputContext)
+        Err(IsdfExchangeError::KMinusQ {
+            q_index: 0,
+            k_index: 1,
+        })
     );
+}
+
+#[test]
+fn scalar_two_k_finite_q_exchange_matches_direct_band_sums() {
+    let physics = CheckpointPhysics::new(&scalar_hydrogen::hydrogen_checkpoint()).unwrap();
+    let config = scalar_hydrogen::scalar_config([2, 1, 1], 1.0);
+    let inputs = vec![
+        physics.scalar_product_input(&config, [0.0; 3]).unwrap(),
+        physics
+            .scalar_product_input(&config, [1.5, 0.0, 0.0])
+            .unwrap(),
+    ];
+    let coulomb_spec = scalar_hydrogen::coulomb_spec();
+    let meshes = inputs[0]
+        .source
+        .radials
+        .iter()
+        .map(|site| site.mesh.clone())
+        .collect::<Vec<_>>();
+    let grid = build_natural_thc_parent_grid(
+        inputs[0].source.partition.clone(),
+        *coulomb_spec.request.cell(),
+        inputs[0].reciprocal,
+        &meshes,
+        Provenance {
+            recipe: Some("two-k-finite-q-oracle".to_owned()),
+            reference: None,
+        },
+        NaturalThcGridSpec {
+            angular_points_per_shell: 6,
+            interstitial_divisions: [3, 3, 3],
+        },
+    )
+    .unwrap();
+    let thc = build_scalar_thc(&inputs, &grid, &scalar_hydrogen::thc_spec()).unwrap();
+    let coulomb = build_scalar_coulomb(&inputs, &thc, &coulomb_spec, &[]).unwrap();
+    assert!(
+        inputs[1]
+            .source
+            .q
+            .cartesian
+            .iter()
+            .any(|component| component.get().abs() > 1.0e-12)
+    );
+    assert!(coulomb.records()[1].operator.gamma().is_none());
+
+    let n_k = inputs.len();
+    let n_bands = inputs[0].pair_columns.n_orb;
+    assert!(n_bands >= 2);
+    let mut occupations = vec![vec![0.0; n_bands]; n_k];
+    occupations[0][0] = 1.0;
+    occupations[0][1] = 0.25;
+    occupations[1][0] = 0.75;
+    occupations[1][1] = 0.5;
+    let spec = IsdfExchangeSpec {
+        k_weights: vec![0.4, 0.6],
+        occupations,
+        gamma: GammaExchangeTreatment::FiniteBody,
+    };
+    let result = build_scalar_isdf_exchange(&inputs, &coulomb, &spec).unwrap();
+
+    let layout = inputs[0].pair_columns;
+    let mut direct = vec![vec![Complex64::default(); n_bands * n_bands]; n_k];
+    for (k, matrix) in direct.iter_mut().enumerate() {
+        for row in 0..n_bands {
+            for column in 0..n_bands {
+                for (q_index, (input, record)) in inputs.iter().zip(coulomb.records()).enumerate() {
+                    assert_eq!(record.q_index, q_index);
+                    let kq = input.k_minus_q[k].kq_index;
+                    for occupied in 0..n_bands {
+                        let weight = spec.k_weights[kq] * spec.occupations[kq][occupied];
+                        let left = layout.encode(k, occupied, row);
+                        let right = layout.encode(k, occupied, column);
+                        matrix[row * n_bands + column] -= weight
+                            * record
+                                .operator
+                                .quadratic_form(&record.vertices[left], &record.vertices[right])
+                                .unwrap();
+                    }
+                }
+            }
+        }
+    }
+
+    for (k, (actual, expected)) in result.band_matrices.iter().zip(&direct).enumerate() {
+        assert_eq!(actual.k_index(), k);
+        assert_eq!(actual.n_bands(), n_bands);
+        for (actual, expected) in actual.values().iter().zip(expected) {
+            assert!((*actual - expected).norm() < 1.0e-10);
+        }
+        assert!((actual.element(0, 1).unwrap() - expected[1]).norm() < 1.0e-10);
+    }
+    let direct_energy = direct
+        .iter()
+        .enumerate()
+        .map(|(k, matrix)| {
+            (0..n_bands)
+                .map(|band| {
+                    0.5 * spec.k_weights[k]
+                        * spec.occupations[k][band]
+                        * matrix[band * n_bands + band].re
+                })
+                .sum::<f64>()
+        })
+        .sum::<f64>();
+    assert!((result.exchange_energy.get() - direct_energy).abs() < 1.0e-10);
 }
 
 #[test]
