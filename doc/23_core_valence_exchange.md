@@ -2,8 +2,10 @@
 
 This document is a contract: formulas, IR shapes, stage boundaries, and
 acceptance gates. A1 and A2 are implemented as described in section 4.1, and
-M0, M1, and M2 are implemented as described in section 4.2. The relaxed-core
-M3 stages and later compression/export stages remain planned. The contract lifts two explicit exclusions of
+M0, M1, and M2 are implemented as described in section 4.2. The frozen-data
+M3b radial-action and diagnostic substrate is also implemented; connecting it
+to the M3a relaxed-core solve remains pending. The other M3 work and later
+compression/export stages remain planned. The contract lifts two explicit exclusions of
 [18](18_lapw_mpb_thc_integration.md) §4 —
 core–valence products and the self-consistent Fock loop — and it replaces the
 earlier frozen-core staging idea with a relaxed core at FlapwMBPT parity.
@@ -446,7 +448,7 @@ no claim of a converged periodic Hartree–Fock limit.
 | M1 | Implemented: rectangular MPB CV/VC/CC vertices over `ExchangePairLayout`; runtime core producer fills `DiracSiteRadialSet::cores` | cross-trace residual at numerical tolerance; occupation factors applied exactly once; PP/QQ sectors only; Bloch/site phase locked by a single-shell analytic fixture; CV constant-mode residual reported |
 | M2 | Implemented: sector-aware one-shot exact-MPB traces and exchange energies on one converged frozen DFT snapshot, plus an independent trace-only radial Slater oracle | VV adapter reproduces the square contraction; CV and VC are contracted independently; MPB-versus-MT numerical residuals and physical core spill are separate gates |
 | M3a | Channel-reduced radial core-core Fock kernel with per-shell inner self-consistency; depends on M1 | converged core shells; radial Slater CC trace matches the MPB CC trace within the spill allowance |
-| M3b | Channel-reduced core-valence kernel and CV feedback into core relaxation, with an exact MPB VC diagnostic; depends on M2 | radial CV trace matches the MPB CV and VC cross traces; $\delta_c$ reported |
+| M3b | Frozen-data substrate implemented: complete site-valence density, channel-reduced radial CV action, CV/VC-only exact MPB contraction, and per-core $\delta_c$; relaxed-core hookup awaits M3a | production action trace matches the independent radial CV oracle and both MPB cross traces; weighted $\delta_c$ closure and shell spill gated |
 | M3c | Unified Track A2 valence driver and relaxed core with full CV feedback | fixed point under the doc/17 density metric; valence eigenvalue identity of section 1.1; core convergence reported per iteration; fresh-core replacement with only valence-density mixing; molecule route compared against the AO oracle fixture |
 | M4 | Core-aware THC selection and fit, MPB as oracle | `residual_vv/cv/vc/cc` reported separately; core columns never dropped by pooled selection; rank scaling reported |
 | M5 | MLDUMP/pyexport v2 with sector energies and exchange provenance | schema versioned; v1 files remain exchange-absent |
@@ -528,11 +530,25 @@ at fixed outer potential. The independent MPB CC contraction remains its
 oracle: the converged radial Slater CC trace must reproduce the MPB CC trace
 within the spill allowance.
 
-M3b follows M2. It extends the channel reduction to core-valence exchange,
-feeds that CV term into the inner core relaxation, and retains the exact MPB
-VC contraction as a diagnostic. The radial CV trace must match both MPB
-cross traces, and $\delta_c$ is reported rather than silently folded into a
-convergence tolerance.
+The implemented frozen-data part of M3b follows M2. It builds the complete
+Hermitian site-valence density as
+$D_{ab}=\sum_{kn}w_k f_{kn}d^*_{akn}d_{bkn}$ exactly once, with no $q$ weight,
+spin multiplier, or overlap insertion. The production radial action keeps the
+PP $\Omega_\kappa$ and QQ $\Omega_{-\kappa}$ reductions separate, averages
+only over the target-core magnetic channels, acts on physical P/Q, and is
+zero outside the muffin tin. Core occupation enters only its final trace.
+
+The CV/VC-only exact-MPB contraction exposes the VC diagonal weighted over
+$k$ for every flat core spin orbital. M3b reports
+$\delta_c=\langle\varphi_c|K_c^{\mathrm{exact}}-K_c^{\mathrm{sph}}|\varphi_c\rangle$
+per core target without bounding an individual $\delta_c$. It gates only the weighted closure
+against $T_{vc}^{\mathrm{MPB}}-T_{cv}^{\mathrm{radial}}$, alongside explicit
+production-action versus radial-oracle and MPB CV/VC numerical gates and the
+independent dimensionless shell-spill gate. All builders seal the complete
+orbital, basis, radial, q-map, request where applicable, weight, and occupation
+context. Feeding the returned physical action into the M3a inner core solve is
+the remaining relaxed-core hookup; M3b itself performs no core solve, mixing,
+or SCF update.
 
 M3c is the full merge. It combines the Track A2 valence driver with the
 relaxed Fock core, gives both the valence and core equations their complete
