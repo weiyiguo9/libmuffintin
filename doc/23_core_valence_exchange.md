@@ -405,6 +405,21 @@ limit.
 | M4 | Core-aware THC selection and fit, MPB as oracle | `residual_vv/cv/vc/cc` reported separately; core columns never dropped by pooled selection; rank scaling reported |
 | M5 | MLDUMP/pyexport v2 with sector energies and exchange provenance | schema versioned; v1 files remain exchange-absent |
 
+### 4.2 Core-sector track and relaxed-core merge
+
+M0 is the immediate Track B entry point. It introduces only the planned
+`CoreShellOrbitals` sidecar at the core-station boundary. For every solved
+shell, the sidecar retains the existing extended mesh, physical $P/Q$
+radials, energy, `norm_total`, `norm_mt`, spill, occupations, and solve
+provenance without resampling, renormalization, or reconstruction. Density
+synthesis continues to consume the same solver output through the unchanged
+path and must remain bit-identical. No exchange, product-basis, or other
+consumer changes in M0.
+
+M0 is independent of the Track A valence work: either track may land first,
+and neither blocks progress or changes the acceptance gates of the other.
+They meet only at the later relaxed-core merge stages specified below.
+
 M3 bring-up may run the driver against a core solved in the current
 DFT-style local potential to isolate valence Fock machinery, but that
 configuration is a test harness only: it carries an uncancelled core
