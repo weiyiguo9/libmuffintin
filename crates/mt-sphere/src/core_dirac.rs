@@ -812,41 +812,100 @@ pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSourcedSpec>>(
     }
 
     let (window_lower, window_upper) = spec.bracket.values();
+    let predicted = sourced.predicted_energy.get();
     let step = (window_upper - window_lower) / sourced.search_intervals as f64;
-    let mut lower = window_lower;
-    let mut lower_shot = shoot_with_action(mesh, potential, spec.state.kappa, lower, action)?;
-    let mut previous_exact_root = false;
-    let mut candidates = Vec::new();
-    for interval in 1..=sourced.search_intervals {
-        let upper = if interval == sourced.search_intervals {
+    let endpoint_energy = |index: usize| {
+        if index == sourced.search_intervals {
             window_upper
         } else {
-            window_lower + interval as f64 * step
-        };
-        let upper_shot = shoot_with_action(mesh, potential, spec.state.kappa, upper, action)?;
-        let sign_change = !previous_exact_root
-            && (lower_shot.root_residual == 0.0
-                || upper_shot.root_residual == 0.0
-                || lower_shot.root_residual.signum() != upper_shot.root_residual.signum());
-        if sign_change {
-            match solve_driven_bracket(
+            window_lower + index as f64 * step
+        }
+    };
+    let interval_distance = |index: usize| {
+        let lower = endpoint_energy(index);
+        let upper = endpoint_energy(index + 1);
+        if predicted < lower {
+            lower - predicted
+        } else if predicted > upper {
+            predicted - upper
+        } else {
+            0.0
+        }
+    };
+    let mut intervals = (0..sourced.search_intervals).collect::<Vec<_>>();
+    intervals.sort_by(|&left, &right| {
+        interval_distance(left)
+            .total_cmp(&interval_distance(right))
+            .then_with(|| left.cmp(&right))
+    });
+    let mut shots = (0..=sourced.search_intervals)
+        .map(|_| None)
+        .collect::<Vec<Option<DrivenShot>>>();
+    let mut candidates = Vec::new();
+    let mut best_distance = None::<f64>;
+    for interval in intervals {
+        let distance = interval_distance(interval);
+        if let Some(best) = best_distance {
+            let competition_margin = spec
+                .energy_tolerance
+                .max(128.0 * f64::EPSILON * best.max(1.0));
+            if distance > best + competition_margin {
+                break;
+            }
+        }
+        let lower = endpoint_energy(interval);
+        let upper = endpoint_energy(interval + 1);
+        if shots[interval].is_none() {
+            shots[interval] = Some(shoot_with_action(
                 mesh,
                 potential,
-                spec,
-                action,
+                spec.state.kappa,
                 lower,
+                action,
+            )?);
+        }
+        if shots[interval + 1].is_none() {
+            shots[interval + 1] = Some(shoot_with_action(
+                mesh,
+                potential,
+                spec.state.kappa,
                 upper,
-                lower_shot.clone(),
-                upper_shot.clone(),
+                action,
+            )?);
+        }
+        let lower_shot = shots[interval]
+            .as_ref()
+            .expect("prediction-centered lower shot is initialized")
+            .clone();
+        let upper_shot = shots[interval + 1]
+            .as_ref()
+            .expect("prediction-centered upper shot is initialized")
+            .clone();
+        let sign_change = lower_shot.root_residual == 0.0
+            || upper_shot.root_residual == 0.0
+            || lower_shot.root_residual.signum() != upper_shot.root_residual.signum();
+        if sign_change {
+            match solve_driven_bracket(
+                mesh, potential, spec, action, lower, upper, lower_shot, upper_shot,
             ) {
-                Ok(solution) => candidates.push(solution),
+                Ok(solution) => {
+                    let duplicate = candidates.iter().any(|candidate: &CoreDiracSolution| {
+                        (candidate.energy.get() - solution.energy.get()).abs()
+                            <= spec.energy_tolerance
+                    });
+                    if !duplicate {
+                        let candidate_distance = (solution.energy.get() - predicted).abs();
+                        best_distance = Some(
+                            best_distance
+                                .map_or(candidate_distance, |best| best.min(candidate_distance)),
+                        );
+                        candidates.push(solution);
+                    }
+                }
                 Err(DiracError::NodeCountMismatch { .. }) => {}
                 Err(error) => return Err(error),
             }
         }
-        previous_exact_root = upper_shot.root_residual == 0.0;
-        lower = upper;
-        lower_shot = upper_shot;
     }
 
     if candidates.is_empty() {
@@ -856,7 +915,6 @@ pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSourcedSpec>>(
             intervals: sourced.search_intervals,
         });
     }
-    let predicted = sourced.predicted_energy.get();
     candidates.sort_by(|left, right| {
         (left.energy.get() - predicted)
             .abs()
