@@ -8,10 +8,13 @@ use crate::spinor_sector_exchange::{
 use muffintin_core::{Hartree, RelativisticChannel, TwiceMu};
 use muffintin_coulomb::{
     BorrowedCoreShell, BorrowedValenceRadial, ClosedCoreOccupations, PreweightedSiteValenceDensity,
-    RadialCoreValenceActions, RadialCoreValenceError, RadialSlaterError, RadialSlaterSite,
-    RadialSlaterTraces, radial_core_valence_actions, radial_slater_traces,
+    RadialSlaterError, RadialSlaterSite, RadialSlaterTraces, RadialValenceCoreActions,
+    RadialValenceCoreError, radial_slater_traces, radial_valence_core_actions,
 };
-use muffintin_dft::CoreShellOccupations;
+use muffintin_dft::{
+    CoreFixedPotentialResult, CoreFixedPotentialSpec, CoreRelaxationError, CoreShellOccupations,
+    CoreShellOrbitals, FixedSiteValenceDensity, relax_core_at_fixed_potential,
+};
 use muffintin_operators::{CompiledSiteProjection, OperatorError};
 use muffintin_prodbasis::{DiracRadialId, DiracRadialNormalization};
 use num_complex::Complex64;
@@ -46,8 +49,8 @@ pub struct FrozenSiteValenceDensities {
 
 /// Production radial actions sealed against their complete frozen density frame.
 #[derive(Clone, Debug, PartialEq)]
-pub struct FrozenRadialCoreValenceActions {
-    pub actions: RadialCoreValenceActions,
+pub struct FrozenRadialValenceCoreActions {
+    pub actions: RadialValenceCoreActions,
     sealed: FrozenSiteValenceContext,
 }
 
@@ -72,7 +75,7 @@ impl FrozenSiteValenceDensities {
     }
 }
 
-impl FrozenRadialCoreValenceActions {
+impl FrozenRadialValenceCoreActions {
     pub fn frozen_context_matches(
         &self,
         inputs: &[SpinorProductInput],
@@ -99,18 +102,20 @@ pub struct CoreValenceDeltaDiagnostic {
     pub twice_mu: TwiceMu,
     pub occupation: f64,
     pub exact_vc: Hartree,
-    pub spherical_cv: Hartree,
-    pub delta_cv: Hartree,
+    pub spherical_vc: Hartree,
+    pub delta_c: Hartree,
 }
 
 /// Gated production-action, independent-radial, and exact-MPB CV comparison.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FrozenCoreValenceComparison {
-    pub actions: RadialCoreValenceActions,
+    pub actions: RadialValenceCoreActions,
     pub radial_oracle: RadialSlaterTraces,
-    pub action_radial_residual: Hartree,
-    pub action_cv_mpb_residual: Hartree,
-    pub action_vc_mpb_residual: Hartree,
+    /// Production VC action versus the legacy `radial.cv_mt` oracle field.
+    pub vc_action_legacy_radial_residual: Hartree,
+    /// Production VC action versus the symmetric MPB CV cross trace.
+    pub vc_action_cross_cv_mpb_residual: Hartree,
+    pub vc_action_mpb_residual: Hartree,
     pub deltas: Vec<CoreValenceDeltaDiagnostic>,
     pub weighted_delta: Hartree,
     /// $T_{vc}^{\mathrm{MPB}}-T_{cv}^{\mathrm{radial}}$.
@@ -130,9 +135,11 @@ pub enum FrozenCoreValenceError {
     #[error(transparent)]
     Operator(#[from] OperatorError),
     #[error(transparent)]
-    Action(#[from] RadialCoreValenceError),
+    Action(#[from] RadialValenceCoreError),
     #[error(transparent)]
     RadialOracle(#[from] RadialSlaterError),
+    #[error(transparent)]
+    CoreRelaxation(#[from] CoreRelaxationError),
     #[error("frozen core-valence density requires a complete compatible spinor q slice")]
     FrozenContext,
     #[error("frozen core-valence occupations do not match the flat core table")]
@@ -145,6 +152,8 @@ pub enum FrozenCoreValenceError {
     Tolerance,
     #[error("frozen core-valence comparison contexts are stale or inconsistent")]
     ComparisonContext,
+    #[error("frozen VC relaxation core sidecar does not match its sealed valence-density frame")]
+    CoreRelaxationContext,
     #[error("frozen core-valence comparison is missing a radial shell action")]
     MissingShellAction,
     #[error("frozen core-valence {quantity} numerical residual {residual} exceeds {tolerance}")]
@@ -274,14 +283,66 @@ pub fn build_frozen_site_valence_densities(
 ///
 /// The independent radial Slater oracle and exact MPB diagnostics are not
 /// evaluated on this path.
-pub fn build_frozen_radial_core_valence_actions(
+pub fn build_frozen_radial_valence_core_actions(
     densities: &FrozenSiteValenceDensities,
-) -> Result<FrozenRadialCoreValenceActions, FrozenCoreValenceError> {
-    let actions = with_radial_sites(densities, |sites| Ok(radial_core_valence_actions(sites)?))?;
-    Ok(FrozenRadialCoreValenceActions {
+) -> Result<FrozenRadialValenceCoreActions, FrozenCoreValenceError> {
+    let actions = with_radial_sites(densities, |sites| Ok(radial_valence_core_actions(sites)?))?;
+    Ok(FrozenRadialValenceCoreActions {
         actions,
         sealed: densities.sealed.clone(),
     })
+}
+
+/// Relax one core sidecar against fresh CC and VC actions from a sealed valence density.
+///
+/// The valence density remains fixed while the VC action is rebuilt from each
+/// latest core Picard iterate inside the shared DFT loop.
+pub fn relax_frozen_core_at_fixed_potential(
+    densities: &FrozenSiteValenceDensities,
+    initial: &CoreShellOrbitals,
+    spec: CoreFixedPotentialSpec,
+) -> Result<CoreFixedPotentialResult, FrozenCoreValenceError> {
+    let density = densities
+        .sites
+        .iter()
+        .find(|density| density.site_index == initial.site_index)
+        .ok_or(FrozenCoreValenceError::FrozenContext)?;
+    let first = densities
+        .sealed
+        .inputs
+        .first()
+        .ok_or(FrozenCoreValenceError::FrozenContext)?;
+    let sealed_sidecar = first
+        .core
+        .sidecars
+        .iter()
+        .find(|sidecar| sidecar.site_index == initial.site_index)
+        .ok_or(FrozenCoreValenceError::CoreRelaxationContext)?;
+    if sealed_sidecar != initial {
+        return Err(FrozenCoreValenceError::CoreRelaxationContext);
+    }
+    let orbitals = density
+        .orbitals
+        .iter()
+        .map(|orbital| BorrowedValenceRadial {
+            channel: orbital.channel,
+            p: &orbital.p,
+            q: &orbital.q,
+            normalization: orbital.normalization,
+        })
+        .collect::<Vec<_>>();
+    Ok(relax_core_at_fixed_potential(
+        initial,
+        FixedSiteValenceDensity {
+            site_index: density.site_index,
+            muffin_tin_mesh: &first.source.radials[density.site_index].mesh,
+            valence: PreweightedSiteValenceDensity {
+                orbitals: &orbitals,
+                matrix: &density.matrix,
+            },
+        },
+        spec,
+    )?)
 }
 
 /// Gate the production radial action against both independent radial and exact-MPB traces.
@@ -302,16 +363,16 @@ pub fn compare_frozen_core_valence(
     if !exchange.frozen_inputs_occupations_match(inputs, occupations) {
         return Err(FrozenCoreValenceError::ComparisonContext);
     }
-    let actions = build_frozen_radial_core_valence_actions(densities)?.actions;
+    let actions = build_frozen_radial_valence_core_actions(densities)?.actions;
     let radial_oracle = with_radial_sites(densities, |sites| Ok(radial_slater_traces(sites)?))?;
     let action_radial = (actions.action_trace.get() - radial_oracle.cv_mt.total.get()).abs();
     let action_cv = (actions.action_trace.get() - exchange.cv.trace.get()).abs();
     let action_vc = (actions.action_trace.get() - exchange.vc.trace.get()).abs();
     for (quantity, residual) in [
-        ("action/radial trace", action_radial),
-        ("action/MPB CV trace", action_cv),
-        ("action/MPB VC trace", action_vc),
-        ("action imaginary trace", actions.imaginary_residual),
+        ("VC action/legacy radial CV trace", action_radial),
+        ("VC action/MPB CV cross trace", action_cv),
+        ("VC action/MPB VC trace", action_vc),
+        ("VC action imaginary trace", actions.imaginary_residual),
         (
             "radial imaginary trace",
             radial_oracle.cv_imaginary_residual,
@@ -351,7 +412,7 @@ pub fn compare_frozen_core_valence(
             .iter()
             .position(|shell| shell.state.n == core.n && shell.state.kappa == core.kappa)
             .ok_or(FrozenCoreValenceError::MissingShellAction)?;
-        let spherical_cv = actions
+        let spherical_vc = actions
             .shells
             .iter()
             .find(|action| {
@@ -367,14 +428,14 @@ pub fn compare_frozen_core_valence(
             twice_mu: core.twice_mu,
             occupation: core.occupation,
             exact_vc: *exact_vc,
-            spherical_cv,
-            delta_cv: Hartree(exact_vc.get() - spherical_cv.get()),
+            spherical_vc,
+            delta_c: Hartree(exact_vc.get() - spherical_vc.get()),
         });
     }
     let weighted_delta = Hartree(
         deltas
             .iter()
-            .map(|diagnostic| diagnostic.occupation * diagnostic.delta_cv.get())
+            .map(|diagnostic| diagnostic.occupation * diagnostic.delta_c.get())
             .sum(),
     );
     let weighted_delta_target = Hartree(exchange.vc.trace.get() - radial_oracle.cv_mt.total.get());
@@ -417,9 +478,9 @@ pub fn compare_frozen_core_valence(
     Ok(FrozenCoreValenceComparison {
         actions,
         radial_oracle,
-        action_radial_residual: Hartree(action_radial),
-        action_cv_mpb_residual: Hartree(action_cv),
-        action_vc_mpb_residual: Hartree(action_vc),
+        vc_action_legacy_radial_residual: Hartree(action_radial),
+        vc_action_cross_cv_mpb_residual: Hartree(action_cv),
+        vc_action_mpb_residual: Hartree(action_vc),
         deltas,
         weighted_delta,
         weighted_delta_target,

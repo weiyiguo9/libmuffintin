@@ -10,7 +10,7 @@ use crate::spinor_mpb::SpinorMpbResult;
 use crate::spinor_product::{SpinorProductInput, SpinorQSliceError, require_spinor_q_slice};
 use muffintin_core::{Hartree, Kappa};
 use muffintin_coulomb::{CoulombError, CoulombRequest, RadialSlaterTraces, assemble_coulomb};
-use muffintin_dft::CoreCoreFixedPotentialResult;
+use muffintin_dft::CoreFixedPotentialResult;
 use muffintin_prodbasis::{ExchangePairLayout, ExchangeSpace, OrbitalPair, PairVertex};
 use thiserror::Error;
 
@@ -406,10 +406,10 @@ pub fn compare_frozen_sector_radial(
 /// The MPB numerical residual is measured against the MT radial trace. The
 /// final sampled radial action is independently checked against the extended
 /// radial trace. `cc_spill_allowance` and dimensionless shell spill are never
-/// folded into either numerical tolerance, and no CV/VC value is accepted or
-/// produced by this helper.
+/// folded into either numerical tolerance. The converged result may also carry
+/// M3b VC evidence, but this helper gates only its CC component.
 pub fn compare_relaxed_core_core_radial(
-    relaxed: &CoreCoreFixedPotentialResult,
+    relaxed: &CoreFixedPotentialResult,
     mpb_cc_trace: Hartree,
     radial: &RadialSlaterTraces,
     spec: SectorRadialComparisonSpec,

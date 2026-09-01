@@ -102,9 +102,10 @@ pub use scalar_thc::{
 pub use single_dft_scf::{SingleDftScfConfigError, single_dft_scf_config};
 pub use spinor_core_valence::{
     CoreValenceComparisonSpec, CoreValenceDeltaDiagnostic, FrozenCoreValenceComparison,
-    FrozenCoreValenceError, FrozenRadialCoreValenceActions, FrozenSiteValenceDensities,
-    FrozenSiteValenceDensity, FrozenSiteValenceOrbital, build_frozen_radial_core_valence_actions,
+    FrozenCoreValenceError, FrozenRadialValenceCoreActions, FrozenSiteValenceDensities,
+    FrozenSiteValenceDensity, FrozenSiteValenceOrbital, build_frozen_radial_valence_core_actions,
     build_frozen_site_valence_densities, compare_frozen_core_valence,
+    relax_frozen_core_at_fixed_potential,
 };
 pub use spinor_coulomb::{
     SPINOR_COULOMB_EXACTNESS_FLOOR, SpinorCoulombDiscrepancy, SpinorCoulombError,

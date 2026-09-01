@@ -44,10 +44,11 @@ pub use core_potential::{
     build_extended_checkpoint_core_potentials, build_extended_core_potentials,
 };
 pub use core_station::{
-    CoreCoreFixedPotentialResult, CoreCoreFixedPotentialSpec, CoreCoreRelaxationError,
-    CoreCoreRelaxationIteration, CoreCoreShellResidual, CoreShellOccupations, CoreShellOrbital,
+    CoreFixedPotentialIteration, CoreFixedPotentialResult, CoreFixedPotentialShellResidual,
+    CoreFixedPotentialSpec, CoreRelaxationError, CoreShellOccupations, CoreShellOrbital,
     CoreShellOrbitals, CoreShellOrbitalsProvenance, CoreSiteRequest, CoreStateRequest,
-    CoreStationError, RegionalCoreResult, relax_core_core_at_fixed_potential, solve_regional_core,
+    CoreStationError, FixedSiteValenceDensity, RegionalCoreResult, relax_core_at_fixed_potential,
+    solve_regional_core,
 };
 pub use density::{
     CollinearKPoint, DensityError, FullSpinorDensitySiteBasis, FullSpinorKPoint, ScalarSiteBasis,

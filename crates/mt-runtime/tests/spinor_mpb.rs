@@ -6,7 +6,7 @@ use muffintin::{
     CheckpointPhysics, CoreValenceComparisonSpec, GammaExchangeTreatment, SPINOR_MPB_NSPIN,
     SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SectorOccupations, SpinorExchangeMpbSpec, SpinorMpbError,
     SpinorMpbSelection, SpinorMpbSpec, build_frozen_core_valence_exchange,
-    build_frozen_radial_core_valence_actions, build_frozen_site_valence_densities,
+    build_frozen_radial_valence_core_actions, build_frozen_site_valence_densities,
     build_frozen_spinor_sector_exchange, build_spinor_exchange_mpb, build_spinor_mpb,
     compare_frozen_core_valence,
 };
@@ -891,7 +891,7 @@ fn frozen_site_density_and_cv_only_contraction_apply_weights_once_and_close_delt
     let mut changed_input = input.clone();
     changed_input.source.radials[0].valence[0].samples.large[0] *= 1.01;
     assert!(!densities.frozen_context_matches(std::slice::from_ref(&changed_input), &occupations));
-    let radial_actions = build_frozen_radial_core_valence_actions(&densities).unwrap();
+    let radial_actions = build_frozen_radial_valence_core_actions(&densities).unwrap();
     assert!(radial_actions.frozen_context_matches(std::slice::from_ref(&input), &occupations));
     assert!(
         !radial_actions.frozen_context_matches(std::slice::from_ref(&changed_input), &occupations)
@@ -928,9 +928,9 @@ fn frozen_site_density_and_cv_only_contraction_apply_weights_once_and_close_delt
         },
     )
     .unwrap();
-    assert!(comparison.action_radial_residual.get() < 1.0e-8);
-    assert!(comparison.action_cv_mpb_residual.get() < 1.0e-8);
-    assert!(comparison.action_vc_mpb_residual.get() < 1.0e-8);
+    assert!(comparison.vc_action_legacy_radial_residual.get() < 1.0e-8);
+    assert!(comparison.vc_action_cross_cv_mpb_residual.get() < 1.0e-8);
+    assert!(comparison.vc_action_mpb_residual.get() < 1.0e-8);
     assert!(comparison.weighted_delta_closure_residual.get() < 1.0e-8);
     assert_eq!(comparison.deltas.len(), input.core.orbitals.len());
 }
