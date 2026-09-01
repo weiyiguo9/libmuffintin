@@ -595,7 +595,7 @@ fn rebuild_exchange(
         .ok_or(GammaValenceHfError::QTopology)?;
     let n_k = first.pair_columns.n_k;
     let n_orb = first.pair_columns.n_orb;
-    let selections = (0..n_k)
+    let selections: Vec<SpinorMpbSelection> = (0..n_k)
         .flat_map(|k| {
             (0..n_orb).flat_map(move |left_band| {
                 (0..n_orb).map(move |right_band| SpinorMpbSelection {
