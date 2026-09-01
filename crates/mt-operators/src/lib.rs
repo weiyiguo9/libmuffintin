@@ -17,7 +17,7 @@ mod spinor;
 pub use assemble::{OperatorSet, SiteOperatorBlocks, add_site_contributions};
 pub use eigensolve::{
     Collinear, EigenpairResidual, GeneralizedEigensolution, RealSymmetricEigensolution,
-    solve_generalized_hermitian, solve_real_symmetric,
+    lift_band_hermitian_feedback, solve_generalized_hermitian, solve_real_symmetric,
 };
 pub use projection::{
     CompiledSiteProjection, SiteOrbitalCoefficients, project_eigenvectors_to_site,
@@ -69,6 +69,8 @@ pub enum OperatorError {
     MatrixDimensionMismatch { hamiltonian: usize, overlap: usize },
     #[error("eigenvectors have {actual} global-basis rows, expected {expected}")]
     EigenvectorBasisCount { expected: usize, actual: usize },
+    #[error("band feedback dimension {feedback} differs from eigenvector band count {bands}")]
+    BandFeedbackDimensionMismatch { feedback: usize, bands: usize },
     #[error("overlap eigenvalue threshold must be finite and nonnegative, got {0}")]
     InvalidOverlapThreshold(f64),
     #[error("overlap eigensystem retained no positive directions")]

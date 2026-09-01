@@ -35,11 +35,11 @@ use muffintin_core::{
 };
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_operators::lapw::{
-    Collinear, GeneralizedEigensolution, InterstitialPotential, LapwError,
+    Collinear, GeneralizedEigensolution, InterstitialPotential, LapwEigenproblem, LapwError,
 };
 use muffintin_operators::{
     CompiledSiteProjection, OperatorError, SiteSpinOrbitBlock, SocOperatorError,
-    SpinorSiteOperatorBlocks,
+    SpinorSiteOperatorBlocks, lift_band_hermitian_feedback, solve_generalized_hermitian,
 };
 use muffintin_sphere::{
     CorePotentialContinuationSpec, CoreState, DiracError, ExtendedCorePotential, RadialEquation,
@@ -50,7 +50,7 @@ use muffintin_symmetry::kmesh::{
 };
 use muffintin_symmetry::moyo_backend::{MoyoDetectionError, detect as detect_symmetry};
 use muffintin_symmetry::{CrystalCell, CrystalSymmetryTransform, SymmetryTransformError};
-use muffintin_tensor::{DenseEigenvectors, TensorError};
+use muffintin_tensor::{Axis, DenseEigenvectors, DenseHermitianMatrix, TensorError};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -234,6 +234,73 @@ impl CheckpointBandSolution {
     pub fn points(&self) -> &[CheckpointKPoint] {
         &self.points
     }
+
+    pub fn states(&self) -> &[BandState] {
+        &self.states
+    }
+
+    /// Re-solve the retained spinor subspace with fresh Hermitian band-space
+    /// feedback at every k point.
+    ///
+    /// Each feedback matrix is lifted through the current orbitals, but added
+    /// to the retained original local-potential Hamiltonian. Repeated calls
+    /// therefore never accumulate feedback on an earlier Fock Hamiltonian.
+    pub fn solve_spinor_feedback(
+        &self,
+        feedback: &[DenseHermitianMatrix],
+    ) -> Result<Self, MaterialKernelError> {
+        if feedback.len() != self.points.len() {
+            return Err(MaterialKernelError::FeedbackPointCount {
+                actual: feedback.len(),
+                expected: self.points.len(),
+            });
+        }
+        let mut updated = self.clone();
+        for (point_index, (point, band_feedback)) in
+            updated.points.iter_mut().zip(feedback).enumerate()
+        {
+            let CheckpointKPointSolution::Spinor {
+                eigenproblem,
+                solution,
+                occupations,
+                ..
+            } = &mut point.solution
+            else {
+                return Err(MaterialKernelError::FeedbackRequiresSpinor {
+                    point: point_index,
+                });
+            };
+            let lifted = lift_band_hermitian_feedback(
+                &eigenproblem.overlap,
+                &solution.eigenvectors,
+                band_feedback,
+            )?;
+            let fock = DenseHermitianMatrix::from_upper_triangle(
+                eigenproblem.hamiltonian.dimension(),
+                Axis::GlobalBasis,
+                |row, column| {
+                    eigenproblem.hamiltonian.at(row, column) + lifted.at(row, column)
+                },
+            )?;
+            let solved = solve_generalized_hermitian(&fock, &eigenproblem.overlap, OVERLAP_THRESHOLD)?;
+            if solved.eigenvalues.len() != occupations.len() {
+                return Err(MaterialKernelError::FeedbackBandCount {
+                    point: point_index,
+                    actual: solved.eigenvalues.len(),
+                    expected: occupations.len(),
+                });
+            }
+            point.energies = solved.eigenvalues.clone();
+            for (state, &energy) in updated.states[occupations.clone()]
+                .iter_mut()
+                .zip(&solved.eigenvalues)
+            {
+                state.energy = energy;
+            }
+            *solution = solved;
+        }
+        Ok(updated)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -254,6 +321,8 @@ pub enum CheckpointKPointSolution {
     Spinor {
         basis: SpinorIterationBasis,
         site_blocks: Vec<SpinorSiteOperatorBlocks>,
+        /// Original local-potential H0/S problem for this fixed radial basis.
+        eigenproblem: LapwEigenproblem,
         solution: GeneralizedEigensolution,
         occupations: Range<usize>,
     },
@@ -704,6 +773,7 @@ impl MaterialKernel {
                 solution: CheckpointKPointSolution::Spinor {
                     basis: spinor_basis,
                     site_blocks: solved.site_blocks,
+                    eigenproblem: solved.eigenproblem,
                     solution: solved.solution,
                     occupations: start..end,
                 },
@@ -1065,6 +1135,7 @@ impl MaterialKernel {
                 CheckpointKPointSolution::Spinor {
                     basis,
                     site_blocks,
+                    eigenproblem: _,
                     solution,
                     occupations: state_range,
                 } => {
@@ -2363,6 +2434,18 @@ pub enum MaterialKernelError {
     SecondVariationDropsLowerBands { start: usize },
     #[error("one band solution mixed scalar and spinor k-point routes")]
     InconsistentRelativityRoute,
+    #[error("received {actual} band-feedback matrices for {expected} k points")]
+    FeedbackPointCount { actual: usize, expected: usize },
+    #[error("band feedback at k-point {point} requires a spinor first-variation solution")]
+    FeedbackRequiresSpinor { point: usize },
+    #[error(
+        "feedback solve at k-point {point} returned {actual} bands, expected retained count {expected}"
+    )]
+    FeedbackBandCount {
+        point: usize,
+        actual: usize,
+        expected: usize,
+    },
     #[error(
         "scalar/second-variation route cannot consume transverse potential RMS ({x_rms}, {y_rms}) above {tolerance}"
     )]

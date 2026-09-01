@@ -199,6 +199,55 @@ pub fn solve_generalized_hermitian(
     })
 }
 
+/// Lift a Hermitian band-space feedback operator into the original global
+/// nonorthogonal basis as `S C K C^H S`.
+///
+/// `C` must contain `S`-orthonormal generalized-eigenvector columns. The
+/// returned matrix can be added to the original global Hamiltonian before a
+/// fresh generalized solve; it must not be added to already shifted band
+/// eigenvalues.
+pub fn lift_band_hermitian_feedback(
+    overlap: &DenseHermitianMatrix,
+    eigenvectors: &DenseEigenvectors,
+    feedback: &DenseHermitianMatrix,
+) -> Result<DenseHermitianMatrix, OperatorError> {
+    if overlap.axis() != Axis::GlobalBasis {
+        return Err(OperatorError::Tensor(TensorError::Axis {
+            index: 0,
+            expected: Axis::GlobalBasis,
+            actual: overlap.axis(),
+        }));
+    }
+    if feedback.axis() != Axis::Band {
+        return Err(OperatorError::Tensor(TensorError::Axis {
+            index: 0,
+            expected: Axis::Band,
+            actual: feedback.axis(),
+        }));
+    }
+    if overlap.dimension() != eigenvectors.rows() {
+        return Err(OperatorError::EigenvectorBasisCount {
+            expected: overlap.dimension(),
+            actual: eigenvectors.rows(),
+        });
+    }
+    if feedback.dimension() != eigenvectors.columns() {
+        return Err(OperatorError::BandFeedbackDimensionMismatch {
+            feedback: feedback.dimension(),
+            bands: eigenvectors.columns(),
+        });
+    }
+    let sc = einsum(
+        "ij,jb->ib",
+        &[overlap.as_tensor(), eigenvectors.as_tensor()],
+    )?;
+    let sc_conjugate = sc.conjugate();
+    Ok(DenseHermitianMatrix::from_tensor(einsum(
+        "ib,bc,jc->ij",
+        &[&sc, feedback.as_tensor(), &sc_conjugate],
+    )?)?)
+}
+
 /// Real-symmetric eigendecomposition of a host matrix.
 ///
 /// `element(row, column)` is queried for the upper triangle, including the
