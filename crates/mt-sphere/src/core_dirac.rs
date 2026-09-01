@@ -1350,9 +1350,11 @@ fn shoot_with_action(
         outer_index,
         true,
     )?;
-    // FlapwMBPT RADSCH/RADSCH_b use the same asymptotic seeds for the
-    // homogeneous and source-driven branches. Any added homogeneous piece
-    // cancels in the subsequent `inhomo` coefficients.
+    // FlapwMBPT RADSCH/RADSCH_b seed the source-driven branch with an
+    // arbitrary homogeneous piece, which cancels in `inhomo`. Use the
+    // equivalent zero-seeded particular branch here: the homogeneous core
+    // integrator deliberately starts from unit P at r_0, and subtracting that
+    // exponentially amplified arbitrary piece would lose source precision.
     let driven_out = integrate_outward_with_action(
         mesh,
         potential,
@@ -1360,7 +1362,7 @@ fn shoot_with_action(
         energy,
         match_index,
         action,
-        (homogeneous_out.p[0], homogeneous_out.q_hat[0]),
+        (0.0, 0.0),
     )?;
     let driven_in = integrate_inward_with_action(
         mesh,
@@ -1370,10 +1372,7 @@ fn shoot_with_action(
         match_index,
         outer_index,
         action,
-        (
-            homogeneous_in.p[outer_index],
-            homogeneous_in.q_hat[outer_index],
-        ),
+        (0.0, 0.0),
     )?;
 
     // This is the two-component affine match in FlapwMBPT `inhomo`.
@@ -1605,14 +1604,18 @@ fn integrate_outward_with_action(
     q_hat[0] = current_q;
     let kappa = f64::from(kappa.get());
     for index in 0..stop {
+        let action_p_mid = source_action_midpoint(action.p, index, false);
+        let action_q_mid = source_action_midpoint(action.q, index, false);
         (current_p, current_q) = rk4_interval_with_action(
             mesh.radii()[index].get(),
             mesh.radii()[index + 1].get(),
             potential[index],
             potential[index + 1],
             action.p[index],
+            action_p_mid,
             action.p[index + 1],
             action.q[index],
+            action_q_mid,
             action.q[index + 1],
             current_p,
             current_q,
@@ -1648,14 +1651,20 @@ fn integrate_inward_with_action(
     q_hat[outer_index] = current_q;
     let kappa = f64::from(kappa.get());
     for index in (stop + 1..=outer_index).rev() {
+        let interval = index - 1;
+        let terminal = index == outer_index;
+        let action_p_mid = source_action_midpoint(action.p, interval, terminal);
+        let action_q_mid = source_action_midpoint(action.q, interval, terminal);
         (current_p, current_q) = rk4_interval_with_action(
             mesh.radii()[index].get(),
             mesh.radii()[index - 1].get(),
             potential[index],
             potential[index - 1],
             action.p[index],
+            action_p_mid,
             action.p[index - 1],
             action.q[index],
+            action_q_mid,
             action.q[index - 1],
             current_p,
             current_q,
@@ -1671,6 +1680,19 @@ fn integrate_inward_with_action(
         q_hat,
         endpoint: (current_p, current_q),
     })
+}
+
+fn source_action_midpoint(values: &[f64], interval: usize, terminal: bool) -> f64 {
+    if interval > 0 && interval + 2 < values.len() && !terminal {
+        // FlapwMBPT RADSCH/RADSCH_b midpoint interpolation on the uniform
+        // exponential-mesh index. This retains fourth-order source accuracy.
+        (9.0 * (values[interval] + values[interval + 1])
+            - values[interval - 1]
+            - values[interval + 2])
+            / 16.0
+    } else {
+        0.5 * (values[interval] + values[interval + 1])
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1729,8 +1751,10 @@ fn rk4_interval_with_action(
     va: f64,
     vc: f64,
     action_pa: f64,
+    action_pb: f64,
     action_pc: f64,
     action_qa: f64,
+    action_qb: f64,
     action_qc: f64,
     p: f64,
     q_hat: f64,
@@ -1740,8 +1764,6 @@ fn rk4_interval_with_action(
     let rb = 0.5 * (ra + rc);
     let dr = rc - ra;
     let vb = (ra * va + rc * vc) / (ra + rc);
-    let action_pb = 0.5 * (action_pa + action_pc);
-    let action_qb = 0.5 * (action_qa + action_qc);
     let rhs = |radius, potential, action_p, action_q, p, q_hat| {
         dirac_rhs_with_action(
             radius, potential, action_p, action_q, p, q_hat, kappa, energy, C_SQUARED,

@@ -134,7 +134,11 @@ fn manufactured_exchange_action_closes_source_equations_and_norm_root() {
     )
     .unwrap();
 
-    assert!((driven.energy.get() - expected_energy).abs() < 3.0e-6);
+    assert!(
+        (driven.energy.get() - expected_energy).abs() < 3.0e-6,
+        "source-driven energy {} Ha, expected {expected_energy} Ha",
+        driven.energy.get()
+    );
     assert!((driven.norm_total - 1.0).abs() < 3.0e-13);
     assert_eq!(driven.nodes, state.expected_nodes());
     assert!(driven.matching_residual.abs() < 2.0e-12);
