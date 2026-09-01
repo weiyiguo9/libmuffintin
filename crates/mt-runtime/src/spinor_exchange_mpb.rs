@@ -669,7 +669,10 @@ mod tests {
 
     #[test]
     fn gamma_constant_mode_sums_every_retained_l0_radial() {
-        let mesh = ExponentialMesh::new(Bohr(1.0e-4), 0.15, 31).unwrap();
+        let first = 1.0e-4_f64;
+        let point_count = 31;
+        let increment = (0.8 / first).ln() / (point_count - 1) as f64;
+        let mesh = ExponentialMesh::new(Bohr(first), increment, point_count).unwrap();
         let radius = mesh.last().get();
         let constant_norm = (radius.powi(3) / 3.0).sqrt();
         let constant = mesh
