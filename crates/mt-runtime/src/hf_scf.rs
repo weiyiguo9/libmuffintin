@@ -121,12 +121,13 @@ pub enum GammaValenceHfError {
     #[error("spectral radial-basis refinement did not settle after {passes} passes")]
     SpectralRefinement { passes: usize },
     #[error(
-        "fixed-local-potential Fock iteration {outer_iteration} did not converge in {iterations} rebuilds (residual {residual})"
+        "fixed-local-potential Fock iteration {outer_iteration} did not converge in {iterations} rebuilds (density residual {density_residual}, fresh-feedback residual {feedback_residual})"
     )]
     FockNotConverged {
         outer_iteration: usize,
         iterations: usize,
-        residual: f64,
+        density_residual: f64,
+        feedback_residual: f64,
     },
     #[error(
         "valence HF did not converge in {iterations} outer iterations (energy change {energy_change} Ha, density RMS {density_rms})"
@@ -440,6 +441,7 @@ fn solve_fixed_potential(
     let mut first_one_shot_parity_residual = None;
     let mut first_global_solve_identity_residual = None;
     let mut last_residual = f64::INFINITY;
+    let mut last_feedback_residual = f64::INFINITY;
     let mut previous_feedback = None;
     for fock_iteration in 1..=spec.max_fock_iterations {
         let occupation = solve_occupations(
@@ -508,7 +510,8 @@ fn solve_fixed_potential(
                 return Err(GammaValenceHfError::FockNotConverged {
                     outer_iteration,
                     iterations: fock_iteration,
-                    residual: last_residual,
+                    density_residual: last_residual,
+                    feedback_residual: last_feedback_residual,
                 });
             }
             continue;
@@ -529,6 +532,7 @@ fn solve_fixed_potential(
             .map(|previous| feedback_difference(previous, &fresh_feedback))
             .transpose()?
             .unwrap_or(f64::INFINITY);
+        last_feedback_residual = feedback_fixed_residual;
         let feedback = match &previous_feedback {
             Some(previous) => mix_feedback(previous, &fresh_feedback, spec.fock_mixing)?,
             None => fresh_feedback,
@@ -574,7 +578,8 @@ fn solve_fixed_potential(
     Err(GammaValenceHfError::FockNotConverged {
         outer_iteration,
         iterations: spec.max_fock_iterations,
-        residual: last_residual,
+        density_residual: last_residual,
+        feedback_residual: last_feedback_residual,
     })
 }
 
