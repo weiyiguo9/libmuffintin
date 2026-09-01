@@ -277,9 +277,7 @@ impl CheckpointBandSolution {
                     ..
                 } = &point.solution
                 else {
-                    return Err(MaterialKernelError::FeedbackRequiresSpinor {
-                        point: point_index,
-                    });
+                    return Err(MaterialKernelError::FeedbackRequiresSpinor { point: point_index });
                 };
                 Ok(lift_band_hermitian_feedback(
                     &eigenproblem.overlap,
@@ -309,9 +307,7 @@ impl CheckpointBandSolution {
         }
         let mut updated = self.clone();
         let (points, states) = (&mut updated.points, &mut updated.states);
-        for (point_index, (point, global_feedback)) in
-            points.iter_mut().zip(feedback).enumerate()
-        {
+        for (point_index, (point, global_feedback)) in points.iter_mut().zip(feedback).enumerate() {
             let CheckpointKPointSolution::Spinor {
                 eigenproblem,
                 solution,
@@ -341,8 +337,7 @@ impl CheckpointBandSolution {
                 eigenproblem.hamiltonian.dimension(),
                 Axis::GlobalBasis,
                 |row, column| {
-                    eigenproblem.hamiltonian.at(row, column)
-                        + global_feedback.at(row, column)
+                    eigenproblem.hamiltonian.at(row, column) + global_feedback.at(row, column)
                 },
             )?;
             let solved =

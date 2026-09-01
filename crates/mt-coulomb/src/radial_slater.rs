@@ -1,7 +1,9 @@
 //! Independent trace-only relativistic radial Slater oracle.
 
 use crate::{CoulombError, intra_sphere_poisson};
-use muffintin_core::{ExponentialMesh, Hartree, Lm, Kappa, RelativisticChannel, TwiceMu, spinor_gaunt};
+use muffintin_core::{
+    ExponentialMesh, Hartree, Kappa, Lm, RelativisticChannel, TwiceMu, spinor_gaunt,
+};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -76,7 +78,9 @@ pub struct RadialSlaterTraces {
 pub enum RadialSlaterError {
     #[error(transparent)]
     Coulomb(#[from] CoulombError),
-    #[error("radial Slater site {site} extended mesh is not an exact prefix extension of its MT mesh")]
+    #[error(
+        "radial Slater site {site} extended mesh is not an exact prefix extension of its MT mesh"
+    )]
     MeshPrefix { site: usize },
     #[error("radial Slater site {site} has an inconsistent P/Q radial length")]
     RadialLength { site: usize },
@@ -84,13 +88,17 @@ pub enum RadialSlaterError {
     Normalization { site: usize, value: f64 },
     #[error("radial Slater site {site} core shell uses ExplicitCollinear occupations")]
     ExplicitCollinear { site: usize },
-    #[error("radial Slater site {site} core shell does not contain every magnetic channel exactly once")]
+    #[error(
+        "radial Slater site {site} core shell does not contain every magnetic channel exactly once"
+    )]
     MagneticChannels { site: usize },
     #[error("radial Slater site {site} core shell is not closed: magnetic occupations differ")]
     OpenShell { site: usize },
     #[error("radial Slater site {site} has an invalid core occupation {value}")]
     Occupation { site: usize, value: f64 },
-    #[error("radial Slater site {site} valence density has dimension {actual}, expected {expected}")]
+    #[error(
+        "radial Slater site {site} valence density has dimension {actual}, expected {expected}"
+    )]
     DensityDimension {
         site: usize,
         actual: usize,
@@ -176,13 +184,7 @@ pub fn radial_slater_traces(
                 );
                 cc_extended.scaled_add(
                     weight,
-                    slater_integral(
-                        site.extended_mesh,
-                        left,
-                        right,
-                        left,
-                        right,
-                    )?,
+                    slater_integral(site.extended_mesh, left, right, left, right)?,
                 );
             }
         }
@@ -203,8 +205,7 @@ pub fn radial_slater_traces(
             let metric = hermitian_cv_metric(site.mt_mesh, core, &valence)?;
             for left_index in 0..valence.len() {
                 for right_index in 0..valence.len() {
-                    let density = site.valence.matrix
-                        [right_index * valence.len() + left_index];
+                    let density = site.valence.matrix[right_index * valence.len() + left_index];
                     cv_mt.scaled_add(
                         -core_occupation * density,
                         metric[left_index * valence.len() + right_index],
@@ -439,17 +440,13 @@ fn pair_radials(
         .radii()
         .iter()
         .enumerate()
-        .map(|(index, radius)| {
-            pp_angular * left.p[index] * right.p[index] / (radius.get() * scale)
-        })
+        .map(|(index, radius)| pp_angular * left.p[index] * right.p[index] / (radius.get() * scale))
         .collect();
     let qq = mesh
         .radii()
         .iter()
         .enumerate()
-        .map(|(index, radius)| {
-            qq_angular * left.q[index] * right.q[index] / (radius.get() * scale)
-        })
+        .map(|(index, radius)| qq_angular * left.q[index] * right.q[index] / (radius.get() * scale))
         .collect();
     Ok((pp, qq))
 }
@@ -550,9 +547,8 @@ mod tests {
                 p[index] * p[index] / ((4.0 * PI).sqrt() * radius.get() * norm_mt)
             })
             .collect::<Vec<_>>();
-        let old = -2.0
-            * intra_sphere_poisson(0, &mt_mesh, &mt_renormalized, &mt_renormalized)
-                .unwrap();
+        let old =
+            -2.0 * intra_sphere_poisson(0, &mt_mesh, &mt_renormalized, &mt_renormalized).unwrap();
         assert!((result.cc_mt.total.get() - old).abs() > 1.0e-6);
         assert!(result.cc_spill_allowance.get() > 0.0);
     }
@@ -600,13 +596,16 @@ mod tests {
             .iter()
             .map(|radius| radius.get().powi(2) * (-0.8 * radius.get()).exp())
             .collect::<Vec<_>>();
-        let valence_q0 = valence_p0.iter().map(|value| 0.2 * value).collect::<Vec<_>>();
-        let valence_q1 = valence_p1.iter().map(|value| -0.1 * value).collect::<Vec<_>>();
-        let channel = RelativisticChannel::new(
-            Kappa::new(-1).unwrap(),
-            TwiceMu::new(-1).unwrap(),
-        )
-        .unwrap();
+        let valence_q0 = valence_p0
+            .iter()
+            .map(|value| 0.2 * value)
+            .collect::<Vec<_>>();
+        let valence_q1 = valence_p1
+            .iter()
+            .map(|value| -0.1 * value)
+            .collect::<Vec<_>>();
+        let channel =
+            RelativisticChannel::new(Kappa::new(-1).unwrap(), TwiceMu::new(-1).unwrap()).unwrap();
         let norm0 = mt_mesh
             .integrate(
                 &valence_p0
@@ -645,11 +644,8 @@ mod tests {
             Complex64::new(0.0, -0.2),
             Complex64::new(0.4, 0.0),
         ];
-        let core_channel = RelativisticChannel::new(
-            Kappa::new(-1).unwrap(),
-            TwiceMu::new(-1).unwrap(),
-        )
-        .unwrap();
+        let core_channel =
+            RelativisticChannel::new(Kappa::new(-1).unwrap(), TwiceMu::new(-1).unwrap()).unwrap();
         let core_ref = truncate(
             OrbitalRef {
                 channel: core_channel,

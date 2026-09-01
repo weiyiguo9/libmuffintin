@@ -621,8 +621,9 @@ fn contract_rectangular_values(
         }
         for row in 0..n_target {
             for column in 0..n_target {
-                let residual =
-                    (values[row * n_target + column] - values[column * n_target + row].conj()).norm();
+                let residual = (values[row * n_target + column]
+                    - values[column * n_target + row].conj())
+                .norm();
                 maximum_antihermitian_residual = maximum_antihermitian_residual.max(residual);
             }
         }
@@ -685,10 +686,7 @@ fn validate_spec(
     validate_occupations(&spec.occupations, n_k, n_bands)
 }
 
-pub(crate) fn validate_k_weights(
-    k_weights: &[f64],
-    n_k: usize,
-) -> Result<(), IsdfExchangeError> {
+pub(crate) fn validate_k_weights(k_weights: &[f64], n_k: usize) -> Result<(), IsdfExchangeError> {
     if k_weights.len() != n_k {
         return Err(IsdfExchangeError::KWeightCount {
             actual: k_weights.len(),
@@ -746,37 +744,24 @@ mod tests {
 
     #[test]
     fn rectangular_kernel_applies_each_density_factor_once() {
-        let layout = ExchangePairLayout::new(
-            ExchangeSpace::Core,
-            ExchangeSpace::Valence,
-            2,
-            2,
-            1,
-        );
+        let layout = ExchangePairLayout::new(ExchangeSpace::Core, ExchangeSpace::Valence, 2, 2, 1);
         let maps = vec![vec![0, 1], vec![1, 0]];
         let weights = vec![0.25, 0.75];
         let occupied = vec![vec![0.2, 0.4], vec![0.5, 0.8]];
-        let contracted = contract_rectangular_values(
-            layout,
-            &maps,
-            &weights,
-            &occupied,
-            |q, column, other| {
+        let contracted =
+            contract_rectangular_values(layout, &maps, &weights, &occupied, |q, column, other| {
                 assert_eq!(column, other);
                 let (_, orbital, _) = layout.decode(column).unwrap();
                 Ok(Complex64::new((q + 1) as f64 * (orbital + 2) as f64, 0.0))
-            },
-        )
-        .unwrap();
+            })
+            .unwrap();
         for k in 0..2 {
             let mut expected = 0.0;
             for q in 0..2 {
                 let kq = maps[q][k];
                 for orbital in 0..2 {
-                    expected -= weights[kq]
-                        * occupied[kq][orbital]
-                        * (q + 1) as f64
-                        * (orbital + 2) as f64;
+                    expected -=
+                        weights[kq] * occupied[kq][orbital] * (q + 1) as f64 * (orbital + 2) as f64;
                 }
             }
             assert_eq!(contracted.target_matrices[k].values()[0].re, expected);
@@ -791,13 +776,8 @@ mod tests {
 
     #[test]
     fn square_vv_energy_is_half_the_rectangular_target_trace() {
-        let layout = ExchangePairLayout::new(
-            ExchangeSpace::Valence,
-            ExchangeSpace::Valence,
-            1,
-            2,
-            2,
-        );
+        let layout =
+            ExchangePairLayout::new(ExchangeSpace::Valence, ExchangeSpace::Valence, 1, 2, 2);
         let weights = vec![1.0];
         let occupations = vec![vec![1.0, 0.25]];
         let contracted = contract_rectangular_values(
@@ -835,20 +815,10 @@ mod tests {
         let weights = vec![1.0];
         let core = vec![vec![0.5]];
         let valence = vec![vec![0.25, 0.75]];
-        let cv_layout = ExchangePairLayout::new(
-            ExchangeSpace::Core,
-            ExchangeSpace::Valence,
-            1,
-            1,
-            2,
-        );
-        let vc_layout = ExchangePairLayout::new(
-            ExchangeSpace::Valence,
-            ExchangeSpace::Core,
-            1,
-            2,
-            1,
-        );
+        let cv_layout =
+            ExchangePairLayout::new(ExchangeSpace::Core, ExchangeSpace::Valence, 1, 1, 2);
+        let vc_layout =
+            ExchangePairLayout::new(ExchangeSpace::Valence, ExchangeSpace::Core, 1, 2, 1);
         let cv = contract_rectangular_values(
             cv_layout,
             &[vec![0]],
@@ -863,14 +833,11 @@ mod tests {
             },
         )
         .unwrap();
-        let vc = contract_rectangular_values(
-            vc_layout,
-            &[vec![0]],
-            &weights,
-            &valence,
-            |_, _, _| Ok(Complex64::new(3.0, 0.0)),
-        )
-        .unwrap();
+        let vc =
+            contract_rectangular_values(vc_layout, &[vec![0]], &weights, &valence, |_, _, _| {
+                Ok(Complex64::new(3.0, 0.0))
+            })
+            .unwrap();
         let t_cv = target_trace(cv_layout, &cv.target_matrices, &weights, &valence);
         let t_vc = target_trace(vc_layout, &vc.target_matrices, &weights, &core);
         assert_eq!(t_cv, -0.875);

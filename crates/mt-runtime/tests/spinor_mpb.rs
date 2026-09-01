@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 
 use muffintin::{
     CheckpointPhysics, GammaExchangeTreatment, SPINOR_MPB_NSPIN, SPINOR_RADIAL_LO0,
-    SPINOR_RADIAL_P, SectorOccupations, SpinorExchangeMpbSpec, SpinorMpbError,
-    SpinorMpbSelection, SpinorMpbSpec, build_frozen_spinor_sector_exchange,
-    build_spinor_exchange_mpb, build_spinor_mpb,
+    SPINOR_RADIAL_P, SectorOccupations, SpinorExchangeMpbSpec, SpinorMpbError, SpinorMpbSelection,
+    SpinorMpbSpec, build_frozen_spinor_sector_exchange, build_spinor_exchange_mpb,
+    build_spinor_mpb,
 };
 use muffintin_core::{ExponentialMesh, Hartree, InverseBohr, Kappa, ReciprocalLattice, TwiceMu};
 use muffintin_coulomb::CoulombRequest;
@@ -821,18 +821,10 @@ fn frozen_gamma_sector_evaluator_closes_all_public_one_shot_identities() {
             < 1.0e-12
     );
     assert!(result.cross_trace_mismatch.get() < 1.0e-8);
-    assert!(result.frozen_context_matches(
-        std::slice::from_ref(&input),
-        &request,
-        &occupations
-    ));
+    assert!(result.frozen_context_matches(std::slice::from_ref(&input), &request, &occupations));
     let mut changed = occupations.clone();
     changed.valence[0][0] *= 0.5;
-    assert!(!result.frozen_context_matches(
-        std::slice::from_ref(&input),
-        &request,
-        &changed
-    ));
+    assert!(!result.frozen_context_matches(std::slice::from_ref(&input), &request, &changed));
 }
 
 #[test]

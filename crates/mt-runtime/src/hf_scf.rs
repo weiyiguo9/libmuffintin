@@ -16,12 +16,12 @@ use muffintin_tensor::{Axis, DenseHermitianMatrix, TensorError, einsum};
 use num_complex::Complex64;
 use thiserror::Error;
 
+use crate::q_mesh::{CanonicalQMapError, canonical_q_points};
 use crate::{
     CheckpointPhysics, CheckpointPhysicsError, GammaExchangeTreatment, IsdfExchangeError,
     IsdfExchangeResult, IsdfExchangeSpec, SpinorMpbError, SpinorMpbSelection, SpinorMpbSpec,
     build_spinor_mpb, build_spinor_mpb_exchange,
 };
-use crate::q_mesh::{CanonicalQMapError, canonical_q_points};
 
 const SPECTRAL_REFINEMENT_PASSES: usize = 16;
 const IDENTITY_TOLERANCE: f64 = 1.0e-8;
@@ -470,8 +470,7 @@ fn solve_fixed_potential(
                 q_fractional,
             )?;
             rebuilds += 1;
-            first_one_shot_parity_residual =
-                Some(exchange_difference(&oracle, &driver));
+            first_one_shot_parity_residual = Some(exchange_difference(&oracle, &driver));
             require_gate(
                 "first one-shot parity",
                 first_one_shot_parity_residual.expect("just recorded"),
@@ -487,8 +486,7 @@ fn solve_fixed_potential(
                 IDENTITY_TOLERANCE,
             )?;
             let solved = bands.solve_spinor_global_feedback(&global_feedback)?;
-            let solve_identity =
-                first_global_solve_identity(&bands, &band_feedback, &solved)?;
+            let solve_identity = first_global_solve_identity(&bands, &band_feedback, &solved)?;
             require_gate(
                 "first global generalized solve",
                 solve_identity,
@@ -602,9 +600,7 @@ fn rebuild_exchange(
         .iter()
         .map(|&q| physics.spinor_product_input_from_bands(bands, k_fractional, q))
         .collect::<Result<Vec<_>, _>>()?;
-    let first = inputs
-        .first()
-        .ok_or(GammaValenceHfError::QTopology)?;
+    let first = inputs.first().ok_or(GammaValenceHfError::QTopology)?;
     let n_k = first.pair_columns.n_k;
     let n_orb = first.pair_columns.n_orb;
     let selections: Vec<SpinorMpbSelection> = (0..n_k)
@@ -740,8 +736,7 @@ fn mix_global_feedback(
                 fresh.dimension(),
                 Axis::GlobalBasis,
                 |row, column| {
-                    (1.0 - alpha) * previous.at(row, column)
-                        + alpha * fresh.at(row, column)
+                    (1.0 - alpha) * previous.at(row, column) + alpha * fresh.at(row, column)
                 },
             )?)
         })
@@ -807,9 +802,7 @@ fn lifting_identity(
     band_feedback: &[DenseHermitianMatrix],
     global_feedback: &[DenseHermitianMatrix],
 ) -> Result<f64, GammaValenceHfError> {
-    if bands.points().len() != band_feedback.len()
-        || band_feedback.len() != global_feedback.len()
-    {
+    if bands.points().len() != band_feedback.len() || band_feedback.len() != global_feedback.len() {
         return Err(GammaValenceHfError::ExchangeKIndex {
             expected: bands.points().len(),
             actual: band_feedback.len().min(global_feedback.len()),
@@ -822,11 +815,7 @@ fn lifting_identity(
         .zip(band_feedback)
         .zip(global_feedback)
     {
-        let CheckpointKPointSolution::Spinor {
-            solution,
-            ..
-        } = &point.solution
-        else {
+        let CheckpointKPointSolution::Spinor { solution, .. } = &point.solution else {
             return Err(GammaValenceHfError::SpinorFirstVariation);
         };
         let conjugate = solution.eigenvectors.as_tensor().conjugate();
@@ -1106,18 +1095,15 @@ mod tests {
     #[test]
     fn physical_feedback_residual_is_invariant_under_band_gauge_rotation() {
         let inverse_sqrt_two = 1.0 / 2.0_f64.sqrt();
-        let overlap = DenseHermitianMatrix::from_upper_triangle(
-            2,
-            Axis::GlobalBasis,
-            |row, column| {
+        let overlap =
+            DenseHermitianMatrix::from_upper_triangle(2, Axis::GlobalBasis, |row, column| {
                 if row == column {
                     Complex64::new(1.0, 0.0)
                 } else {
                     Complex64::default()
                 }
-            },
-        )
-        .unwrap();
+            })
+            .unwrap();
         let identity = DenseEigenvectors::from_host_column_major(
             2,
             2,
@@ -1140,21 +1126,18 @@ mod tests {
             ],
         )
         .unwrap();
-        let band_feedback = DenseHermitianMatrix::from_upper_triangle(
-            2,
-            Axis::Band,
-            |row, column| match (row, column) {
-                (0, 0) => Complex64::new(1.0, 0.0),
-                (0, 1) => Complex64::new(0.2, 0.3),
-                (1, 1) => Complex64::new(-0.4, 0.0),
-                _ => unreachable!(),
-            },
-        )
-        .unwrap();
-        let rotated_band_feedback = DenseHermitianMatrix::from_upper_triangle(
-            2,
-            Axis::Band,
-            |row, column| {
+        let band_feedback =
+            DenseHermitianMatrix::from_upper_triangle(2, Axis::Band, |row, column| {
+                match (row, column) {
+                    (0, 0) => Complex64::new(1.0, 0.0),
+                    (0, 1) => Complex64::new(0.2, 0.3),
+                    (1, 1) => Complex64::new(-0.4, 0.0),
+                    _ => unreachable!(),
+                }
+            })
+            .unwrap();
+        let rotated_band_feedback =
+            DenseHermitianMatrix::from_upper_triangle(2, Axis::Band, |row, column| {
                 let mut value = Complex64::default();
                 for left in 0..2 {
                     for right in 0..2 {
@@ -1164,16 +1147,14 @@ mod tests {
                     }
                 }
                 value
-            },
-        )
-        .unwrap();
+            })
+            .unwrap();
         let original_global =
             lift_band_hermitian_feedback(&overlap, &identity, &band_feedback).unwrap();
         let rotated_global =
             lift_band_hermitian_feedback(&overlap, &rotated, &rotated_band_feedback).unwrap();
 
-        let residual =
-            global_feedback_difference(&[original_global], &[rotated_global]).unwrap();
+        let residual = global_feedback_difference(&[original_global], &[rotated_global]).unwrap();
         assert!(residual <= 1.0e-12, "physical feedback residual {residual}");
     }
 }

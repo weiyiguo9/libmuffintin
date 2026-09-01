@@ -48,9 +48,9 @@ pub use moments::{
 pub use operator::{AuxiliaryKind, CoulombOperator, GammaHead};
 pub use primitive::{intra_sphere_poisson, radial_primitive};
 pub use radial_slater::{
-    BorrowedCoreShell, BorrowedValenceRadial, ClosedCoreOccupations,
-    PreweightedSiteValenceDensity, RadialSlaterComponents, RadialSlaterError, RadialSlaterSite,
-    RadialSlaterTraces, radial_slater_traces,
+    BorrowedCoreShell, BorrowedValenceRadial, ClosedCoreOccupations, PreweightedSiteValenceDensity,
+    RadialSlaterComponents, RadialSlaterError, RadialSlaterSite, RadialSlaterTraces,
+    radial_slater_traces,
 };
 pub use spec::{CoulombRequest, DEFAULT_LEXP, InterpolationProjection};
 pub use structure::{

@@ -1,8 +1,6 @@
 //! Focused full-BZ valence-HF topology gates.
 
-use muffintin::{
-    CheckpointPhysics, ValenceHfError, ValenceHfSpec, run_valence_hf,
-};
+use muffintin::{CheckpointPhysics, ValenceHfError, ValenceHfSpec, run_valence_hf};
 use muffintin_core::{Bohr, Hartree, InverseBohr};
 use muffintin_coulomb::CoulombRequest;
 use muffintin_dft::{ScfConvergence, ScfKReduction, ScfMixing};
@@ -107,7 +105,10 @@ fn shifted_2x1x1_executes_complete_q_slice_and_per_k_feedback() {
     let mut physics = CheckpointPhysics::new(&checkpoint).unwrap();
     let result = run_valence_hf(&mut physics, &spec).unwrap();
 
-    assert_eq!(result.k_fractional, vec![[0.25, 0.0, 0.0], [0.75, 0.0, 0.0]]);
+    assert_eq!(
+        result.k_fractional,
+        vec![[0.25, 0.0, 0.0], [0.75, 0.0, 0.0]]
+    );
     assert_eq!(result.q_fractional, vec![[0.0, 0.0, 0.0], [0.5, 0.0, 0.0]]);
     assert_eq!(result.k_weights, vec![0.5, 0.5]);
     assert_eq!(result.bands.points().len(), 2);

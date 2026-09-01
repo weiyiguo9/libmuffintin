@@ -121,8 +121,7 @@ pub use spinor_product::{
 pub use spinor_sector_exchange::{
     CoreShellSpillDiagnostic, FrozenExchangeSector, FrozenSpinorSectorExchange,
     FrozenSpinorSectorExchangeError, SectorOccupations, SectorRadialComparison,
-    SectorRadialComparisonSpec, build_frozen_spinor_sector_exchange,
-    compare_frozen_sector_radial,
+    SectorRadialComparisonSpec, build_frozen_spinor_sector_exchange, compare_frozen_sector_radial,
 };
 pub use spinor_thc::{SpinorThcError, SpinorThcResult, SpinorThcSpec, build_spinor_thc};
 pub use thc_grid::{

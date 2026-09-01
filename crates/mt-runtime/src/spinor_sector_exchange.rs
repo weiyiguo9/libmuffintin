@@ -7,9 +7,7 @@ use crate::isdf_exchange::{
 };
 use crate::spinor_exchange_mpb::{SpinorExchangeMpbResult, SpinorExchangeMpbSector};
 use crate::spinor_mpb::SpinorMpbResult;
-use crate::spinor_product::{
-    SpinorProductInput, SpinorQSliceError, require_spinor_q_slice,
-};
+use crate::spinor_product::{SpinorProductInput, SpinorQSliceError, require_spinor_q_slice};
 use muffintin_core::{Hartree, Kappa};
 use muffintin_coulomb::{CoulombError, CoulombRequest, RadialSlaterTraces, assemble_coulomb};
 use muffintin_prodbasis::{ExchangePairLayout, ExchangeSpace, OrbitalPair, PairVertex};
@@ -114,7 +112,9 @@ pub enum FrozenSpinorSectorExchangeError {
     CoreMpbCount { actual: usize, expected: usize },
     #[error("core MPB result at q index {index} does not match the frozen input")]
     CoreMpbContext { index: usize },
-    #[error("core sector {occupied_space:?}->{target_space:?} at q index {q_index} has an incomplete or duplicate column set")]
+    #[error(
+        "core sector {occupied_space:?}->{target_space:?} at q index {q_index} has an incomplete or duplicate column set"
+    )]
     CoreMpbColumns {
         q_index: usize,
         occupied_space: ExchangeSpace,
@@ -130,7 +130,9 @@ pub enum FrozenSpinorSectorExchangeError {
         residual: f64,
         tolerance: f64,
     },
-    #[error("core shell site={site} n={n} kappa={kappa} spill {spill} exceeds the dimensionless threshold {threshold}")]
+    #[error(
+        "core shell site={site} n={n} kappa={kappa} spill {spill} exceeds the dimensionless threshold {threshold}"
+    )]
     CoreSpill {
         site: usize,
         n: u32,
@@ -438,13 +440,15 @@ fn order_sector(
     q_index: usize,
     sector: &SpinorExchangeMpbSector,
 ) -> Result<Vec<PairVertex>, FrozenSpinorSectorExchangeError> {
-    let expected = sector.layout.n_columns().map_err(|_| {
-        FrozenSpinorSectorExchangeError::CoreMpbColumns {
-            q_index,
-            occupied_space: sector.layout.occupied_space,
-            target_space: sector.layout.target_space,
-        }
-    })?;
+    let expected =
+        sector
+            .layout
+            .n_columns()
+            .map_err(|_| FrozenSpinorSectorExchangeError::CoreMpbColumns {
+                q_index,
+                occupied_space: sector.layout.occupied_space,
+                target_space: sector.layout.target_space,
+            })?;
     let mut ordered = vec![None; expected];
     for selected in &sector.vertices {
         let pair = OrbitalPair::Exchange {
@@ -460,7 +464,11 @@ fn order_sector(
                 .decode(selected.column)
                 .is_ok_and(|decoded| decoded == (selected.k, selected.occupied, selected.target))
             && selected.vertex.pair() == pair;
-        if !valid || ordered[selected.column].replace(selected.vertex.clone()).is_some() {
+        if !valid
+            || ordered[selected.column]
+                .replace(selected.vertex.clone())
+                .is_some()
+        {
             return Err(FrozenSpinorSectorExchangeError::CoreMpbColumns {
                 q_index,
                 occupied_space: sector.layout.occupied_space,
@@ -468,14 +476,13 @@ fn order_sector(
             });
         }
     }
-    ordered
-        .into_iter()
-        .collect::<Option<Vec<_>>>()
-        .ok_or(FrozenSpinorSectorExchangeError::CoreMpbColumns {
+    ordered.into_iter().collect::<Option<Vec<_>>>().ok_or(
+        FrozenSpinorSectorExchangeError::CoreMpbColumns {
             q_index,
             occupied_space: sector.layout.occupied_space,
             target_space: sector.layout.target_space,
-        })
+        },
+    )
 }
 
 fn q_slice_error(_: SpinorQSliceError) -> FrozenSpinorSectorExchangeError {

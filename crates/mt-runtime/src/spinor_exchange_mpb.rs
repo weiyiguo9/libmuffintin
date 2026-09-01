@@ -1,10 +1,10 @@
 //! Full rectangular core-sector spinor MPB vertices for one transfer q.
 
 use crate::checkpoint_physics::CheckpointPhysicsError;
+use crate::spinor_mpb::{SpinorFrozenInputIdentity, spinor_frozen_input_identity};
 use crate::spinor_product::{
     SpinorCoreOrbital, SpinorKMinusQ, SpinorProductInput, spinor_pair_site_phases,
 };
-use crate::spinor_mpb::{SpinorFrozenInputIdentity, spinor_frozen_input_identity};
 use muffintin_core::{InverseBohr, RelativisticChannel};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
 use muffintin_prodbasis::mpb::{

@@ -311,8 +311,7 @@ impl SpinorProductInput {
                     || shell.norm_mt > shell.norm_total + diagnostic_tolerance
                     || !shell.spill.is_finite()
                     || shell.spill < -diagnostic_tolerance
-                    || (shell.norm_total - shell.norm_mt - shell.spill).abs()
-                        > diagnostic_tolerance
+                    || (shell.norm_total - shell.norm_mt - shell.spill).abs() > diagnostic_tolerance
                 {
                     return Err(SpinorCoreInputError::RadialDiagnostics {
                         site,
