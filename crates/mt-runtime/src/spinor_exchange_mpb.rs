@@ -179,7 +179,9 @@ pub fn build_spinor_exchange_mpb(
                     &known_qq,
                 )?;
                 let vertex = acc.finish()?;
-                cv_diagnostics.push(gamma_diagnostic(gamma, column, &auxiliary, &vertex, direct));
+                cv_diagnostics.push(gamma_diagnostic(
+                    gamma, column, &auxiliary, &vertex, direct,
+                )?);
                 cv_vertices.push(SpinorExchangeMpbPairVertex {
                     column,
                     k: mapped.k_index,
@@ -206,7 +208,9 @@ pub fn build_spinor_exchange_mpb(
                     &known_qq,
                 )?;
                 let vertex = acc.finish()?;
-                vc_diagnostics.push(gamma_diagnostic(gamma, column, &auxiliary, &vertex, direct));
+                vc_diagnostics.push(gamma_diagnostic(
+                    gamma, column, &auxiliary, &vertex, direct,
+                )?);
                 vc_vertices.push(SpinorExchangeMpbPairVertex {
                     column,
                     k: mapped.k_index,
@@ -534,37 +538,47 @@ fn gamma_diagnostic(
     auxiliary: &CompiledAuxiliaryBasis,
     vertex: &PairVertex,
     direct: Complex64,
-) -> SpinorGammaConstantModeDiagnostic {
+) -> Result<SpinorGammaConstantModeDiagnostic, SpinorExchangeMpbError> {
     if !gamma {
-        return SpinorGammaConstantModeDiagnostic {
+        return Ok(SpinorGammaConstantModeDiagnostic {
             column,
             coupling: None,
             direct_overlap: None,
             residual: None,
-        };
+        });
     }
-    let coupling = constant_mode_coupling(auxiliary, vertex);
-    SpinorGammaConstantModeDiagnostic {
+    let coupling = constant_mode_coupling(auxiliary, vertex)?;
+    Ok(SpinorGammaConstantModeDiagnostic {
         column,
         coupling: Some(coupling),
         direct_overlap: Some(direct),
         residual: Some((coupling - direct).norm()),
-    }
+    })
 }
 
-fn constant_mode_coupling(auxiliary: &CompiledAuxiliaryBasis, vertex: &PairVertex) -> Complex64 {
-    auxiliary
-        .partition
-        .sites()
-        .iter()
-        .enumerate()
-        .filter_map(|(site, _)| {
-            let index = auxiliary.mt_index(site, 0, 0, 0)?;
-            let radius = auxiliary.site_mesh(site)?.last().get();
-            let integral = (4.0 * PI * radius.powi(3) / 3.0).sqrt();
-            Some(vertex.coefficients()[index] * integral)
-        })
-        .sum()
+fn constant_mode_coupling(
+    auxiliary: &CompiledAuxiliaryBasis,
+    vertex: &PairVertex,
+) -> Result<Complex64, SpinorExchangeMpbError> {
+    let payload = auxiliary.require_mixed_product()?;
+    let mut coupling = Complex64::default();
+    for block in &payload.sites {
+        for mode in block.modes.iter().filter(|mode| mode.l == 0) {
+            let index = auxiliary
+                .mt_index(block.site, 0, 0, mode.n)
+                .ok_or(SpinorExchangeMpbError::IncompatiblePairContext)?;
+            let integrand = mode
+                .radial
+                .iter()
+                .zip(block.mesh.radii())
+                .map(|(radial, radius)| radial * radius.get())
+                .collect::<Vec<_>>();
+            let constant_projection =
+                (4.0 * PI).sqrt() * block.mesh.integrate(&integrand).map_err(MpbError::from)?;
+            coupling += vertex.coefficients()[index] * constant_projection;
+        }
+    }
+    Ok(coupling)
 }
 
 fn gamma_max_residual(
@@ -614,8 +628,15 @@ fn require_core_table(input: &SpinorProductInput) -> Result<(), SpinorExchangeMp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use muffintin_core::{Hartree, Kappa, TwiceMu};
-    use muffintin_prodbasis::{DiracRadialId, ProductOrbitalKind};
+    use muffintin_core::{
+        Bohr, ExponentialMesh, Hartree, InterstitialGeometry, Kappa, Sphere, TwiceMu, VolumeBohr3,
+    };
+    use muffintin_envelope::Provenance;
+    use muffintin_prodbasis::{
+        AuxiliaryInterstitialSupport, AuxiliaryPartition, AuxiliaryRepresentation, DiracRadialId,
+        ExchangeSpace, MixedProductAuxiliary, MtAuxiliaryMode, ProductOrbitalKind,
+        SiteAuxiliaryBlock, TransferQ,
+    };
 
     fn core(site: usize) -> SpinorCoreOrbital {
         SpinorCoreOrbital {
@@ -644,5 +665,94 @@ mod tests {
         })
         .unwrap();
         assert!(term.is_none());
+    }
+
+    #[test]
+    fn gamma_constant_mode_sums_every_retained_l0_radial() {
+        let mesh = ExponentialMesh::new(Bohr(1.0e-4), 0.15, 31).unwrap();
+        let radius = mesh.last().get();
+        let constant_norm = (radius.powi(3) / 3.0).sqrt();
+        let constant = mesh
+            .radii()
+            .iter()
+            .map(|radius| radius.get() / constant_norm)
+            .collect::<Vec<_>>();
+        let second = mesh
+            .radii()
+            .iter()
+            .map(|sample| sample.get() * (1.0 - 0.4 * sample.get() / radius))
+            .collect::<Vec<_>>();
+        let q = TransferQ::from_cartesian([InverseBohr(0.0); 3]).unwrap();
+        let auxiliary = CompiledAuxiliaryBasis {
+            partition: AuxiliaryPartition::from_interstitial(
+                InterstitialGeometry::new(
+                    VolumeBohr3(64.0),
+                    vec![Sphere {
+                        center: [Bohr(0.0); 3],
+                        radius: Bohr(radius),
+                    }],
+                )
+                .unwrap(),
+            ),
+            q,
+            representation: AuxiliaryRepresentation::MixedProduct(MixedProductAuxiliary {
+                sites: vec![SiteAuxiliaryBlock {
+                    site: 0,
+                    mesh: mesh.clone(),
+                    modes: vec![
+                        MtAuxiliaryMode {
+                            l: 0,
+                            n: 0,
+                            radial: constant,
+                        },
+                        MtAuxiliaryMode {
+                            l: 0,
+                            n: 1,
+                            radial: second,
+                        },
+                    ],
+                }],
+                interstitial: AuxiliaryInterstitialSupport {
+                    q,
+                    g_cut: InverseBohr(0.0),
+                    waves: Vec::new(),
+                },
+                cutoff: None,
+            }),
+            provenance: Provenance::default(),
+        };
+        auxiliary.validate().unwrap();
+        let coefficients = [0.3, -0.7];
+        let vertex = PairVertex::from_auxiliary(
+            &auxiliary,
+            OrbitalPair::Exchange {
+                k_index: 0,
+                occupied_space: ExchangeSpace::Core,
+                occupied: 0,
+                target_space: ExchangeSpace::Valence,
+                target: 0,
+            },
+            coefficients
+                .into_iter()
+                .map(|value| Complex64::new(value, 0.0))
+                .collect(),
+        )
+        .unwrap();
+        let modes = &auxiliary.require_mixed_product().unwrap().sites[0].modes;
+        let reconstructed = (0..mesh.len())
+            .map(|index| {
+                coefficients[0] * modes[0].radial[index] + coefficients[1] * modes[1].radial[index]
+            })
+            .collect::<Vec<_>>();
+        let direct_integrand = reconstructed
+            .iter()
+            .zip(mesh.radii())
+            .map(|(radial, radius)| radial * radius.get())
+            .collect::<Vec<_>>();
+        let direct = (4.0 * PI).sqrt() * mesh.integrate(&direct_integrand).unwrap();
+        let complete = constant_mode_coupling(&auxiliary, &vertex).unwrap();
+        let old_n0_only = coefficients[0] * (4.0 * PI * radius.powi(3) / 3.0).sqrt();
+        assert!((complete - Complex64::new(direct, 0.0)).norm() < 1.0e-12);
+        assert!((complete.re - old_n0_only).abs() > 1.0e-6);
     }
 }
