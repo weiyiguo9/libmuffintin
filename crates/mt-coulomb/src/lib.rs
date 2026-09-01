@@ -15,6 +15,7 @@
 #![forbid(unsafe_code)]
 
 mod assemble;
+mod core_fock;
 mod error;
 pub mod ewald;
 mod expansion;
@@ -28,6 +29,10 @@ mod spec;
 mod structure;
 
 pub use assemble::{assemble_coulomb, assemble_point_charge_oracle, assemble_sampled_coulomb};
+pub use core_fock::{
+    CoreCoreFockAction, CoreCoreFockError, CoreCoreFockResult, CoreCoreFockShell,
+    CoreCoreFockTrace, core_core_fock_actions,
+};
 pub use error::CoulombError;
 pub use ewald::{
     EwaldConvergence, EwaldScan, EwaldSummation, converged_ewald_point_kernel, erfc,
