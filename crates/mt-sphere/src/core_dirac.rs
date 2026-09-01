@@ -102,6 +102,18 @@ pub struct CoreDiracSpec {
     pub max_iterations: usize,
 }
 
+/// Signed physical nonlocal exchange action on a core radial spinor.
+///
+/// `p` and `q` are the large- and physical-small-component radial actions
+/// `(K psi)_P` and `(K psi)_Q`, sampled on the solver mesh. Their units are
+/// Hartree times the corresponding physical reduced radial component. The
+/// sign of `K` is already included; the solver does not negate the input.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CoreDiracExchangeAction<'a> {
+    pub p: &'a [f64],
+    pub q: &'a [f64],
+}
+
 /// Input contract for the regular fixed-energy four-component valence path.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ValenceDiracSpec {
@@ -559,6 +571,20 @@ pub enum DiracError {
     PotentialLength { expected: usize, actual: usize },
     #[error("potential[{index}] is not finite: {value}")]
     NonFinitePotential { index: usize, value: f64 },
+    #[error(
+        "core Dirac exchange action {component} has {actual} samples, but the mesh has {expected}"
+    )]
+    ExchangeActionLength {
+        component: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("core Dirac exchange action {component}[{index}] is not finite: {value}")]
+    NonFiniteExchangeAction {
+        component: &'static str,
+        index: usize,
+        value: f64,
+    },
     #[error("energy is not finite: {0}")]
     NonFiniteEnergy(f64),
     #[error("speed of light must be finite and positive, got {0}")]
@@ -692,6 +718,72 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
             );
         }
         if shot.residual.signum() == lower_shot.residual.signum() {
+            lower = energy;
+            lower_shot = shot;
+        } else {
+            upper = energy;
+        }
+    }
+
+    Err(DiracError::RootDidNotConverge {
+        iterations: spec.max_iterations,
+    })
+}
+
+/// Solve one bound core state with a fixed signed nonlocal exchange action.
+///
+/// In the internal `q_hat = c Q` representation, the supplied physical
+/// action enters the first-order equations as
+/// `P' = M q_hat - kappa P/r - action.q/c` and
+/// `q_hat' = (V-E)P + kappa q_hat/r + action.p`. Following FlapwMBPT
+/// `RADSCH`/`RADSCH_b`, the solver integrates homogeneous and source-driven
+/// branches from both boundaries and combines them with the `inhomo` match.
+/// The energy root is the `rad_eq` convention: the unnormalized physical
+/// radial norm is one. The bracket must isolate that norm root and the final
+/// node count must agree with `spec.state`.
+///
+/// An exactly zero action is the homogeneous problem and is evaluated by
+/// [`solve_core_dirac`], preserving its root, normalization, and diagnostics.
+pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSpec>>(
+    mesh: &ExponentialMesh,
+    potential: &[f64],
+    spec: S,
+    action: CoreDiracExchangeAction<'_>,
+) -> Result<CoreDiracSolution, DiracError> {
+    let spec = spec.borrow();
+    validate_inputs(mesh, potential, spec)?;
+    validate_exchange_action(mesh, action)?;
+    if action.p.iter().chain(action.q).all(|&value| value == 0.0) {
+        return solve_core_dirac(mesh, potential, spec);
+    }
+
+    let (mut lower, mut upper) = spec.bracket.values();
+    let mut lower_shot = shoot_with_action(mesh, potential, spec.state.kappa, lower, action)?;
+    let upper_shot = shoot_with_action(mesh, potential, spec.state.kappa, upper, action)?;
+    if lower_shot.root_residual == 0.0 {
+        return finalize_driven_solution(mesh, spec, lower, lower_shot);
+    }
+    if upper_shot.root_residual == 0.0 {
+        return finalize_driven_solution(mesh, spec, upper, upper_shot);
+    }
+    if lower_shot.root_residual.signum() == upper_shot.root_residual.signum() {
+        return Err(DiracError::RootNotBracketed {
+            lower,
+            upper,
+            f_lower: lower_shot.root_residual,
+            f_upper: upper_shot.root_residual,
+        });
+    }
+
+    for _ in 0..spec.max_iterations {
+        let energy = lower + 0.5 * (upper - lower);
+        let shot = shoot_with_action(mesh, potential, spec.state.kappa, energy, action)?;
+        if shot.root_residual.abs() <= spec.matching_tolerance
+            && 0.5 * (upper - lower) <= spec.energy_tolerance
+        {
+            return finalize_driven_solution(mesh, spec, energy, shot);
+        }
+        if shot.root_residual.signum() == lower_shot.root_residual.signum() {
             lower = energy;
             lower_shot = shot;
         } else {
@@ -1101,6 +1193,15 @@ struct Shot {
     outer_index: usize,
 }
 
+#[derive(Clone, Debug)]
+struct DrivenShot {
+    root_residual: f64,
+    match_index: usize,
+    p: Vec<f64>,
+    q_hat: Vec<f64>,
+    matching_residual: f64,
+}
+
 fn validate_inputs(
     mesh: &ExponentialMesh,
     potential: &[f64],
@@ -1156,6 +1257,33 @@ fn validate_inputs(
     Ok(())
 }
 
+fn validate_exchange_action(
+    mesh: &ExponentialMesh,
+    action: CoreDiracExchangeAction<'_>,
+) -> Result<(), DiracError> {
+    for (component, values) in [("p", action.p), ("q", action.q)] {
+        if values.len() != mesh.len() {
+            return Err(DiracError::ExchangeActionLength {
+                component,
+                expected: mesh.len(),
+                actual: values.len(),
+            });
+        }
+        if let Some((index, &value)) = values
+            .iter()
+            .enumerate()
+            .find(|(_, value)| !value.is_finite())
+        {
+            return Err(DiracError::NonFiniteExchangeAction {
+                component,
+                index,
+                value,
+            });
+        }
+    }
+    Ok(())
+}
+
 fn shoot(
     mesh: &ExponentialMesh,
     potential: &[f64],
@@ -1190,6 +1318,117 @@ fn shoot(
         residual,
         match_index,
         outer_index,
+    })
+}
+
+fn shoot_with_action(
+    mesh: &ExponentialMesh,
+    potential: &[f64],
+    kappa: Kappa,
+    energy: f64,
+    action: CoreDiracExchangeAction<'_>,
+) -> Result<DrivenShot, DiracError> {
+    let match_index = select_match_index(mesh, potential, energy);
+    let outer_index = select_outer_index(mesh, match_index);
+    let homogeneous_out = integrate_outward(mesh, potential, kappa, energy, match_index, true)?;
+    let homogeneous_in = integrate_inward(
+        mesh,
+        potential,
+        kappa,
+        energy,
+        match_index,
+        outer_index,
+        true,
+    )?;
+    // FlapwMBPT RADSCH/RADSCH_b use the same asymptotic seeds for the
+    // homogeneous and source-driven branches. Any added homogeneous piece
+    // cancels in the subsequent `inhomo` coefficients.
+    let driven_out = integrate_outward_with_action(
+        mesh,
+        potential,
+        kappa,
+        energy,
+        match_index,
+        action,
+        (homogeneous_out.p[0], homogeneous_out.q_hat[0]),
+    )?;
+    let driven_in = integrate_inward_with_action(
+        mesh,
+        potential,
+        kappa,
+        energy,
+        match_index,
+        outer_index,
+        action,
+        (
+            homogeneous_in.p[outer_index],
+            homogeneous_in.q_hat[outer_index],
+        ),
+    )?;
+
+    // This is the two-component affine match in FlapwMBPT `inhomo`.
+    let ph_out = homogeneous_out.p[match_index];
+    let qh_out = homogeneous_out.q_hat[match_index];
+    let ph_in = homogeneous_in.p[match_index];
+    let qh_in = homogeneous_in.q_hat[match_index];
+    let pi_out = driven_out.p[match_index];
+    let qi_out = driven_out.q_hat[match_index];
+    let pi_in = driven_in.p[match_index];
+    let qi_in = driven_in.q_hat[match_index];
+    let determinant = qh_out * ph_in - ph_out * qh_in;
+    if !determinant.is_finite() || determinant.abs() <= f64::MIN_POSITIVE {
+        return Err(DiracError::SingularMatch { index: match_index });
+    }
+    let delta_p = pi_in - pi_out;
+    let delta_q = qi_in - qi_out;
+    let outward_scale = (ph_in * delta_q - delta_p * qh_in) / determinant;
+    let inward_scale = (ph_out * delta_q - delta_p * qh_out) / determinant;
+    if !outward_scale.is_finite() || !inward_scale.is_finite() {
+        return Err(DiracError::SingularMatch { index: match_index });
+    }
+
+    let mut p = driven_out.p;
+    let mut q_hat = driven_out.q_hat;
+    for index in 0..=match_index {
+        p[index] += outward_scale * homogeneous_out.p[index];
+        q_hat[index] += outward_scale * homogeneous_out.q_hat[index];
+        ensure_finite_state(p[index], q_hat[index], index)?;
+    }
+    for index in match_index + 1..=outer_index {
+        p[index] = driven_in.p[index] + inward_scale * homogeneous_in.p[index];
+        q_hat[index] = driven_in.q_hat[index] + inward_scale * homogeneous_in.q_hat[index];
+        ensure_finite_state(p[index], q_hat[index], index)?;
+    }
+
+    let matched_out = (
+        pi_out + outward_scale * ph_out,
+        qi_out + outward_scale * qh_out,
+    );
+    let matched_in = (pi_in + inward_scale * ph_in, qi_in + inward_scale * qh_in);
+    let match_norm = matched_out.0.hypot(matched_out.1) * matched_in.0.hypot(matched_in.1);
+    if !match_norm.is_finite() || match_norm <= f64::MIN_POSITIVE {
+        return Err(DiracError::SingularMatch { index: match_index });
+    }
+    let matching_residual =
+        (matched_out.0 * matched_in.1 - matched_out.1 * matched_in.0) / match_norm;
+    let density = p
+        .iter()
+        .zip(&q_hat)
+        .map(|(&large, &small_scaled)| large * large + small_scaled * small_scaled / C_SQUARED)
+        .collect::<Vec<_>>();
+    let norm_squared = mesh
+        .integrate(&density)
+        .map_err(|error| DiracError::Quadrature(error.to_string()))?;
+    if !norm_squared.is_finite() || norm_squared <= f64::MIN_POSITIVE {
+        return Err(DiracError::SingularNorm { norm_squared });
+    }
+
+    Ok(DrivenShot {
+        root_residual: norm_squared - 1.0,
+        match_index,
+        p,
+        q_hat,
+        matching_residual,
     })
 }
 
@@ -1340,6 +1579,91 @@ fn integrate_inward(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn integrate_outward_with_action(
+    mesh: &ExponentialMesh,
+    potential: &[f64],
+    kappa: Kappa,
+    energy: f64,
+    stop: usize,
+    action: CoreDiracExchangeAction<'_>,
+    initial: (f64, f64),
+) -> Result<Branch, DiracError> {
+    let mut p = vec![0.0; mesh.len()];
+    let mut q_hat = vec![0.0; mesh.len()];
+    let (mut current_p, mut current_q) = initial;
+    p[0] = current_p;
+    q_hat[0] = current_q;
+    let kappa = f64::from(kappa.get());
+    for index in 0..stop {
+        (current_p, current_q) = rk4_interval_with_action(
+            mesh.radii()[index].get(),
+            mesh.radii()[index + 1].get(),
+            potential[index],
+            potential[index + 1],
+            action.p[index],
+            action.p[index + 1],
+            action.q[index],
+            action.q[index + 1],
+            current_p,
+            current_q,
+            kappa,
+            energy,
+        );
+        ensure_finite_state(current_p, current_q, index + 1)?;
+        p[index + 1] = current_p;
+        q_hat[index + 1] = current_q;
+    }
+    Ok(Branch {
+        p,
+        q_hat,
+        endpoint: (current_p, current_q),
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn integrate_inward_with_action(
+    mesh: &ExponentialMesh,
+    potential: &[f64],
+    kappa: Kappa,
+    energy: f64,
+    stop: usize,
+    outer_index: usize,
+    action: CoreDiracExchangeAction<'_>,
+    initial: (f64, f64),
+) -> Result<Branch, DiracError> {
+    let mut p = vec![0.0; mesh.len()];
+    let mut q_hat = vec![0.0; mesh.len()];
+    let (mut current_p, mut current_q) = initial;
+    p[outer_index] = current_p;
+    q_hat[outer_index] = current_q;
+    let kappa = f64::from(kappa.get());
+    for index in (stop + 1..=outer_index).rev() {
+        (current_p, current_q) = rk4_interval_with_action(
+            mesh.radii()[index].get(),
+            mesh.radii()[index - 1].get(),
+            potential[index],
+            potential[index - 1],
+            action.p[index],
+            action.p[index - 1],
+            action.q[index],
+            action.q[index - 1],
+            current_p,
+            current_q,
+            kappa,
+            energy,
+        );
+        ensure_finite_state(current_p, current_q, index - 1)?;
+        p[index - 1] = current_p;
+        q_hat[index - 1] = current_q;
+    }
+    Ok(Branch {
+        p,
+        q_hat,
+        endpoint: (current_p, current_q),
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
 fn rk4_interval(
     ra: f64,
     rc: f64,
@@ -1388,6 +1712,55 @@ fn rk4_interval(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
+fn rk4_interval_with_action(
+    ra: f64,
+    rc: f64,
+    va: f64,
+    vc: f64,
+    action_pa: f64,
+    action_pc: f64,
+    action_qa: f64,
+    action_qc: f64,
+    p: f64,
+    q_hat: f64,
+    kappa: f64,
+    energy: f64,
+) -> (f64, f64) {
+    let rb = 0.5 * (ra + rc);
+    let dr = rc - ra;
+    let vb = (ra * va + rc * vc) / (ra + rc);
+    let action_pb = 0.5 * (action_pa + action_pc);
+    let action_qb = 0.5 * (action_qa + action_qc);
+    let rhs = |radius, potential, action_p, action_q, p, q_hat| {
+        dirac_rhs_with_action(
+            radius, potential, action_p, action_q, p, q_hat, kappa, energy, C_SQUARED,
+        )
+    };
+    let (k1, l1) = rhs(ra, va, action_pa, action_qa, p, q_hat);
+    let (k2, l2) = rhs(
+        rb,
+        vb,
+        action_pb,
+        action_qb,
+        p + 0.5 * dr * k1,
+        q_hat + 0.5 * dr * l1,
+    );
+    let (k3, l3) = rhs(
+        rb,
+        vb,
+        action_pb,
+        action_qb,
+        p + 0.5 * dr * k2,
+        q_hat + 0.5 * dr * l2,
+    );
+    let (k4, l4) = rhs(rc, vc, action_pc, action_qc, p + dr * k3, q_hat + dr * l3);
+    (
+        p + dr * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0,
+        q_hat + dr * (l1 + 2.0 * l2 + 2.0 * l3 + l4) / 6.0,
+    )
+}
+
 fn dirac_rhs(
     radius: f64,
     potential: f64,
@@ -1401,6 +1774,26 @@ fn dirac_rhs(
     (
         mass_factor * q_hat - kappa * p / radius,
         (potential - energy) * p + kappa * q_hat / radius,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn dirac_rhs_with_action(
+    radius: f64,
+    potential: f64,
+    action_p: f64,
+    action_q: f64,
+    p: f64,
+    q_hat: f64,
+    kappa: f64,
+    energy: f64,
+    c_squared: f64,
+) -> (f64, f64) {
+    let (p_derivative, q_hat_derivative) =
+        dirac_rhs(radius, potential, p, q_hat, kappa, energy, c_squared);
+    (
+        p_derivative - action_q / c_squared.sqrt(),
+        q_hat_derivative + action_p,
     )
 }
 
@@ -1575,6 +1968,36 @@ fn assemble_solution(
         p[i] = scale_in * inward.p[i];
         q_hat[i] = scale_in * inward.q_hat[i];
     }
+    finalize_core_solution(mesh, spec, energy, match_index, residual, p, q_hat)
+}
+
+fn finalize_driven_solution(
+    mesh: &ExponentialMesh,
+    spec: &CoreDiracSpec,
+    energy: f64,
+    shot: DrivenShot,
+) -> Result<CoreDiracSolution, DiracError> {
+    finalize_core_solution(
+        mesh,
+        spec,
+        energy,
+        shot.match_index,
+        shot.matching_residual,
+        shot.p,
+        shot.q_hat,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finalize_core_solution(
+    mesh: &ExponentialMesh,
+    spec: &CoreDiracSpec,
+    energy: f64,
+    match_index: usize,
+    matching_residual: f64,
+    mut p: Vec<f64>,
+    mut q_hat: Vec<f64>,
+) -> Result<CoreDiracSolution, DiracError> {
     let density: Vec<f64> = p
         .iter()
         .zip(&q_hat)
@@ -1633,7 +2056,7 @@ fn assemble_solution(
         spill: norm_outside,
         nodes,
         match_radius: mesh.radii()[match_index],
-        matching_residual: residual,
+        matching_residual,
     })
 }
 

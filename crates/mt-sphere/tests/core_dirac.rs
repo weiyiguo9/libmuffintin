@@ -1,7 +1,8 @@
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, Kappa};
 use muffintin_sphere::{
-    CoreDiracSpec, CoreState, DiracError, EnergyBracket, SPEX_SPEED_OF_LIGHT, ValenceDiracSpec,
-    solve_core_dirac, solve_valence_dirac,
+    CoreDiracExchangeAction, CoreDiracSpec, CoreState, DiracError, EnergyBracket,
+    SPEX_SPEED_OF_LIGHT, ValenceDiracSpec, solve_core_dirac, solve_core_dirac_with_action,
+    solve_valence_dirac,
 };
 
 fn extended_mesh(first: f64, last: f64, increment: f64) -> ExponentialMesh {
@@ -42,6 +43,131 @@ fn hydrogenic_coulomb_1s_has_the_shifted_dirac_energy_and_physical_norm() {
     assert!(solution.matching_residual.abs() < 2.0e-9);
     assert_eq!(solution.p.len(), mesh.len());
     assert_eq!(solution.q.len(), mesh.len());
+}
+
+#[test]
+fn zero_exchange_action_is_identical_to_homogeneous_core_solve() {
+    let mesh = extended_mesh(1.0e-7, 40.0, 0.002);
+    let potential = mesh
+        .radii()
+        .iter()
+        .map(|radius| -1.0 / radius.get())
+        .collect::<Vec<_>>();
+    let state = CoreState::new(1, Kappa::new(-1).unwrap()).unwrap();
+    let muffin_tin_radius = *mesh
+        .radii()
+        .iter()
+        .min_by(|a, b| (a.get() - 6.0).abs().total_cmp(&(b.get() - 6.0).abs()))
+        .unwrap();
+    let spec = CoreDiracSpec::new(
+        state,
+        EnergyBracket::from_values(-0.6, -0.4).unwrap(),
+        muffin_tin_radius,
+    );
+    let homogeneous = solve_core_dirac(&mesh, &potential, spec).unwrap();
+    let zeros = vec![0.0; mesh.len()];
+    let with_action = solve_core_dirac_with_action(
+        &mesh,
+        &potential,
+        spec,
+        CoreDiracExchangeAction {
+            p: &zeros,
+            q: &zeros,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(with_action, homogeneous);
+}
+
+#[test]
+fn manufactured_exchange_action_closes_source_equations_and_norm_root() {
+    let mesh = extended_mesh(1.0e-7, 40.0, 0.002);
+    let potential = mesh
+        .radii()
+        .iter()
+        .map(|radius| -1.0 / radius.get())
+        .collect::<Vec<_>>();
+    let kappa = Kappa::new(-1).unwrap();
+    let state = CoreState::new(1, kappa).unwrap();
+    let muffin_tin_radius = *mesh
+        .radii()
+        .iter()
+        .min_by(|a, b| (a.get() - 6.0).abs().total_cmp(&(b.get() - 6.0).abs()))
+        .unwrap();
+    let homogeneous_spec = CoreDiracSpec::new(
+        state,
+        EnergyBracket::from_values(-0.6, -0.4).unwrap(),
+        muffin_tin_radius,
+    );
+    let homogeneous = solve_core_dirac(&mesh, &potential, homogeneous_spec).unwrap();
+
+    // If H0 psi0 = E0 psi0, the fixed action K psi = delta psi0 makes
+    // psi0 the unit-norm source-driven solution at E0 + delta. The other
+    // norm root E0 - delta is excluded by this bracket.
+    let delta = 0.04;
+    let action_p = homogeneous
+        .p
+        .iter()
+        .map(|value| delta * value)
+        .collect::<Vec<_>>();
+    let action_q = homogeneous
+        .q
+        .iter()
+        .map(|value| delta * value)
+        .collect::<Vec<_>>();
+    let expected_energy = homogeneous.energy.get() + delta;
+    let driven_spec = CoreDiracSpec::new(
+        state,
+        EnergyBracket::from_values(expected_energy - 0.015, expected_energy + 0.02).unwrap(),
+        muffin_tin_radius,
+    )
+    .with_tolerances(1.0e-10, 1.0e-8, 160);
+    let driven = solve_core_dirac_with_action(
+        &mesh,
+        &potential,
+        driven_spec,
+        CoreDiracExchangeAction {
+            p: &action_p,
+            q: &action_q,
+        },
+    )
+    .unwrap();
+
+    assert!((driven.energy.get() - expected_energy).abs() < 3.0e-6);
+    assert!((driven.norm_total - 1.0).abs() < 3.0e-13);
+    assert_eq!(driven.nodes, state.expected_nodes());
+    assert!(driven.matching_residual.abs() < 2.0e-12);
+    let overlap_samples = homogeneous
+        .p
+        .iter()
+        .zip(&homogeneous.q)
+        .zip(&driven.p)
+        .zip(&driven.q)
+        .map(|(((&p0, &q0), &p), &q)| p0 * p + q0 * q)
+        .collect::<Vec<_>>();
+    assert!(mesh.integrate(&overlap_samples).unwrap() > 1.0 - 2.0e-5);
+
+    let energy = driven.energy.get();
+    let c = SPEX_SPEED_OF_LIGHT;
+    let kappa = f64::from(kappa.get());
+    for index in (24..mesh.len() - 1).step_by(211) {
+        if driven.p[index - 1] == 0.0 || driven.p[index + 1] == 0.0 {
+            continue;
+        }
+        let radius = mesh.radii()[index].get();
+        let mass = 2.0 + (energy - potential[index]) / (c * c);
+        let p_rhs =
+            mass * c * driven.q[index] - kappa * driven.p[index] / radius - action_q[index] / c;
+        let q_rhs = ((potential[index] - energy) * driven.p[index]
+            + kappa * c * driven.q[index] / radius
+            + action_p[index])
+            / c;
+        let p_numeric = sampled_derivative(&mesh, &driven.p, index);
+        let q_numeric = sampled_derivative(&mesh, &driven.q, index);
+        assert!((p_numeric - p_rhs).abs() <= 6.0e-5 * p_rhs.abs().max(1.0));
+        assert!((q_numeric - q_rhs).abs() <= 6.0e-5 * q_rhs.abs().max(1.0));
+    }
 }
 
 fn valence_fixture(
