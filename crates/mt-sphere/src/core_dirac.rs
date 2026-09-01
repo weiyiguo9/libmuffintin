@@ -759,7 +759,7 @@ pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSpec>>(
 
     let (mut lower, mut upper) = spec.bracket.values();
     let mut lower_shot = shoot_with_action(mesh, potential, spec.state.kappa, lower, action)?;
-    let upper_shot = shoot_with_action(mesh, potential, spec.state.kappa, upper, action)?;
+    let mut upper_shot = shoot_with_action(mesh, potential, spec.state.kappa, upper, action)?;
     if lower_shot.root_residual == 0.0 {
         return finalize_driven_solution(mesh, spec, lower, lower_shot);
     }
@@ -778,9 +778,7 @@ pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSpec>>(
     for _ in 0..spec.max_iterations {
         let energy = lower + 0.5 * (upper - lower);
         let shot = shoot_with_action(mesh, potential, spec.state.kappa, energy, action)?;
-        if shot.root_residual.abs() <= spec.matching_tolerance
-            && 0.5 * (upper - lower) <= spec.energy_tolerance
-        {
+        if shot.root_residual == 0.0 {
             return finalize_driven_solution(mesh, spec, energy, shot);
         }
         if shot.root_residual.signum() == lower_shot.root_residual.signum() {
@@ -788,6 +786,18 @@ pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSpec>>(
             lower_shot = shot;
         } else {
             upper = energy;
+            upper_shot = shot;
+        }
+        // FlapwMBPT `rad_eq` converges the source-driven norm root from the
+        // energy step, not the homogeneous Wronskian tolerance. Retain the
+        // endpoint with the smaller |norm - 1| so the final normalization
+        // perturbs the fixed-source equation as little as the bracket allows.
+        if 0.5 * (upper - lower) <= spec.energy_tolerance {
+            return if lower_shot.root_residual.abs() <= upper_shot.root_residual.abs() {
+                finalize_driven_solution(mesh, spec, lower, lower_shot)
+            } else {
+                finalize_driven_solution(mesh, spec, upper, upper_shot)
+            };
         }
     }
 
