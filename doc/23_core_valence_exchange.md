@@ -420,6 +420,20 @@ M0 is independent of the Track A valence work: either track may land first,
 and neither blocks progress or changes the acceptance gates of the other.
 They meet only at the later relaxed-core merge stages specified below.
 
+M1 adds planned rectangular MPB vertices for the CV, VC, and CC sectors,
+each enumerated by its own `ExchangePairLayout`. The runtime product input
+fills `DiracSiteRadialSet::cores` from the M0 sidecar. Any column with a core
+member has empty interstitial support and carries only the muffin-tin PP and
+QQ radial products; no PQ or QP sector is introduced. The occupation factor
+is applied exactly once in the exchange trace. Bloch translation and site
+phase conventions are shared by the forward and reverse rectangular
+layouts rather than inferred independently.
+
+The M1 gate compares the CV and VC cross traces at numerical tolerance,
+locks the Bloch/site phase with the single-shell analytic fixture, and
+reports the CV constant-mode residual. A failure of any one of these checks
+blocks sector-energy work even if the individual vertex norms look correct.
+
 M3 bring-up may run the driver against a core solved in the current
 DFT-style local potential to isolate valence Fock machinery, but that
 configuration is a test harness only: it carries an uncancelled core
