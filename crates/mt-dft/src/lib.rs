@@ -42,13 +42,16 @@ pub use core_density::{
 pub use core_potential::{
     BuiltExtendedCorePotential, CorePotentialBuildError, CorePotentialBuildSpec, CorePotentialJoin,
     build_extended_checkpoint_core_potentials, build_extended_core_potentials,
+    build_extended_electrostatic_core_potentials,
 };
 pub use core_station::{
     CoreFixedPotentialIteration, CoreFixedPotentialResult, CoreFixedPotentialShellResidual,
-    CoreFixedPotentialSpec, CoreRelaxationError, CoreShellOccupations, CoreShellOrbital,
+    CoreFixedPotentialSpec, CoreLocalOneBodyError, CoreLocalOneBodyShellTrace,
+    CoreLocalOneBodyTrace, CoreRelaxationError, CoreShellOccupations, CoreShellOrbital,
     CoreShellOrbitals, CoreShellOrbitalsProvenance, CoreSiteRequest, CoreStateRequest,
-    CoreStationError, FixedSiteValenceDensity, RegionalCoreResult, relax_core_at_fixed_potential,
-    solve_regional_core,
+    CoreStationError, FixedSiteValenceDensity, RegionalCoreResult,
+    build_regional_core_contribution_from_sidecar, core_local_one_body_trace,
+    relax_core_at_fixed_potential, solve_regional_core,
 };
 pub use density::{
     CollinearKPoint, DensityError, FullSpinorDensitySiteBasis, FullSpinorKPoint, ScalarSiteBasis,
@@ -76,9 +79,9 @@ pub use linearization::{
 };
 pub use material_kernel::{
     CheckpointBandSolution, CheckpointKPoint, CheckpointKPointSolution, CheckpointOneParticle,
-    CheckpointSite, CheckpointSpin, MaterialKernel, MaterialKernelError, RadialRoute,
-    SpexBoundSpinorChannel, SpexSpinorMaterialBinding, g_vector, production_density_layout,
-    regular_k_points,
+    CheckpointSite, CheckpointSpin, InitialDensityComponents, MaterialKernel, MaterialKernelError,
+    RadialRoute, SpexBoundSpinorChannel, SpexSpinorMaterialBinding, g_vector,
+    production_density_layout, regular_k_points,
 };
 pub use mixing::{DensityMixer, MixAlgebraQuantity, MixRecord, MixStatus, MixStep, MixingError};
 pub use muffintin_sphere::RadialEquation;

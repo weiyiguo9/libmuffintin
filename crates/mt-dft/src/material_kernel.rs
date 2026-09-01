@@ -11,22 +11,23 @@ use crate::{
     CoreStateRequest, CoreStationError, DensityError, FirstVariationRoute, FirstVariationSubspace,
     FullSpinorKPoint, GeneratedLinearizationEnergy, InterstitialField,
     LinearizationEnergyDiagnostic, LinearizationEnergyError, LinearizationEnergyGenerator,
-    LocalPauliPotential, MuffinTinField, OccupationError, PdosEnergySample, RegionalDensity,
-    RegionalPotential, RegionalScalarField, RegularSpectrum, ScalarBuilderError,
-    ScalarIterationBasis, ScalarLocalOrbitalRequest, ScalarSiteInput, ScfBasis, ScfChannelIdentity,
-    ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfCoreSite, ScfEnergyContext,
-    ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfKReduction, ScfKSamplingProvenance,
-    ScfOccupations, ScfPhysics, ScfPotentialBuild, ScfPotentialBuildError, ScfRelativity,
-    ScfResolvedChannelEnergy, ScfState, SecondVariationError, SpinorBuilderError,
-    SpinorFirstVariationError, SpinorIterationBasis, SpinorLinearizationEnergy,
-    SpinorLocalOrbitalRequest, SpinorSiteInput, TetrahedronError,
+    LocalPauliPotential, MuffinTinField, OccupationError, PdosEnergySample, RegionalCoreResult,
+    RegionalDensity, RegionalElectrostaticResult, RegionalPotential, RegionalScalarField,
+    RegularSpectrum, ScalarBuilderError, ScalarIterationBasis, ScalarLocalOrbitalRequest,
+    ScalarSiteInput, ScfBasis, ScfChannelIdentity, ScfChannelRecipe, ScfChannelTreatment,
+    ScfConfig, ScfCoreSite, ScfEnergyContext, ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh,
+    ScfKReduction, ScfKSamplingProvenance, ScfOccupations, ScfPhysics, ScfPotentialBuild,
+    ScfPotentialBuildError, ScfRelativity, ScfResolvedChannelEnergy, ScfState,
+    SecondVariationError, SpinorBuilderError, SpinorFirstVariationError, SpinorIterationBasis,
+    SpinorLinearizationEnergy, SpinorLocalOrbitalRequest, SpinorSiteInput, TetrahedronError,
     build_collinear_scalar_iteration_bases, build_extended_checkpoint_core_potentials,
-    build_extended_core_potentials, build_scf_potential, build_spinor_iteration_basis,
-    channel_kappas, channel_l, channel_n, generate_atomic_energy, generate_band_center_energy,
-    generate_band_cog_energy, generate_explicit_energy, generate_fermi_offset_energy,
-    generate_frozen_checkpoint_energy, generate_log_derivative_energy, kappa_degeneracy_average,
-    physical_site_band_projections, scalar_component_energy, solve_fermi_dirac, solve_gaussian,
-    solve_soc_second_variation, solve_spinor_k_point, spin_resolved_energy, spinor_kappas_for_l,
+    build_extended_core_potentials, build_extended_electrostatic_core_potentials,
+    build_scf_potential, build_spinor_iteration_basis, channel_kappas, channel_l, channel_n,
+    generate_atomic_energy, generate_band_center_energy, generate_band_cog_energy,
+    generate_explicit_energy, generate_fermi_offset_energy, generate_frozen_checkpoint_energy,
+    generate_log_derivative_energy, kappa_degeneracy_average, physical_site_band_projections,
+    scalar_component_energy, solve_fermi_dirac, solve_gaussian, solve_soc_second_variation,
+    solve_spinor_k_point, spin_resolved_energy, spinor_kappas_for_l,
     synthesize_collinear_valence_density, synthesize_full_spinor_valence_density,
 };
 use muffintin_core::{
@@ -217,6 +218,14 @@ impl SpexSpinorMaterialBinding {
 pub struct CheckpointOneParticle {
     potential: RegionalPotential,
     basis: ScfBasis,
+}
+
+/// Valence, core, and unchanged total forms of the initial regional density.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InitialDensityComponents {
+    pub valence: RegionalDensity,
+    pub core: RegionalDensity,
+    pub total: RegionalDensity,
 }
 
 impl CheckpointOneParticle {
@@ -513,6 +522,191 @@ impl MaterialKernel {
 
     pub const fn crystal_cell(&self) -> &CrystalCell {
         &self.crystal_cell
+    }
+
+    /// Construct the current initial density while retaining its valence/core split.
+    ///
+    /// A restart checkpoint stores only the total regional density. Its core
+    /// component is therefore re-solved once in the frozen checkpoint local
+    /// potential and subtracted from that unchanged total. Frozen-potential
+    /// inputs retain the valence and core pieces already produced by the
+    /// one-particle and core solves.
+    pub fn initial_density_components(
+        &mut self,
+        config: &ScfConfig,
+    ) -> Result<InitialDensityComponents, MaterialKernelError> {
+        if let Some(mut total) = self.restart_density.clone() {
+            let transforms = self
+                .reduced_sampling(config.k_mesh)?
+                .map(|(_, transforms, _)| transforms);
+            if let Some(transforms) = &transforms {
+                if config.relativity != ScfRelativity::Scalar {
+                    return Err(MaterialKernelError::SymmetryReductionRequiresScalarNonmagnetic);
+                }
+                self.require_second_variation_route(&self.frozen_potential)?;
+                self.require_symmetry_equivalent_config(config, transforms)?;
+                total = self.project_scalar_density(&total, transforms)?;
+            }
+            let meshes = self.channel_meshes(&config.basis)?;
+            let extended = build_extended_checkpoint_core_potentials(
+                &self.frozen_potential,
+                &self.geometry,
+                &self.nuclear_charges,
+                &meshes,
+                CorePotentialContinuationSpec::default(),
+            )?;
+            let mut core = self.solve_initial_core_density(&total, config, &extended)?;
+            if let Some(transforms) = &transforms {
+                core = self.project_scalar_density(&core, transforms)?;
+            }
+            let mut valence = total.clone();
+            valence.add_scaled(-1.0, &core)?;
+            return Ok(InitialDensityComponents {
+                valence,
+                core,
+                total,
+            });
+        }
+
+        let meshes = self.channel_meshes(&config.basis)?;
+        if let Some((_, transforms, _)) = self.reduced_sampling(config.k_mesh)? {
+            self.require_symmetry_equivalent_config(config, &transforms)?;
+        }
+        let initial_extended = build_extended_checkpoint_core_potentials(
+            &self.frozen_potential,
+            &self.geometry,
+            &self.nuclear_charges,
+            &meshes,
+            CorePotentialContinuationSpec::default(),
+        )?;
+        let basis = self.materialize_nonspectral_basis(
+            &self.frozen_potential,
+            &config.basis,
+            &initial_extended,
+        )?;
+        let mut one_particle = CheckpointOneParticle {
+            potential: self.frozen_potential.clone(),
+            basis,
+        };
+        let (bands, occupations) = {
+            let mut passes = 0;
+            loop {
+                passes += 1;
+                let bands =
+                    self.solve_regular_bands(0, &one_particle, config.k_mesh, config.relativity)?;
+                let occupation = solve_initial_occupations(&bands.states, config)?;
+                match self.refine_spectral_basis(
+                    &config.basis,
+                    &one_particle,
+                    &bands,
+                    &occupation.occupations,
+                    occupation.chemical_potential,
+                    config.relativity,
+                )? {
+                    None => break (bands, occupation.occupations),
+                    Some(_) if passes == 16 => {
+                        return Err(MaterialKernelError::InitialBasisRefinementNotConverged {
+                            passes,
+                        });
+                    }
+                    Some(refined) => one_particle = refined,
+                }
+            }
+        };
+        let mut valence = self.synthesize(&bands, &occupations)?;
+        let mut core = self.solve_initial_core_density(&valence, config, &initial_extended)?;
+        if !bands.symmetry_transforms.is_empty() {
+            valence = self.project_scalar_density(&valence, &bands.symmetry_transforms)?;
+            core = self.project_scalar_density(&core, &bands.symmetry_transforms)?;
+        }
+        let mut total = valence.clone();
+        total.add_scaled(1.0, &core)?;
+        Ok(InitialDensityComponents {
+            valence,
+            core,
+            total,
+        })
+    }
+
+    /// Bootstrap requested core sidecars in a no-XC nuclear-plus-Hartree field.
+    pub fn bootstrap_hf_core(
+        &self,
+        source_density: &RegionalDensity,
+        electrostatics: &RegionalElectrostaticResult,
+        core_sites: &[ScfCoreSite],
+    ) -> Result<RegionalCoreResult, MaterialKernelError> {
+        self.require_density_site_count(source_density)?;
+        if source_density.geometry() != &self.geometry {
+            return Err(MaterialKernelError::DensityGeometryMismatch);
+        }
+        let mut requested_ids = BTreeSet::new();
+        for site in core_sites {
+            if !requested_ids.insert(site.id.clone()) {
+                return Err(MaterialKernelError::DuplicateCoreSite(site.id.clone()));
+            }
+            if self.sites.iter().all(|candidate| candidate.id != site.id) {
+                return Err(MaterialKernelError::UnknownCoreSite(site.id.clone()));
+            }
+        }
+        let maximum_n = self
+            .sites
+            .iter()
+            .map(|checkpoint_site| {
+                core_sites
+                    .iter()
+                    .find(|site| site.id == checkpoint_site.id)
+                    .into_iter()
+                    .flat_map(|site| &site.states)
+                    .map(|state| state.principal_quantum_number)
+                    .max()
+                    .unwrap_or(1)
+            })
+            .collect::<Vec<_>>();
+        let extended_meshes = self
+            .sites
+            .iter()
+            .enumerate()
+            .map(|(site_index, site)| {
+                let orbital_scale = f64::from(maximum_n[site_index]).powi(2)
+                    / self.nuclear_charges[site_index].max(1.0);
+                let outer_radius = (4.0 * site.radius.get()).max(40.0 * orbital_scale);
+                extend_core_mesh(&site.up.mesh, outer_radius).map_err(Into::into)
+            })
+            .collect::<Result<Vec<_>, MaterialKernelError>>()?;
+        let extended = build_extended_electrostatic_core_potentials(
+            electrostatics,
+            &self.geometry,
+            &extended_meshes,
+            CorePotentialContinuationSpec::default(),
+        )?;
+        let mut density = source_density.zero_like();
+        let mut eigenvalue_sum = Hartree(0.0);
+        let mut sites = Vec::new();
+        let mut orbitals = Vec::new();
+        for site in core_sites.iter().filter(|site| !site.states.is_empty()) {
+            let site_index = self
+                .sites
+                .iter()
+                .position(|candidate| candidate.id == site.id)
+                .ok_or_else(|| MaterialKernelError::UnknownCoreSite(site.id.clone()))?;
+            let request = self.core_site_request(site_index, site)?;
+            let solved = solve_regional_core_site(
+                source_density,
+                &self.nuclear_charges,
+                &request,
+                &extended[site_index].potential,
+            )?;
+            density.add_scaled(1.0, &solved.contribution.contribution.density)?;
+            eigenvalue_sum += solved.contribution.contribution.eigenvalue_sum;
+            sites.push(solved.contribution);
+            orbitals.push(solved.orbitals);
+        }
+        Ok(RegionalCoreResult {
+            density,
+            eigenvalue_sum,
+            sites,
+            orbitals,
+        })
     }
 
     fn reduced_sampling(
@@ -1517,6 +1711,35 @@ impl MaterialKernel {
             .collect()
     }
 
+    fn solve_initial_core_density(
+        &self,
+        template: &RegionalDensity,
+        config: &ScfConfig,
+        extended: &[crate::BuiltExtendedCorePotential],
+    ) -> Result<RegionalDensity, MaterialKernelError> {
+        let mut core = template.zero_like();
+        for site in config
+            .core_sites
+            .iter()
+            .filter(|site| !site.states.is_empty())
+        {
+            let site_index = self
+                .sites
+                .iter()
+                .position(|candidate| candidate.id == site.id)
+                .ok_or_else(|| MaterialKernelError::UnknownCoreSite(site.id.clone()))?;
+            let request = self.core_site_request(site_index, site)?;
+            let contribution = solve_regional_core_site(
+                template,
+                &self.nuclear_charges,
+                &request,
+                &extended[site_index].potential,
+            )?;
+            core.add_scaled(1.0, &contribution.contribution.contribution.density)?;
+        }
+        Ok(core)
+    }
+
     fn core_site_request(
         &self,
         site_index: usize,
@@ -1589,76 +1812,7 @@ impl ScfPhysics for MaterialKernel {
             }
             return Ok(density);
         }
-        let meshes = self.channel_meshes(&config.basis)?;
-        if let Some((_, transforms, _)) = self.reduced_sampling(config.k_mesh)? {
-            self.require_symmetry_equivalent_config(config, &transforms)?;
-        }
-        let initial_extended = build_extended_checkpoint_core_potentials(
-            &self.frozen_potential,
-            &self.geometry,
-            &self.nuclear_charges,
-            &meshes,
-            CorePotentialContinuationSpec::default(),
-        )?;
-        let basis = self.materialize_nonspectral_basis(
-            &self.frozen_potential,
-            &config.basis,
-            &initial_extended,
-        )?;
-        let mut one_particle = CheckpointOneParticle {
-            potential: self.frozen_potential.clone(),
-            basis,
-        };
-        let (bands, occupations) = {
-            let mut passes = 0;
-            loop {
-                passes += 1;
-                let bands =
-                    self.solve_regular_bands(0, &one_particle, config.k_mesh, config.relativity)?;
-                let occupation = solve_initial_occupations(&bands.states, config)?;
-                match self.refine_spectral_basis(
-                    &config.basis,
-                    &one_particle,
-                    &bands,
-                    &occupation.occupations,
-                    occupation.chemical_potential,
-                    config.relativity,
-                )? {
-                    None => break (bands, occupation.occupations),
-                    Some(_) if passes == 16 => {
-                        return Err(MaterialKernelError::InitialBasisRefinementNotConverged {
-                            passes,
-                        });
-                    }
-                    Some(refined) => one_particle = refined,
-                }
-            }
-        };
-        let mut density = self.synthesize(&bands, &occupations)?;
-        if config.core_sites.iter().any(|site| !site.states.is_empty()) {
-            for site in &config.core_sites {
-                if site.states.is_empty() {
-                    continue;
-                }
-                let site_index = self
-                    .sites
-                    .iter()
-                    .position(|candidate| candidate.id == site.id)
-                    .ok_or_else(|| MaterialKernelError::UnknownCoreSite(site.id.clone()))?;
-                let request = self.core_site_request(site_index, site)?;
-                let contribution = solve_regional_core_site(
-                    &density,
-                    &self.nuclear_charges,
-                    &request,
-                    &initial_extended[site_index].potential,
-                )?;
-                density.add_scaled(1.0, &contribution.contribution.contribution.density)?;
-            }
-        }
-        if !bands.symmetry_transforms.is_empty() {
-            density = self.project_scalar_density(&density, &bands.symmetry_transforms)?;
-        }
-        Ok(density)
+        Ok(self.initial_density_components(config)?.total)
     }
 
     fn build_potential(
@@ -2552,6 +2706,10 @@ pub enum MaterialKernelError {
     },
     #[error("core site {0:?} is not present in the checkpoint")]
     UnknownCoreSite(String),
+    #[error("core site {0:?} is requested more than once")]
+    DuplicateCoreSite(String),
+    #[error("HF core bootstrap density geometry differs from the material kernel")]
+    DensityGeometryMismatch,
     #[error("iteration {0} has no raw periodic continuation for the core solve")]
     MissingCoreContinuation(usize),
     #[error("received {actual} occupations for {expected} states")]

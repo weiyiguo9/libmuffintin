@@ -123,6 +123,48 @@ pub fn build_extended_core_potentials(
     )
 }
 
+/// Build no-XC core potentials from the raw nuclear-plus-Hartree field.
+///
+/// Both the inner physical monopole and the outer periodic continuation come
+/// from `electrostatics.raw_electrostatic`; no XC field or density functional
+/// is evaluated on this path.
+pub fn build_extended_electrostatic_core_potentials(
+    electrostatics: &RegionalElectrostaticResult,
+    geometry: &InterstitialGeometry,
+    extended_meshes: &[ExponentialMesh],
+    continuation: CorePotentialContinuationSpec,
+) -> Result<Vec<BuiltExtendedCorePotential>, CorePotentialBuildError> {
+    let raw = &electrostatics.raw_electrostatic;
+    let nuclear_charges = electrostatics.raw_nuclear.nuclear_charges();
+    let site_count = geometry.spheres().len();
+    if raw.muffin_tins().len() != site_count {
+        return Err(CorePotentialBuildError::RawSiteCount {
+            expected: site_count,
+            actual: raw.muffin_tins().len(),
+        });
+    }
+    if nuclear_charges.len() != site_count {
+        return Err(CorePotentialBuildError::NuclearSiteCount {
+            expected: site_count,
+            actual: nuclear_charges.len(),
+        });
+    }
+    if extended_meshes.len() != site_count {
+        return Err(CorePotentialBuildError::ExtendedMeshCount {
+            expected: site_count,
+            actual: extended_meshes.len(),
+        });
+    }
+    build_electrostatic_scalar(
+        raw.muffin_tins(),
+        raw.interstitial(),
+        geometry,
+        nuclear_charges,
+        extended_meshes,
+        continuation,
+    )
+}
+
 /// Bootstrap extended core potentials directly from a frozen checkpoint total potential.
 ///
 /// This path does not require a neutral valence-plus-core density or a Poisson
@@ -193,6 +235,58 @@ fn build_checkpoint_scalar(
             }
             let monopole = physical_checkpoint_monopole(site, "scalar", muffin_tin)?;
             let modes = centered_checkpoint_modes(interstitial, sphere.center.map(Bohr::get));
+            let mut outer = extended_mesh.radii()[muffin_tin.mesh().len() - 1..]
+                .iter()
+                .enumerate()
+                .map(|(radial, radius)| {
+                    periodic_spherical_average(site, "scalar", radial, radius.get(), &modes)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let uncorrected_outer_boundary_derivative =
+                periodic_spherical_derivative(muffin_tin.mesh().last().get(), &modes);
+            bridge_and_join_core_potential(
+                site,
+                "scalar",
+                muffin_tin.mesh(),
+                &monopole,
+                extended_mesh,
+                charge,
+                &mut outer,
+                uncorrected_outer_boundary_derivative,
+                continuation,
+            )
+        })
+        .collect()
+}
+
+fn build_electrostatic_scalar(
+    muffin_tins: &[MuffinTinHartreePotential],
+    interstitial: &InterstitialHartreePotential,
+    geometry: &InterstitialGeometry,
+    nuclear_charges: &[f64],
+    extended_meshes: &[ExponentialMesh],
+    continuation: CorePotentialContinuationSpec,
+) -> Result<Vec<BuiltExtendedCorePotential>, CorePotentialBuildError> {
+    muffin_tins
+        .iter()
+        .zip(geometry.spheres())
+        .zip(nuclear_charges)
+        .zip(extended_meshes)
+        .enumerate()
+        .map(|(site, (((muffin_tin, sphere), &charge), extended_mesh))| {
+            let mesh_radius = muffin_tin.mesh().last().get();
+            let geometry_radius = sphere.radius.get();
+            let radius_tolerance = GEOMETRY_TOLERANCE * geometry_radius.max(1.0);
+            if (mesh_radius - geometry_radius).abs() > radius_tolerance {
+                return Err(CorePotentialBuildError::MuffinTinRadius {
+                    site,
+                    mesh: mesh_radius,
+                    geometry: geometry_radius,
+                    tolerance: radius_tolerance,
+                });
+            }
+            let monopole = physical_electrostatic_monopole(site, "scalar", muffin_tin)?;
+            let modes = centered_electrostatic_modes(interstitial, sphere.center.map(Bohr::get));
             let mut outer = extended_mesh.radii()[muffin_tin.mesh().len() - 1..]
                 .iter()
                 .enumerate()
@@ -408,6 +502,40 @@ fn physical_effective_monopole(
         .enumerate()
         .map(|(radial, (&electrostatic, &exchange_correlation))| {
             let value = (electrostatic.as_complex() + exchange_correlation) / normalization;
+            let tolerance = REALITY_TOLERANCE * value.norm().max(1.0);
+            if value.im.abs() > tolerance {
+                Err(CorePotentialBuildError::ComplexMonopole {
+                    site,
+                    spin,
+                    radial,
+                    imaginary: value.im,
+                    tolerance,
+                })
+            } else {
+                Ok(value.re)
+            }
+        })
+        .collect()
+}
+
+fn physical_electrostatic_monopole(
+    site: usize,
+    spin: &'static str,
+    electrostatic: &MuffinTinHartreePotential,
+) -> Result<Vec<f64>, CorePotentialBuildError> {
+    let monopole = electrostatic
+        .channel(0, 0)
+        .ok_or(CorePotentialBuildError::MissingMonopole {
+            site,
+            spin,
+            component: "electrostatic",
+        })?;
+    let normalization = (4.0 * PI).sqrt();
+    monopole
+        .iter()
+        .enumerate()
+        .map(|(radial, &value)| {
+            let value = value.as_complex() / normalization;
             let tolerance = REALITY_TOLERANCE * value.norm().max(1.0);
             if value.im.abs() > tolerance {
                 Err(CorePotentialBuildError::ComplexMonopole {

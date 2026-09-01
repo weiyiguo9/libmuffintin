@@ -11,8 +11,9 @@ use muffintin_coulomb::{
 };
 use muffintin_sphere::{
     CoreBracketSearch, CoreDiracExchangeAction, CoreDiracSolution, CoreDiracSourcedSpec,
-    CoreDiracSpec, CoreState, DiracError, EnergyBracket, ExtendedCorePotential,
-    isolate_core_dirac_bracket, solve_core_dirac, solve_core_dirac_with_action,
+    CoreDiracSpec, CoreState, DiracError, DiracLocalHamiltonianError, EnergyBracket,
+    ExtendedCorePotential, dirac_local_hamiltonian_expectation, isolate_core_dirac_bracket,
+    solve_core_dirac, solve_core_dirac_with_action,
 };
 use thiserror::Error;
 
@@ -84,6 +85,23 @@ pub struct RegionalCoreResult {
     pub eigenvalue_sum: Hartree,
     pub sites: Vec<BuiltRegionalCoreContribution>,
     pub orbitals: Vec<CoreShellOrbitals>,
+}
+
+/// One shell's direct occupied expectation value of the immutable local H0.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CoreLocalOneBodyShellTrace {
+    pub shell_index: usize,
+    pub state: CoreState,
+    pub occupation: f64,
+    pub expectation: Hartree,
+    pub contribution: Hartree,
+}
+
+/// Direct occupied core trace of the immutable local radial Hamiltonian.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CoreLocalOneBodyTrace {
+    pub shells: Vec<CoreLocalOneBodyShellTrace>,
+    pub total: Hartree,
 }
 
 /// Controls for the M3a/M3b core inner loop at one immutable local potential.
@@ -237,6 +255,162 @@ pub fn solve_regional_core(
         sites: built_sites,
         orbitals,
     })
+}
+
+/// Synthesize a fresh regional contribution directly from retained core radials.
+///
+/// The sidecar's physical `P/Q`, norms, spill, energies, and occupations are
+/// borrowed without reconstructing a [`CoreDiracSolution`].
+pub fn build_regional_core_contribution_from_sidecar(
+    sidecar: &CoreShellOrbitals,
+    zero_like_template: &RegionalDensity,
+) -> Result<BuiltRegionalCoreContribution, CoreDensityError> {
+    let muffin_tin_mesh = zero_like_template
+        .charge()
+        .muffin_tins()
+        .get(sidecar.site_index)
+        .ok_or(CoreDensityError::SiteIndex {
+            site: sidecar.site_index,
+            site_count: zero_like_template.charge().muffin_tins().len(),
+        })?
+        .mesh();
+    let shell_partitions = sidecar
+        .shells
+        .iter()
+        .enumerate()
+        .map(|(shell_index, shell)| sidecar_density_partition(shell_index, shell))
+        .collect::<Result<Vec<_>, _>>()?;
+    let shells = sidecar
+        .shells
+        .iter()
+        .zip(&shell_partitions)
+        .map(|(shell, &(occupation, spin))| RegionalCoreShellInput {
+            mesh: &sidecar.extended_mesh,
+            state: shell.state,
+            energy: shell.energy,
+            p: &shell.p,
+            q: &shell.q,
+            norm_mt: shell.norm_mt,
+            spill: shell.spill,
+            occupation,
+            spin,
+        })
+        .collect::<Vec<_>>();
+    build_regional_core_contribution(
+        sidecar.site_id.clone(),
+        zero_like_template.geometry(),
+        sidecar.site_index,
+        muffin_tin_mesh,
+        &shells,
+        zero_like_template,
+    )
+}
+
+/// Evaluate `Tr(Dc H0)` from physical retained core radials and local potential.
+pub fn core_local_one_body_trace(
+    sidecar: &CoreShellOrbitals,
+) -> Result<CoreLocalOneBodyTrace, CoreLocalOneBodyError> {
+    if sidecar.provenance.extended_potential.len() != sidecar.extended_mesh.len() {
+        return Err(CoreLocalOneBodyError::PotentialLength {
+            expected: sidecar.extended_mesh.len(),
+            actual: sidecar.provenance.extended_potential.len(),
+        });
+    }
+    let potential = sidecar
+        .provenance
+        .extended_potential
+        .iter()
+        .map(|value| value.get())
+        .collect::<Vec<_>>();
+    let mut total = Hartree(0.0);
+    let shells = sidecar
+        .shells
+        .iter()
+        .enumerate()
+        .map(|(shell_index, shell)| {
+            let occupation = sidecar_shell_occupation(shell_index, shell)?;
+            let expectation = dirac_local_hamiltonian_expectation(
+                &sidecar.extended_mesh,
+                &potential,
+                shell.state.kappa,
+                &shell.p,
+                &shell.q,
+            )?;
+            let contribution = expectation * occupation;
+            total += contribution;
+            Ok(CoreLocalOneBodyShellTrace {
+                shell_index,
+                state: shell.state,
+                occupation,
+                expectation,
+                contribution,
+            })
+        })
+        .collect::<Result<Vec<_>, CoreLocalOneBodyError>>()?;
+    Ok(CoreLocalOneBodyTrace { shells, total })
+}
+
+fn sidecar_density_partition(
+    shell_index: usize,
+    shell: &CoreShellOrbital,
+) -> Result<(f64, CoreSpinPartition), CoreDensityError> {
+    match &shell.occupations {
+        CoreShellOccupations::MuResolved(occupations) => {
+            let expected = shell.state.kappa.twice_mu_values().collect::<Vec<_>>();
+            if occupations.len() != expected.len()
+                || expected
+                    .iter()
+                    .any(|mu| occupations.iter().filter(|(found, _)| found == mu).count() != 1)
+            {
+                return Err(CoreDensityError::SidecarMagneticChannels { shell: shell_index });
+            }
+            let reference = occupations[0].1;
+            if !reference.is_finite() || reference < 0.0 {
+                return Err(CoreDensityError::SidecarOccupation {
+                    shell: shell_index,
+                    occupation: reference,
+                });
+            }
+            if occupations
+                .iter()
+                .any(|(_, value)| value.to_bits() != reference.to_bits())
+            {
+                return Err(CoreDensityError::SidecarOpenShell { shell: shell_index });
+            }
+            Ok((
+                reference * expected.len() as f64,
+                CoreSpinPartition::ClosedShellAverage,
+            ))
+        }
+        CoreShellOccupations::ExplicitCollinear { up, down } => Ok((
+            *up + *down,
+            CoreSpinPartition::ExplicitCollinear {
+                up: *up,
+                down: *down,
+            },
+        )),
+    }
+}
+
+fn sidecar_shell_occupation(
+    shell_index: usize,
+    shell: &CoreShellOrbital,
+) -> Result<f64, CoreLocalOneBodyError> {
+    let occupation = match &shell.occupations {
+        CoreShellOccupations::MuResolved(occupations) => {
+            occupations.iter().map(|(_, occupation)| occupation).sum()
+        }
+        CoreShellOccupations::ExplicitCollinear { up, down } => *up + *down,
+    };
+    let capacity = f64::from(shell.state.kappa.degeneracy());
+    if !occupation.is_finite() || occupation < 0.0 || occupation > capacity {
+        return Err(CoreLocalOneBodyError::Occupation {
+            shell: shell_index,
+            occupation,
+            capacity,
+        });
+    }
+    Ok(occupation)
 }
 
 /// Relax one site's closed/uniform-mu core shells against fresh CC and VC exchange.
@@ -682,7 +856,12 @@ fn build_regional_core_site(
         .zip(&request.states)
         .map(|(solved, requested)| RegionalCoreShellInput {
             mesh: &extended.mesh,
-            solution: &solved.solution,
+            state: solved.solution.state,
+            energy: solved.solution.energy,
+            p: &solved.solution.p,
+            q: &solved.solution.q,
+            norm_mt: solved.solution.norm_mt,
+            spill: solved.solution.spill,
             occupation: requested.occupation,
             spin: requested.spin,
         })
@@ -809,6 +988,21 @@ pub enum CoreStationError {
     CoreDensity(#[from] CoreDensityError),
     #[error(transparent)]
     Regional(#[from] RegionalError),
+}
+
+/// Invalid sidecar input or radial failure in a direct local core trace.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum CoreLocalOneBodyError {
+    #[error("core sidecar potential has {actual} samples, expected {expected}")]
+    PotentialLength { expected: usize, actual: usize },
+    #[error("core shell {shell} occupation {occupation} is outside [0,{capacity}]")]
+    Occupation {
+        shell: usize,
+        occupation: f64,
+        capacity: f64,
+    },
+    #[error(transparent)]
+    Radial(#[from] DiracLocalHamiltonianError),
 }
 
 /// Invalid fixed-potential core input, radial failure, or bounded nonconvergence.
@@ -1001,7 +1195,12 @@ mod tests {
             &muffin_tin_mesh,
             &[RegionalCoreShellInput {
                 mesh: &mesh,
-                solution: &solver_oracle,
+                state: solver_oracle.state,
+                energy: solver_oracle.energy,
+                p: &solver_oracle.p,
+                q: &solver_oracle.q,
+                norm_mt: solver_oracle.norm_mt,
+                spill: solver_oracle.spill,
                 occupation: 2.0,
                 spin: CoreSpinPartition::ClosedShellAverage,
             }],
@@ -1062,6 +1261,17 @@ mod tests {
                 .sum::<f64>(),
             request.states[0].occupation
         );
+        let rebuilt =
+            build_regional_core_contribution_from_sidecar(&retained.orbitals, &density).unwrap();
+        assert_eq!(rebuilt, retained.contribution);
+        let local_trace = core_local_one_body_trace(&retained.orbitals).unwrap();
+        assert_eq!(local_trace.shells.len(), 1);
+        assert_eq!(local_trace.shells[0].state, state);
+        assert_eq!(local_trace.shells[0].occupation, 2.0);
+        assert!(
+            (local_trace.shells[0].expectation.get() - solver_oracle.energy.get()).abs() < 2.0e-7
+        );
+        assert!((local_trace.total.get() - 2.0 * solver_oracle.energy.get()).abs() < 4.0e-7);
 
         let explicit_spin = CoreSpinPartition::ExplicitCollinear { up: 1.5, down: 0.5 };
         let explicit_request = CoreSiteRequest {
@@ -1080,7 +1290,12 @@ mod tests {
             &muffin_tin_mesh,
             &[RegionalCoreShellInput {
                 mesh: &mesh,
-                solution: &solver_oracle,
+                state: solver_oracle.state,
+                energy: solver_oracle.energy,
+                p: &solver_oracle.p,
+                q: &solver_oracle.q,
+                norm_mt: solver_oracle.norm_mt,
+                spill: solver_oracle.spill,
                 occupation: 2.0,
                 spin: explicit_spin,
             }],

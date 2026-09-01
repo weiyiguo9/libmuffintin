@@ -9,7 +9,7 @@ use muffintin_core::{
     ExponentialMesh, FourierFieldError, Hartree, HermitianFourierField, InterstitialGeometry,
     InverseBohr, Lm, StepFunctionError, spherical_bessel_j,
 };
-use muffintin_sphere::{CoreDiracSolution, CoreState};
+use muffintin_sphere::CoreState;
 use muffintin_sphere::{SphereField, SphereFieldError};
 use num_complex::Complex64;
 use std::f64::consts::PI;
@@ -33,7 +33,12 @@ pub enum CoreSpinPartition {
 #[derive(Clone, Copy, Debug)]
 pub struct RegionalCoreShellInput<'a> {
     pub mesh: &'a ExponentialMesh,
-    pub solution: &'a CoreDiracSolution,
+    pub state: CoreState,
+    pub energy: Hartree,
+    pub p: &'a [f64],
+    pub q: &'a [f64],
+    pub norm_mt: f64,
+    pub spill: f64,
     pub occupation: f64,
     pub spin: CoreSpinPartition,
 }
@@ -158,21 +163,20 @@ pub fn build_regional_core_contribution(
             site_index,
             muffin_tin_mesh,
             shell.mesh,
-            shell.solution,
+            shell,
             layout,
         )?;
-        let norm_tolerance = 1.0e-10 * shell.solution.norm_mt.abs().max(1.0);
-        if (transform.muffin_tin_charge - shell.solution.norm_mt).abs() > norm_tolerance {
+        let norm_tolerance = 1.0e-10 * shell.norm_mt.abs().max(1.0);
+        if (transform.muffin_tin_charge - shell.norm_mt).abs() > norm_tolerance {
             return Err(CoreDensityError::MuffinTinNormMismatch {
-                solution: shell.solution.norm_mt,
+                solution: shell.norm_mt,
                 integrated: transform.muffin_tin_charge,
             });
         }
         let probability = shell
-            .solution
             .p
             .iter()
-            .zip(&shell.solution.q)
+            .zip(shell.q)
             .take(muffin_tin_mesh.len())
             .map(|(&p, &q)| p * p + q * q);
         for (index, value) in probability.enumerate() {
@@ -186,10 +190,10 @@ pub fn build_regional_core_contribution(
         }
         let muffin_tin_charge = shell.occupation * transform.muffin_tin_charge;
         diagnostics.push(CoreShellDensityDiagnostic {
-            state: shell.solution.state,
+            state: shell.state,
             occupation: shell.occupation,
             muffin_tin_charge,
-            spill_charge: shell.occupation * shell.solution.spill,
+            spill_charge: shell.occupation * shell.spill,
             smooth_charge: shell.occupation * transform.smooth_charge,
             pseudocharge_boundary: PseudochargeBoundaryDiagnostic {
                 value: shell.occupation * transform.boundary.value,
@@ -198,7 +202,7 @@ pub fn build_regional_core_contribution(
                 continued_derivative: shell.occupation * transform.boundary.continued_derivative,
             },
         });
-        eigenvalue_sum += shell.solution.energy * shell.occupation;
+        eigenvalue_sum += shell.energy * shell.occupation;
     }
 
     enforce_fourier_reality(layout, &mut fourier_charge)?;
@@ -381,14 +385,14 @@ fn smooth_shell_transform(
     site_index: usize,
     muffin_tin_mesh: &ExponentialMesh,
     extended_mesh: &ExponentialMesh,
-    solution: &CoreDiracSolution,
+    shell: &RegionalCoreShellInput<'_>,
     layout: &muffintin_core::FourierLayout,
 ) -> Result<SmoothShellTransform, CoreDensityError> {
     let mt_len = muffin_tin_mesh.len();
-    let probability = solution
+    let probability = shell
         .p
         .iter()
-        .zip(&solution.q)
+        .zip(shell.q)
         .map(|(&p, &q)| p * p + q * q)
         .collect::<Vec<_>>();
     let actual_density = probability
@@ -515,18 +519,18 @@ fn validate_shell(
     muffin_tin_mesh: &ExponentialMesh,
     shell: &RegionalCoreShellInput<'_>,
 ) -> Result<(), CoreDensityError> {
-    let capacity = f64::from(shell.solution.state.kappa.degeneracy());
+    let capacity = f64::from(shell.state.kappa.degeneracy());
     if !shell.occupation.is_finite() || shell.occupation < 0.0 || shell.occupation > capacity {
         return Err(CoreDensityError::InvalidOccupation {
             occupation: shell.occupation,
             capacity,
         });
     }
-    if shell.solution.p.len() != shell.mesh.len() || shell.solution.q.len() != shell.mesh.len() {
+    if shell.p.len() != shell.mesh.len() || shell.q.len() != shell.mesh.len() {
         return Err(CoreDensityError::SolutionMeshLength {
             mesh: shell.mesh.len(),
-            p: shell.solution.p.len(),
-            q: shell.solution.q.len(),
+            p: shell.p.len(),
+            q: shell.q.len(),
         });
     }
     if shell.mesh.len() <= muffin_tin_mesh.len() {
@@ -640,6 +644,12 @@ pub enum CoreDensityError {
     InvalidSpinOccupations { up: f64, down: f64 },
     #[error("core spin occupations up={up}, down={down} do not sum to {occupation}")]
     SpinOccupationSum { occupation: f64, up: f64, down: f64 },
+    #[error("core sidecar shell {shell} does not contain every magnetic channel exactly once")]
+    SidecarMagneticChannels { shell: usize },
+    #[error("core sidecar shell {shell} is not uniform over magnetic channels")]
+    SidecarOpenShell { shell: usize },
+    #[error("core sidecar shell {shell} has invalid occupation {occupation}")]
+    SidecarOccupation { shell: usize, occupation: f64 },
     #[error("extended core mesh has {mesh} points but solution arrays have P={p}, Q={q}")]
     SolutionMeshLength { mesh: usize, p: usize, q: usize },
     #[error("extended core mesh has {extended} points but MT prefix has {muffin_tin}")]
@@ -707,7 +717,7 @@ mod tests {
         VolumeBohr3,
     };
     use muffintin_sphere::HarmonicConvention;
-    use muffintin_sphere::{CoreState, RelativisticRole};
+    use muffintin_sphere::{CoreDiracSolution, CoreState, RelativisticRole};
 
     const CELL_LENGTH: f64 = 8.0;
 
@@ -847,7 +857,12 @@ mod tests {
             muffin_tin_mesh,
             &[RegionalCoreShellInput {
                 mesh: extended_mesh,
-                solution,
+                state: solution.state,
+                energy: solution.energy,
+                p: &solution.p,
+                q: &solution.q,
+                norm_mt: solution.norm_mt,
+                spill: solution.spill,
                 occupation,
                 spin: CoreSpinPartition::ClosedShellAverage,
             }],
@@ -892,7 +907,12 @@ mod tests {
             &mt_mesh,
             &[RegionalCoreShellInput {
                 mesh: &extended_mesh,
-                solution: &solution,
+                state: solution.state,
+                energy: solution.energy,
+                p: &solution.p,
+                q: &solution.q,
+                norm_mt: solution.norm_mt,
+                spill: solution.spill,
                 occupation: 2.0,
                 spin: CoreSpinPartition::ExplicitCollinear { up: 2.0, down: 0.0 },
             }],
