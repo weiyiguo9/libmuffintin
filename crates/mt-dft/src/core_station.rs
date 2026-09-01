@@ -41,7 +41,16 @@ pub struct CoreShellOrbital {
     pub norm_total: f64,
     pub norm_mt: f64,
     pub spill: f64,
-    pub occupations: Vec<(TwiceMu, f64)>,
+    pub occupations: CoreShellOccupations,
+}
+
+/// Exact occupation representation retained with a core shell.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CoreShellOccupations {
+    /// Occupations resolved over every magnetic channel of one kappa shell.
+    MuResolved(Vec<(TwiceMu, f64)>),
+    /// Collinear spin totals whose assignment to individual mu channels is unspecified.
+    ExplicitCollinear { up: f64, down: f64 },
 }
 
 /// Exact potential samples and solver specifications that produced a site sidecar.
@@ -201,8 +210,8 @@ pub(crate) fn solve_regional_core_site(
     let occupations = request
         .states
         .iter()
-        .map(expand_mu_occupations)
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(retain_shell_occupations)
+        .collect::<Vec<_>>();
 
     let solved = request
         .states
@@ -225,7 +234,7 @@ fn build_regional_core_site(
     extended: &ExtendedCorePotential,
     muffin_tin_mesh: &ExponentialMesh,
     solved: Vec<SolvedBoundCoreState>,
-    occupations: Vec<Vec<(TwiceMu, f64)>>,
+    occupations: Vec<CoreShellOccupations>,
 ) -> Result<SolvedRegionalCoreSite, CoreStationError> {
     let shells = solved
         .iter()
@@ -275,23 +284,21 @@ fn build_regional_core_site(
     })
 }
 
-fn expand_mu_occupations(
-    requested: &CoreStateRequest,
-) -> Result<Vec<(TwiceMu, f64)>, CoreStationError> {
+fn retain_shell_occupations(requested: &CoreStateRequest) -> CoreShellOccupations {
     match requested.spin {
         CoreSpinPartition::ClosedShellAverage => {
             let occupation = requested.occupation / f64::from(requested.state.kappa.degeneracy());
-            Ok(requested
-                .state
-                .kappa
-                .twice_mu_values()
-                .map(|twice_mu| (twice_mu, occupation))
-                .collect())
+            CoreShellOccupations::MuResolved(
+                requested
+                    .state
+                    .kappa
+                    .twice_mu_values()
+                    .map(|twice_mu| (twice_mu, occupation))
+                    .collect(),
+            )
         }
-        CoreSpinPartition::ExplicitCollinear { .. } => {
-            Err(CoreStationError::AmbiguousCollinearMuOccupation {
-                state: requested.state,
-            })
+        CoreSpinPartition::ExplicitCollinear { up, down } => {
+            CoreShellOccupations::ExplicitCollinear { up, down }
         }
     }
 }
@@ -347,10 +354,6 @@ pub enum CoreStationError {
     DuplicateSiteIndex(usize),
     #[error("core site id {0:?} is requested more than once")]
     DuplicateSiteId(String),
-    #[error(
-        "explicit collinear occupation for core state {state:?} cannot be assigned uniquely to mu channels"
-    )]
-    AmbiguousCollinearMuOccupation { state: CoreState },
     #[error("core potential carries {actual} nuclear charges, expected {expected}")]
     NuclearSiteCount { expected: usize, actual: usize },
     #[error("extended core mesh point count overflows usize")]
@@ -491,9 +494,8 @@ mod tests {
         let occupations = request
             .states
             .iter()
-            .map(expand_mu_occupations)
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .map(retain_shell_occupations)
+            .collect::<Vec<_>>();
         let retained = build_regional_core_site(
             &density,
             &request,
@@ -515,7 +517,7 @@ mod tests {
         assert_eq!(retained.orbitals.provenance.solve_specs, vec![spec]);
         assert_eq!(
             retained.orbitals.provenance.extended_potential,
-            potential.into_iter().map(Hartree).collect::<Vec<_>>()
+            potential.iter().copied().map(Hartree).collect::<Vec<_>>()
         );
         let shell = &retained.orbitals.shells[0];
         assert_eq!(shell.state, solver_oracle.state);
@@ -525,8 +527,11 @@ mod tests {
         assert_eq!(shell.norm_total, solver_oracle.norm_total);
         assert_eq!(shell.norm_mt, solver_oracle.norm_mt);
         assert_eq!(shell.spill, solver_oracle.spill);
+        let CoreShellOccupations::MuResolved(mu_occupations) = &shell.occupations else {
+            panic!("closed shell must be resolved over mu channels");
+        };
         assert_eq!(
-            shell.occupations,
+            *mu_occupations,
             state
                 .kappa
                 .twice_mu_values()
@@ -534,12 +539,58 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            shell
-                .occupations
+            mu_occupations
                 .iter()
                 .map(|(_, occupation)| occupation)
                 .sum::<f64>(),
             request.states[0].occupation
+        );
+
+        let explicit_spin = CoreSpinPartition::ExplicitCollinear { up: 1.5, down: 0.5 };
+        let explicit_request = CoreSiteRequest {
+            site_index: 0,
+            site_id: "H".to_owned(),
+            states: vec![CoreStateRequest {
+                state,
+                occupation: 2.0,
+                spin: explicit_spin,
+            }],
+        };
+        let explicit_density_oracle = build_regional_core_contribution(
+            explicit_request.site_id.clone(),
+            density.geometry(),
+            explicit_request.site_index,
+            &muffin_tin_mesh,
+            &[RegionalCoreShellInput {
+                mesh: &mesh,
+                solution: &solver_oracle,
+                occupation: 2.0,
+                spin: explicit_spin,
+            }],
+            &density,
+        )
+        .unwrap();
+        let explicit_retained = build_regional_core_site(
+            &density,
+            &explicit_request,
+            &extended,
+            &muffin_tin_mesh,
+            vec![SolvedBoundCoreState {
+                solution: solver_oracle.clone(),
+                spec,
+            }],
+            explicit_request
+                .states
+                .iter()
+                .map(retain_shell_occupations)
+                .collect(),
+        )
+        .unwrap();
+
+        assert_eq!(explicit_retained.contribution, explicit_density_oracle);
+        assert_eq!(
+            explicit_retained.orbitals.shells[0].occupations,
+            CoreShellOccupations::ExplicitCollinear { up: 1.5, down: 0.5 }
         );
     }
 }
