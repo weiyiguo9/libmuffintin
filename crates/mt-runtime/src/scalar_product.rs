@@ -431,10 +431,6 @@ pub(crate) fn require_scalar_q_slice(
                 q_index: iq,
                 k_index,
             },
-            CanonicalQMapError::GammaTarget => ScalarQSliceError::IncompleteQSlice {
-                actual: iq,
-                expected: n_k,
-            },
         })?;
     }
     Ok(first)

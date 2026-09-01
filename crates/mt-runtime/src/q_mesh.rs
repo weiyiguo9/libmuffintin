@@ -19,7 +19,31 @@ pub(crate) enum CanonicalQMapError {
     CanonicalQMismatch,
     IncompatibleMap,
     KMinusQWrap { k_index: usize },
-    GammaTarget,
+}
+
+/// Canonical unshifted transfer mesh associated with an ordered regular k mesh.
+///
+/// `k_fractional` may carry a common Monkhorst--Pack-style shift. Subtracting
+/// its first point preserves the regular ordering while producing exactly
+/// `i/N` on each axis, so transfer topology never inherits the k shift.
+pub(crate) fn canonical_q_points(
+    k_fractional: &[[f64; 3]],
+) -> Result<Vec<[f64; 3]>, CanonicalQMapError> {
+    let origin = *k_fractional
+        .first()
+        .ok_or(CanonicalQMapError::IncompatibleMap)?;
+    if k_fractional
+        .iter()
+        .flatten()
+        .chain(origin.iter())
+        .any(|value| !value.is_finite())
+    {
+        return Err(CanonicalQMapError::NonFiniteQSlice);
+    }
+    Ok(k_fractional
+        .iter()
+        .map(|point| std::array::from_fn(|axis| (point[axis] - origin[axis]).rem_euclid(1.0)))
+        .collect())
 }
 
 /// Requested $q_{\mathrm{in}}$, folded $q_{\mathrm{canonical}}$, and `TransferQ`.
@@ -96,9 +120,10 @@ pub(crate) fn map_k_minus_q(
 
 /// Validate one canonical q and its complete ordered k-minus-q map.
 ///
-/// The q record at `q_index` must equal the matching ordered k point in
-/// Cartesian reciprocal coordinates. Every map entry must retain its k index,
-/// point inside the mesh, and satisfy the stored integer Umklapp relation.
+/// The q record at `q_index` must equal the matching ordered point of the
+/// unshifted canonical q mesh. Every map entry must retain its k index, form a
+/// permutation of the shifted k mesh, and satisfy the stored integer Umklapp
+/// relation.
 pub(crate) fn validate_canonical_q_map(
     k_fractional: &[[f64; 3]],
     reciprocal: ReciprocalLattice,
@@ -107,7 +132,8 @@ pub(crate) fn validate_canonical_q_map(
     maps: impl IntoIterator<Item = (usize, usize, [i32; 3])>,
 ) -> Result<(), CanonicalQMapError> {
     let n_k = k_fractional.len();
-    let q_canonical = *k_fractional
+    let q_fractional = canonical_q_points(k_fractional)?;
+    let q_canonical = *q_fractional
         .get(q_index)
         .ok_or(CanonicalQMapError::IncompatibleMap)?;
     let expected_q = fractional_to_reciprocal(q_canonical, reciprocal.basis());
@@ -128,10 +154,13 @@ pub(crate) fn validate_canonical_q_map(
     }
 
     let mut actual = 0;
-    let mut q_target = None;
+    let mut targets = vec![false; n_k];
     for (k_index, (stored_k_index, kq_index, umklapp)) in maps.into_iter().enumerate() {
         actual += 1;
         if k_index >= n_k || stored_k_index != k_index || kq_index >= n_k {
+            return Err(CanonicalQMapError::IncompatibleMap);
+        }
+        if std::mem::replace(&mut targets[kq_index], true) {
             return Err(CanonicalQMapError::IncompatibleMap);
         }
         let k = k_fractional[k_index];
@@ -150,19 +179,9 @@ pub(crate) fn validate_canonical_q_map(
                 });
             }
         }
-        if k_index == q_index {
-            q_target = Some(kq_index);
-        }
     }
-    if actual != n_k {
+    if actual != n_k || targets.into_iter().any(|seen| !seen) {
         return Err(CanonicalQMapError::IncompatibleMap);
-    }
-    let q_target = q_target.ok_or(CanonicalQMapError::IncompatibleMap)?;
-    if k_fractional[q_target]
-        .iter()
-        .any(|component| component.abs() > MESH_COORD_TOLERANCE)
-    {
-        return Err(CanonicalQMapError::GammaTarget);
     }
     Ok(())
 }
