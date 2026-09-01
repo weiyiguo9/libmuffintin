@@ -4,10 +4,10 @@ use std::collections::BTreeSet;
 
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, MeshError, TwiceMu};
 use muffintin_coulomb::{
-    BorrowedCoreShell, BorrowedValenceRadial, ClosedCoreOccupations, CoreCoreFockAction,
-    CoreCoreFockError, CoreCoreFockShell, CoreCoreFockTrace, PreweightedSiteValenceDensity,
-    RadialSlaterSite, RadialValenceCoreActions, RadialValenceCoreError,
-    RadialValenceCoreShellAction, core_core_fock_actions, radial_valence_core_actions,
+    BorrowedCoreShell, ClosedCoreOccupations, CoreCoreFockAction, CoreCoreFockError,
+    CoreCoreFockShell, CoreCoreFockTrace, PreweightedSiteValenceDensity, RadialSlaterSite,
+    RadialValenceCoreActions, RadialValenceCoreError, RadialValenceCoreShellAction,
+    core_core_fock_actions, radial_valence_core_actions,
 };
 use muffintin_sphere::{
     CoreBracketSearch, CoreDiracExchangeAction, CoreDiracSolution, CoreDiracSourcedSpec,
@@ -894,6 +894,7 @@ mod tests {
         FourierLayout, HermitianFourierField, InterstitialGeometry, InverseBohr, Kappa,
         ReciprocalLattice, RelativisticChannel, Sphere, VolumeBohr3,
     };
+    use muffintin_coulomb::BorrowedValenceRadial;
     use muffintin_sphere::{HarmonicConvention, SphereField};
     use num_complex::Complex64;
 
