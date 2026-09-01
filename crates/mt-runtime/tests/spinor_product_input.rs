@@ -648,4 +648,19 @@ fn core_sidecar_keeps_exact_mt_prefix_total_norm_spill_and_flat_mu_order() {
             kappa: -1
         })
     ));
+
+    let mut invalid_diagnostics = sidecar;
+    invalid_diagnostics.shells[0].spill = f64::NAN;
+    let plain = physics
+        .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
+        .unwrap();
+    assert!(matches!(
+        plain.with_core_sidecars(&[invalid_diagnostics]),
+        Err(SpinorCoreInputError::RadialDiagnostics {
+            site: 0,
+            n: 1,
+            kappa: -1,
+            ..
+        })
+    ));
 }

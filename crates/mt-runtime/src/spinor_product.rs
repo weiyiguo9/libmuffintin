@@ -32,6 +32,8 @@ pub const SPINOR_RADIAL_PDOT: usize = 1;
 /// First signed-$\kappa$ LO/RLO `DiracRadialId.n`; later requests use `SPINOR_RADIAL_LO0 + ordinal`.
 pub const SPINOR_RADIAL_LO0: usize = 2;
 
+const CORE_DIAGNOSTIC_TOLERANCE: f64 = 1.0e-12;
+
 /// Per-k map of $k-q_{\mathrm{canonical}}$ onto the regular mesh.
 ///
 /// The integer wrap $G_{\mathrm{wrap}}$ satisfies
@@ -137,6 +139,17 @@ pub enum SpinorCoreInputError {
         "core sidecar site {site} n={n} kappa={kappa} has inconsistent P/Q and extended-mesh lengths"
     )]
     RadialLength { site: usize, n: u32, kappa: i32 },
+    #[error(
+        "core sidecar site {site} n={n} kappa={kappa} has invalid norm/spill diagnostics: norm_total={norm_total}, norm_mt={norm_mt}, spill={spill}"
+    )]
+    RadialDiagnostics {
+        site: usize,
+        n: u32,
+        kappa: i32,
+        norm_total: f64,
+        norm_mt: f64,
+        spill: f64,
+    },
     #[error("core sidecar site {site} duplicates n={n} kappa={kappa}")]
     DuplicateShell { site: usize, n: u32, kappa: i32 },
     #[error(
@@ -282,6 +295,32 @@ impl SpinorProductInput {
                         site,
                         n: shell.state.n,
                         kappa: shell.state.kappa.get(),
+                    });
+                }
+                let diagnostic_scale = shell
+                    .norm_total
+                    .abs()
+                    .max(shell.norm_mt.abs())
+                    .max(shell.spill.abs())
+                    .max(1.0);
+                let diagnostic_tolerance = CORE_DIAGNOSTIC_TOLERANCE * diagnostic_scale;
+                if !shell.norm_total.is_finite()
+                    || shell.norm_total <= 0.0
+                    || !shell.norm_mt.is_finite()
+                    || shell.norm_mt < 0.0
+                    || shell.norm_mt > shell.norm_total + diagnostic_tolerance
+                    || !shell.spill.is_finite()
+                    || shell.spill < -diagnostic_tolerance
+                    || (shell.norm_total - shell.norm_mt - shell.spill).abs()
+                        > diagnostic_tolerance
+                {
+                    return Err(SpinorCoreInputError::RadialDiagnostics {
+                        site,
+                        n: shell.state.n,
+                        kappa: shell.state.kappa.get(),
+                        norm_total: shell.norm_total,
+                        norm_mt: shell.norm_mt,
+                        spill: shell.spill,
                     });
                 }
                 if !seen_shells.insert((site, shell.state.n, shell.state.kappa)) {

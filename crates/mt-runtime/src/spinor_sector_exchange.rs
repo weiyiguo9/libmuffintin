@@ -56,7 +56,7 @@ pub struct FrozenSpinorSectorExchange {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SectorRadialComparisonSpec {
     pub numerical_tolerance: Hartree,
-    /// Dimensionless maximum permitted `1 - norm_mt / norm_total` per core shell.
+    /// Dimensionless maximum permitted outside norm `norm_total - norm_mt` per core shell.
     pub maximum_shell_spill: f64,
 }
 
