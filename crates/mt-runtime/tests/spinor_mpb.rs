@@ -3,10 +3,12 @@
 use std::collections::BTreeMap;
 
 use muffintin::{
-    CheckpointPhysics, GammaExchangeTreatment, SPINOR_MPB_NSPIN, SPINOR_RADIAL_LO0,
-    SPINOR_RADIAL_P, SectorOccupations, SpinorExchangeMpbSpec, SpinorMpbError, SpinorMpbSelection,
-    SpinorMpbSpec, build_frozen_spinor_sector_exchange, build_spinor_exchange_mpb,
-    build_spinor_mpb,
+    CheckpointPhysics, CoreValenceComparisonSpec, GammaExchangeTreatment, SPINOR_MPB_NSPIN,
+    SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SectorOccupations, SpinorExchangeMpbSpec, SpinorMpbError,
+    SpinorMpbSelection, SpinorMpbSpec, build_frozen_core_valence_exchange,
+    build_frozen_radial_core_valence_actions, build_frozen_site_valence_densities,
+    build_frozen_spinor_sector_exchange, build_spinor_exchange_mpb, build_spinor_mpb,
+    compare_frozen_core_valence,
 };
 use muffintin_core::{ExponentialMesh, Hartree, InverseBohr, Kappa, ReciprocalLattice, TwiceMu};
 use muffintin_coulomb::CoulombRequest;
@@ -825,6 +827,162 @@ fn frozen_gamma_sector_evaluator_closes_all_public_one_shot_identities() {
     let mut changed = occupations.clone();
     changed.valence[0][0] *= 0.5;
     assert!(!result.frozen_context_matches(std::slice::from_ref(&input), &request, &changed));
+}
+
+#[test]
+fn frozen_site_density_and_cv_only_contraction_apply_weights_once_and_close_delta() {
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let plain = physics
+        .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
+        .unwrap();
+    let input = plain
+        .clone()
+        .with_core_sidecars(&[core_sidecar(&plain, 0.5)])
+        .unwrap();
+    let n_valence = input.orbitals.band_window.count;
+    let mut valence = vec![0.0; n_valence];
+    valence[0] = 0.6;
+    if n_valence > 1 {
+        valence[1] = 0.2;
+    }
+    let occupations = SectorOccupations {
+        k_weights: vec![1.0],
+        valence: vec![valence],
+        core: input
+            .core
+            .orbitals
+            .iter()
+            .map(|orbital| orbital.occupation)
+            .collect(),
+        gamma: GammaExchangeTreatment::FiniteBody,
+    };
+    let densities =
+        build_frozen_site_valence_densities(std::slice::from_ref(&input), &occupations).unwrap();
+    let channels = input.orbitals.bases[0].site_augmentations[0][0]
+        .channels
+        .as_slice();
+    let projected = CompiledSiteProjection::spinor(&input.orbitals.bases[0], 0, channels)
+        .unwrap()
+        .project_eigenvectors(&input.orbitals.eigenvectors[0])
+        .unwrap();
+    let expected_00 = (0..n_valence)
+        .map(|band| {
+            occupations.valence[0][band] * projected.at(0, band).conj() * projected.at(0, band)
+        })
+        .sum::<Complex64>();
+    assert!((densities.sites[0].matrix[0] - expected_00).norm() < 1.0e-13);
+    assert!(densities.frozen_context_matches(std::slice::from_ref(&input), &occupations));
+
+    let mut changed_occupations = occupations.clone();
+    for occupation in &mut changed_occupations.valence[0] {
+        *occupation *= 0.5;
+    }
+    let half =
+        build_frozen_site_valence_densities(std::slice::from_ref(&input), &changed_occupations)
+            .unwrap();
+    assert!(
+        half.sites[0]
+            .matrix
+            .iter()
+            .zip(&densities.sites[0].matrix)
+            .all(|(got, full)| (*got - *full * 0.5).norm() < 1.0e-13)
+    );
+    assert!(!densities.frozen_context_matches(std::slice::from_ref(&input), &changed_occupations));
+    let mut changed_input = input.clone();
+    changed_input.source.radials[0].valence[0].samples.large[0] *= 1.01;
+    assert!(!densities.frozen_context_matches(std::slice::from_ref(&changed_input), &occupations));
+    let radial_actions = build_frozen_radial_core_valence_actions(&densities).unwrap();
+    assert!(radial_actions.frozen_context_matches(std::slice::from_ref(&input), &occupations));
+    assert!(
+        !radial_actions.frozen_context_matches(std::slice::from_ref(&changed_input), &occupations)
+    );
+
+    let core_mpb = build_spinor_exchange_mpb(&input, &exchange_spec()).unwrap();
+    let request = CoulombRequest::cubic(8.0, 2).unwrap();
+    let cross = build_frozen_core_valence_exchange(
+        std::slice::from_ref(&input),
+        std::slice::from_ref(&core_mpb),
+        &request,
+        &occupations,
+    )
+    .unwrap();
+    assert!(cross.frozen_context_matches(std::slice::from_ref(&input), &request, &occupations));
+    assert!(!cross.frozen_context_matches(
+        std::slice::from_ref(&input),
+        &request,
+        &changed_occupations
+    ));
+    let diagonal_trace = cross
+        .exact_vc_diagonal
+        .iter()
+        .zip(&occupations.core)
+        .map(|(diagonal, occupation)| diagonal.get() * occupation)
+        .sum::<f64>();
+    assert!((diagonal_trace - cross.vc.trace.get()).abs() < 1.0e-12);
+    let comparison = compare_frozen_core_valence(
+        &cross,
+        &densities,
+        CoreValenceComparisonSpec {
+            numerical_tolerance: Hartree(1.0e-8),
+            maximum_shell_spill: 0.02,
+        },
+    )
+    .unwrap();
+    assert!(comparison.action_radial_residual.get() < 1.0e-8);
+    assert!(comparison.action_cv_mpb_residual.get() < 1.0e-8);
+    assert!(comparison.action_vc_mpb_residual.get() < 1.0e-8);
+    assert!(comparison.weighted_delta_closure_residual.get() < 1.0e-8);
+    assert_eq!(comparison.deltas.len(), input.core.orbitals.len());
+}
+
+#[test]
+fn frozen_site_density_inserts_nonuniform_k_weights_once() {
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let config = spinor_config([2, 1, 1], 0.5);
+    let gamma_plain = physics.spinor_product_input(&config, [0.0; 3]).unwrap();
+    let sidecar = core_sidecar(&gamma_plain, 0.5);
+    let gamma = gamma_plain
+        .with_core_sidecars(std::slice::from_ref(&sidecar))
+        .unwrap();
+    let finite = physics
+        .spinor_product_input(&config, [0.5, 0.0, 0.0])
+        .unwrap()
+        .with_core_sidecars(&[sidecar])
+        .unwrap();
+    let inputs = vec![gamma, finite];
+    let n_valence = inputs[0].orbitals.band_window.count;
+    let mut valence = vec![vec![0.0; n_valence]; 2];
+    valence[0][0] = 0.2;
+    valence[1][0] = 0.8;
+    let occupations = SectorOccupations {
+        k_weights: vec![0.25, 0.75],
+        valence,
+        core: inputs[0]
+            .core
+            .orbitals
+            .iter()
+            .map(|orbital| orbital.occupation)
+            .collect(),
+        gamma: GammaExchangeTreatment::FiniteBody,
+    };
+    let densities = build_frozen_site_valence_densities(&inputs, &occupations).unwrap();
+    let expected = (0..2)
+        .map(|k| {
+            let channels = inputs[0].orbitals.bases[k].site_augmentations[0][0]
+                .channels
+                .as_slice();
+            let projected =
+                CompiledSiteProjection::spinor(&inputs[0].orbitals.bases[k], 0, channels)
+                    .unwrap()
+                    .project_eigenvectors(&inputs[0].orbitals.eigenvectors[k])
+                    .unwrap();
+            occupations.k_weights[k]
+                * occupations.valence[k][0]
+                * projected.at(0, 0).conj()
+                * projected.at(0, 0)
+        })
+        .sum::<Complex64>();
+    assert!((densities.sites[0].matrix[0] - expected).norm() < 1.0e-13);
 }
 
 #[test]

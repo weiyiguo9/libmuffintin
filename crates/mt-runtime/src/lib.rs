@@ -25,6 +25,7 @@ mod scalar_product;
 mod scalar_thc;
 mod single_dft_scf;
 mod site_coords;
+mod spinor_core_valence;
 mod spinor_coulomb;
 mod spinor_exchange_mpb;
 mod spinor_mldump;
@@ -99,6 +100,12 @@ pub use scalar_thc::{
     sample_scalar_orbitals,
 };
 pub use single_dft_scf::{SingleDftScfConfigError, single_dft_scf_config};
+pub use spinor_core_valence::{
+    CoreValenceComparisonSpec, CoreValenceDeltaDiagnostic, FrozenCoreValenceComparison,
+    FrozenCoreValenceError, FrozenRadialCoreValenceActions, FrozenSiteValenceDensities,
+    FrozenSiteValenceDensity, FrozenSiteValenceOrbital, build_frozen_radial_core_valence_actions,
+    build_frozen_site_valence_densities, compare_frozen_core_valence,
+};
 pub use spinor_coulomb::{
     SPINOR_COULOMB_EXACTNESS_FLOOR, SpinorCoulombDiscrepancy, SpinorCoulombError,
     SpinorCoulombPairDiagnostic, SpinorCoulombPairMatch, SpinorCoulombQRecord, SpinorCoulombResult,
@@ -119,9 +126,10 @@ pub use spinor_product::{
     SpinorCoreOrbital, SpinorCoreTable, SpinorFrozenOrbitals, SpinorKMinusQ, SpinorProductInput,
 };
 pub use spinor_sector_exchange::{
-    CoreCoreRadialComparison, CoreShellSpillDiagnostic, FrozenExchangeSector,
-    FrozenSpinorSectorExchange, FrozenSpinorSectorExchangeError, SectorOccupations,
-    SectorRadialComparison, SectorRadialComparisonSpec, build_frozen_spinor_sector_exchange,
+    CoreCoreRadialComparison, CoreShellSpillDiagnostic, FrozenCoreValenceExchange,
+    FrozenExchangeSector, FrozenSpinorSectorExchange, FrozenSpinorSectorExchangeError,
+    SectorOccupations, SectorRadialComparison, SectorRadialComparisonSpec,
+    build_frozen_core_valence_exchange, build_frozen_spinor_sector_exchange,
     compare_frozen_sector_radial, compare_relaxed_core_core_radial,
 };
 pub use spinor_thc::{SpinorThcError, SpinorThcResult, SpinorThcSpec, build_spinor_thc};

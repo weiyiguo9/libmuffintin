@@ -3,7 +3,7 @@
 use crate::isdf_exchange::{
     GammaExchangeTreatment, IsdfExchangeBandMatrix, IsdfExchangeError, IsdfExchangeSpec,
     RectangularExchangeRecord, build_spinor_mpb_exchange, contract_rectangular_exchange,
-    target_trace, validate_occupations,
+    target_trace, validate_k_weights, validate_occupations,
 };
 use crate::spinor_exchange_mpb::{SpinorExchangeMpbResult, SpinorExchangeMpbSector};
 use crate::spinor_mpb::SpinorMpbResult;
@@ -33,6 +33,16 @@ pub struct FrozenExchangeSector {
     pub trace: Hartree,
     pub target_matrices: Vec<IsdfExchangeBandMatrix>,
     pub maximum_antihermitian_residual: f64,
+}
+
+/// Exact-MPB core-valence contractions without VV or CC work.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FrozenCoreValenceExchange {
+    pub cv: FrozenExchangeSector,
+    pub vc: FrozenExchangeSector,
+    /// Exact VC diagonal weighted over k, per flat core orbital and before core occupation.
+    pub exact_vc_diagonal: Vec<Hartree>,
+    sealed: FrozenSectorContext,
 }
 
 /// Complete one-shot exact-MPB sector accounting on one frozen DFT snapshot.
@@ -111,6 +121,28 @@ impl FrozenSpinorSectorExchange {
     }
 }
 
+impl FrozenCoreValenceExchange {
+    /// Exact freshness check over orbitals, core sidecars, q maps/sources, request, and occupations.
+    pub fn frozen_context_matches(
+        &self,
+        inputs: &[SpinorProductInput],
+        request: &CoulombRequest,
+        occupations: &SectorOccupations,
+    ) -> bool {
+        self.sealed.inputs == inputs
+            && &self.sealed.request == request
+            && &self.sealed.occupations == occupations
+    }
+
+    pub(crate) fn frozen_inputs_occupations_match(
+        &self,
+        inputs: &[SpinorProductInput],
+        occupations: &SectorOccupations,
+    ) -> bool {
+        self.sealed.inputs == inputs && &self.sealed.occupations == occupations
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct FrozenSectorContext {
     inputs: Vec<SpinorProductInput>,
@@ -160,6 +192,49 @@ pub enum FrozenSpinorSectorExchangeError {
     },
 }
 
+struct PreparedCoreSectors {
+    operators: Vec<muffintin_coulomb::CoulombOperator>,
+    cv_vertices: Vec<Vec<PairVertex>>,
+    vc_vertices: Vec<Vec<PairVertex>>,
+    cc_vertices: Vec<Vec<PairVertex>>,
+    maps: Vec<Vec<usize>>,
+    cv_layout: ExchangePairLayout,
+    vc_layout: ExchangePairLayout,
+    cc_layout: ExchangePairLayout,
+}
+
+/// Contract only the exact-MPB CV and VC sectors on one frozen q slice.
+///
+/// The result exposes the VC diagonal weighted over k per flat core target without
+/// applying a target-core occupation. No VV or CC contraction is performed.
+pub fn build_frozen_core_valence_exchange(
+    inputs: &[SpinorProductInput],
+    core_mpb: &[SpinorExchangeMpbResult],
+    request: &CoulombRequest,
+    occupations: &SectorOccupations,
+) -> Result<FrozenCoreValenceExchange, FrozenSpinorSectorExchangeError> {
+    let first = validate_frozen_core_context(inputs, request, occupations)?;
+    let prepared = prepare_core_sectors(inputs, core_mpb, request, first)?;
+    let core_rows = vec![occupations.core.clone(); prepared.cv_layout.n_k];
+    let (cv, vc, exact_vc_diagonal) = contract_core_valence(
+        &prepared,
+        &occupations.k_weights,
+        &occupations.valence,
+        &core_rows,
+        occupations.gamma,
+    )?;
+    Ok(FrozenCoreValenceExchange {
+        cv,
+        vc,
+        exact_vc_diagonal,
+        sealed: FrozenSectorContext {
+            inputs: inputs.to_vec(),
+            request: request.clone(),
+            occupations: occupations.clone(),
+        },
+    })
+}
+
 /// Evaluate VV, CV, VC, and CC independently on one converged frozen DFT snapshot.
 ///
 /// This function performs no orbital update, density feedback, core solve, or SCF
@@ -172,26 +247,10 @@ pub fn build_frozen_spinor_sector_exchange(
     request: &CoulombRequest,
     occupations: &SectorOccupations,
 ) -> Result<FrozenSpinorSectorExchange, FrozenSpinorSectorExchangeError> {
-    let first = require_spinor_q_slice(inputs).map_err(q_slice_error)?;
+    let first = validate_frozen_core_context(inputs, request, occupations)?;
     let n_k = first.pair_columns.n_k;
     let n_valence = first.pair_columns.n_orb;
-    let n_core = first.core.orbitals.len();
-    validate_occupations(&occupations.valence, n_k, n_valence)?;
     let core_rows = vec![occupations.core.clone(); n_k];
-    validate_occupations(&core_rows, n_k, n_core)?;
-    if occupations.core
-        != first
-            .core
-            .orbitals
-            .iter()
-            .map(|orbital| orbital.occupation)
-            .collect::<Vec<_>>()
-    {
-        return Err(FrozenSpinorSectorExchangeError::CoreOccupations);
-    }
-    if request.reciprocal() != &first.reciprocal {
-        return Err(FrozenSpinorSectorExchangeError::FrozenContext);
-    }
 
     let vv_result = build_spinor_mpb_exchange(
         inputs,
@@ -217,88 +276,19 @@ pub fn build_frozen_spinor_sector_exchange(
         maximum_antihermitian_residual: vv_result.maximum_antihermitian_residual,
     };
 
-    if core_mpb.len() != n_k {
-        return Err(FrozenSpinorSectorExchangeError::CoreMpbCount {
-            actual: core_mpb.len(),
-            expected: n_k,
-        });
-    }
-    let mut operators = Vec::with_capacity(n_k);
-    let mut cv_vertices = Vec::with_capacity(n_k);
-    let mut vc_vertices = Vec::with_capacity(n_k);
-    let mut cc_vertices = Vec::with_capacity(n_k);
-    let cv_layout = ExchangePairLayout::new(
-        ExchangeSpace::Core,
-        ExchangeSpace::Valence,
-        n_k,
-        n_core,
-        n_valence,
-    );
-    let vc_layout = ExchangePairLayout::new(
-        ExchangeSpace::Valence,
-        ExchangeSpace::Core,
-        n_k,
-        n_valence,
-        n_core,
-    );
-    let cc_layout = ExchangePairLayout::new(
-        ExchangeSpace::Core,
-        ExchangeSpace::Core,
-        n_k,
-        n_core,
-        n_core,
-    );
-    for (q_index, (input, result)) in inputs.iter().zip(core_mpb).enumerate() {
-        if !result.frozen_input_identity().matches(input)
-            || result.auxiliary.q != input.source.q
-            || result.auxiliary.partition != input.source.partition
-            || result.cv.layout != cv_layout
-            || result.vc.layout != vc_layout
-            || result.cc.layout != cc_layout
-        {
-            return Err(FrozenSpinorSectorExchangeError::CoreMpbContext { index: q_index });
-        }
-        cv_vertices.push(order_sector(q_index, &result.cv)?);
-        vc_vertices.push(order_sector(q_index, &result.vc)?);
-        cc_vertices.push(order_sector(q_index, &result.cc)?);
-        operators.push(assemble_coulomb(&result.auxiliary, request)?);
-    }
-    let maps = inputs
-        .iter()
-        .map(|input| {
-            input
-                .k_minus_q
-                .iter()
-                .map(|mapped| mapped.kq_index)
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
-
-    let cv = contract_sector(
-        cv_layout,
-        &maps,
-        &cv_vertices,
-        &operators,
-        &occupations.k_weights,
-        &core_rows,
-        &occupations.valence,
-        occupations.gamma,
-    )?;
-    let vc = contract_sector(
-        vc_layout,
-        &maps,
-        &vc_vertices,
-        &operators,
+    let prepared = prepare_core_sectors(inputs, core_mpb, request, first)?;
+    let (cv, vc, _) = contract_core_valence(
+        &prepared,
         &occupations.k_weights,
         &occupations.valence,
         &core_rows,
         occupations.gamma,
     )?;
     let cc = contract_sector(
-        cc_layout,
-        &maps,
-        &cc_vertices,
-        &operators,
+        prepared.cc_layout,
+        &prepared.maps,
+        &prepared.cc_vertices,
+        &prepared.operators,
         &occupations.k_weights,
         &core_rows,
         &core_rows,
@@ -483,6 +473,162 @@ pub fn compare_relaxed_core_core_radial(
         maximum_measured_shell_spill,
         shell_spill_threshold: spec.maximum_shell_spill,
     })
+}
+
+fn validate_frozen_core_context<'a>(
+    inputs: &'a [SpinorProductInput],
+    request: &CoulombRequest,
+    occupations: &SectorOccupations,
+) -> Result<&'a SpinorProductInput, FrozenSpinorSectorExchangeError> {
+    let first = require_spinor_q_slice(inputs).map_err(q_slice_error)?;
+    let n_k = first.pair_columns.n_k;
+    let n_valence = first.pair_columns.n_orb;
+    let n_core = first.core.orbitals.len();
+    validate_k_weights(&occupations.k_weights, n_k)?;
+    validate_occupations(&occupations.valence, n_k, n_valence)?;
+    let core_rows = vec![occupations.core.clone(); n_k];
+    validate_occupations(&core_rows, n_k, n_core)?;
+    if occupations.core
+        != first
+            .core
+            .orbitals
+            .iter()
+            .map(|orbital| orbital.occupation)
+            .collect::<Vec<_>>()
+    {
+        return Err(FrozenSpinorSectorExchangeError::CoreOccupations);
+    }
+    if request.reciprocal() != &first.reciprocal {
+        return Err(FrozenSpinorSectorExchangeError::FrozenContext);
+    }
+    Ok(first)
+}
+
+fn prepare_core_sectors(
+    inputs: &[SpinorProductInput],
+    core_mpb: &[SpinorExchangeMpbResult],
+    request: &CoulombRequest,
+    first: &SpinorProductInput,
+) -> Result<PreparedCoreSectors, FrozenSpinorSectorExchangeError> {
+    let n_k = first.pair_columns.n_k;
+    let n_valence = first.pair_columns.n_orb;
+    let n_core = first.core.orbitals.len();
+    if core_mpb.len() != n_k {
+        return Err(FrozenSpinorSectorExchangeError::CoreMpbCount {
+            actual: core_mpb.len(),
+            expected: n_k,
+        });
+    }
+    let cv_layout = ExchangePairLayout::new(
+        ExchangeSpace::Core,
+        ExchangeSpace::Valence,
+        n_k,
+        n_core,
+        n_valence,
+    );
+    let vc_layout = ExchangePairLayout::new(
+        ExchangeSpace::Valence,
+        ExchangeSpace::Core,
+        n_k,
+        n_valence,
+        n_core,
+    );
+    let cc_layout = ExchangePairLayout::new(
+        ExchangeSpace::Core,
+        ExchangeSpace::Core,
+        n_k,
+        n_core,
+        n_core,
+    );
+    let mut operators = Vec::with_capacity(n_k);
+    let mut cv_vertices = Vec::with_capacity(n_k);
+    let mut vc_vertices = Vec::with_capacity(n_k);
+    let mut cc_vertices = Vec::with_capacity(n_k);
+    for (q_index, (input, result)) in inputs.iter().zip(core_mpb).enumerate() {
+        if !result.frozen_input_identity().matches(input)
+            || result.auxiliary.q != input.source.q
+            || result.auxiliary.partition != input.source.partition
+            || result.cv.layout != cv_layout
+            || result.vc.layout != vc_layout
+            || result.cc.layout != cc_layout
+        {
+            return Err(FrozenSpinorSectorExchangeError::CoreMpbContext { index: q_index });
+        }
+        cv_vertices.push(order_sector(q_index, &result.cv)?);
+        vc_vertices.push(order_sector(q_index, &result.vc)?);
+        cc_vertices.push(order_sector(q_index, &result.cc)?);
+        operators.push(assemble_coulomb(&result.auxiliary, request)?);
+    }
+    let maps = inputs
+        .iter()
+        .map(|input| {
+            input
+                .k_minus_q
+                .iter()
+                .map(|mapped| mapped.kq_index)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    Ok(PreparedCoreSectors {
+        operators,
+        cv_vertices,
+        vc_vertices,
+        cc_vertices,
+        maps,
+        cv_layout,
+        vc_layout,
+        cc_layout,
+    })
+}
+
+fn contract_core_valence(
+    prepared: &PreparedCoreSectors,
+    k_weights: &[f64],
+    valence_occupations: &[Vec<f64>],
+    core_rows: &[Vec<f64>],
+    gamma: GammaExchangeTreatment,
+) -> Result<
+    (FrozenExchangeSector, FrozenExchangeSector, Vec<Hartree>),
+    FrozenSpinorSectorExchangeError,
+> {
+    let cv = contract_sector(
+        prepared.cv_layout,
+        &prepared.maps,
+        &prepared.cv_vertices,
+        &prepared.operators,
+        k_weights,
+        core_rows,
+        valence_occupations,
+        gamma,
+    )?;
+    let vc = contract_sector(
+        prepared.vc_layout,
+        &prepared.maps,
+        &prepared.vc_vertices,
+        &prepared.operators,
+        k_weights,
+        valence_occupations,
+        core_rows,
+        gamma,
+    )?;
+    let exact_vc_diagonal = (0..prepared.vc_layout.n_target)
+        .map(|core| {
+            Hartree(
+                vc.target_matrices
+                    .iter()
+                    .enumerate()
+                    .map(|(k, matrix)| {
+                        k_weights[k]
+                            * matrix
+                                .element(core, core)
+                                .expect("VC matrix dimension follows its checked layout")
+                                .re
+                    })
+                    .sum(),
+            )
+        })
+        .collect();
+    Ok((cv, vc, exact_vc_diagonal))
 }
 
 #[allow(clippy::too_many_arguments)]
