@@ -85,8 +85,9 @@ exact contracts and derivations.
   `materialize_atomic_start`; the runtime-owned frozen scalar and
   spinor product-input, mixed-product, THC, sampled-Coulomb, natural-grid,
   frozen-orbital ISDF exchange bridges, exact full-VV MPB exchange, and the
-  Gamma spinor-first valence-only HF SCF driver; and the runtime-owned MLDUMP
-  and CoQui writers. The bridge contracts live in
+  full-regular-BZ spinor-first valence-only HF SCF engine with a strict Gamma
+  wrapper; and the runtime-owned MLDUMP and CoQui writers. The bridge
+  contracts live in
   [`doc/17`](doc/17_minimal_dft_scf.md)–[`doc/20`](doc/20_sm_dy_full_spinor_material_demo.md).
 
 All in-memory energies are Hartree and all lengths are Bohr; producer-specific
@@ -157,11 +158,12 @@ this work adds no importer, wheel, or material-accuracy claim.
 [`examples/relativistic_hf`](examples/relativistic_hf/) contains an external
 PySCF NR/sf-X2C1e/X2C1e/4c-DC HF comparison and its Kr/Dyall-v2z report. It is
 a Gaussian-basis quantum-chemistry diagnostic, not a Koelling–Harmon versus
-FRA-LAPW acceptance test. The exact MPB Gamma route now performs valence-only
-self-consistent Fock feedback with the finite Gamma body. It is a
-molecule-in-box implementation gate, not a box-size convergence result or a
-converged periodic HF claim. Regular-k HF, core exchange, and core relaxation
-remain outside that route; ISDF/THC remains a frozen-orbital optional backend.
+FRA-LAPW acceptance test. The exact MPB route now performs valence-only
+self-consistent Fock feedback on a caller-specified finite full-BZ mesh. The
+Gamma API is the `1x1x1`, zero-shift wrapper over that engine. This is not a
+box-size, basis, product-cutoff, or k-mesh convergence result and is not a
+converged periodic HF claim. Core exchange and core relaxation remain outside
+that route; ISDF/THC remains a frozen-orbital optional backend.
 
 Crystal symmetry is currently detection and classification only: the
 `libmuffintin-symmetry` dataset is not yet consumed by the SCF loop, and no

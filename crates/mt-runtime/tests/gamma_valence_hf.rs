@@ -3,7 +3,7 @@
 use muffintin::{
     CheckpointPhysics, GammaExchangeTreatment, GammaValenceHfSpec, IsdfExchangeError,
     IsdfExchangeSpec, SpinorMpbSelection, SpinorMpbSpec, build_spinor_mpb,
-    build_spinor_mpb_exchange, run_gamma_valence_hf,
+    build_spinor_mpb_exchange, run_gamma_valence_hf, run_valence_hf,
 };
 use muffintin_core::{Hartree, InverseBohr};
 use muffintin_coulomb::CoulombRequest;
@@ -140,4 +140,15 @@ fn gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals() {
             && item.lifting_identity_residual <= 1.0e-8
             && item.fock_fixed_point_residual <= hf_spec.fock_density_tolerance
     }));
+
+    let mut generic_physics = CheckpointPhysics::new(&checkpoint).unwrap();
+    let generic = run_valence_hf(&mut generic_physics, &hf_spec).unwrap();
+    assert_eq!(generic.k_fractional, vec![[0.0; 3]]);
+    assert_eq!(generic.q_fractional, vec![[0.0; 3]]);
+    assert_eq!(generic.k_weights, vec![1.0]);
+    assert_eq!(generic.density, result.density);
+    assert_eq!(generic.occupations, result.occupations);
+    assert_eq!(generic.orbital_energies, result.orbital_energies);
+    assert_eq!(generic.exchange_energy, result.exchange_energy);
+    assert_eq!(generic.total_energy, result.total_energy);
 }

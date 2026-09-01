@@ -1,8 +1,8 @@
 # 23. Core–valence exchange and the unified Hartree–Fock driver
 
 This document is a contract: formulas, IR shapes, stage boundaries, and
-acceptance gates. A1 is implemented as described in section 4.1; later stages
-remain planned. The contract lifts two explicit exclusions of
+acceptance gates. A1 and A2 are implemented as described in section 4.1;
+later core stages remain planned. The contract lifts two explicit exclusions of
 [18](18_lapw_mpb_thc_integration.md) §4 —
 core–valence products and the self-consistent Fock loop — and it replaces the
 earlier frozen-core staging idea with a relaxed core at FlapwMBPT parity.
@@ -281,6 +281,7 @@ Bindings named here are planned unless marked existing or A1.
 | Exact full-VV exchange | `build_spinor_mpb_exchange` in `crates/mt-runtime/src/isdf_exchange.rs` | A1; requires every VV column exactly once and seals the full live orbital payload |
 | Nonorthogonal feedback lift | `lift_band_hermitian_feedback` in `crates/mt-operators/src/eigensolve.rs` | A1; forms `S C K C^H S` and re-solves the retained original H0/S problem |
 | Gamma valence HF driver | `run_gamma_valence_hf` in `crates/mt-runtime/src/hf_scf.rs` | A1; spinor-first, one k point, finite Gamma body, no core states |
+| Full-BZ valence HF engine | `run_valence_hf` in `crates/mt-runtime/src/hf_scf.rs` | A2; explicit full regular mesh, complete fresh canonical q slice, no core states |
 | Sharp-core fixture flag | `PairColumnLayout::core_orbital` in `crates/mt-prodbasis/src/pair_layout.rs` | fixture-only; must not model real cores |
 | Molecular AO oracle | `solve_restricted_hf` in `crates/mt-hf/src/lib.rs` | exists; external comparison only |
 
@@ -406,21 +407,32 @@ with respect to molecule box size, basis, product cutoff, or physical energy.
 
 #### A2 — Regular k-mesh valence-only SCF
 
-A2 plans to extend the A1 loop unchanged to a regular crystal $k$ mesh. After
-every orbital update, each iteration traverses the full set of canonical $q$
-slices, rebuilds the VV MPB vertices and any selected THC-compressed Coulomb
-vertices for every slice, and assembles the band-basis Fock feedback through
-the existing $k-q$ wrap, Umklapp, weight, and occupation bookkeeping. No
-canonical slice or vertex record from the preceding orbitals may be reused.
+A2 implements the A1 loop on an explicit full regular crystal $k$ mesh. The
+physical points are $k_i=(i+s)/N$ with the caller's shift $s$, while canonical
+transfers are the distinct unshifted points $q_i=i/N$. For every $q$, the
+$k\mapsto k-q$ table is validated as a permutation of the same shifted mesh,
+including its integer Umklapp identity. Symmetry-reduced input is rejected at
+the driver boundary rather than silently expanded.
 
-The route exits when a $1\times1\times1$ crystal setup agrees with the Gamma
-molecule route for the same cell, orbitals, and `FiniteBody` policy, and when
-the frozen-orbital one-shot VV result on a regular mesh equals the first SCF
-iteration before any orbital update. The repository has no independent
-crystal Hartree–Fock oracle, so these are internal path-equivalence gates, not
-external validation. Convergence in $k$ mesh and molecule box size remains a
-caller study, and A2 makes no claim of a converged periodic Hartree–Fock
-limit.
+After every orbital update, each iteration rebuilds the complete canonical
+$q$ slice and every VV MPB vertex from the same live all-$k$ frame. No
+canonical slice, vertex, or Coulomb record from preceding orbitals is reused.
+The exchange contraction applies occupied-side $w_{k-q}f$ once; the energy
+trace applies outer $w_kf$ once. There is no $q$ weight, implicit spin
+degeneracy, or extra weight on the band-space feedback. Each Hermitian
+$K(k)$ is lifted only through the physical frame that generated it.
+
+The gates require that the $1\times1\times1$ generic setup agrees with the
+strict Gamma molecule route for the same cell, orbitals, and `FiniteBody`
+policy, and that the frozen-orbital one-shot VV result on a regular mesh equals
+the first SCF iteration before any orbital update. A shifted
+$2\times2\times1$ topology gate
+locks the q ordering, permutation, and Umklapp conventions. The repository
+has no independent crystal Hartree–Fock oracle, so these are internal
+path-equivalence gates, not external validation. A returned state is a fixed
+point only on its specified finite full-BZ mesh. Convergence in $k$ mesh,
+basis, product cutoff, and molecule box size remains a caller study; A2 makes
+no claim of a converged periodic Hartree–Fock limit.
 
 | Milestone | Deliverable | Exit gates |
 |---|---|---|

@@ -1,4 +1,4 @@
-//! Gamma-only spinor-first valence Hartree--Fock SCF.
+//! Full-regular-BZ spinor-first valence Hartree--Fock SCF.
 
 use muffintin_core::{Hartree, InverseBohr};
 use muffintin_coulomb::{CoulombRequest, HartreeError, WeinertHartreeSpec};
@@ -99,7 +99,7 @@ pub struct GammaValenceHfResult {
 
 pub type ValenceHfResult = GammaValenceHfResult;
 
-/// Invalid A1 controls or a failed bounded HF solve.
+/// Invalid valence-HF controls or a failed bounded HF solve.
 #[derive(Debug, Error)]
 pub enum GammaValenceHfError {
     #[error("Gamma valence HF requires a 1x1x1 full k mesh with zero shift")]
@@ -108,15 +108,15 @@ pub enum GammaValenceHfError {
     SymmetryReduction,
     #[error("valence HF regular k mesh cannot define its canonical q topology")]
     QTopology,
-    #[error("Gamma valence HF requires ScfRelativity::SpinorFirstVariation")]
+    #[error("valence HF requires ScfRelativity::SpinorFirstVariation")]
     SpinorFirstVariation,
-    #[error("Gamma valence HF is valence-only and rejects every occupied core state")]
+    #[error("valence HF rejects every occupied core state")]
     CoreStates,
-    #[error("Gamma valence HF max_fock_iterations must be at least two")]
+    #[error("valence HF max_fock_iterations must be at least two")]
     FockIterations,
-    #[error("Gamma valence HF fock_density_tolerance must be finite and positive")]
+    #[error("valence HF fock_density_tolerance must be finite and positive")]
     FockTolerance,
-    #[error("Gamma valence HF fock_mixing must be finite and in (0, 1]")]
+    #[error("valence HF fock_mixing must be finite and in (0, 1]")]
     FockMixing,
     #[error("spectral radial-basis refinement did not settle after {passes} passes")]
     SpectralRefinement { passes: usize },
@@ -129,7 +129,7 @@ pub enum GammaValenceHfError {
         residual: f64,
     },
     #[error(
-        "Gamma valence HF did not converge in {iterations} outer iterations (energy change {energy_change} Ha, density RMS {density_rms})"
+        "valence HF did not converge in {iterations} outer iterations (energy change {energy_change} Ha, density RMS {density_rms})"
     )]
     NotConverged {
         iterations: usize,
@@ -160,7 +160,7 @@ pub enum GammaValenceHfError {
     Exchange(#[from] IsdfExchangeError),
     #[error("exchange band matrix {actual} is not in expected k order {expected}")]
     ExchangeKIndex { expected: usize, actual: usize },
-    #[error("Gamma valence HF gate {gate} has residual {residual}, above {tolerance}")]
+    #[error("valence HF gate {gate} has residual {residual}, above {tolerance}")]
     Gate {
         gate: &'static str,
         residual: f64,
