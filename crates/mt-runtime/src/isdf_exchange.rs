@@ -540,7 +540,6 @@ pub(crate) fn contract_rectangular_exchange(
 ) -> Result<RectangularExchangeResult, IsdfExchangeError> {
     let n_k = layout.n_k;
     let n_occupied = layout.n_occupied;
-    let n_target = layout.n_target;
     if records.len() != n_k || maps.len() != n_k {
         return Err(IsdfExchangeError::QCount {
             q_count: records.len(),
