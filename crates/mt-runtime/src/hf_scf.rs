@@ -442,7 +442,7 @@ fn solve_fixed_potential(
     let mut first_global_solve_identity_residual = None;
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
-    let mut previous_feedback = None;
+    let mut previous_global_feedback = None;
     for fock_iteration in 1..=spec.max_fock_iterations {
         let occupation = solve_occupations(
             bands.states(),
@@ -477,15 +477,18 @@ fn solve_fixed_potential(
                 first_one_shot_parity_residual.expect("just recorded"),
                 IDENTITY_TOLERANCE,
             )?;
-            let feedback = exchange_feedback(&driver)?;
-            let lifting_identity_residual = lifting_identity(&bands, &feedback)?;
+            let band_feedback = exchange_feedback(&driver)?;
+            let global_feedback = lift_global_feedback(&bands, &band_feedback)?;
+            let lifting_identity_residual =
+                lifting_identity(&bands, &band_feedback, &global_feedback)?;
             require_gate(
                 "band-feedback lifting",
                 lifting_identity_residual,
                 IDENTITY_TOLERANCE,
             )?;
-            let solved = bands.solve_spinor_feedback(&feedback)?;
-            let solve_identity = first_global_solve_identity(&bands, &feedback, &solved)?;
+            let solved = bands.solve_spinor_global_feedback(&global_feedback)?;
+            let solve_identity =
+                first_global_solve_identity(&bands, &band_feedback, &solved)?;
             require_gate(
                 "first global generalized solve",
                 solve_identity,
@@ -505,7 +508,7 @@ fn solve_fixed_potential(
                 &solved_occupation.values,
             )?;
             bands = solved;
-            previous_feedback = Some(feedback);
+            previous_global_feedback = Some(global_feedback);
             if fock_iteration == spec.max_fock_iterations {
                 return Err(GammaValenceHfError::FockNotConverged {
                     outer_iteration,
@@ -526,24 +529,28 @@ fn solve_fixed_potential(
             q_fractional,
         )?;
         rebuilds += 1;
-        let fresh_feedback = exchange_feedback(&rebuilt)?;
-        let feedback_fixed_residual = previous_feedback
+        let fresh_band_feedback = exchange_feedback(&rebuilt)?;
+        let fresh_global_feedback = lift_global_feedback(&bands, &fresh_band_feedback)?;
+        let feedback_fixed_residual = previous_global_feedback
             .as_ref()
-            .map(|previous| feedback_difference(previous, &fresh_feedback))
+            .map(|previous| global_feedback_difference(previous, &fresh_global_feedback))
             .transpose()?
             .unwrap_or(f64::INFINITY);
         last_feedback_residual = feedback_fixed_residual;
-        let feedback = match &previous_feedback {
-            Some(previous) => mix_feedback(previous, &fresh_feedback, spec.fock_mixing)?,
-            None => fresh_feedback,
+        let global_feedback = match &previous_global_feedback {
+            Some(previous) => {
+                mix_global_feedback(previous, &fresh_global_feedback, spec.fock_mixing)?
+            }
+            None => fresh_global_feedback.clone(),
         };
-        let lifting_identity_residual = lifting_identity(&bands, &feedback)?;
+        let lifting_identity_residual =
+            lifting_identity(&bands, &fresh_band_feedback, &fresh_global_feedback)?;
         require_gate(
             "band-feedback lifting",
             lifting_identity_residual,
             IDENTITY_TOLERANCE,
         )?;
-        let solved = bands.solve_spinor_feedback(&feedback)?;
+        let solved = bands.solve_spinor_global_feedback(&global_feedback)?;
         let solved_occupation = solve_occupations(
             solved.states(),
             spec.config.electron_count,
@@ -573,7 +580,7 @@ fn solve_fixed_potential(
             });
         }
         bands = solved;
-        previous_feedback = Some(feedback);
+        previous_global_feedback = Some(global_feedback);
     }
     Err(GammaValenceHfError::FockNotConverged {
         outer_iteration,
@@ -665,7 +672,39 @@ fn exchange_feedback(
         .collect()
 }
 
-fn mix_feedback(
+fn lift_global_feedback(
+    bands: &CheckpointBandSolution,
+    feedback: &[DenseHermitianMatrix],
+) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+    if bands.points().len() != feedback.len() {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: bands.points().len(),
+            actual: feedback.len(),
+        });
+    }
+    bands
+        .points()
+        .iter()
+        .zip(feedback)
+        .map(|(point, band_feedback)| {
+            let CheckpointKPointSolution::Spinor {
+                eigenproblem,
+                solution,
+                ..
+            } = &point.solution
+            else {
+                return Err(GammaValenceHfError::SpinorFirstVariation);
+            };
+            Ok(lift_band_hermitian_feedback(
+                &eigenproblem.overlap,
+                &solution.eigenvectors,
+                band_feedback,
+            )?)
+        })
+        .collect()
+}
+
+fn mix_global_feedback(
     previous: &[DenseHermitianMatrix],
     fresh: &[DenseHermitianMatrix],
     alpha: f64,
@@ -680,6 +719,17 @@ fn mix_feedback(
         .iter()
         .zip(fresh)
         .map(|(previous, fresh)| {
+            if previous.axis() != Axis::GlobalBasis || fresh.axis() != Axis::GlobalBasis {
+                return Err(GammaValenceHfError::Tensor(TensorError::Axis {
+                    index: 0,
+                    expected: Axis::GlobalBasis,
+                    actual: if previous.axis() != Axis::GlobalBasis {
+                        previous.axis()
+                    } else {
+                        fresh.axis()
+                    },
+                }));
+            }
             if previous.dimension() != fresh.dimension() {
                 return Err(GammaValenceHfError::ExchangeKIndex {
                     expected: previous.dimension(),
@@ -688,7 +738,7 @@ fn mix_feedback(
             }
             Ok(DenseHermitianMatrix::from_upper_triangle(
                 fresh.dimension(),
-                Axis::Band,
+                Axis::GlobalBasis,
                 |row, column| {
                     (1.0 - alpha) * previous.at(row, column)
                         + alpha * fresh.at(row, column)
@@ -698,7 +748,7 @@ fn mix_feedback(
         .collect()
 }
 
-fn feedback_difference(
+fn global_feedback_difference(
     left: &[DenseHermitianMatrix],
     right: &[DenseHermitianMatrix],
 ) -> Result<f64, GammaValenceHfError> {
@@ -710,6 +760,17 @@ fn feedback_difference(
     }
     let mut maximum = 0.0_f64;
     for (left, right) in left.iter().zip(right) {
+        if left.axis() != Axis::GlobalBasis || right.axis() != Axis::GlobalBasis {
+            return Err(GammaValenceHfError::Tensor(TensorError::Axis {
+                index: 0,
+                expected: Axis::GlobalBasis,
+                actual: if left.axis() != Axis::GlobalBasis {
+                    left.axis()
+                } else {
+                    right.axis()
+                },
+            }));
+        }
         if left.dimension() != right.dimension() {
             return Err(GammaValenceHfError::ExchangeKIndex {
                 expected: left.dimension(),
@@ -743,20 +804,31 @@ fn fixed_point_density_residual(
 
 fn lifting_identity(
     bands: &CheckpointBandSolution,
-    feedback: &[DenseHermitianMatrix],
+    band_feedback: &[DenseHermitianMatrix],
+    global_feedback: &[DenseHermitianMatrix],
 ) -> Result<f64, GammaValenceHfError> {
+    if bands.points().len() != band_feedback.len()
+        || band_feedback.len() != global_feedback.len()
+    {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: bands.points().len(),
+            actual: band_feedback.len().min(global_feedback.len()),
+        });
+    }
     let mut maximum = 0.0_f64;
-    for (point, expected) in bands.points().iter().zip(feedback) {
+    for ((point, expected), lifted) in bands
+        .points()
+        .iter()
+        .zip(band_feedback)
+        .zip(global_feedback)
+    {
         let CheckpointKPointSolution::Spinor {
-            eigenproblem,
             solution,
             ..
         } = &point.solution
         else {
             return Err(GammaValenceHfError::SpinorFirstVariation);
         };
-        let lifted =
-            lift_band_hermitian_feedback(&eigenproblem.overlap, &solution.eigenvectors, expected)?;
         let conjugate = solution.eigenvectors.as_tensor().conjugate();
         let projected = DenseHermitianMatrix::from_tensor(einsum(
             "ia,ij,jb->ab",
@@ -1023,5 +1095,82 @@ fn require_gate(
             residual,
             tolerance,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use muffintin_tensor::DenseEigenvectors;
+
+    #[test]
+    fn physical_feedback_residual_is_invariant_under_band_gauge_rotation() {
+        let inverse_sqrt_two = 1.0 / 2.0_f64.sqrt();
+        let overlap = DenseHermitianMatrix::from_upper_triangle(
+            2,
+            Axis::GlobalBasis,
+            |row, column| {
+                if row == column {
+                    Complex64::new(1.0, 0.0)
+                } else {
+                    Complex64::default()
+                }
+            },
+        )
+        .unwrap();
+        let identity = DenseEigenvectors::from_host_column_major(
+            2,
+            2,
+            vec![
+                Complex64::new(1.0, 0.0),
+                Complex64::default(),
+                Complex64::default(),
+                Complex64::new(1.0, 0.0),
+            ],
+        )
+        .unwrap();
+        let rotated = DenseEigenvectors::from_host_column_major(
+            2,
+            2,
+            vec![
+                Complex64::new(inverse_sqrt_two, 0.0),
+                Complex64::new(inverse_sqrt_two, 0.0),
+                Complex64::new(-inverse_sqrt_two, 0.0),
+                Complex64::new(inverse_sqrt_two, 0.0),
+            ],
+        )
+        .unwrap();
+        let band_feedback = DenseHermitianMatrix::from_upper_triangle(
+            2,
+            Axis::Band,
+            |row, column| match (row, column) {
+                (0, 0) => Complex64::new(1.0, 0.0),
+                (0, 1) => Complex64::new(0.2, 0.3),
+                (1, 1) => Complex64::new(-0.4, 0.0),
+                _ => unreachable!(),
+            },
+        )
+        .unwrap();
+        let rotated_conjugate = rotated.as_tensor().conjugate();
+        let rotated_band_feedback = DenseHermitianMatrix::from_tensor(
+            einsum(
+                "ia,ij,jb->ab",
+                &[
+                    &rotated_conjugate,
+                    band_feedback.as_tensor(),
+                    rotated.as_tensor(),
+                ],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let original_global =
+            lift_band_hermitian_feedback(&overlap, &identity, &band_feedback).unwrap();
+        let rotated_global =
+            lift_band_hermitian_feedback(&overlap, &rotated, &rotated_band_feedback).unwrap();
+
+        let residual =
+            global_feedback_difference(&[original_global], &[rotated_global]).unwrap();
+        assert!(residual <= 1.0e-12, "physical feedback residual {residual}");
     }
 }

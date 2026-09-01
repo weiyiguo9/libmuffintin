@@ -102,7 +102,7 @@ fn shifted_2x1x1_executes_complete_q_slice_and_per_k_feedback() {
         coulomb: CoulombRequest::cubic(LATTICE, 2).unwrap(),
         max_fock_iterations: 24,
         fock_density_tolerance: 1.0e-7,
-        fock_mixing: 0.75,
+        fock_mixing: 0.5,
     };
     let mut physics = CheckpointPhysics::new(&checkpoint).unwrap();
     let result = run_valence_hf(&mut physics, &spec).unwrap();

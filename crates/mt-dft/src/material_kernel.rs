@@ -265,9 +265,51 @@ impl CheckpointBandSolution {
                 expected: self.points.len(),
             });
         }
+        let lifted = self
+            .points
+            .iter()
+            .zip(feedback)
+            .enumerate()
+            .map(|(point_index, (point, band_feedback))| {
+                let CheckpointKPointSolution::Spinor {
+                    eigenproblem,
+                    solution,
+                    ..
+                } = &point.solution
+                else {
+                    return Err(MaterialKernelError::FeedbackRequiresSpinor {
+                        point: point_index,
+                    });
+                };
+                Ok(lift_band_hermitian_feedback(
+                    &eigenproblem.overlap,
+                    &solution.eigenvectors,
+                    band_feedback,
+                )?)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        self.solve_spinor_global_feedback(&lifted)
+    }
+
+    /// Re-solve the retained spinor subspace with physical-basis Hermitian
+    /// feedback at every k point.
+    ///
+    /// The matrices are expressed in the unchanged raw basis of the retained
+    /// original H0/S problems. They may therefore be compared and mixed
+    /// across orbital updates within this one fixed radial-basis frame.
+    pub fn solve_spinor_global_feedback(
+        &self,
+        feedback: &[DenseHermitianMatrix],
+    ) -> Result<Self, MaterialKernelError> {
+        if feedback.len() != self.points.len() {
+            return Err(MaterialKernelError::FeedbackPointCount {
+                actual: feedback.len(),
+                expected: self.points.len(),
+            });
+        }
         let mut updated = self.clone();
         let (points, states) = (&mut updated.points, &mut updated.states);
-        for (point_index, (point, band_feedback)) in
+        for (point_index, (point, global_feedback)) in
             points.iter_mut().zip(feedback).enumerate()
         {
             let CheckpointKPointSolution::Spinor {
@@ -279,15 +321,29 @@ impl CheckpointBandSolution {
             else {
                 return Err(MaterialKernelError::FeedbackRequiresSpinor { point: point_index });
             };
-            let lifted = lift_band_hermitian_feedback(
-                &eigenproblem.overlap,
-                &solution.eigenvectors,
-                band_feedback,
-            )?;
+            if global_feedback.axis() != Axis::GlobalBasis {
+                return Err(TensorError::Axis {
+                    index: 0,
+                    expected: Axis::GlobalBasis,
+                    actual: global_feedback.axis(),
+                }
+                .into());
+            }
+            if global_feedback.dimension() != eigenproblem.hamiltonian.dimension() {
+                let expected = eigenproblem.hamiltonian.dimension();
+                return Err(TensorError::Shape {
+                    expected: vec![expected, expected],
+                    actual: vec![global_feedback.dimension(), global_feedback.dimension()],
+                }
+                .into());
+            }
             let fock = DenseHermitianMatrix::from_upper_triangle(
                 eigenproblem.hamiltonian.dimension(),
                 Axis::GlobalBasis,
-                |row, column| eigenproblem.hamiltonian.at(row, column) + lifted.at(row, column),
+                |row, column| {
+                    eigenproblem.hamiltonian.at(row, column)
+                        + global_feedback.at(row, column)
+                },
             )?;
             let solved =
                 solve_generalized_hermitian(&fock, &eigenproblem.overlap, OVERLAP_THRESHOLD)?;
