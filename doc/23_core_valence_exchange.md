@@ -434,6 +434,19 @@ locks the Bloch/site phase with the single-shell analytic fixture, and
 reports the CV constant-mode residual. A failure of any one of these checks
 blocks sector-energy work even if the individual vertex norms look correct.
 
+M2 is a one-shot evaluator on converged DFT orbitals. It reports
+$E_x^{vv}$, $E_x^{cv}$, and $E_x^{cc}$ for the molecule and crystal routes
+without entering an SCF loop, updating orbitals, or feeding exchange back
+into a density. It may therefore proceed in parallel with Track A and does
+not require the Track A valence driver.
+
+The VV result must reproduce the existing square-layout frozen-orbital
+contraction. The rectangular CV and VC cross traces must agree at numerical
+tolerance. Independent channel-reduced radial Slater traces for both CC and
+CV must match their MPB traces within the recorded core-spill allowance;
+that allowance is reported rather than absorbed into a looser numerical
+tolerance.
+
 M3 bring-up may run the driver against a core solved in the current
 DFT-style local potential to isolate valence Fock machinery, but that
 configuration is a test harness only: it carries an uncancelled core
