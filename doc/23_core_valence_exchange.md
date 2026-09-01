@@ -4,8 +4,10 @@ This document is a contract: formulas, IR shapes, stage boundaries, and
 acceptance gates. A1 and A2 are implemented as described in section 4.1, and
 M0, M1, and M2 are implemented as described in section 4.2. M3a and M3b are
 also implemented, including the shared relaxed-core loop with fresh CC and VC
-actions at every inner iteration. The remaining M3 work and later
-compression/export stages remain planned. The contract lifts two explicit exclusions of
+actions at every inner iteration. M3c now closes the repository-internal
+unified driver and its bounded synthetic pipeline; the external Kr AO comparison
+remains blocked as recorded below. The later compression/export stages remain
+planned. The contract lifts two explicit exclusions of
 [18](18_lapw_mpb_thc_integration.md) §4 —
 core–valence products and the self-consistent Fock loop — and it replaces the
 earlier frozen-core staging idea with a relaxed core at FlapwMBPT parity.
@@ -278,7 +280,7 @@ more numerous VV columns dominate AllQL2 selection and hide a bad core fit.
 ## 3. Implementation
 
 Bindings named here are planned unless marked existing or assigned to the
-implemented A1, A2, M0, M1, or M2 milestones.
+implemented A1, A2, or M0–M3c milestones.
 
 ### 3.1 Existing seams
 
@@ -293,6 +295,9 @@ implemented A1, A2, M0, M1, or M2 milestones.
 | Nonorthogonal feedback lift | `lift_band_hermitian_feedback` in `crates/mt-operators/src/eigensolve.rs` | A1; forms `S C K C^H S` and re-solves the retained original H0/S problem |
 | Gamma valence HF driver | `run_gamma_valence_hf` in `crates/mt-runtime/src/hf_scf.rs` | A1; spinor-first, one k point, finite Gamma body, no core states |
 | Full-BZ valence HF engine | `run_valence_hf` in `crates/mt-runtime/src/hf_scf.rs` | A2; explicit full regular mesh, complete fresh canonical q slice, no core states |
+| Unified relaxed-core HF engine | `run_relaxed_core_hf` in `crates/mt-runtime/src/hf_scf.rs` | M3c; the Gamma wrapper validates only the molecule topology and explicit `FiniteBody`, then calls this same regular-mesh loop |
+| Split initial HF density and no-XC core bootstrap | `initial_density_components`, `bootstrap_hf_core` in `crates/mt-dft/src/material_kernel.rs` | M3c; preserves separate valence/core/total state and builds core sidecars from nuclear plus Hartree electrostatics |
+| Fresh relaxed-core density and direct core H0 trace | `build_regional_core_contribution_from_sidecar`, `core_local_one_body_trace` in `crates/mt-dft/src/core_station.rs` | M3c; consumes retained physical sidecars without reconstruction or core-eigenvalue energy substitution |
 | Frozen sector exchange | `build_frozen_spinor_sector_exchange` in `crates/mt-runtime/src/spinor_sector_exchange.rs` | M2; one-shot VV/CV/VC/CC accounting on one sealed frozen snapshot |
 | Independent radial comparison | `radial_slater_traces` in `crates/mt-coulomb`, `compare_frozen_sector_radial` in `crates/mt-runtime/src/spinor_sector_exchange.rs` | M2; trace-only MT oracle with numerical and spill gates kept separate |
 | Sharp-core fixture flag | `PairColumnLayout::core_orbital` in `crates/mt-prodbasis/src/pair_layout.rs` | fixture-only; must not model real cores |
@@ -456,7 +461,7 @@ no claim of a converged periodic Hartree–Fock limit.
 | M2 | Implemented: sector-aware one-shot exact-MPB traces and exchange energies on one converged frozen DFT snapshot, plus an independent trace-only radial Slater oracle | VV adapter reproduces the square contraction; CV and VC are contracted independently; MPB-versus-MT numerical residuals and physical core spill are separate gates |
 | M3a | Implemented: channel-reduced radial core-core Fock kernel with per-shell inner self-consistency | converged core shells; MPB CC matches the MT radial trace numerically; final CC action matches the extended radial trace numerically; extended-minus-MT spill is reported separately |
 | M3b | Implemented: complete site-valence density, channel-reduced radial VC action, CV/VC-only exact MPB contraction, per-core $\delta_c$, and shared CC+VC core relaxation | production VC action matches the independent radial oracle; MPB CV and VC traces agree; their finite-body difference from the spherical on-site action is reported and closes through weighted $\delta_c$; imaginary residual and shell spill gated; final VC action rebuilt from final core radials |
-| M3c | Unified Track A2 valence driver and relaxed core with full CV feedback | fixed point under the doc/17 density metric; valence eigenvalue identity of section 1.1; core convergence reported per iteration; fresh-core replacement with only valence-density mixing; molecule route compared against the AO oracle fixture |
+| M3c | Implemented internally: unified Track A2 valence driver and relaxed core with full CV feedback | bounded neutral closed-shell synthetic pipeline gates the density fixed point, valence eigenvalue identity, core convergence, fresh-core replacement, valence-only mixing, VV+CV feedback, and Gamma/generic parity; external Kr AO comparison remains blocked by the missing checked-in LAPW molecule/box-series fixture and acceptance tolerance |
 | M4 | Core-aware THC selection and fit, MPB as oracle | `residual_vv/cv/vc/cc` reported separately; core columns never dropped by pooled selection; rank scaling reported |
 | M5 | MLDUMP/pyexport v2 with sector energies and exchange provenance | schema versioned; v1 files remain exchange-absent |
 
@@ -564,12 +569,28 @@ VC before action mixing and energy prediction, and reports their traces
 separately. The returned VC action remains exactly zero outside the muffin tin.
 M3b still performs no density mixing or outer SCF update.
 
-M3c is the full merge. It combines the Track A2 valence driver with the
-relaxed Fock core, gives both the valence and core equations their complete
-CV feedback, replaces the core density fresh on every outer iteration, and
-mixes only the valence density. Its exit gates are the common fixed point,
-the valence eigenvalue identity of section 1.1, explicit core convergence,
-and the molecule-in-box comparison against the AO oracle fixture.
+M3c is the implemented full merge. `RelaxedCoreHfSpec`,
+`RelaxedCoreHfResult`, and `RelaxedCoreHfIterationDiagnostic` expose one
+regular-mesh engine. `run_gamma_relaxed_core_hf` checks only the $1\times1\times1$
+zero-shift full mesh and explicit `FiniteBody` policy before calling that same
+engine. The driver combines Track A2 with the relaxed Fock core, gives the
+valence equation VV+CV feedback and the core equation CC+VC feedback, replaces
+the core density fresh on every outer iteration, and mixes only the valence
+density. Every live orbital update rebuilds VV, CV, VC, and CC from one complete
+canonical $q$ slice carrying the same fresh core sidecars. Final $\delta_c$
+diagnostics are formed from that final rebuilt frame rather than the bootstrap
+or pre-update sidecars.
+
+The total energy uses the direct valence and core local-Hamiltonian traces,
+total-density Hartree double-counting correction, all four sector energies,
+and nuclear repulsion. It does not infer the core one-body trace from relaxed
+channel eigenvalues. The checked-in neutral closed-shell synthetic pipeline is
+an internal path and identity gate only. The repository still has no checked-in
+Kr LAPW molecule-in-box checkpoint, box-size series, paired basis/product-cutoff
+series, or agreed AO-to-LAPW acceptance tolerance. Consequently the existing
+Kr Dyall v2z AO record is not claimed as an M3c external numerical validation;
+that comparison remains an explicit fixture blocker rather than an invented
+tolerance.
 
 Before M3c, bring-up may run the valence driver against a core solved in the
 current DFT-style local potential solely as a test harness. That core carries
