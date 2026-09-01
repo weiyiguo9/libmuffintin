@@ -21,12 +21,14 @@ use crate::{
     IsdfExchangeResult, IsdfExchangeSpec, SpinorMpbError, SpinorMpbSelection, SpinorMpbSpec,
     build_spinor_mpb, build_spinor_mpb_exchange,
 };
+use crate::q_mesh::{CanonicalQMapError, canonical_q_points};
 
 const SPECTRAL_REFINEMENT_PASSES: usize = 16;
 const IDENTITY_TOLERANCE: f64 = 1.0e-8;
 const ELECTRON_COUNT_TOLERANCE: f64 = 1.0e-8;
 
-/// Exact MPB controls and bounded iteration controls for the A1 driver.
+/// Exact MPB controls and bounded iteration controls for the full-BZ
+/// spinor-first valence HF engine.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GammaValenceHfSpec {
     pub config: ScfConfig,
@@ -40,6 +42,8 @@ pub struct GammaValenceHfSpec {
     /// Weight of the freshly rebuilt band-space exchange in the next Fock solve.
     pub fock_mixing: f64,
 }
+
+pub type ValenceHfSpec = GammaValenceHfSpec;
 
 /// One completed outer Hartree-density iteration.
 #[derive(Clone, Debug, PartialEq)]
@@ -68,7 +72,9 @@ pub struct GammaValenceHfIterationDiagnostic {
     pub first_one_shot_parity_residual: Option<f64>,
 }
 
-/// Converged Gamma valence-only spinor HF state.
+pub type ValenceHfIterationDiagnostic = GammaValenceHfIterationDiagnostic;
+
+/// Converged finite-full-BZ-mesh valence-only spinor HF state.
 #[derive(Clone, Debug)]
 pub struct GammaValenceHfResult {
     pub density: RegionalDensity,
@@ -85,14 +91,23 @@ pub struct GammaValenceHfResult {
     pub total_energy: Hartree,
     pub exchange_rebuilds: usize,
     pub first_one_shot_exchange: IsdfExchangeResult,
+    pub k_fractional: Vec<[f64; 3]>,
+    pub q_fractional: Vec<[f64; 3]>,
+    pub k_weights: Vec<f64>,
     pub diagnostics: Vec<GammaValenceHfIterationDiagnostic>,
 }
+
+pub type ValenceHfResult = GammaValenceHfResult;
 
 /// Invalid A1 controls or a failed bounded HF solve.
 #[derive(Debug, Error)]
 pub enum GammaValenceHfError {
     #[error("Gamma valence HF requires a 1x1x1 full k mesh with zero shift")]
     GammaMesh,
+    #[error("valence HF requires an explicit full regular Brillouin-zone mesh")]
+    SymmetryReduction,
+    #[error("valence HF regular k mesh cannot define its canonical q topology")]
+    QTopology,
     #[error("Gamma valence HF requires ScfRelativity::SpinorFirstVariation")]
     SpinorFirstVariation,
     #[error("Gamma valence HF is valence-only and rejects every occupied core state")]
@@ -157,19 +172,32 @@ pub enum GammaValenceHfError {
     Tensor(#[from] TensorError),
 }
 
-/// Run the production A1 molecule-in-box route.
-///
-/// This fixes Gamma, one k point, full-spinor first variation, finite Coulomb
-/// body, and an empty core sector. Every fixed-potential Fock step rebuilds
-/// all VV MPB columns from the current live orbitals. Every outer density step
-/// rematerializes the radial basis, so band feedback is never carried between
-/// incompatible local H0/S frames.
+pub type ValenceHfError = GammaValenceHfError;
+
+/// Run the strict A1 molecule-in-box wrapper through the generic mesh engine.
 pub fn run_gamma_valence_hf(
     physics: &mut CheckpointPhysics,
     spec: &GammaValenceHfSpec,
 ) -> Result<GammaValenceHfResult, GammaValenceHfError> {
+    validate_gamma_spec(spec)?;
+    run_valence_hf(physics, spec)
+}
+
+/// Run valence-only spinor HF on one explicit full regular BZ mesh.
+///
+/// Every Fock rebuild consumes one live frame containing all physical shifted
+/// k points and constructs the complete unshifted canonical q slice from that
+/// same frame. No vertex or Coulomb record survives an orbital update. Every
+/// outer density step rematerializes the radial basis, so feedback is never
+/// carried between incompatible H0/S frames.
+pub fn run_valence_hf(
+    physics: &mut CheckpointPhysics,
+    spec: &ValenceHfSpec,
+) -> Result<ValenceHfResult, ValenceHfError> {
     validate_spec(spec)?;
     let _ = ScfLoop::new(spec.config.clone(), None)?;
+    let k_fractional = muffintin_dft::regular_k_points(spec.config.k_mesh)?;
+    let q_fractional = canonical_q_points(&k_fractional).map_err(q_topology_error)?;
     let mut mixer = density_mixer(spec.config.mixing)?;
     let mut density = <muffintin_dft::MaterialKernel as ScfPhysics>::initial_density(
         &mut physics.kernel,
@@ -199,7 +227,7 @@ pub fn run_gamma_valence_hf(
         let mut bands = physics.kernel.solve_points(
             one_particle.potential(),
             one_particle.basis(),
-            &[[0.0; 3]],
+            &k_fractional,
             ScfRelativity::SpinorFirstVariation,
         )?;
         let mut occupation = solve_occupations(
@@ -226,7 +254,7 @@ pub fn run_gamma_valence_hf(
             bands = physics.kernel.solve_points(
                 one_particle.potential(),
                 one_particle.basis(),
-                &[[0.0; 3]],
+                &k_fractional,
                 ScfRelativity::SpinorFirstVariation,
             )?;
             occupation = solve_occupations(
@@ -236,7 +264,14 @@ pub fn run_gamma_valence_hf(
             )?;
         }
 
-        let fixed = solve_fixed_potential(physics, spec, bands, outer_iteration)?;
+        let fixed = solve_fixed_potential(
+            physics,
+            spec,
+            bands,
+            outer_iteration,
+            &k_fractional,
+            &q_fractional,
+        )?;
         total_exchange_rebuilds += fixed.exchange_rebuilds;
         if let Some(first) = fixed.first_one_shot_exchange.clone() {
             first_one_shot_exchange = Some(first);
@@ -299,6 +334,7 @@ pub fn run_gamma_valence_hf(
         if converged {
             let orbital_energies = spinor_energies(&fixed.bands)?;
             let occupations = occupation_rows(&fixed.occupation.values, &fixed.bands)?;
+            let k_weights = k_weights(&fixed.bands)?;
             return Ok(GammaValenceHfResult {
                 density: output_density,
                 potential,
@@ -313,6 +349,9 @@ pub fn run_gamma_valence_hf(
                 exchange_rebuilds: total_exchange_rebuilds,
                 first_one_shot_exchange: first_one_shot_exchange
                     .expect("first outer iteration always records the one-shot oracle"),
+                k_fractional,
+                q_fractional,
+                k_weights,
                 diagnostics,
             });
         }
@@ -390,9 +429,11 @@ struct FixedPotentialResult {
 
 fn solve_fixed_potential(
     physics: &CheckpointPhysics,
-    spec: &GammaValenceHfSpec,
+    spec: &ValenceHfSpec,
     mut bands: CheckpointBandSolution,
     outer_iteration: usize,
+    k_fractional: &[[f64; 3]],
+    q_fractional: &[[f64; 3]],
 ) -> Result<FixedPotentialResult, GammaValenceHfError> {
     let mut rebuilds = 0;
     let mut first_one_shot_exchange = None;
@@ -408,10 +449,24 @@ fn solve_fixed_potential(
         )?;
         let occupation_rows = occupation_rows(&occupation.values, &bands)?;
         if outer_iteration == 1 && fock_iteration == 1 {
-            let oracle = rebuild_exchange(physics, spec, &bands, &occupation_rows)?;
+            let oracle = rebuild_exchange(
+                physics,
+                spec,
+                &bands,
+                &occupation_rows,
+                k_fractional,
+                q_fractional,
+            )?;
             rebuilds += 1;
             first_one_shot_exchange = Some(oracle.clone());
-            let driver = rebuild_exchange(physics, spec, &bands, &occupation_rows)?;
+            let driver = rebuild_exchange(
+                physics,
+                spec,
+                &bands,
+                &occupation_rows,
+                k_fractional,
+                q_fractional,
+            )?;
             rebuilds += 1;
             first_one_shot_parity_residual =
                 Some(exchange_difference(&oracle, &driver));
@@ -459,7 +514,14 @@ fn solve_fixed_potential(
             continue;
         }
 
-        let rebuilt = rebuild_exchange(physics, spec, &bands, &occupation_rows)?;
+        let rebuilt = rebuild_exchange(
+            physics,
+            spec,
+            &bands,
+            &occupation_rows,
+            k_fractional,
+            q_fractional,
+        )?;
         rebuilds += 1;
         let fresh_feedback = exchange_feedback(&rebuilt)?;
         let feedback_fixed_residual = previous_feedback
@@ -518,13 +580,21 @@ fn solve_fixed_potential(
 
 fn rebuild_exchange(
     physics: &CheckpointPhysics,
-    spec: &GammaValenceHfSpec,
+    spec: &ValenceHfSpec,
     bands: &CheckpointBandSolution,
     occupations: &[Vec<f64>],
+    k_fractional: &[[f64; 3]],
+    q_fractional: &[[f64; 3]],
 ) -> Result<IsdfExchangeResult, GammaValenceHfError> {
-    let input = physics.spinor_product_input_from_bands(bands, &[[0.0; 3]], [0.0; 3])?;
-    let n_k = input.pair_columns.n_k;
-    let n_orb = input.pair_columns.n_orb;
+    let inputs = q_fractional
+        .iter()
+        .map(|&q| physics.spinor_product_input_from_bands(bands, k_fractional, q))
+        .collect::<Result<Vec<_>, _>>()?;
+    let first = inputs
+        .first()
+        .ok_or(GammaValenceHfError::QTopology)?;
+    let n_k = first.pair_columns.n_k;
+    let n_orb = first.pair_columns.n_orb;
     let selections = (0..n_k)
         .flat_map(|k| {
             (0..n_orb).flat_map(move |left_band| {
@@ -536,21 +606,27 @@ fn rebuild_exchange(
             })
         })
         .collect();
-    let mpb = build_spinor_mpb(
-        &input,
-        &SpinorMpbSpec {
-            product_l_max: spec.product_l_max,
-            product_g_max: spec.product_g_max,
-            overlap_tolerance: spec.overlap_tolerance,
-            selections,
-        },
-    )?;
+    let mpb = inputs
+        .iter()
+        .map(|input| {
+            build_spinor_mpb(
+                input,
+                &SpinorMpbSpec {
+                    product_l_max: spec.product_l_max,
+                    product_g_max: spec.product_g_max,
+                    overlap_tolerance: spec.overlap_tolerance,
+                    selections: selections.clone(),
+                },
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let k_weights = k_weights(bands)?;
     Ok(build_spinor_mpb_exchange(
-        std::slice::from_ref(&input),
-        std::slice::from_ref(&mpb),
+        &inputs,
+        &mpb,
         &spec.coulomb,
         &IsdfExchangeSpec {
-            k_weights: vec![1.0],
+            k_weights,
             occupations: occupations.to_vec(),
             gamma: GammaExchangeTreatment::FiniteBody,
         },
@@ -854,6 +930,19 @@ fn spinor_energies(
         .collect()
 }
 
+fn k_weights(bands: &CheckpointBandSolution) -> Result<Vec<f64>, GammaValenceHfError> {
+    bands
+        .points()
+        .iter()
+        .map(|point| match &point.solution {
+            CheckpointKPointSolution::Spinor { .. } => Ok(point.weight()),
+            CheckpointKPointSolution::Collinear { .. } => {
+                Err(GammaValenceHfError::SpinorFirstVariation)
+            }
+        })
+        .collect()
+}
+
 fn exchange_difference(left: &IsdfExchangeResult, right: &IsdfExchangeResult) -> f64 {
     let mut maximum = (left.exchange_energy.get() - right.exchange_energy.get()).abs();
     maximum = maximum
@@ -875,12 +964,8 @@ fn density_mixer(spec: ScfMixing) -> Result<DensityMixer, MixingError> {
 }
 
 fn validate_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfError> {
-    let mesh = spec.config.k_mesh;
-    if mesh.divisions != [1, 1, 1]
-        || mesh.shift != [0.0; 3]
-        || mesh.reduction != ScfKReduction::Full
-    {
-        return Err(GammaValenceHfError::GammaMesh);
+    if spec.config.k_mesh.reduction != ScfKReduction::Full {
+        return Err(GammaValenceHfError::SymmetryReduction);
     }
     if spec.config.relativity != ScfRelativity::SpinorFirstVariation {
         return Err(GammaValenceHfError::SpinorFirstVariation);
@@ -903,6 +988,21 @@ fn validate_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfError> {
         return Err(GammaValenceHfError::FockMixing);
     }
     Ok(())
+}
+
+fn validate_gamma_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfError> {
+    let mesh = spec.config.k_mesh;
+    if mesh.divisions != [1, 1, 1]
+        || mesh.shift != [0.0; 3]
+        || mesh.reduction != ScfKReduction::Full
+    {
+        return Err(GammaValenceHfError::GammaMesh);
+    }
+    Ok(())
+}
+
+fn q_topology_error(_error: CanonicalQMapError) -> GammaValenceHfError {
+    GammaValenceHfError::QTopology
 }
 
 fn require_gate(

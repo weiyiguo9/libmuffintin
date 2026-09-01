@@ -58,7 +58,8 @@ pub use dft_scf::{
 pub use error::{InputError, InputValidationError};
 pub use hf_scf::{
     GammaValenceHfError, GammaValenceHfIterationDiagnostic, GammaValenceHfResult,
-    GammaValenceHfSpec, run_gamma_valence_hf,
+    GammaValenceHfSpec, ValenceHfError, ValenceHfIterationDiagnostic, ValenceHfResult,
+    ValenceHfSpec, run_gamma_valence_hf, run_valence_hf,
 };
 pub use input::{
     BandPathPoint, Basis, BasisEnvelope, BasisEnvelopeKind, Convergence, EnergyWindow,

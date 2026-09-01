@@ -318,6 +318,12 @@ pub struct CheckpointKPoint {
     energies: Vec<Hartree>,
 }
 
+impl CheckpointKPoint {
+    pub const fn weight(&self) -> f64 {
+        self.weight
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum CheckpointKPointSolution {
     Collinear {
