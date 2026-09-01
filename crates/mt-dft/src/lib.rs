@@ -44,7 +44,8 @@ pub use core_potential::{
     build_extended_checkpoint_core_potentials, build_extended_core_potentials,
 };
 pub use core_station::{
-    CoreSiteRequest, CoreStateRequest, CoreStationError, RegionalCoreResult, solve_regional_core,
+    CoreShellOrbital, CoreShellOrbitals, CoreShellOrbitalsProvenance, CoreSiteRequest,
+    CoreStateRequest, CoreStationError, RegionalCoreResult, solve_regional_core,
 };
 pub use density::{
     CollinearKPoint, DensityError, FullSpinorDensitySiteBasis, FullSpinorKPoint, ScalarSiteBasis,

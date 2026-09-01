@@ -1485,7 +1485,7 @@ impl ScfPhysics for MaterialKernel {
                     &request,
                     &initial_extended[site_index].potential,
                 )?;
-                density.add_scaled(1.0, &contribution.contribution.density)?;
+                density.add_scaled(1.0, &contribution.contribution.contribution.density)?;
             }
         }
         if !bands.symmetry_transforms.is_empty() {
@@ -1545,6 +1545,7 @@ impl ScfPhysics for MaterialKernel {
             &request,
             &continued[site_index].potential,
         )?
+        .contribution
         .contribution)
     }
 
