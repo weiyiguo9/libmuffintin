@@ -10,6 +10,7 @@ use crate::spinor_mpb::SpinorMpbResult;
 use crate::spinor_product::{SpinorProductInput, SpinorQSliceError, require_spinor_q_slice};
 use muffintin_core::{Hartree, Kappa};
 use muffintin_coulomb::{CoulombError, CoulombRequest, RadialSlaterTraces, assemble_coulomb};
+use muffintin_dft::CoreCoreFixedPotentialResult;
 use muffintin_prodbasis::{ExchangePairLayout, ExchangeSpace, OrbitalPair, PairVertex};
 use thiserror::Error;
 
@@ -65,6 +66,23 @@ pub struct SectorRadialComparison {
     pub cc_mpb_mt_residual: Hartree,
     pub cv_mpb_mt_residual: Hartree,
     pub vc_mpb_mt_residual: Hartree,
+    pub shell_spill: Vec<CoreShellSpillDiagnostic>,
+    pub maximum_measured_shell_spill: f64,
+    pub shell_spill_threshold: f64,
+}
+
+/// M3a CC-only MPB/action/radial comparison without CV or VC evidence.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CoreCoreRadialComparison {
+    pub radial: RadialSlaterTraces,
+    pub mpb_cc_trace: Hartree,
+    pub action_cc_trace: Hartree,
+    /// Numerical MPB-versus-MT radial residual; no spill allowance is added.
+    pub cc_mpb_mt_residual: Hartree,
+    /// Numerical final-action-versus-extended-radial identity residual.
+    pub cc_action_extended_residual: Hartree,
+    /// Measured extended-minus-MT radial trace difference, reported separately.
+    pub extended_spill_allowance: Hartree,
     pub shell_spill: Vec<CoreShellSpillDiagnostic>,
     pub maximum_measured_shell_spill: f64,
     pub shell_spill_threshold: f64,
@@ -387,6 +405,80 @@ pub fn compare_frozen_sector_radial(
         cc_mpb_mt_residual: Hartree(cc),
         cv_mpb_mt_residual: Hartree(cv),
         vc_mpb_mt_residual: Hartree(vc),
+        shell_spill,
+        maximum_measured_shell_spill,
+        shell_spill_threshold: spec.maximum_shell_spill,
+    })
+}
+
+/// Gate a fresh M3a relaxed-core result against CC-only MPB and radial traces.
+///
+/// The MPB numerical residual is measured against the MT radial trace. The
+/// final sampled radial action is independently checked against the extended
+/// radial trace. `cc_spill_allowance` and dimensionless shell spill are never
+/// folded into either numerical tolerance, and no CV/VC value is accepted or
+/// produced by this helper.
+pub fn compare_relaxed_core_core_radial(
+    relaxed: &CoreCoreFixedPotentialResult,
+    mpb_cc_trace: Hartree,
+    radial: &RadialSlaterTraces,
+    spec: SectorRadialComparisonSpec,
+) -> Result<CoreCoreRadialComparison, FrozenSpinorSectorExchangeError> {
+    if !spec.numerical_tolerance.get().is_finite()
+        || spec.numerical_tolerance.get() < 0.0
+        || !spec.maximum_shell_spill.is_finite()
+        || spec.maximum_shell_spill < 0.0
+    {
+        return Err(FrozenSpinorSectorExchangeError::RadialTolerance);
+    }
+    let mpb_mt = (mpb_cc_trace.get() - radial.cc_mt.total.get()).abs();
+    if mpb_mt > spec.numerical_tolerance.get() {
+        return Err(FrozenSpinorSectorExchangeError::RadialNumerical {
+            sector: "CC",
+            residual: mpb_mt,
+            tolerance: spec.numerical_tolerance.get(),
+        });
+    }
+    let action_extended =
+        (relaxed.final_cc_trace.total.get() - radial.cc_extended.total.get()).abs();
+    if action_extended > spec.numerical_tolerance.get() {
+        return Err(FrozenSpinorSectorExchangeError::RadialNumerical {
+            sector: "CC action",
+            residual: action_extended,
+            tolerance: spec.numerical_tolerance.get(),
+        });
+    }
+
+    let mut shell_spill = Vec::with_capacity(relaxed.orbitals.shells.len());
+    for shell in &relaxed.orbitals.shells {
+        if shell.spill > spec.maximum_shell_spill {
+            return Err(FrozenSpinorSectorExchangeError::CoreSpill {
+                site: relaxed.orbitals.site_index,
+                n: shell.state.n,
+                kappa: shell.state.kappa.get(),
+                spill: shell.spill,
+                threshold: spec.maximum_shell_spill,
+            });
+        }
+        shell_spill.push(CoreShellSpillDiagnostic {
+            site_index: relaxed.orbitals.site_index,
+            n: shell.state.n,
+            kappa: shell.state.kappa,
+            spill: shell.spill,
+            threshold: spec.maximum_shell_spill,
+        });
+    }
+    let maximum_measured_shell_spill = shell_spill
+        .iter()
+        .map(|item| item.spill)
+        .fold(0.0_f64, f64::max);
+    Ok(CoreCoreRadialComparison {
+        radial: radial.clone(),
+        mpb_cc_trace,
+        action_cc_trace: relaxed.final_cc_trace.total,
+        cc_mpb_mt_residual: Hartree(mpb_mt),
+        cc_action_extended_residual: Hartree(action_extended),
+        extended_spill_allowance: radial.cc_spill_allowance,
         shell_spill,
         maximum_measured_shell_spill,
         shell_spill_threshold: spec.maximum_shell_spill,

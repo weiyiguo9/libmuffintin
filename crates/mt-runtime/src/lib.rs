@@ -119,9 +119,10 @@ pub use spinor_product::{
     SpinorCoreOrbital, SpinorCoreTable, SpinorFrozenOrbitals, SpinorKMinusQ, SpinorProductInput,
 };
 pub use spinor_sector_exchange::{
-    CoreShellSpillDiagnostic, FrozenExchangeSector, FrozenSpinorSectorExchange,
-    FrozenSpinorSectorExchangeError, SectorOccupations, SectorRadialComparison,
-    SectorRadialComparisonSpec, build_frozen_spinor_sector_exchange, compare_frozen_sector_radial,
+    CoreCoreRadialComparison, CoreShellSpillDiagnostic, FrozenExchangeSector,
+    FrozenSpinorSectorExchange, FrozenSpinorSectorExchangeError, SectorOccupations,
+    SectorRadialComparison, SectorRadialComparisonSpec, build_frozen_spinor_sector_exchange,
+    compare_frozen_sector_radial, compare_relaxed_core_core_radial,
 };
 pub use spinor_thc::{SpinorThcError, SpinorThcResult, SpinorThcSpec, build_spinor_thc};
 pub use thc_grid::{
