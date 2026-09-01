@@ -378,6 +378,24 @@ the stated tolerance, and the SCF reaches a fixed point under the chosen
 mixing specification. These are planned acceptance gates, not implementation
 claims.
 
+### A2 — Regular k-mesh valence-only SCF
+
+A2 plans to extend the A1 loop unchanged to a regular crystal $k$ mesh. After
+every orbital update, each iteration traverses the full set of canonical $q$
+slices, rebuilds the VV MPB vertices and any selected THC-compressed Coulomb
+vertices for every slice, and assembles the band-basis Fock feedback through
+the existing $k-q$ wrap, Umklapp, weight, and occupation bookkeeping. No
+canonical slice or vertex record from the preceding orbitals may be reused.
+
+The route exits when a $1\times1\times1$ crystal setup agrees with the Gamma
+molecule route for the same cell, orbitals, and `FiniteBody` policy, and when
+the frozen-orbital one-shot VV result on a regular mesh equals the first SCF
+iteration before any orbital update. The repository has no independent
+crystal Hartree–Fock oracle, so these are internal path-equivalence gates, not
+external validation. Convergence in $k$ mesh and molecule box size remains a
+caller study, and A2 makes no claim of a converged periodic Hartree–Fock
+limit.
+
 | Milestone | Deliverable | Exit gates |
 |---|---|---|
 | M0 | Core station retains and outputs the `CoreShellOrbitals` sidecar | sidecar radials bit-identical to the density path; `norm_mt` and spill reported per shell; no consumer change |
