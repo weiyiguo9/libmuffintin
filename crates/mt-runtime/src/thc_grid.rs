@@ -12,7 +12,6 @@ use muffintin_prodbasis::{
 };
 use thiserror::Error;
 
-pub(crate) const Q_SLICE_TOLERANCE: f64 = 1.0e-12;
 const RADIAL_SHELL_TOLERANCE: f64 = 1.0e-10;
 
 /// Candidate-point policy for AllQL2 L2 selection.
@@ -368,12 +367,6 @@ pub(crate) fn records_match_parent_grid(grid: &ThcParentGrid, records: &[ThcQRec
     records
         .iter()
         .all(|record| record.grid_identity == grid.identity)
-}
-
-pub(crate) fn is_gamma_fractional(fractional: [f64; 3]) -> bool {
-    fractional
-        .iter()
-        .all(|component| component.abs() <= Q_SLICE_TOLERANCE)
 }
 
 pub(crate) fn require_parent_grid_radials<'a>(
