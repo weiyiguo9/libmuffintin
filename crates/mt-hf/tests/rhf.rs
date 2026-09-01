@@ -45,7 +45,7 @@ fn two_electron_feedback_energy_and_metric_trace_match_manual_oracle() {
     assert!((result.orbital_energies[1].get() + 0.2).abs() < 1.0e-13);
     assert_eq!(result.iterations, 1);
     assert_eq!(result.diagnostics.len(), 1);
-    assert!(result.diagnostics[0].density_rms < 1.0e-13);
+    assert!(result.diagnostics[0].fixed_point_density_rms < 1.0e-13);
 
     // 1/2 Tr[P(h+F)] = 1/2 * 2 * (-1.0 - 0.3) = -1.3 Ha.
     assert!((result.electronic_energy.get() + 1.3).abs() < 1.0e-13);
@@ -62,4 +62,32 @@ fn two_electron_feedback_energy_and_metric_trace_match_manual_oracle() {
 
     let odd = solve_restricted_hf(&two_level_problem(1), &spec).unwrap_err();
     assert_eq!(odd, RestrictedHfError::OddElectronCount(1));
+}
+
+#[test]
+fn tiny_mixing_cannot_hide_an_occupied_subspace_switch() {
+    let mut problem = two_level_problem(2);
+    // P_00 = 2 raises F_00 to +0.2 Ha, above F_11 = -0.2 Ha, so the first
+    // Fock solve switches the occupied subspace from AO 0 to AO 1.
+    problem.chemist_eri[0] = 1.2;
+    let error = solve_restricted_hf(
+        &problem,
+        &RestrictedHfSpec {
+            max_iterations: 1,
+            energy_tolerance: Hartree(1.0e100),
+            density_tolerance: 1.0e-6,
+            density_mixing: 1.0e-12,
+            overlap_threshold: 1.0e-12,
+        },
+    )
+    .unwrap_err();
+
+    let RestrictedHfError::NotConverged {
+        fixed_point_density_rms,
+        ..
+    } = error
+    else {
+        panic!("expected a fixed-point convergence failure, got {error:?}");
+    };
+    assert!((fixed_point_density_rms - 2.0_f64.sqrt()).abs() < 1.0e-13);
 }

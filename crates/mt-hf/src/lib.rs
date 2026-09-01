@@ -44,7 +44,8 @@ pub struct RestrictedHfIterationDiagnostic {
     pub total_energy: Hartree,
     pub electronic_energy: Hartree,
     pub energy_change: Hartree,
-    pub density_rms: f64,
+    /// RMS fixed-point residual between the Fock-solved and current AO densities.
+    pub fixed_point_density_rms: f64,
 }
 
 /// Converged restricted Hartree-Fock state.
@@ -98,12 +99,12 @@ pub enum RestrictedHfError {
     )]
     InsufficientOrbitals { occupied: usize, retained: usize },
     #[error(
-        "restricted Hartree-Fock did not converge in {iterations} iterations (energy change {energy_change} Ha, density RMS {density_rms})"
+        "restricted Hartree-Fock did not converge in {iterations} iterations (energy change {energy_change} Ha, fixed-point density RMS {fixed_point_density_rms})"
     )]
     NotConverged {
         iterations: usize,
         energy_change: f64,
-        density_rms: f64,
+        fixed_point_density_rms: f64,
     },
     #[error(transparent)]
     Operator(#[from] OperatorError),
@@ -137,40 +138,40 @@ pub fn solve_restricted_hf(
             solve_generalized_hermitian(&fock, &problem.overlap, spec.overlap_threshold)?;
         ensure_occupied_capacity(occupied, solution.retained_dimension)?;
         let solved_density = density_from_orbitals(&solution.eigenvectors, occupied)?;
-        let next_density = mix_density(&density, &solved_density, spec.density_mixing)?;
-        let density_rms = density_rms_difference(&next_density, &density);
-        let next_fock = build_fock(problem, &next_density)?;
-        let next_electronic_energy = electronic_energy(problem, &next_density, &next_fock);
-        let next_total_energy = next_electronic_energy + problem.nuclear_repulsion;
-        let energy_change = (next_total_energy - total_energy).get().abs();
+        let fixed_point_density_rms = density_rms_difference(&solved_density, &density);
+        let solved_fock = build_fock(problem, &solved_density)?;
+        let solved_electronic_energy = electronic_energy(problem, &solved_density, &solved_fock);
+        let solved_total_energy = solved_electronic_energy + problem.nuclear_repulsion;
+        let energy_change = (solved_total_energy - total_energy).get().abs();
 
         diagnostics.push(RestrictedHfIterationDiagnostic {
             iteration,
-            total_energy: next_total_energy,
-            electronic_energy: next_electronic_energy,
+            total_energy: solved_total_energy,
+            electronic_energy: solved_electronic_energy,
             energy_change: Hartree(energy_change),
-            density_rms,
+            fixed_point_density_rms,
         });
 
-        if energy_change <= spec.energy_tolerance.get() && density_rms <= spec.density_tolerance {
-            // Report orbitals of the Fock matrix belonging to the returned density.
-            let final_solution =
-                solve_generalized_hermitian(&next_fock, &problem.overlap, spec.overlap_threshold)?;
-            ensure_occupied_capacity(occupied, final_solution.retained_dimension)?;
+        if energy_change <= spec.energy_tolerance.get()
+            && fixed_point_density_rms <= spec.density_tolerance
+        {
             return Ok(RestrictedHfResult {
-                total_energy: next_total_energy,
-                electronic_energy: next_electronic_energy,
-                orbital_energies: final_solution.eigenvalues,
-                orbital_coefficients: final_solution.eigenvectors,
-                density: next_density,
+                total_energy: solved_total_energy,
+                electronic_energy: solved_electronic_energy,
+                orbital_energies: solution.eigenvalues,
+                orbital_coefficients: solution.eigenvectors,
+                density: solved_density,
                 iterations: iteration,
                 diagnostics,
             });
         }
 
+        let next_density = mix_density(&density, &solved_density, spec.density_mixing)?;
+        let next_fock = build_fock(problem, &next_density)?;
+        let next_electronic_energy = electronic_energy(problem, &next_density, &next_fock);
         density = next_density;
         fock = next_fock;
-        total_energy = next_total_energy;
+        total_energy = next_electronic_energy + problem.nuclear_repulsion;
     }
 
     let last = diagnostics
@@ -179,7 +180,7 @@ pub fn solve_restricted_hf(
     Err(RestrictedHfError::NotConverged {
         iterations: spec.max_iterations,
         energy_change: last.energy_change.get(),
-        density_rms: last.density_rms,
+        fixed_point_density_rms: last.fixed_point_density_rms,
     })
 }
 
