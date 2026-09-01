@@ -115,6 +115,13 @@ struct Components {
     total: f64,
 }
 
+#[derive(Clone, Copy, Default)]
+struct ComplexComponents {
+    pp: Complex64,
+    qq: Complex64,
+    total: Complex64,
+}
+
 impl Components {
     fn scaled_add(&mut self, scale: f64, value: Self) {
         self.pp += scale * value.pp;
@@ -132,14 +139,29 @@ impl Components {
     }
 }
 
+impl ComplexComponents {
+    fn scaled_add(&mut self, scale: Complex64, value: Components) {
+        self.pp += scale * value.pp;
+        self.qq += scale * value.qq;
+        self.total += scale * value.total;
+    }
+
+    fn real(self) -> Components {
+        Components {
+            pp: self.pp.re,
+            qq: self.qq.re,
+            total: self.total.re,
+        }
+    }
+}
+
 /// Evaluate trace-only CC and CV radial Slater exchange without MPB products.
 pub fn radial_slater_traces(
     sites: &[RadialSlaterSite<'_>],
 ) -> Result<RadialSlaterTraces, RadialSlaterError> {
     let mut cc_mt = Components::default();
     let mut cc_extended = Components::default();
-    let mut cv_mt = Components::default();
-    let mut cv_imaginary = 0.0;
+    let mut cv_mt = ComplexComponents::default();
     for site in sites {
         validate_site(site)?;
         let cores = expand_cores(site)?;
@@ -178,27 +200,47 @@ pub fn radial_slater_traces(
             .collect::<Vec<_>>();
         for &(core, core_occupation) in &cores {
             let core = truncate(core, site.mt_mesh.len());
-            for (left_index, &left) in valence.iter().enumerate() {
-                for (right_index, &right) in valence.iter().enumerate() {
+            let metric = hermitian_cv_metric(site.mt_mesh, core, &valence)?;
+            for left_index in 0..valence.len() {
+                for right_index in 0..valence.len() {
                     let density = site.valence.matrix
                         [right_index * valence.len() + left_index];
-                    let integral = slater_integral(site.mt_mesh, core, left, core, right)?;
-                    let scale = -core_occupation * density.re;
-                    cv_mt.scaled_add(scale, integral);
-                    cv_imaginary += -core_occupation * density.im * integral.total;
+                    cv_mt.scaled_add(
+                        -core_occupation * density,
+                        metric[left_index * valence.len() + right_index],
+                    );
                 }
             }
         }
     }
     let cc_mt = cc_mt.into_public();
     let cc_extended = cc_extended.into_public();
+    let cv_imaginary_residual = cv_mt.total.im.abs();
+    let cv_mt = cv_mt.real().into_public();
     Ok(RadialSlaterTraces {
         cc_spill_allowance: Hartree((cc_extended.total.get() - cc_mt.total.get()).abs()),
         cc_mt,
         cc_extended,
-        cv_mt: cv_mt.into_public(),
-        cv_imaginary_residual: cv_imaginary.abs(),
+        cv_mt,
+        cv_imaginary_residual,
     })
+}
+
+fn hermitian_cv_metric(
+    mesh: &ExponentialMesh,
+    core: OrbitalRef<'_>,
+    valence: &[OrbitalRef<'_>],
+) -> Result<Vec<Components>, RadialSlaterError> {
+    let n = valence.len();
+    let mut metric = vec![Components::default(); n * n];
+    for left in 0..n {
+        for right in left..n {
+            let value = slater_integral(mesh, core, valence[left], core, valence[right])?;
+            metric[left * n + right] = value;
+            metric[right * n + left] = value;
+        }
+    }
+    Ok(metric)
 }
 
 fn validate_site(site: &RadialSlaterSite<'_>) -> Result<(), RadialSlaterError> {
@@ -603,6 +645,33 @@ mod tests {
             Complex64::new(0.0, -0.2),
             Complex64::new(0.4, 0.0),
         ];
+        let core_channel = RelativisticChannel::new(
+            Kappa::new(-1).unwrap(),
+            TwiceMu::new(-1).unwrap(),
+        )
+        .unwrap();
+        let core_ref = truncate(
+            OrbitalRef {
+                channel: core_channel,
+                p: &core_p,
+                q: &core_q,
+                normalization: norm,
+            },
+            mt_mesh.len(),
+        );
+        let valence_refs = valence
+            .iter()
+            .map(|orbital| OrbitalRef {
+                channel: orbital.channel,
+                p: orbital.p,
+                q: orbital.q,
+                normalization: orbital.normalization,
+            })
+            .collect::<Vec<_>>();
+        let metric = hermitian_cv_metric(&mt_mesh, core_ref, &valence_refs).unwrap();
+        assert_eq!(metric[1].pp, metric[2].pp);
+        assert_eq!(metric[1].qq, metric[2].qq);
+        assert_eq!(metric[1].total, metric[2].total);
         let site = RadialSlaterSite {
             site_index: 0,
             mt_mesh: &mt_mesh,
