@@ -17,8 +17,8 @@ use thiserror::Error;
 
 use crate::{
     CheckpointPhysics, CheckpointPhysicsError, GammaExchangeTreatment, IsdfExchangeError,
-    IsdfExchangeResult, IsdfExchangeSpec, SpinorMpbError, SpinorMpbResult, SpinorMpbSelection,
-    SpinorMpbSpec, SpinorProductInput, build_spinor_mpb, build_spinor_mpb_exchange,
+    IsdfExchangeResult, IsdfExchangeSpec, SpinorMpbError, SpinorMpbSelection, SpinorMpbSpec,
+    build_spinor_mpb, build_spinor_mpb_exchange,
 };
 
 const SPECTRAL_REFINEMENT_PASSES: usize = 16;
@@ -36,6 +36,8 @@ pub struct GammaValenceHfSpec {
     pub max_fock_iterations: usize,
     /// Regional-density fixed-point tolerance inside one fixed local potential.
     pub fock_density_tolerance: f64,
+    /// Weight of the freshly rebuilt band-space exchange in the next Fock solve.
+    pub fock_mixing: f64,
 }
 
 /// One completed outer Hartree-density iteration.
@@ -98,6 +100,8 @@ pub enum GammaValenceHfError {
     FockIterations,
     #[error("Gamma valence HF fock_density_tolerance must be finite and positive")]
     FockTolerance,
+    #[error("Gamma valence HF fock_mixing must be finite and in (0, 1]")]
+    FockMixing,
     #[error("spectral radial-basis refinement did not settle after {passes} passes")]
     SpectralRefinement { passes: usize },
     #[error(
@@ -392,6 +396,7 @@ fn solve_fixed_potential(
     let mut first_one_shot_parity_residual = None;
     let mut first_global_solve_identity_residual = None;
     let mut last_residual = f64::INFINITY;
+    let mut previous_feedback = None;
     for fock_iteration in 1..=spec.max_fock_iterations {
         let occupation = solve_occupations(
             bands.states(),
@@ -402,17 +407,17 @@ fn solve_fixed_potential(
         if outer_iteration == 1 && fock_iteration == 1 {
             let oracle = rebuild_exchange(physics, spec, &bands, &occupation_rows)?;
             rebuilds += 1;
-            first_one_shot_exchange = Some(oracle.exchange.clone());
+            first_one_shot_exchange = Some(oracle.clone());
             let driver = rebuild_exchange(physics, spec, &bands, &occupation_rows)?;
             rebuilds += 1;
             first_one_shot_parity_residual =
-                Some(exchange_difference(&oracle.exchange, &driver.exchange));
+                Some(exchange_difference(&oracle, &driver));
             require_gate(
                 "first one-shot parity",
                 first_one_shot_parity_residual.expect("just recorded"),
                 IDENTITY_TOLERANCE,
             )?;
-            let feedback = exchange_feedback(&driver.exchange)?;
+            let feedback = exchange_feedback(&driver)?;
             let lifting_identity_residual = lifting_identity(&bands, &feedback)?;
             require_gate(
                 "band-feedback lifting",
@@ -440,6 +445,7 @@ fn solve_fixed_potential(
                 &solved_occupation.values,
             )?;
             bands = solved;
+            previous_feedback = Some(feedback);
             if fock_iteration == spec.max_fock_iterations {
                 return Err(GammaValenceHfError::FockNotConverged {
                     outer_iteration,
@@ -447,13 +453,21 @@ fn solve_fixed_potential(
                     residual: last_residual,
                 });
             }
-            let _ = lifting_identity_residual;
             continue;
         }
 
         let rebuilt = rebuild_exchange(physics, spec, &bands, &occupation_rows)?;
         rebuilds += 1;
-        let feedback = exchange_feedback(&rebuilt.exchange)?;
+        let fresh_feedback = exchange_feedback(&rebuilt)?;
+        let feedback_fixed_residual = previous_feedback
+            .as_ref()
+            .map(|previous| feedback_difference(previous, &fresh_feedback))
+            .transpose()?
+            .unwrap_or(f64::INFINITY);
+        let feedback = match &previous_feedback {
+            Some(previous) => mix_feedback(previous, &fresh_feedback, spec.fock_mixing)?,
+            None => fresh_feedback,
+        };
         let lifting_identity_residual = lifting_identity(&bands, &feedback)?;
         require_gate(
             "band-feedback lifting",
@@ -473,11 +487,13 @@ fn solve_fixed_potential(
             &solved,
             &solved_occupation.values,
         )?;
-        if last_residual <= spec.fock_density_tolerance {
+        if last_residual <= spec.fock_density_tolerance
+            && feedback_fixed_residual <= IDENTITY_TOLERANCE
+        {
             return Ok(FixedPotentialResult {
                 bands,
                 occupation,
-                exchange: rebuilt.exchange,
+                exchange: rebuilt,
                 fock_iterations: fock_iteration,
                 exchange_rebuilds: rebuilds,
                 fixed_point_residual: last_residual,
@@ -488,6 +504,7 @@ fn solve_fixed_potential(
             });
         }
         bands = solved;
+        previous_feedback = Some(feedback);
     }
     Err(GammaValenceHfError::FockNotConverged {
         outer_iteration,
@@ -496,20 +513,12 @@ fn solve_fixed_potential(
     })
 }
 
-struct RebuiltExchange {
-    #[allow(dead_code)]
-    input: SpinorProductInput,
-    #[allow(dead_code)]
-    mpb: SpinorMpbResult,
-    exchange: IsdfExchangeResult,
-}
-
 fn rebuild_exchange(
     physics: &CheckpointPhysics,
     spec: &GammaValenceHfSpec,
     bands: &CheckpointBandSolution,
     occupations: &[Vec<f64>],
-) -> Result<RebuiltExchange, GammaValenceHfError> {
+) -> Result<IsdfExchangeResult, GammaValenceHfError> {
     let input = physics.spinor_product_input_from_bands(bands, &[[0.0; 3]], [0.0; 3])?;
     let n_k = input.pair_columns.n_k;
     let n_orb = input.pair_columns.n_orb;
@@ -533,7 +542,7 @@ fn rebuild_exchange(
             selections,
         },
     )?;
-    let exchange = build_spinor_mpb_exchange(
+    Ok(build_spinor_mpb_exchange(
         std::slice::from_ref(&input),
         std::slice::from_ref(&mpb),
         &spec.coulomb,
@@ -542,12 +551,7 @@ fn rebuild_exchange(
             occupations: occupations.to_vec(),
             gamma: GammaExchangeTreatment::FiniteBody,
         },
-    )?;
-    Ok(RebuiltExchange {
-        input,
-        mpb,
-        exchange,
-    })
+    )?)
 }
 
 fn exchange_feedback(
@@ -575,6 +579,66 @@ fn exchange_feedback(
             )?)
         })
         .collect()
+}
+
+fn mix_feedback(
+    previous: &[DenseHermitianMatrix],
+    fresh: &[DenseHermitianMatrix],
+    alpha: f64,
+) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+    if previous.len() != fresh.len() {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: previous.len(),
+            actual: fresh.len(),
+        });
+    }
+    previous
+        .iter()
+        .zip(fresh)
+        .map(|(previous, fresh)| {
+            if previous.dimension() != fresh.dimension() {
+                return Err(GammaValenceHfError::ExchangeKIndex {
+                    expected: previous.dimension(),
+                    actual: fresh.dimension(),
+                });
+            }
+            Ok(DenseHermitianMatrix::from_upper_triangle(
+                fresh.dimension(),
+                Axis::Band,
+                |row, column| {
+                    (1.0 - alpha) * previous.at(row, column)
+                        + alpha * fresh.at(row, column)
+                },
+            )?)
+        })
+        .collect()
+}
+
+fn feedback_difference(
+    left: &[DenseHermitianMatrix],
+    right: &[DenseHermitianMatrix],
+) -> Result<f64, GammaValenceHfError> {
+    if left.len() != right.len() {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: left.len(),
+            actual: right.len(),
+        });
+    }
+    let mut maximum = 0.0_f64;
+    for (left, right) in left.iter().zip(right) {
+        if left.dimension() != right.dimension() {
+            return Err(GammaValenceHfError::ExchangeKIndex {
+                expected: left.dimension(),
+                actual: right.dimension(),
+            });
+        }
+        for row in 0..left.dimension() {
+            for column in 0..left.dimension() {
+                maximum = maximum.max((left.at(row, column) - right.at(row, column)).norm());
+            }
+        }
+    }
+    Ok(maximum)
 }
 
 fn fixed_point_density_residual(
@@ -706,6 +770,7 @@ fn energy_diagnostic(
         let CheckpointKPointSolution::Spinor {
             eigenproblem,
             solution,
+            occupations: state_range,
             ..
         } = &point.solution
         else {
@@ -831,6 +896,9 @@ fn validate_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfError> {
     }
     if !spec.fock_density_tolerance.is_finite() || spec.fock_density_tolerance <= 0.0 {
         return Err(GammaValenceHfError::FockTolerance);
+    }
+    if !spec.fock_mixing.is_finite() || spec.fock_mixing <= 0.0 || spec.fock_mixing > 1.0 {
+        return Err(GammaValenceHfError::FockMixing);
     }
     Ok(())
 }

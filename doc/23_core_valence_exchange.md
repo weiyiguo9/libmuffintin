@@ -385,6 +385,11 @@ outer iteration rebuilds the Hartree potential and rematerializes the radial
 basis before starting a new inner loop, so feedback is never moved between
 incompatible radial frames.
 
+`GammaValenceHfSpec::fock_mixing` explicitly mixes consecutive band-space
+exchange matrices inside the fixed-potential loop. This is a recorded Fock
+iteration control, not a silent fallback and not a replacement for the outer
+regional-density mixer.
+
 The driver reports the anti-Hermitian residual, Fock fixed-point residual,
 regional density RMS, electron count, exchange and total energies, the direct
 exchange/eigenvalue/total-energy identities of section 1.1, and the

@@ -1,12 +1,13 @@
 //! Bounded production-path fixture for Gamma valence-only spinor HF.
 
 use muffintin::{
-    CheckpointPhysics, GammaExchangeTreatment, GammaValenceHfError, GammaValenceHfSpec,
-    IsdfExchangeError, IsdfExchangeSpec, SpinorMpbSelection, SpinorMpbSpec, build_spinor_mpb,
+    CheckpointPhysics, GammaExchangeTreatment, GammaValenceHfSpec, IsdfExchangeError,
+    IsdfExchangeSpec, SpinorMpbSelection, SpinorMpbSpec, build_spinor_mpb,
     build_spinor_mpb_exchange, run_gamma_valence_hf,
 };
-use muffintin_core::InverseBohr;
+use muffintin_core::{Hartree, InverseBohr};
 use muffintin_coulomb::CoulombRequest;
+use muffintin_dft::{ScfConvergence, ScfMixing};
 use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
 use muffintin_tensor::DenseEigenvectors;
 
@@ -37,7 +38,7 @@ fn full_mpb_spec(n_k: usize, n_orb: usize) -> SpinorMpbSpec {
 #[test]
 fn gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals() {
     let checkpoint = hydrogen_spinor_checkpoint();
-    let config = spinor_config([1, 1, 1], 0.5);
+    let mut config = spinor_config([1, 1, 1], 0.5);
     let physics = CheckpointPhysics::new(&checkpoint).unwrap();
     let input = physics.spinor_product_input(&config, [0.0; 3]).unwrap();
     let n_orb = input.pair_columns.n_orb;
@@ -92,43 +93,51 @@ fn gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals() {
     ));
 
     let mut live_physics = CheckpointPhysics::new(&checkpoint).unwrap();
-    let result = run_gamma_valence_hf(
-        &mut live_physics,
-        &GammaValenceHfSpec {
-            config,
-            product_l_max: 2,
-            product_g_max: InverseBohr(1.5),
-            overlap_tolerance: DEFAULT_TOLERANCE,
-            coulomb: request,
-            max_fock_iterations: 2,
-            fock_density_tolerance: 1.0e100,
-        },
+    config.mixing = ScfMixing::Linear { alpha: 0.5 };
+    config.convergence = ScfConvergence {
+        energy_tolerance: Hartree(1.0e-6),
+        density_tolerance: 1.0e-5,
+        max_iterations: 32,
+    };
+    let hf_spec = GammaValenceHfSpec {
+        config,
+        product_l_max: 2,
+        product_g_max: InverseBohr(1.5),
+        overlap_tolerance: DEFAULT_TOLERANCE,
+        coulomb: request,
+        max_fock_iterations: 32,
+        fock_density_tolerance: 1.0e-7,
+        fock_mixing: 0.5,
+    };
+    let result = run_gamma_valence_hf(&mut live_physics, &hf_spec).unwrap();
+    assert!(result.exchange_rebuilds >= 2);
+    assert_eq!(result.occupations.len(), 1);
+    assert_eq!(result.orbital_energies.len(), 1);
+    assert!(result.maximum_antihermitian_residual <= 1.0e-8);
+    assert!(result.fock_fixed_point_residual <= hf_spec.fock_density_tolerance);
+    assert!(result.regional_density_rms <= hf_spec.config.convergence.density_tolerance);
+    assert!(
+        result
+            .diagnostics
+            .last()
+            .and_then(|item| item.energy_change)
+            .is_some_and(|change| change.get() <= hf_spec.config.convergence.energy_tolerance.get())
     );
-    match result {
-        Ok(result) => {
-            assert!(result.exchange_rebuilds >= 4);
-            assert_eq!(result.occupations.len(), 1);
-            assert_eq!(result.orbital_energies.len(), 1);
-            assert!(result.maximum_antihermitian_residual <= 1.0e-8);
-            assert!(
-                result.diagnostics[0]
-                    .first_one_shot_parity_residual
-                    .is_some_and(|residual| residual <= 1.0e-8)
-            );
-            assert!(
-                result.diagnostics[0]
-                    .first_global_solve_identity_residual
-                    .is_some_and(|residual| residual <= 1.0e-8)
-            );
-            assert!(
-                result
-                    .diagnostics
-                    .iter()
-                    .all(|item| item.lifting_identity_residual <= 1.0e-8)
-            );
-        }
-        Err(GammaValenceHfError::FockNotConverged { iterations: 2, .. })
-        | Err(GammaValenceHfError::NotConverged { iterations: 2, .. }) => {}
-        Err(error) => panic!("unexpected Gamma HF failure: {error}"),
-    }
+    assert!(
+        result.diagnostics[0]
+            .first_one_shot_parity_residual
+            .is_some_and(|residual| residual <= 1.0e-8)
+    );
+    assert!(
+        result.diagnostics[0]
+            .first_global_solve_identity_residual
+            .is_some_and(|residual| residual <= 1.0e-8)
+    );
+    assert!(result.diagnostics.iter().all(|item| {
+        item.exchange_energy_identity_residual <= 1.0e-8
+            && item.eigenvalue_identity_residual <= 1.0e-8
+            && item.total_energy_identity_residual <= 1.0e-8
+            && item.lifting_identity_residual <= 1.0e-8
+            && item.fock_fixed_point_residual <= hf_spec.fock_density_tolerance
+    }));
 }
