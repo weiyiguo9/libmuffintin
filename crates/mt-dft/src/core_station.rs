@@ -274,7 +274,7 @@ pub fn relax_core_at_fixed_potential(
         let fresh_cc = build_sidecar_core_core_action(&current)?;
         let fresh_vc = build_sidecar_valence_core_action(&current, fixed_valence)?;
         validate_vc_imaginary_residual(iteration, fresh_vc.imaginary_residual, spec)?;
-        let fresh_total = sum_core_actions(&fresh_cc.actions, &fresh_vc.actions);
+        let fresh_total = sum_core_actions(&fresh_cc.actions, &fresh_vc.shells);
         let action =
             mix_core_core_actions(previous_action.as_deref(), &fresh_total, spec.action_mixing);
         let mut next_shells = Vec::with_capacity(current.shells.len());
