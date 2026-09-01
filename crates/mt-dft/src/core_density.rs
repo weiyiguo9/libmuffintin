@@ -1001,12 +1001,23 @@ mod tests {
                 .re
                 < high.diagnostics.requested_charge
         );
+        let shell = RegionalCoreShellInput {
+            mesh: &extended_mesh,
+            state: solution.state,
+            energy: solution.energy,
+            p: &solution.p,
+            q: &solution.q,
+            norm_mt: solution.norm_mt,
+            spill: solution.spill,
+            occupation: 2.0,
+            spin: CoreSpinPartition::ClosedShellAverage,
+        };
         let transform = smooth_shell_transform(
             high_template.geometry(),
             0,
             &mt_mesh,
             &extended_mesh,
-            &solution,
+            &shell,
             layout,
         )
         .unwrap();
