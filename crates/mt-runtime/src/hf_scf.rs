@@ -3,10 +3,11 @@
 use muffintin_core::{Hartree, InverseBohr};
 use muffintin_coulomb::{CoulombRequest, HartreeError, WeinertHartreeSpec};
 use muffintin_dft::{
-    BandState, CheckpointBandSolution, CheckpointKPointSolution, DensityMixer, ElectrostaticSpec,
-    MaterialKernelError, MixingError, OccupationError, RegionalDensity, RegionalElectrostaticError,
-    RegionalError, RegionalPotential, ScfConfig, ScfConfigError, ScfKReduction, ScfLoop, ScfMixing,
-    ScfOccupations, ScfPhysics, ScfRelativity, electron_count, evaluate_regional_electrostatics,
+    BandState, CheckpointBandSolution, CheckpointKPointSolution, DensityError, DensityMixer,
+    ElectrostaticSpec, MaterialKernelError, MixingError, OccupationError, RegionalDensity,
+    RegionalElectrostaticError, RegionalError, RegionalPotential, ScfConfig, ScfConfigError,
+    ScfKReduction, ScfLoop, ScfMixing, ScfOccupations, ScfPhysics, ScfRelativity, electron_count,
+    evaluate_regional_electrostatics,
 };
 use muffintin_operators::{
     OperatorError, lift_band_hermitian_feedback, solve_generalized_hermitian,
@@ -132,6 +133,8 @@ pub enum GammaValenceHfError {
     Hartree(#[from] HartreeError),
     #[error(transparent)]
     Regional(#[from] RegionalError),
+    #[error(transparent)]
+    Density(#[from] DensityError),
     #[error(transparent)]
     Occupation(#[from] OccupationError),
     #[error(transparent)]
