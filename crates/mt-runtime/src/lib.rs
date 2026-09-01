@@ -30,6 +30,7 @@ mod spinor_exchange_mpb;
 mod spinor_mldump;
 mod spinor_mpb;
 mod spinor_product;
+mod spinor_sector_exchange;
 mod spinor_thc;
 mod thc_grid;
 
@@ -115,6 +116,12 @@ pub use spinor_mpb::{
 pub use spinor_product::{
     SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SPINOR_RADIAL_PDOT, SpinorBandWindow, SpinorCoreInputError,
     SpinorCoreOrbital, SpinorCoreTable, SpinorFrozenOrbitals, SpinorKMinusQ, SpinorProductInput,
+};
+pub use spinor_sector_exchange::{
+    CoreShellSpillDiagnostic, FrozenExchangeSector, FrozenSpinorSectorExchange,
+    FrozenSpinorSectorExchangeError, SectorOccupations, SectorRadialComparison,
+    SectorRadialComparisonSpec, build_frozen_spinor_sector_exchange,
+    compare_frozen_sector_radial,
 };
 pub use spinor_thc::{SpinorThcError, SpinorThcResult, SpinorThcSpec, build_spinor_thc};
 pub use thc_grid::{

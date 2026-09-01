@@ -4,6 +4,7 @@ use crate::checkpoint_physics::CheckpointPhysicsError;
 use crate::spinor_product::{
     SpinorCoreOrbital, SpinorKMinusQ, SpinorProductInput, spinor_pair_site_phases,
 };
+use crate::spinor_mpb::{SpinorFrozenInputIdentity, spinor_frozen_input_identity};
 use muffintin_core::{InverseBohr, RelativisticChannel};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
 use muffintin_prodbasis::mpb::{
@@ -75,6 +76,13 @@ pub struct SpinorExchangeMpbResult {
     pub vc: SpinorExchangeMpbSector,
     pub cc: SpinorExchangeMpbSector,
     pub diagnostics: SpinorExchangeMpbDiagnostics,
+    frozen_input: SpinorFrozenInputIdentity,
+}
+
+impl SpinorExchangeMpbResult {
+    pub(crate) const fn frozen_input_identity(&self) -> &SpinorFrozenInputIdentity {
+        &self.frozen_input
+    }
 }
 
 #[derive(Debug, Error)]
@@ -259,6 +267,7 @@ pub fn build_spinor_exchange_mpb(
             vc: vc_diagnostics,
             max_residual,
         },
+        frozen_input: spinor_frozen_input_identity(input),
     })
 }
 

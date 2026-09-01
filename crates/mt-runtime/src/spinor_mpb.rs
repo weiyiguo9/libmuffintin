@@ -436,7 +436,9 @@ impl SpinorFrozenInputIdentity {
     }
 }
 
-fn spinor_frozen_input_identity(input: &SpinorProductInput) -> SpinorFrozenInputIdentity {
+pub(crate) fn spinor_frozen_input_identity(
+    input: &SpinorProductInput,
+) -> SpinorFrozenInputIdentity {
     SpinorFrozenInputIdentity {
         q: input.source.q,
         partition: input.source.partition.clone(),
