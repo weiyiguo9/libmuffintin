@@ -330,7 +330,12 @@ pub fn compare_frozen_sector_radial(
     let cc = (exchange.cc.trace.get() - radial.cc_mt.total.get()).abs();
     let cv = (exchange.cv.trace.get() - radial.cv_mt.total.get()).abs();
     let vc = (exchange.vc.trace.get() - radial.cv_mt.total.get()).abs();
-    for (sector, residual) in [("CC", cc), ("CV", cv), ("VC", vc)] {
+    for (sector, residual) in [
+        ("CC", cc),
+        ("CV", cv),
+        ("VC", vc),
+        ("CV imaginary", radial.cv_imaginary_residual),
+    ] {
         if residual > spec.numerical_tolerance.get() {
             return Err(FrozenSpinorSectorExchangeError::RadialNumerical {
                 sector,

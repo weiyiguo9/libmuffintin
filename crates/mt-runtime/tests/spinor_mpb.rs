@@ -3,10 +3,13 @@
 use std::collections::BTreeMap;
 
 use muffintin::{
-    CheckpointPhysics, SPINOR_MPB_NSPIN, SPINOR_RADIAL_LO0, SPINOR_RADIAL_P, SpinorExchangeMpbSpec,
-    SpinorMpbError, SpinorMpbSelection, SpinorMpbSpec, build_spinor_exchange_mpb, build_spinor_mpb,
+    CheckpointPhysics, GammaExchangeTreatment, SPINOR_MPB_NSPIN, SPINOR_RADIAL_LO0,
+    SPINOR_RADIAL_P, SectorOccupations, SpinorExchangeMpbSpec, SpinorMpbError,
+    SpinorMpbSelection, SpinorMpbSpec, build_frozen_spinor_sector_exchange,
+    build_spinor_exchange_mpb, build_spinor_mpb,
 };
 use muffintin_core::{ExponentialMesh, Hartree, InverseBohr, Kappa, ReciprocalLattice, TwiceMu};
+use muffintin_coulomb::CoulombRequest;
 use muffintin_dft::{
     CoreShellOccupations, CoreShellOrbital, CoreShellOrbitals, CoreShellOrbitalsProvenance,
     LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
@@ -732,6 +735,104 @@ fn rectangular_core_vertices_are_mt_only_pp_qq_and_occupation_free() {
                 && diagnostic.residual.is_some())
     );
     assert!(low_result.diagnostics.max_residual.unwrap() < 1.0e-9);
+}
+
+#[test]
+fn frozen_gamma_sector_evaluator_closes_all_public_one_shot_identities() {
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let plain = physics
+        .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
+        .unwrap();
+    let input = plain
+        .clone()
+        .with_core_sidecars(&[core_sidecar(&plain, 0.5)])
+        .unwrap();
+    let n_valence = input.orbitals.band_window.count;
+    let selections = (0..n_valence)
+        .flat_map(|occupied| {
+            (0..n_valence).map(move |target| SpinorMpbSelection {
+                k: 0,
+                left_band: occupied,
+                right_band: target,
+            })
+        })
+        .collect();
+    let vv = build_spinor_mpb(
+        &input,
+        &SpinorMpbSpec {
+            product_l_max: 2,
+            product_g_max: InverseBohr(1.5),
+            overlap_tolerance: DEFAULT_TOLERANCE,
+            selections,
+        },
+    )
+    .unwrap();
+    let core = build_spinor_exchange_mpb(&input, &exchange_spec()).unwrap();
+    let request = CoulombRequest::cubic(8.0, 2).unwrap();
+    let mut valence = vec![0.0; n_valence];
+    valence[0] = 0.75;
+    if n_valence > 1 {
+        valence[1] = 0.25;
+    }
+    let occupations = SectorOccupations {
+        k_weights: vec![1.0],
+        valence: vec![valence],
+        core: input
+            .core
+            .orbitals
+            .iter()
+            .map(|orbital| orbital.occupation)
+            .collect(),
+        gamma: GammaExchangeTreatment::FiniteBody,
+    };
+    let result = build_frozen_spinor_sector_exchange(
+        std::slice::from_ref(&input),
+        std::slice::from_ref(&vv),
+        std::slice::from_ref(&core),
+        &request,
+        &occupations,
+    )
+    .unwrap();
+
+    for (sector, target) in [
+        (&result.vv, n_valence),
+        (&result.cv, n_valence),
+        (&result.vc, input.core.orbitals.len()),
+        (&result.cc, input.core.orbitals.len()),
+    ] {
+        assert!(sector.trace.get().is_finite());
+        assert_eq!(sector.target_matrices.len(), 1);
+        assert_eq!(sector.target_matrices[0].n_bands(), target);
+        assert_eq!(sector.target_matrices[0].values().len(), target * target);
+        assert!(sector.maximum_antihermitian_residual < 1.0e-8);
+    }
+    assert!((result.exchange_vv.get() - 0.5 * result.vv.trace.get()).abs() < 1.0e-12);
+    assert!(
+        (result.exchange_cv.get() - 0.5 * (result.cv.trace.get() + result.vc.trace.get())).abs()
+            < 1.0e-12
+    );
+    assert!((result.exchange_cc.get() - 0.5 * result.cc.trace.get()).abs() < 1.0e-12);
+    assert!(
+        (result.exchange_total.get()
+            - result.exchange_vv.get()
+            - result.exchange_cv.get()
+            - result.exchange_cc.get())
+        .abs()
+            < 1.0e-12
+    );
+    assert!(result.cross_trace_mismatch.get() < 1.0e-8);
+    assert!(result.frozen_context_matches(
+        std::slice::from_ref(&input),
+        &request,
+        &occupations
+    ));
+    let mut changed = occupations.clone();
+    changed.valence[0][0] *= 0.5;
+    assert!(!result.frozen_context_matches(
+        std::slice::from_ref(&input),
+        &request,
+        &changed
+    ));
 }
 
 #[test]
