@@ -236,7 +236,17 @@ fn hermitian_cv_metric(
     let mut metric = vec![Components::default(); n * n];
     for left in 0..n {
         for right in left..n {
-            let value = slater_integral(mesh, core, valence[left], core, valence[right])?;
+            let forward = slater_integral(mesh, core, valence[left], core, valence[right])?;
+            let value = if left == right {
+                forward
+            } else {
+                let reverse = slater_integral(mesh, core, valence[right], core, valence[left])?;
+                Components {
+                    pp: 0.5 * (forward.pp + reverse.pp),
+                    qq: 0.5 * (forward.qq + reverse.qq),
+                    total: 0.5 * (forward.total + reverse.total),
+                }
+            };
             metric[left * n + right] = value;
             metric[right * n + left] = value;
         }
@@ -664,7 +674,25 @@ mod tests {
                 normalization: orbital.normalization,
             })
             .collect::<Vec<_>>();
+        let forward = slater_integral(
+            &mt_mesh,
+            core_ref,
+            valence_refs[0],
+            core_ref,
+            valence_refs[1],
+        )
+        .unwrap();
+        let reverse = slater_integral(
+            &mt_mesh,
+            core_ref,
+            valence_refs[1],
+            core_ref,
+            valence_refs[0],
+        )
+        .unwrap();
+        assert!((forward.total - reverse.total).abs() > 1.0e-10);
         let metric = hermitian_cv_metric(&mt_mesh, core_ref, &valence_refs).unwrap();
+        assert_eq!(metric[1].total, 0.5 * (forward.total + reverse.total));
         assert_eq!(metric[1].pp, metric[2].pp);
         assert_eq!(metric[1].qq, metric[2].qq);
         assert_eq!(metric[1].total, metric[2].total);

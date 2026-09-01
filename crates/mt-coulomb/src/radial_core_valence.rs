@@ -554,7 +554,12 @@ mod tests {
         };
         let oracle = radial_slater_traces(&[site]).unwrap();
         let action = radial_valence_core_actions(&[site]).unwrap();
-        assert!((action.action_trace.get() - oracle.cv_mt.total.get()).abs() < 1.0e-12);
+        assert!(
+            (action.action_trace.get() - oracle.cv_mt.total.get()).abs() < 1.0e-12,
+            "VC action trace {} differs from radial oracle {}",
+            action.action_trace.get(),
+            oracle.cv_mt.total.get()
+        );
         assert!(oracle.cv_imaginary_residual < 1.0e-12);
         assert!(action.shells[0].imaginary_residual > 1.0e-12);
         assert_eq!(
