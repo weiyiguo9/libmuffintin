@@ -32,3 +32,41 @@ The condition numbers and method times are the `4c-DC-HF` fields in the JSON
 reports. Maximum RSS is not a JSON field: it is the maximum resident set size
 for each complete script process, measured externally by macOS
 `/usr/bin/time -lp` and converted from bytes to MiB.
+
+## libmuffintin Kr molecule-in-box smoke harness
+
+The runtime example constructs a neutral point-nucleus Kr atom at the center of
+an $8$ bohr cubic cell, derives the 28 core and 8 valence electrons from
+`fleur_default_atomic_configuration`, and runs the public Gamma relaxed-core HF
+path with explicit finite-body exchange:
+
+```sh
+cargo run -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
+  --out kr-relaxed-core-hf-p0 \
+  --box 8 --orbital-g 1 --orbital-lmax 1 \
+  --product-g 1 --product-lmax 2 --lexp 2 \
+  --rmt 2 --radial-points 1201 --hdlo none
+```
+
+These defaults are the deliberately loose P0 smoke profile: no HDLOs,
+$T=0.02$ Hartree, at most two outer and core steps, and at most 32 Fock
+iterations. Completion demonstrates that the production pipeline executed; it
+is not a claim of physical convergence. The field layout is derived as three
+times the orbital reciprocal cutoff and twice the orbital angular cutoff.
+
+The output directory contains:
+
+- `manifest.toml`: units, complete input and derived parameters, the FLEUR
+  core-state split, and Git SHA/dirty provenance;
+- `initial-checkpoint.toml`: the canonical atomic-superposition restart written
+  before HF;
+- `iterations.toml`: every completed relaxed-core HF iteration diagnostic;
+- `result.toml`: total and exchange-sector energies, four sector traces,
+  core/valence diagnostics, all orbital energies and occupations, and core-shell
+  energies, norms, and spill;
+- `final-checkpoint.toml`: the canonical restart built from the final total
+  density and potential.
+
+`--hdlo all` adds one derivative-order-2 atomic HDLO request per orbital $l$.
+The harness does not assign an AO matching tolerance, HOMO or vacuum reference,
+or a pass/fail acceptance threshold.
