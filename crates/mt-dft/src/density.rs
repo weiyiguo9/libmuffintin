@@ -5,6 +5,7 @@ use crate::{
 };
 use muffintin_core::{
     ExponentialMesh, FourierLayout, InterstitialGeometry, Lm, MeshError, RelativisticChannel,
+    lm_index,
 };
 use muffintin_envelope::{CompiledBasis, SpinorCompiledBasis};
 use muffintin_operators::{
@@ -13,9 +14,11 @@ use muffintin_operators::{
 use muffintin_sphere::{CoreDiracSolution, RadialComponents};
 use muffintin_sphere::{
     DensityProjectionError, HarmonicConvention, SphereField, SphereFieldError, SphereOrbital,
-    SpinorSphereOrbital, project_orbital_pair_density, project_spinor_pair_density_components,
+    SpinorSphereOrbital, project_orbital_pair_density, spinor_pair_density_angular,
 };
-use muffintin_tensor::{Axis, DenseEigenvectors, DenseHermitianMatrix};
+use muffintin_tensor::{
+    Axis, ComplexTensor, DenseEigenvectors, DenseHermitianMatrix, TensorError, einsum,
+};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use std::f64::consts::PI;
@@ -58,6 +61,138 @@ pub struct FullSpinorDensitySiteBasis {
     pub mesh: ExponentialMesh,
     pub channels: Vec<RelativisticChannel>,
     pub orbitals: Vec<SpinorSphereOrbital>,
+    contraction: SpinorDensityContraction,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SpinorDensityContraction {
+    harmonics: Vec<Lm>,
+    angular_pp: [ComplexTensor; 4],
+    angular_qq: [ComplexTensor; 4],
+    radial_p: ComplexTensor,
+    radial_q: ComplexTensor,
+}
+
+impl FullSpinorDensitySiteBasis {
+    pub fn new(
+        mesh: ExponentialMesh,
+        channels: Vec<RelativisticChannel>,
+        orbitals: Vec<SpinorSphereOrbital>,
+    ) -> Result<Self, TensorError> {
+        let contraction = SpinorDensityContraction::compile(&mesh, &orbitals)?;
+        Ok(Self {
+            mesh,
+            channels,
+            orbitals,
+            contraction,
+        })
+    }
+}
+
+impl SpinorDensityContraction {
+    fn compile(
+        mesh: &ExponentialMesh,
+        orbitals: &[SpinorSphereOrbital],
+    ) -> Result<Self, TensorError> {
+        let orbital_count = orbitals.len();
+        let l_max = orbitals
+            .iter()
+            .flat_map(|left| {
+                orbitals.iter().map(move |right| {
+                    let left = left.channel().kappa();
+                    let right = right.channel().kappa();
+                    (left.large_l() + right.large_l()).max(left.small_l() + right.small_l())
+                })
+            })
+            .max()
+            .unwrap_or(0);
+        let harmonics = (0..=l_max)
+            .flat_map(|l| {
+                (-(l as i32)..=l as i32)
+                    .map(move |m| Lm::new(l, m).expect("loop bounds validate magnetic channel"))
+            })
+            .collect::<Vec<_>>();
+        let mut angular_pp: [Vec<Complex64>; 4] = std::array::from_fn(|_| {
+            vec![Complex64::default(); harmonics.len() * orbital_count * orbital_count]
+        });
+        let mut angular_qq: [Vec<Complex64>; 4] = std::array::from_fn(|_| {
+            vec![Complex64::default(); harmonics.len() * orbital_count * orbital_count]
+        });
+        for (left, left_orbital) in orbitals.iter().enumerate() {
+            for (right, right_orbital) in orbitals.iter().enumerate() {
+                for angular in
+                    spinor_pair_density_angular(left_orbital.channel(), right_orbital.channel())
+                {
+                    let harmonic = lm_index(angular.channel.l, angular.channel.m)
+                        .expect("compiled angular channel is valid");
+                    let position = (harmonic * orbital_count + left) * orbital_count + right;
+                    for component in 0..4 {
+                        angular_pp[component][position] = angular.pp[component];
+                        angular_qq[component][position] = angular.qq[component];
+                    }
+                }
+            }
+        }
+        let angular_pp = angular_pp
+            .into_iter()
+            .map(|values| {
+                ComplexTensor::from_host_row_major(
+                    &[harmonics.len(), orbital_count, orbital_count],
+                    &[Axis::Harmonic, Axis::SiteCoordinate, Axis::SiteCoordinate],
+                    values,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .try_into()
+            .expect("four density components were constructed");
+        let angular_qq = angular_qq
+            .into_iter()
+            .map(|values| {
+                ComplexTensor::from_host_row_major(
+                    &[harmonics.len(), orbital_count, orbital_count],
+                    &[Axis::Harmonic, Axis::SiteCoordinate, Axis::SiteCoordinate],
+                    values,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .try_into()
+            .expect("four density components were constructed");
+        let radial_p = ComplexTensor::from_host_row_major(
+            &[orbital_count, mesh.len()],
+            &[Axis::SiteCoordinate, Axis::RadialGrid],
+            orbitals
+                .iter()
+                .flat_map(|orbital| {
+                    orbital
+                        .p()
+                        .iter()
+                        .zip(mesh.radii())
+                        .map(|(&value, radius)| Complex64::new(value / radius.get(), 0.0))
+                })
+                .collect(),
+        )?;
+        let radial_q = ComplexTensor::from_host_row_major(
+            &[orbital_count, mesh.len()],
+            &[Axis::SiteCoordinate, Axis::RadialGrid],
+            orbitals
+                .iter()
+                .flat_map(|orbital| {
+                    orbital
+                        .q()
+                        .iter()
+                        .zip(mesh.radii())
+                        .map(|(&value, radius)| Complex64::new(value / radius.get(), 0.0))
+                })
+                .collect(),
+        )?;
+        Ok(Self {
+            harmonics,
+            angular_pp,
+            angular_qq,
+            radial_p,
+            radial_q,
+        })
+    }
 }
 
 /// Physical site projections of every eigenvector band.
@@ -231,42 +366,29 @@ pub fn synthesize_full_spinor_valence_density(
             let projected =
                 CompiledSiteProjection::spinor(k_point.compiled, site_index, &site.channels)?
                     .project_eigenvectors(&k_point.solution.eigenvectors)?;
+            let state_weights = ComplexTensor::from_host_row_major(
+                &[k_point.occupations.len()],
+                &[Axis::Band],
+                k_point
+                    .occupations
+                    .iter()
+                    .map(|&occupation| Complex64::new(k_point.weight * occupation, 0.0))
+                    .collect(),
+            )?;
+            let weighted = einsum("ib,b->ib", &[projected.as_tensor(), &state_weights])?;
+            let density_matrix = einsum(
+                "ib,jb->ij",
+                &[&projected.as_tensor().conjugate(), &weighted],
+            )?;
             // The pair density of two site orbitals does not depend on the
             // band, so contract the occupied bands into one site density
             // matrix element and project each orbital pair once.
-            for left in 0..site.orbitals.len() {
-                for right in 0..site.orbitals.len() {
-                    let mut coefficient = Complex64::new(0.0, 0.0);
-                    for (band, &occupation) in k_point.occupations.iter().enumerate() {
-                        let state_weight = k_point.weight * occupation;
-                        if state_weight == 0.0 {
-                            continue;
-                        }
-                        coefficient += state_weight
-                            * projected.at(left, band).conj()
-                            * projected.at(right, band);
-                    }
-                    if coefficient == Complex64::new(0.0, 0.0) {
-                        continue;
-                    }
-                    let pair = project_spinor_pair_density_components(
-                        &site.mesh,
-                        &site.orbitals[left],
-                        &site.orbitals[right],
-                    )?;
-                    accumulate_sphere(
-                        &mut muffin_tins[0][site_index],
-                        coefficient,
-                        pair.charge(),
-                    );
-                    for axis in 0..3 {
-                        accumulate_sphere(
-                            &mut muffin_tins[axis + 1][site_index],
-                            coefficient,
-                            &pair.spin()[axis],
-                        );
-                    }
-                }
+            let site_density = synthesize_spinor_site_density(site, &density_matrix)?;
+            for component in 0..4 {
+                merge_sphere_accumulator(
+                    &mut muffin_tins[component][site_index],
+                    &site_density[component],
+                );
             }
         }
         accumulate_spinor_interstitial(k_point, &layout, &mut interstitial, inverse_volume)?;
@@ -325,6 +447,46 @@ pub fn synthesize_full_spinor_valence_density(
         });
     }
     Ok(result)
+}
+
+fn synthesize_spinor_site_density(
+    site: &FullSpinorDensitySiteBasis,
+    density_matrix: &ComplexTensor,
+) -> Result<[BTreeMap<Lm, Vec<Complex64>>; 4], DensityError> {
+    let contraction = &site.contraction;
+    let mut density: [BTreeMap<Lm, Vec<Complex64>>; 4] = std::array::from_fn(|_| BTreeMap::new());
+    for component in 0..4 {
+        let pp = einsum(
+            "ij,aij,ir,jr->ar",
+            &[
+                density_matrix,
+                &contraction.angular_pp[component],
+                &contraction.radial_p,
+                &contraction.radial_p,
+            ],
+        )?
+        .to_host_row_major();
+        let qq = einsum(
+            "ij,aij,ir,jr->ar",
+            &[
+                density_matrix,
+                &contraction.angular_qq[component],
+                &contraction.radial_q,
+                &contraction.radial_q,
+            ],
+        )?
+        .to_host_row_major();
+        for (harmonic, (pp, qq)) in contraction.harmonics.iter().copied().zip(
+            pp.chunks_exact(site.mesh.len())
+                .zip(qq.chunks_exact(site.mesh.len())),
+        ) {
+            density[component].insert(
+                harmonic,
+                pp.iter().zip(qq).map(|(&pp, &qq)| pp + qq).collect(),
+            );
+        }
+    }
+    Ok(density)
 }
 
 /// Complete-shell four-component core density on a muffin-tin mesh.
@@ -893,34 +1055,33 @@ fn site_accumulators(sites: &[ScalarSiteBasis]) -> Vec<BTreeMap<Lm, Vec<Complex6
 fn site_accumulators_spinor(
     sites: &[FullSpinorDensitySiteBasis],
 ) -> Vec<BTreeMap<Lm, Vec<Complex64>>> {
-    sites
+    sites.iter().map(spinor_site_accumulator).collect()
+}
+
+fn spinor_site_accumulator(site: &FullSpinorDensitySiteBasis) -> BTreeMap<Lm, Vec<Complex64>> {
+    let l_max = site
+        .orbitals
         .iter()
-        .map(|site| {
-            let l_max = site
-                .orbitals
-                .iter()
-                .flat_map(|left| {
-                    site.orbitals.iter().map(move |right| {
-                        let left = left.channel().kappa();
-                        let right = right.channel().kappa();
-                        (left.large_l() + right.large_l()).max(left.small_l() + right.small_l())
-                    })
-                })
-                .max();
-            l_max.map_or_else(BTreeMap::new, |l_max| {
-                (0..=l_max)
-                    .flat_map(|l| {
-                        (-(l as i32)..=l as i32).map(move |m| {
-                            (
-                                Lm::new(l, m).expect("loop bounds validate magnetic channel"),
-                                vec![Complex64::new(0.0, 0.0); site.mesh.len()],
-                            )
-                        })
-                    })
-                    .collect()
+        .flat_map(|left| {
+            site.orbitals.iter().map(move |right| {
+                let left = left.channel().kappa();
+                let right = right.channel().kappa();
+                (left.large_l() + right.large_l()).max(left.small_l() + right.small_l())
             })
         })
-        .collect()
+        .max();
+    l_max.map_or_else(BTreeMap::new, |l_max| {
+        (0..=l_max)
+            .flat_map(|l| {
+                (-(l as i32)..=l as i32).map(move |m| {
+                    (
+                        Lm::new(l, m).expect("loop bounds validate magnetic channel"),
+                        vec![Complex64::new(0.0, 0.0); site.mesh.len()],
+                    )
+                })
+            })
+            .collect()
+    })
 }
 
 fn accumulate_sphere(
@@ -934,6 +1095,20 @@ fn accumulate_sphere(
             .or_insert_with(|| vec![Complex64::new(0.0, 0.0); values.len()]);
         for (target, &value) in target.iter_mut().zip(values) {
             *target += scale * value;
+        }
+    }
+}
+
+fn merge_sphere_accumulator(
+    target: &mut BTreeMap<Lm, Vec<Complex64>>,
+    source: &BTreeMap<Lm, Vec<Complex64>>,
+) {
+    for (&channel, values) in source {
+        let destination = target
+            .get_mut(&channel)
+            .expect("spinor density accumulators use one canonical channel layout");
+        for (destination, &value) in destination.iter_mut().zip(values) {
+            *destination += value;
         }
     }
 }
@@ -1164,6 +1339,8 @@ pub enum DensityError {
     },
     #[error(transparent)]
     Operator(#[from] OperatorError),
+    #[error(transparent)]
+    Tensor(#[from] TensorError),
     #[error(transparent)]
     Projection(#[from] DensityProjectionError),
     #[error(transparent)]
@@ -1652,10 +1829,10 @@ mod tests {
             filtered_dimension: 1,
             residuals: Vec::new(),
         };
-        let sites = [FullSpinorDensitySiteBasis {
-            mesh: mesh.clone(),
-            channels: Vec::new(),
-            orbitals: vec![
+        let sites = [FullSpinorDensitySiteBasis::new(
+            mesh.clone(),
+            Vec::new(),
+            vec![
                 SpinorSphereOrbital::new(channel, vec![0.0; mesh.len()], q).unwrap(),
                 SpinorSphereOrbital::new(
                     kappa.channels().nth(1).unwrap(),
@@ -1664,7 +1841,8 @@ mod tests {
                 )
                 .unwrap(),
             ],
-        }];
+        )
+        .unwrap()];
         let geometry = InterstitialGeometry::new(
             VolumeBohr3(volume),
             vec![Sphere {

@@ -37,6 +37,7 @@ pub fn asarray_row_major(
     match *shape {
         [n] => Ok(rt::asarray((values, [n], &device))),
         [rows, cols] => Ok(rt::asarray((values, [rows, cols], &device))),
+        [outer, rows, cols] => Ok(rt::asarray((values, [outer, rows, cols], &device))),
         _ => Err(TensorError::UnsupportedRank { rank: shape.len() }),
     }
 }
@@ -49,6 +50,7 @@ pub fn asarray_column_major(
     match *shape {
         [n] => Ok(rt::asarray((values, [n].f(), &device))),
         [rows, cols] => Ok(rt::asarray((values, [rows, cols].f(), &device))),
+        [outer, rows, cols] => Ok(rt::asarray((values, [outer, rows, cols].f(), &device))),
         _ => Err(TensorError::UnsupportedRank { rank: shape.len() }),
     }
 }
@@ -84,6 +86,7 @@ pub fn get_at(data: &RstsrTensor, indices: &[usize]) -> Result<Complex64, Tensor
     match *indices {
         [i] => Ok(data[[i]]),
         [i, j] => Ok(data[[i, j]]),
+        [i, j, k] => Ok(data[[i, j, k]]),
         _ => Err(TensorError::UnsupportedRank {
             rank: indices.len(),
         }),

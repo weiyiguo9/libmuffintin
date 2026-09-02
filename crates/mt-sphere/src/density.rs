@@ -269,6 +269,54 @@ impl SpinorPairDensity {
     }
 }
 
+/// Charge and Cartesian Pauli-spin angular factors of one spinor pair.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpinorPairDensityAngular {
+    pub channel: Lm,
+    pub pp: [Complex64; 4],
+    pub qq: [Complex64; 4],
+}
+
+/// Compile the radial-independent angular factors of one spinor pair.
+pub fn spinor_pair_density_angular(
+    left_channel: RelativisticChannel,
+    right_channel: RelativisticChannel,
+) -> Vec<SpinorPairDensityAngular> {
+    let large_l_max = left_channel.kappa().large_l() + right_channel.kappa().large_l();
+    let small_l_max = left_channel.kappa().small_l() + right_channel.kappa().small_l();
+    let l_max = large_l_max.max(small_l_max);
+    let mut angular = Vec::new();
+    for l in 0..=l_max {
+        for m in -(l as i32)..=l as i32 {
+            let field = Lm::new(l, -m).expect("loop bounds validate magnetic channel");
+            let phase = magnetic_phase(m);
+            let pp = [
+                Complex64::new(
+                    phase * spinor_gaunt(left_channel, field, right_channel),
+                    0.0,
+                ),
+                phase * pauli_angular(left_channel, field, right_channel, 0),
+                phase * pauli_angular(left_channel, field, right_channel, 1),
+                phase * pauli_angular(left_channel, field, right_channel, 2),
+            ];
+            let qq_left = left_channel.opposite_kappa();
+            let qq_right = right_channel.opposite_kappa();
+            let qq = [
+                Complex64::new(phase * spinor_gaunt(qq_left, field, qq_right), 0.0),
+                phase * pauli_angular(qq_left, field, qq_right, 0),
+                phase * pauli_angular(qq_left, field, qq_right, 1),
+                phase * pauli_angular(qq_left, field, qq_right, 2),
+            ];
+            angular.push(SpinorPairDensityAngular {
+                channel: Lm::new(l, m).expect("loop bounds validate magnetic channel"),
+                pp,
+                qq,
+            });
+        }
+    }
+    angular
+}
+
 /// Project the full charge/Pauli-spin density of a four-component pair.
 pub fn project_spinor_pair_density_components(
     mesh: &ExponentialMesh,
@@ -276,55 +324,49 @@ pub fn project_spinor_pair_density_components(
     right: &SpinorSphereOrbital,
 ) -> Result<SpinorPairDensity, DensityProjectionError> {
     validate_spinor_lengths(mesh, left, right)?;
-    Ok(SpinorPairDensity {
-        charge: project_spinor_pair_density(mesh, left, right)?,
-        spin: [
-            project_spinor_pair_pauli_density(mesh, left, right, 0)?,
-            project_spinor_pair_pauli_density(mesh, left, right, 1)?,
-            project_spinor_pair_pauli_density(mesh, left, right, 2)?,
-        ],
-    })
-}
-
-fn project_spinor_pair_pauli_density(
-    mesh: &ExponentialMesh,
-    left: &SpinorSphereOrbital,
-    right: &SpinorSphereOrbital,
-    axis: usize,
-) -> Result<SphereField, DensityProjectionError> {
-    let left_channel = left.channel();
-    let right_channel = right.channel();
-    let large_l_max = left_channel.kappa().large_l() + right_channel.kappa().large_l();
-    let small_l_max = left_channel.kappa().small_l() + right_channel.kappa().small_l();
-    let l_max = large_l_max.max(small_l_max);
-    let mut channels = Vec::new();
-    for l in 0..=l_max {
-        for m in -(l as i32)..=l as i32 {
-            let expansion_channel = Lm::new(l, -m).expect("loop bounds validate magnetic channel");
-            let phase = magnetic_phase(m);
-            let pp_angular =
-                phase * pauli_angular(left_channel, expansion_channel, right_channel, axis);
-            let qq_angular = phase
-                * pauli_angular(
-                    left_channel.opposite_kappa(),
-                    expansion_channel,
-                    right_channel.opposite_kappa(),
-                    axis,
+    let mut channels: [Vec<((u32, i32), Vec<Complex64>)>; 4] = std::array::from_fn(|_| Vec::new());
+    for angular in spinor_pair_density_angular(left.channel(), right.channel()) {
+        let mut values: [Vec<Complex64>; 4] =
+            std::array::from_fn(|_| Vec::with_capacity(mesh.len()));
+        for (index, radius) in mesh.radii().iter().enumerate() {
+            let pp_radial = left.p()[index] * right.p()[index];
+            let qq_radial = left.q()[index] * right.q()[index];
+            let inverse_radius_squared = 1.0 / (radius.get() * radius.get());
+            for component in 0..4 {
+                values[component].push(
+                    (angular.pp[component] * pp_radial + angular.qq[component] * qq_radial)
+                        * inverse_radius_squared,
                 );
-            let values = mesh
-                .radii()
-                .iter()
-                .enumerate()
-                .map(|(index, radius)| {
-                    (pp_angular * left.p()[index] * right.p()[index]
-                        + qq_angular * left.q()[index] * right.q()[index])
-                        / (radius.get() * radius.get())
-                })
-                .collect();
-            channels.push(((l, m), values));
+            }
+        }
+        for component in 0..4 {
+            channels[component].push((
+                (angular.channel.l, angular.channel.m),
+                std::mem::take(&mut values[component]),
+            ));
         }
     }
-    SphereField::new(HarmonicConvention::Complex, channels).map_err(Into::into)
+    let mut fields = channels
+        .into_iter()
+        .map(|channels| SphereField::new(HarmonicConvention::Complex, channels))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter();
+    Ok(SpinorPairDensity {
+        charge: fields
+            .next()
+            .expect("four density components were constructed"),
+        spin: [
+            fields
+                .next()
+                .expect("four density components were constructed"),
+            fields
+                .next()
+                .expect("four density components were constructed"),
+            fields
+                .next()
+                .expect("four density components were constructed"),
+        ],
+    })
 }
 
 fn pauli_angular(

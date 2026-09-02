@@ -65,6 +65,10 @@ pub enum Axis {
     Auxiliary,
     /// Pair-vertex column index of one exchange block.
     PairColumn,
+    /// Canonically ordered spherical-harmonic channel.
+    Harmonic,
+    /// Radial mesh point.
+    RadialGrid,
 }
 
 /// Contiguous host layout of a dense tensor.
@@ -130,7 +134,7 @@ pub enum TensorError {
     NonHermitian { row: usize, column: usize },
     #[error("tensor has a non-finite value at {indices:?}")]
     NonFinite { indices: Vec<usize> },
-    #[error("rank-{rank} tensors are not supported; local contractions use rank 1 or 2")]
+    #[error("rank-{rank} tensors are not supported; local contractions use rank 1, 2, or 3")]
     UnsupportedRank { rank: usize },
     #[error("einsum subscripts `{subscripts}` are not in the form `ops->out`")]
     EinsumSyntax { subscripts: String },
@@ -186,7 +190,7 @@ impl ComplexTensor {
                 rank: shape.len(),
             });
         }
-        if shape.is_empty() || shape.len() > 2 {
+        if shape.is_empty() || shape.len() > 3 {
             return Err(TensorError::UnsupportedRank { rank: shape.len() });
         }
         let expected = shape.iter().copied().product::<usize>();

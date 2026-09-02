@@ -141,12 +141,14 @@ pub fn build_spinor_iteration_basis(
     }
     let density_sites = built
         .iter()
-        .map(|site| FullSpinorDensitySiteBasis {
-            mesh: site.full.mesh.clone(),
-            channels: site.full.channels.clone(),
-            orbitals: site.full.orbitals.clone(),
+        .map(|site| {
+            FullSpinorDensitySiteBasis::new(
+                site.full.mesh.clone(),
+                site.full.channels.clone(),
+                site.full.orbitals.clone(),
+            )
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(SpinorIterationBasis {
         basis_spec,
         compiled,

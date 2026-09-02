@@ -58,6 +58,18 @@ fn row_major_to_col_major(
             }
             Ok(column_major)
         }
+        [outer, rows, cols] => {
+            let mut column_major = vec![Complex64::default(); outer * rows * cols];
+            for i in 0..outer {
+                for j in 0..rows {
+                    for k in 0..cols {
+                        column_major[i + outer * (j + rows * k)] =
+                            row_major[(i * rows + j) * cols + k];
+                    }
+                }
+            }
+            Ok(column_major)
+        }
         _ => Err(TensorError::UnsupportedRank { rank: shape.len() }),
     }
 }
@@ -73,6 +85,18 @@ fn col_major_to_row_major(
             for row in 0..rows {
                 for col in 0..cols {
                     row_major[row * cols + col] = column_major[col * rows + row];
+                }
+            }
+            Ok(row_major)
+        }
+        [outer, rows, cols] => {
+            let mut row_major = vec![Complex64::default(); outer * rows * cols];
+            for i in 0..outer {
+                for j in 0..rows {
+                    for k in 0..cols {
+                        row_major[(i * rows + j) * cols + k] =
+                            column_major[i + outer * (j + rows * k)];
+                    }
                 }
             }
             Ok(row_major)

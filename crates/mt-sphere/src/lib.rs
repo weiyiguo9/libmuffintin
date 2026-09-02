@@ -49,8 +49,9 @@ pub use core_potential::{
 };
 pub use density::{
     DensityComponent, DensityOperand, DensityProjectionError, SpinorPairDensity,
-    project_orbital_pair_density, project_orbital_pair_density_with_convention,
-    project_spinor_pair_density, project_spinor_pair_density_components,
+    SpinorPairDensityAngular, project_orbital_pair_density,
+    project_orbital_pair_density_with_convention, project_spinor_pair_density,
+    project_spinor_pair_density_components, spinor_pair_density_angular,
 };
 pub use integrals::{RadialComponents, RadialIntegralError, RadialIntegralKernel, radial_integral};
 pub use spin_orbit::{
