@@ -98,7 +98,7 @@ impl Default for Cli {
             product_l_max: 2,
             lexp: 2,
             muffin_tin_radius: 2.0,
-            radial_points: 1_201,
+            radial_points: 2_401,
             hdlo: HdloSelection::None,
         }
     }
@@ -446,7 +446,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse()?;
     let field_l_max = cli
         .orbital_l_max
-        .checked_mul(2)
+        .checked_add(1)
+        .and_then(|l_max| l_max.checked_mul(2))
         .ok_or_else(|| invalid_input("--orbital-lmax is too large to derive field_lmax"))?;
     let radial_log_increment =
         (cli.muffin_tin_radius / RADIAL_FIRST_BOHR).ln() / (cli.radial_points - 1) as f64;

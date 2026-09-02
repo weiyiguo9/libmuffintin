@@ -45,7 +45,7 @@ cargo run -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
   --out kr-relaxed-core-hf-p0 \
   --box 8 --orbital-g 1 --field-g 4.5 --orbital-lmax 1 \
   --product-g 1 --product-lmax 2 --lexp 2 \
-  --rmt 2 --radial-points 1201 --hdlo none
+  --rmt 2 --radial-points 2401 --hdlo none
 ```
 
 These defaults are the deliberately loose P0 smoke profile: no HDLOs,
@@ -53,8 +53,10 @@ $T=0.02$ Hartree, at most two outer and core steps, and at most 32 Fock
 iterations. Completion demonstrates that the production pipeline executed; it
 is not a claim of physical convergence. `--field-g 4.5` sets the independent
 atomic-start regional-field cutoff in inverse bohr, while `--orbital-g 1`
-remains the orbital-basis cutoff. The field angular cutoff remains twice the
-orbital angular cutoff.
+remains the orbital-basis cutoff. The field angular cutoff is
+`2 * (orbital_lmax + 1)` so the Dirac small-component products retain their
+complete channel layout. The 2401-point muffin-tin mesh resolves the separate
+full-space and muffin-tin core norm quadratures used by the spill gate.
 
 The output directory contains:
 
