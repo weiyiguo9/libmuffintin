@@ -16,6 +16,7 @@ use muffintin_prodbasis::{
     DiracProductSource, DiracRadial, DiracRadialNormalization, DiracRawProductSpace,
     ExchangePairLayout, ExchangeSpace, OrbitalPair, PairVertex, RawInterstitialPairSupport,
 };
+use muffintin_tensor::{Axis, ComplexTensor, TensorError, einsum};
 use num_complex::Complex64;
 use std::collections::HashSet;
 use std::f64::consts::PI;
@@ -88,17 +89,17 @@ pub(crate) struct SpinorExchangeMpbBasis {
     core: crate::spinor_product::SpinorCoreTable,
     k_minus_q: Vec<SpinorKMinusQ>,
     cv_layout: ExchangePairLayout,
-    known_pp: HashSet<(
-        muffintin_prodbasis::DiracRadialId,
-        muffintin_prodbasis::DiracRadialId,
-    )>,
-    known_qq: HashSet<(
-        muffintin_prodbasis::DiracRadialId,
-        muffintin_prodbasis::DiracRadialId,
-    )>,
+    cv_site_tensors: Vec<CvSiteTensor>,
     product_l_max: u32,
     product_g_max: InverseBohr,
     overlap_tolerance: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct CvSiteTensor {
+    site: usize,
+    core_indices: Vec<usize>,
+    coefficients: ComplexTensor,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -129,6 +130,8 @@ pub enum SpinorExchangeMpbError {
     Mpb(#[from] MpbError),
     #[error(transparent)]
     Operator(#[from] OperatorError),
+    #[error(transparent)]
+    Tensor(#[from] TensorError),
     #[error("rectangular core-sector MPB requires at least one MuResolved core spin orbital")]
     EmptyCore,
     #[error("spinor core table and Dirac core-radial source are inconsistent")]
@@ -169,9 +172,11 @@ pub(crate) fn compile_spinor_exchange_mpb_basis(
         input.orbitals.band_window.count,
     );
     let _ = cv_layout.n_columns()?;
+    let known_pp = raw_mt_pairs(&raw, DiracChargeSector::LargeLarge);
+    let known_qq = raw_mt_pairs(&raw, DiracChargeSector::SmallSmall);
+    let cv_site_tensors =
+        compile_cv_site_tensors(input, &source, &raw, &auxiliary, &known_pp, &known_qq)?;
     Ok(SpinorExchangeMpbBasis {
-        known_pp: raw_mt_pairs(&raw, DiracChargeSector::LargeLarge),
-        known_qq: raw_mt_pairs(&raw, DiracChargeSector::SmallSmall),
         source,
         raw,
         auxiliary,
@@ -179,10 +184,95 @@ pub(crate) fn compile_spinor_exchange_mpb_basis(
         core: input.core.clone(),
         k_minus_q: input.k_minus_q.clone(),
         cv_layout,
+        cv_site_tensors,
         product_l_max: spec.product_l_max,
         product_g_max: spec.product_g_max,
         overlap_tolerance: spec.overlap_tolerance,
     })
+}
+
+fn compile_cv_site_tensors(
+    input: &SpinorProductInput,
+    source: &DiracProductSource,
+    raw: &DiracRawProductSpace,
+    auxiliary: &CompiledAuxiliaryBasis,
+    known_pp: &HashSet<(
+        muffintin_prodbasis::DiracRadialId,
+        muffintin_prodbasis::DiracRadialId,
+    )>,
+    known_qq: &HashSet<(
+        muffintin_prodbasis::DiracRadialId,
+        muffintin_prodbasis::DiracRadialId,
+    )>,
+) -> Result<Vec<CvSiteTensor>, SpinorExchangeMpbError> {
+    let compiled = input
+        .orbitals
+        .bases
+        .first()
+        .ok_or(SpinorExchangeMpbError::IncompatiblePairContext)?;
+    let context = DiracVertexContext::new(source, raw, auxiliary)?;
+    let mut table = context.sector_table();
+    let mut sites = Vec::new();
+    for site in 0..source.partition.site_count() {
+        let core_indices = input
+            .core
+            .orbitals
+            .iter()
+            .enumerate()
+            .filter_map(|(index, core)| (core.site_index == site).then_some(index))
+            .collect::<Vec<_>>();
+        if core_indices.is_empty() {
+            continue;
+        }
+        let core_count = core_indices.len();
+        let channels = site_channels(compiled, site)?;
+        let coordinate_count =
+            CompiledSiteProjection::spinor(compiled, site, channels)?.coordinate_count();
+        let mut coefficients = vec![
+            Complex64::default();
+            auxiliary.dimension() * core_indices.len() * coordinate_count
+        ];
+        for (local_core, &core_index) in core_indices.iter().enumerate() {
+            let core = &input.core.orbitals[core_index];
+            for coordinate in 0..coordinate_count {
+                let (right, right_twice_mu) = input
+                    .site_projection_identity(site, coordinate)
+                    .ok_or(SpinorExchangeMpbError::IncompatiblePairContext)?;
+                let pair = DiracMtPairSpec {
+                    left: core.radial,
+                    left_twice_mu: core.twice_mu,
+                    right,
+                    right_twice_mu,
+                };
+                let mut sectors = Vec::with_capacity(2);
+                if known_pp.contains(&(pair.left, pair.right)) {
+                    sectors.push(DiracChargeSector::LargeLarge);
+                }
+                if known_qq.contains(&(pair.left, pair.right)) {
+                    sectors.push(DiracChargeSector::SmallSmall);
+                }
+                if sectors.is_empty() {
+                    continue;
+                }
+                let pair = table.compile_pair(source, pair, &sectors)?;
+                for &(auxiliary, factor) in pair.coefficients() {
+                    coefficients[(auxiliary * core_indices.len() + local_core)
+                        * coordinate_count
+                        + coordinate] += factor;
+                }
+            }
+        }
+        sites.push(CvSiteTensor {
+            site,
+            core_indices,
+            coefficients: ComplexTensor::from_host_row_major(
+                &[auxiliary.dimension(), core_count, coordinate_count],
+                &[Axis::Auxiliary, Axis::CoreOrbital, Axis::SiteCoordinate],
+                coefficients,
+            )?,
+        });
+    }
+    Ok(sites)
 }
 
 pub(crate) fn build_spinor_exchange_feedback_from_basis(
@@ -214,28 +304,46 @@ pub(crate) fn build_spinor_exchange_feedback_from_basis(
     }
 
     let context = DiracVertexContext::new(&basis.source, &basis.raw, &basis.auxiliary)?;
-    let mut table = context.sector_table();
     let mut vertices = Vec::with_capacity(cv_layout.n_columns()?);
+    let core_count = input.core.orbitals.len();
+    let target_count = input.orbitals.band_window.count;
+    let auxiliary_count = basis.auxiliary.dimension();
     for mapped in input.k_minus_q.iter().copied() {
         let projected = project_k_sites(input, mapped)?;
-        for (core_index, core) in input.core.orbitals.iter().enumerate() {
-            for target in 0..input.orbitals.band_window.count {
+        let mut contracted =
+            vec![Complex64::default(); core_count * target_count * auxiliary_count];
+        for site_tensor in &basis.cv_site_tensors {
+            let site = einsum(
+                "aci,it->act",
+                &[
+                    &site_tensor.coefficients,
+                    projected[site_tensor.site].right.as_tensor(),
+                ],
+            )?
+            .to_host_row_major();
+            for (local_core, &core_index) in site_tensor.core_indices.iter().enumerate() {
+                let phases = spinor_pair_site_phases(input, mapped, site_tensor.site)
+                    .ok_or(SpinorExchangeMpbError::IncompatiblePairContext)?;
+                let phase = phases.left_bloch.conj() * phases.auxiliary_compensation;
+                for auxiliary in 0..auxiliary_count {
+                    for target in 0..target_count {
+                        contracted
+                            [(core_index * target_count + target) * auxiliary_count + auxiliary] +=
+                            phase
+                                * site[(auxiliary * site_tensor.core_indices.len() + local_core)
+                                    * target_count
+                                    + target];
+                    }
+                }
+            }
+        }
+        for core_index in 0..core_count {
+            for target in 0..target_count {
                 let column = cv_layout.encode(mapped.k_index, core_index, target)?;
                 let pair = exchange_pair(cv_layout, mapped.k_index, core_index, target);
                 let mut acc = context.bloch_accumulator(pair)?;
-                add_cv(
-                    &mut acc,
-                    &mut table,
-                    &basis.source,
-                    input,
-                    mapped,
-                    core,
-                    &projected[core.site_index].right,
-                    target,
-                    &basis.known_pp,
-                    &basis.known_qq,
-                    false,
-                )?;
+                let start = (core_index * target_count + target) * auxiliary_count;
+                acc.add_auxiliary_coefficients(&contracted[start..start + auxiliary_count])?;
                 vertices.push(SpinorExchangeMpbPairVertex {
                     column,
                     k: mapped.k_index,
