@@ -77,8 +77,6 @@ pub struct GammaValenceHfIterationDiagnostic {
     pub lifting_identity_residual: f64,
     /// First global H0+lifted-K solve versus `diag(epsilon0)+K`.
     pub first_global_solve_identity_residual: Option<f64>,
-    /// Independent first one-shot rebuild versus the driver first rebuild.
-    pub first_one_shot_parity_residual: Option<f64>,
 }
 
 pub type ValenceHfIterationDiagnostic = GammaValenceHfIterationDiagnostic;
@@ -165,13 +163,8 @@ pub struct RelaxedCoreHfIterationDiagnostic {
     pub valence_eigenvalue_identity_residual: f64,
     pub lifting_identity_residual: f64,
     pub first_global_solve_identity_residual: Option<f64>,
-    pub first_one_shot_parity_residual: Option<f64>,
     /// Difference between the previous core density and its fresh replacement.
     pub fresh_core_replacement_rms: f64,
-    /// `total_out - (valence_out + fresh_core)` under the regional metric.
-    pub fresh_core_assembly_residual: f64,
-    /// `total_next - (mixed_valence + fresh_core)` when another step is needed.
-    pub valence_only_mixing_residual: Option<f64>,
     /// Per-core exact-minus-spherical VC expectations from the final rebuilt frame.
     pub delta_c: Vec<CoreValenceDeltaDiagnostic>,
     pub weighted_delta_closure_residual: Hartree,
@@ -500,7 +493,6 @@ pub fn run_valence_hf(
             total_energy_identity_residual: energy.total_identity_residual,
             lifting_identity_residual: fixed.lifting_identity_residual,
             first_global_solve_identity_residual: fixed.first_global_solve_identity_residual,
-            first_one_shot_parity_residual: fixed.first_one_shot_parity_residual,
         });
         let converged = energy_change
             .is_some_and(|change| change.get() <= spec.config.convergence.energy_tolerance.get())
@@ -660,8 +652,6 @@ pub fn run_relaxed_core_hf(
             .kernel
             .synthesize_bands(&fixed.bands, &fixed.occupation.values)?;
         let total_output = sum_density(&valence_output, &fresh_core_density)?;
-        let assembled_again = sum_density(&valence_output, &fresh_core_density)?;
-        let fresh_core_assembly_residual = total_output.difference_rms(&assembled_again)?;
         let valence_density_rms = valence_density.difference_rms(&valence_output)?;
         let total_density_rms = total_density.difference_rms(&total_output)?;
         let fresh_core_replacement_rms = core_density.difference_rms(&fresh_core_density)?;
@@ -756,14 +746,11 @@ pub fn run_relaxed_core_hf(
 
         let (core_maximum_energy_change, core_maximum_radial_residual) =
             maximum_core_residuals(&core_relaxations);
-        let mut valence_only_mixing_residual = None;
         let mut next_valence = None;
         let mut next_total = None;
         if !converged {
             let mixed_valence = mixer.mix(&valence_density, &valence_output)?.density;
             let mixed_total = sum_density(&mixed_valence, &fresh_core_density)?;
-            let expected_total = sum_density(&mixed_valence, &fresh_core_density)?;
-            valence_only_mixing_residual = Some(mixed_total.difference_rms(&expected_total)?);
             next_valence = Some(mixed_valence);
             next_total = Some(mixed_total);
         }
@@ -803,10 +790,7 @@ pub fn run_relaxed_core_hf(
             valence_eigenvalue_identity_residual: energy.valence_eigenvalue_identity_residual,
             lifting_identity_residual: fixed.lifting_identity_residual,
             first_global_solve_identity_residual: fixed.first_global_solve_identity_residual,
-            first_one_shot_parity_residual: fixed.first_one_shot_parity_residual,
             fresh_core_replacement_rms,
-            fresh_core_assembly_residual,
-            valence_only_mixing_residual,
             delta_c: core_valence_comparison.deltas.clone(),
             weighted_delta_closure_residual: core_valence_comparison
                 .weighted_delta_closure_residual,
@@ -969,7 +953,6 @@ struct RelaxedFixedPotentialResult {
     fixed_point_residual: f64,
     lifting_identity_residual: f64,
     first_global_solve_identity_residual: Option<f64>,
-    first_one_shot_parity_residual: Option<f64>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -984,7 +967,6 @@ fn solve_relaxed_fixed_potential(
     core_sidecars: &[CoreShellOrbitals],
 ) -> Result<RelaxedFixedPotentialResult, RelaxedCoreHfError> {
     let mut rebuilds = 0;
-    let mut first_one_shot_parity_residual = None;
     let mut first_global_solve_identity_residual = None;
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
@@ -997,16 +979,6 @@ fn solve_relaxed_fixed_potential(
         let occupation =
             solve_occupations(bands.states(), valence_electrons, spec.config.occupations)?;
         if outer_iteration == 1 && fock_iteration == 1 {
-            let oracle = rebuild_relaxed_sector_frame(
-                physics,
-                spec,
-                &bands,
-                &occupation,
-                k_fractional,
-                q_fractional,
-                core_sidecars,
-            )?;
-            rebuilds += 1;
             let driver = rebuild_relaxed_sector_frame(
                 physics,
                 spec,
@@ -1017,9 +989,6 @@ fn solve_relaxed_fixed_potential(
                 core_sidecars,
             )?;
             rebuilds += 1;
-            let parity = relaxed_sector_difference(&oracle.exchange, &driver.exchange);
-            first_one_shot_parity_residual = Some(parity);
-            require_relaxed_gate("first one-shot parity", parity, IDENTITY_TOLERANCE)?;
             let band_feedback = relaxed_valence_feedback(&driver.exchange)?;
             let global_feedback = lift_global_feedback(&bands, &band_feedback)?;
             let lifting_identity_residual =
@@ -1118,7 +1087,6 @@ fn solve_relaxed_fixed_potential(
                 fixed_point_residual: last_residual,
                 lifting_identity_residual,
                 first_global_solve_identity_residual,
-                first_one_shot_parity_residual,
             });
         }
         bands = solved;
@@ -1281,29 +1249,6 @@ fn relaxed_valence_feedback(
         .collect()
 }
 
-fn relaxed_sector_difference(
-    left: &FrozenSpinorSectorExchange,
-    right: &FrozenSpinorSectorExchange,
-) -> f64 {
-    let mut maximum = (left.exchange_total.get() - right.exchange_total.get()).abs();
-    for (left, right) in [
-        (&left.vv, &right.vv),
-        (&left.cv, &right.cv),
-        (&left.vc, &right.vc),
-        (&left.cc, &right.cc),
-    ] {
-        maximum = maximum.max((left.trace.get() - right.trace.get()).abs());
-        maximum = maximum.max(
-            (left.maximum_antihermitian_residual - right.maximum_antihermitian_residual).abs(),
-        );
-        for (left, right) in left.target_matrices.iter().zip(&right.target_matrices) {
-            for (&left, &right) in left.values().iter().zip(right.values()) {
-                maximum = maximum.max((left - right).norm());
-            }
-        }
-    }
-    maximum
-}
 
 struct FixedPotentialResult {
     bands: CheckpointBandSolution,
@@ -1314,7 +1259,6 @@ struct FixedPotentialResult {
     fixed_point_residual: f64,
     lifting_identity_residual: f64,
     first_global_solve_identity_residual: Option<f64>,
-    first_one_shot_parity_residual: Option<f64>,
     first_one_shot_exchange: Option<IsdfExchangeResult>,
 }
 
@@ -1328,7 +1272,6 @@ fn solve_fixed_potential(
 ) -> Result<FixedPotentialResult, GammaValenceHfError> {
     let mut rebuilds = 0;
     let mut first_one_shot_exchange = None;
-    let mut first_one_shot_parity_residual = None;
     let mut first_global_solve_identity_residual = None;
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
@@ -1342,16 +1285,6 @@ fn solve_fixed_potential(
         )?;
         let occupation_rows = occupation_rows(&occupation.values, &bands)?;
         if outer_iteration == 1 && fock_iteration == 1 {
-            let oracle = rebuild_exchange(
-                physics,
-                spec,
-                &bands,
-                &occupation_rows,
-                k_fractional,
-                q_fractional,
-            )?;
-            rebuilds += 1;
-            first_one_shot_exchange = Some(oracle.clone());
             let driver = rebuild_exchange(
                 physics,
                 spec,
@@ -1361,12 +1294,7 @@ fn solve_fixed_potential(
                 q_fractional,
             )?;
             rebuilds += 1;
-            first_one_shot_parity_residual = Some(exchange_difference(&oracle, &driver));
-            require_gate(
-                "first one-shot parity",
-                first_one_shot_parity_residual.expect("just recorded"),
-                IDENTITY_TOLERANCE,
-            )?;
+            first_one_shot_exchange = Some(driver.clone());
             let band_feedback = exchange_feedback(&driver)?;
             let global_feedback = lift_global_feedback(&bands, &band_feedback)?;
             let lifting_identity_residual =
@@ -1470,7 +1398,6 @@ fn solve_fixed_potential(
                 fixed_point_residual: last_residual,
                 lifting_identity_residual,
                 first_global_solve_identity_residual,
-                first_one_shot_parity_residual,
                 first_one_shot_exchange,
             });
         }
@@ -2032,17 +1959,6 @@ fn k_weights(bands: &CheckpointBandSolution) -> Result<Vec<f64>, GammaValenceHfE
         .collect()
 }
 
-fn exchange_difference(left: &IsdfExchangeResult, right: &IsdfExchangeResult) -> f64 {
-    let mut maximum = (left.exchange_energy.get() - right.exchange_energy.get()).abs();
-    maximum = maximum
-        .max((left.maximum_antihermitian_residual - right.maximum_antihermitian_residual).abs());
-    for (left, right) in left.band_matrices.iter().zip(&right.band_matrices) {
-        for (&left, &right) in left.values().iter().zip(right.values()) {
-            maximum = maximum.max((left - right).norm());
-        }
-    }
-    maximum
-}
 
 fn density_mixer(spec: ScfMixing) -> Result<DensityMixer, MixingError> {
     match spec {

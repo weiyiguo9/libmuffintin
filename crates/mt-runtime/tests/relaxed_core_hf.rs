@@ -80,17 +80,12 @@ fn neutral_closed_shell_replaces_core_mixes_only_valence_and_keeps_gamma_parity(
             .any(|item| item.fresh_core_replacement_rms > 0.0)
     );
     assert!(gamma.diagnostics.iter().all(|item| {
-        item.fresh_core_assembly_residual <= 1.0e-12
-            && item
-                .valence_only_mixing_residual
-                .is_none_or(|residual| residual <= 1.0e-12)
-            && item.valence_eigenvalue_identity_residual <= 1.0e-8
+        item.valence_eigenvalue_identity_residual <= 1.0e-8
             && (item.valence_feedback_vv_cv_trace.get() - item.trace_vv.get() - item.trace_cv.get())
                 .abs()
                 <= 1.0e-12
     }));
     assert_eq!(gamma.diagnostics[0].core_inner_iterations, vec![1]);
-    assert!(gamma.diagnostics[0].valence_only_mixing_residual.is_some());
     assert!((gamma.diagnostics[0].valence_electron_count - 2.0).abs() <= 1.0e-8);
     assert!((gamma.diagnostics[0].core_electron_count - 2.0).abs() <= 1.0e-8);
     assert!((gamma.diagnostics[0].total_electron_count - 4.0).abs() <= 1.0e-8);

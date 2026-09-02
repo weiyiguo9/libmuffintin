@@ -125,11 +125,6 @@ fn gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals() {
     );
     assert!(
         result.diagnostics[0]
-            .first_one_shot_parity_residual
-            .is_some_and(|residual| residual <= 1.0e-8)
-    );
-    assert!(
-        result.diagnostics[0]
             .first_global_solve_identity_residual
             .is_some_and(|residual| residual <= 1.0e-8)
     );

@@ -748,6 +748,72 @@ fn rectangular_core_vertices_are_mt_only_pp_qq_and_occupation_free() {
 }
 
 #[test]
+fn repeating_the_frozen_sector_rebuild_reproduces_it_exactly() {
+    // The HF Fock loop used to assert this by building the first frame twice
+    // and comparing, which doubled the most expensive step of every run.
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let plain = physics
+        .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
+        .unwrap();
+    let input = plain
+        .clone()
+        .with_core_sidecars(&[core_sidecar(&plain, 0.5)])
+        .unwrap();
+    let n_valence = input.orbitals.band_window.count;
+    let selections = || {
+        (0..n_valence)
+            .flat_map(|occupied| {
+                (0..n_valence).map(move |target| SpinorMpbSelection {
+                    k: 0,
+                    left_band: occupied,
+                    right_band: target,
+                })
+            })
+            .collect::<Vec<_>>()
+    };
+    let request = CoulombRequest::cubic(8.0, 2).unwrap();
+    let mut valence = vec![0.0; n_valence];
+    valence[0] = 0.75;
+    if n_valence > 1 {
+        valence[1] = 0.25;
+    }
+    let occupations = SectorOccupations {
+        k_weights: vec![1.0],
+        valence: vec![valence],
+        core: input
+            .core
+            .orbitals
+            .iter()
+            .map(|orbital| orbital.occupation)
+            .collect(),
+        gamma: GammaExchangeTreatment::FiniteBody,
+    };
+    let rebuild = || {
+        let vv = build_spinor_mpb(
+            &input,
+            &SpinorMpbSpec {
+                product_l_max: 2,
+                product_g_max: InverseBohr(1.5),
+                overlap_tolerance: DEFAULT_TOLERANCE,
+                selections: selections(),
+            },
+        )
+        .unwrap();
+        let core = build_spinor_exchange_mpb(&input, &exchange_spec()).unwrap();
+        build_frozen_spinor_sector_exchange(
+            std::slice::from_ref(&input),
+            std::slice::from_ref(&vv),
+            std::slice::from_ref(&core),
+            &request,
+            &occupations,
+        )
+        .unwrap()
+    };
+
+    assert_eq!(rebuild(), rebuild());
+}
+
+#[test]
 fn frozen_gamma_sector_evaluator_closes_all_public_one_shot_identities() {
     let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
     let plain = physics
