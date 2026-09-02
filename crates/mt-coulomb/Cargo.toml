@@ -16,6 +16,7 @@ libmuffintin-core = { path = "../mt-core" }
 libmuffintin-prodbasis = { path = "../mt-prodbasis" }
 libmuffintin-tensor = { path = "../mt-tensor" }
 num-complex.workspace = true
+rayon.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

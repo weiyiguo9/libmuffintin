@@ -84,6 +84,16 @@ pub enum CoulombError {
     },
     #[error("pair vertex auxiliary layout does not match the Coulomb operator")]
     VertexLayout,
+    #[error("Coulomb vertex block dimension overflow")]
+    DimensionOverflow,
+    #[error(
+        "Coulomb vertex block has {vertices} columns, expected {occupied} occupied states times {targets} targets"
+    )]
+    VertexBlockDimension {
+        vertices: usize,
+        occupied: usize,
+        targets: usize,
+    },
     #[error("sampled zeta layout does not match the compiled auxiliary")]
     SampledLayoutMismatch,
     #[error(

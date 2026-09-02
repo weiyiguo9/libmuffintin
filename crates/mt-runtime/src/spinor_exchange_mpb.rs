@@ -8,8 +8,8 @@ use crate::spinor_product::{
 use muffintin_core::{InverseBohr, RelativisticChannel};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
 use muffintin_prodbasis::mpb::{
-    DiracBlochVertexAccumulator, DiracMtSectorTable, DiracProductMode, DiracVertexContext, MpbError,
-    apply_dirac_overlap_cutoff, untruncated_dirac_product_space,
+    DiracBlochVertexAccumulator, DiracMtSectorTable, DiracProductMode, DiracVertexContext,
+    MpbError, apply_dirac_overlap_cutoff, untruncated_dirac_product_space,
 };
 use muffintin_prodbasis::{
     AuxiliaryIrError, CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec,
@@ -79,6 +79,40 @@ pub struct SpinorExchangeMpbResult {
     frozen_input: SpinorFrozenInputIdentity,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct SpinorExchangeMpbBasis {
+    source: DiracProductSource,
+    raw: DiracRawProductSpace,
+    pub(crate) auxiliary: CompiledAuxiliaryBasis,
+    reciprocal: muffintin_core::ReciprocalLattice,
+    core: crate::spinor_product::SpinorCoreTable,
+    k_minus_q: Vec<SpinorKMinusQ>,
+    cv_layout: ExchangePairLayout,
+    known_pp: HashSet<(
+        muffintin_prodbasis::DiracRadialId,
+        muffintin_prodbasis::DiracRadialId,
+    )>,
+    known_qq: HashSet<(
+        muffintin_prodbasis::DiracRadialId,
+        muffintin_prodbasis::DiracRadialId,
+    )>,
+    product_l_max: u32,
+    product_g_max: InverseBohr,
+    overlap_tolerance: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct SpinorExchangeMpbFeedbackResult {
+    pub(crate) cv: SpinorExchangeMpbSector,
+    frozen_input: SpinorFrozenInputIdentity,
+}
+
+impl SpinorExchangeMpbFeedbackResult {
+    pub(crate) const fn frozen_input_identity(&self) -> &SpinorFrozenInputIdentity {
+        &self.frozen_input
+    }
+}
+
 impl SpinorExchangeMpbResult {
     pub(crate) const fn frozen_input_identity(&self) -> &SpinorFrozenInputIdentity {
         &self.frozen_input
@@ -101,10 +135,131 @@ pub enum SpinorExchangeMpbError {
     IncompatibleCoreTable,
     #[error("spinor rectangular pair context is inconsistent with the frozen q slice")]
     IncompatiblePairContext,
+    #[error("spinor core-member static basis does not match the current fixed-potential input")]
+    IncompatibleBasisContext,
+}
+
+pub(crate) fn compile_spinor_exchange_mpb_basis(
+    input: &SpinorProductInput,
+    spec: &SpinorExchangeMpbSpec,
+) -> Result<SpinorExchangeMpbBasis, SpinorExchangeMpbError> {
+    input.validate()?;
+    if input.core.orbitals.is_empty() {
+        return Err(SpinorExchangeMpbError::EmptyCore);
+    }
+    require_core_table(input)?;
+    let mut source = input.source.clone();
+    source.interstitial_pair_support = RawInterstitialPairSupport::empty(source.q);
+    source.validate().map_err(MpbError::from)?;
+    let raw =
+        untruncated_dirac_product_space(&source, spec.product_l_max, DiracProductMode::CoreMember)?;
+    let auxiliary = apply_dirac_overlap_cutoff(
+        &raw,
+        &source,
+        spec.overlap_tolerance,
+        1.0,
+        &input.reciprocal,
+        spec.product_g_max,
+    )?;
+    let cv_layout = ExchangePairLayout::new(
+        ExchangeSpace::Core,
+        ExchangeSpace::Valence,
+        input.orbitals.k_fractional.len(),
+        input.core.orbitals.len(),
+        input.orbitals.band_window.count,
+    );
+    let _ = cv_layout.n_columns()?;
+    Ok(SpinorExchangeMpbBasis {
+        known_pp: raw_mt_pairs(&raw, DiracChargeSector::LargeLarge),
+        known_qq: raw_mt_pairs(&raw, DiracChargeSector::SmallSmall),
+        source,
+        raw,
+        auxiliary,
+        reciprocal: input.reciprocal,
+        core: input.core.clone(),
+        k_minus_q: input.k_minus_q.clone(),
+        cv_layout,
+        product_l_max: spec.product_l_max,
+        product_g_max: spec.product_g_max,
+        overlap_tolerance: spec.overlap_tolerance,
+    })
+}
+
+pub(crate) fn build_spinor_exchange_feedback_from_basis(
+    input: &SpinorProductInput,
+    spec: &SpinorExchangeMpbSpec,
+    basis: &SpinorExchangeMpbBasis,
+) -> Result<SpinorExchangeMpbFeedbackResult, SpinorExchangeMpbError> {
+    input.validate()?;
+    require_core_table(input)?;
+    let mut source = input.source.clone();
+    source.interstitial_pair_support = RawInterstitialPairSupport::empty(source.q);
+    let cv_layout = ExchangePairLayout::new(
+        ExchangeSpace::Core,
+        ExchangeSpace::Valence,
+        input.orbitals.k_fractional.len(),
+        input.core.orbitals.len(),
+        input.orbitals.band_window.count,
+    );
+    if source != basis.source
+        || input.reciprocal != basis.reciprocal
+        || input.core != basis.core
+        || input.k_minus_q != basis.k_minus_q
+        || cv_layout != basis.cv_layout
+        || spec.product_l_max != basis.product_l_max
+        || spec.product_g_max != basis.product_g_max
+        || spec.overlap_tolerance != basis.overlap_tolerance
+    {
+        return Err(SpinorExchangeMpbError::IncompatibleBasisContext);
+    }
+
+    let context = DiracVertexContext::new(&basis.source, &basis.raw, &basis.auxiliary)?;
+    let mut table = context.sector_table();
+    let mut vertices = Vec::with_capacity(cv_layout.n_columns()?);
+    for mapped in input.k_minus_q.iter().copied() {
+        let projected = project_k_sites(input, mapped)?;
+        for (core_index, core) in input.core.orbitals.iter().enumerate() {
+            for target in 0..input.orbitals.band_window.count {
+                let column = cv_layout.encode(mapped.k_index, core_index, target)?;
+                let pair = exchange_pair(cv_layout, mapped.k_index, core_index, target);
+                let mut acc = context.bloch_accumulator(pair)?;
+                add_cv(
+                    &mut acc,
+                    &mut table,
+                    &basis.source,
+                    input,
+                    mapped,
+                    core,
+                    &projected[core.site_index].right,
+                    target,
+                    &basis.known_pp,
+                    &basis.known_qq,
+                    false,
+                )?;
+                vertices.push(SpinorExchangeMpbPairVertex {
+                    column,
+                    k: mapped.k_index,
+                    occupied: core_index,
+                    target,
+                    vertex: acc.finish()?,
+                });
+            }
+        }
+    }
+    Ok(SpinorExchangeMpbFeedbackResult {
+        cv: SpinorExchangeMpbSector {
+            layout: cv_layout,
+            vertices,
+        },
+        frozen_input: spinor_frozen_input_identity(input),
+    })
 }
 
 /// Build every CV, VC, and CC column over one common core-member MPB.
 ///
+/// The basis spans only core–valence and core–core products because those are
+/// the pair columns expanded by this builder. The VV-only basis produced by
+/// [`crate::build_spinor_mpb`] therefore remains a separate span.
 /// Occupations are copied only in [`crate::SpinorCoreTable`] and never enter
 /// radial products or vertices. The core-sector raw interstitial support is
 /// empty, so every returned vertex has an identically zero interstitial block.
@@ -189,6 +344,7 @@ pub fn build_spinor_exchange_mpb(
                     target,
                     &known_pp,
                     &known_qq,
+                    true,
                 )?;
                 let vertex = acc.finish()?;
                 cv_diagnostics.push(gamma_diagnostic(
@@ -349,6 +505,7 @@ fn add_cv(
         muffintin_prodbasis::DiracRadialId,
         muffintin_prodbasis::DiracRadialId,
     )>,
+    measure_direct: bool,
 ) -> Result<Complex64, SpinorExchangeMpbError> {
     let phases = spinor_pair_site_phases(input, mapped, core.site_index)
         .ok_or(SpinorExchangeMpbError::IncompatiblePairContext)?;
@@ -366,7 +523,9 @@ fn add_cv(
         let amplitude =
             phases.left_bloch.conj() * right.at(coordinate, target) * phases.auxiliary_compensation;
         add_pair(acc, table, pair, amplitude, known_pp, known_qq)?;
-        direct += amplitude * direct_overlap(source, pair)?;
+        if measure_direct {
+            direct += amplitude * direct_overlap(source, pair)?;
+        }
     }
     Ok(direct)
 }

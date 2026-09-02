@@ -27,6 +27,7 @@ libmuffintin-sphere = { path = "../mt-sphere" }
 libmuffintin-symmetry = { path = "../mt-symmetry", default-features = false }
 libmuffintin-tensor = { path = "../mt-tensor" }
 num-complex.workspace = true
+rayon.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 toml.workspace = true

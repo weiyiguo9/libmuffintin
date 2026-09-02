@@ -239,6 +239,56 @@ impl<'a> CoulombVertexContractor<'a> {
         Ok(contracted.to_host_row_major())
     }
 
+    /// Weighted sum of equal-occupied quadratic blocks.
+    ///
+    /// `vertices` is occupied-major with `n_target` consecutive target
+    /// columns per occupied state. The operator is applied to all columns in
+    /// one dense contraction; only the equal-occupied target blocks are then
+    /// accumulated. This avoids rebuilding and applying the same resident
+    /// Coulomb tensor once per occupied state.
+    pub fn weighted_occupied_quadratic_sum(
+        &self,
+        vertices: &[&PairVertex],
+        occupied_weights: &[f64],
+        n_target: usize,
+    ) -> Result<Vec<Complex64>, CoulombError> {
+        if occupied_weights.is_empty() || n_target == 0 {
+            return Ok(Vec::new());
+        }
+        let expected = occupied_weights
+            .len()
+            .checked_mul(n_target)
+            .ok_or(CoulombError::DimensionOverflow)?;
+        if vertices.len() != expected {
+            return Err(CoulombError::VertexBlockDimension {
+                vertices: vertices.len(),
+                occupied: occupied_weights.len(),
+                targets: n_target,
+            });
+        }
+
+        let columns = self.column_block(vertices)?;
+        let applied = einsum("ab,bj->aj", &[&self.matrix, &columns])?.to_host_row_major();
+        let n_auxiliary = self.operator.dimension();
+        let n_columns = vertices.len();
+        let mut result = vec![Complex64::default(); n_target * n_target];
+        for auxiliary in 0..n_auxiliary {
+            let applied_row = &applied[auxiliary * n_columns..(auxiliary + 1) * n_columns];
+            for (occupied, &weight) in occupied_weights.iter().enumerate() {
+                let base = occupied * n_target;
+                for left_target in 0..n_target {
+                    let left =
+                        vertices[base + left_target].coefficients()[auxiliary].conj() * weight;
+                    let output = &mut result[left_target * n_target..(left_target + 1) * n_target];
+                    for right_target in 0..n_target {
+                        output[right_target] += left * applied_row[base + right_target];
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
+
     /// Auxiliary-major matrix of the requested vertex coefficients.
     fn column_block(&self, vertices: &[&PairVertex]) -> Result<ComplexTensor, CoulombError> {
         let n = self.operator.dimension();

@@ -1,7 +1,9 @@
 //! Full-regular-BZ spinor-first valence Hartree--Fock SCF.
 
 use muffintin_core::{FourierLayout, Hartree, InverseBohr};
-use muffintin_coulomb::{CoulombRequest, HartreeError, WeinertHartreeSpec};
+use muffintin_coulomb::{
+    CoulombOperator, CoulombRequest, HartreeError, WeinertHartreeSpec, assemble_coulomb,
+};
 use muffintin_dft::{
     BandState, CheckpointBandSolution, CheckpointKPointSolution, CoreDensityError,
     CoreFixedPotentialResult, CoreFixedPotentialSpec, CoreLocalOneBodyError, CoreLocalOneBodyTrace,
@@ -19,6 +21,15 @@ use num_complex::Complex64;
 use thiserror::Error;
 
 use crate::q_mesh::{CanonicalQMapError, canonical_q_points};
+use crate::spinor_exchange_mpb::{
+    SpinorExchangeMpbBasis, build_spinor_exchange_feedback_from_basis,
+    compile_spinor_exchange_mpb_basis,
+};
+use crate::spinor_mpb::{SpinorMpbBasis, build_spinor_mpb_from_basis, compile_spinor_mpb_basis};
+use crate::spinor_sector_exchange::{
+    FrozenSpinorValenceFeedbackExchange, build_cached_spinor_valence_feedback_exchange,
+    complete_frozen_spinor_sector_exchange,
+};
 use crate::{
     CheckpointPhysics, CheckpointPhysicsError, CoreValenceComparisonSpec,
     CoreValenceDeltaDiagnostic, FrozenCoreValenceComparison, FrozenCoreValenceError,
@@ -27,8 +38,8 @@ use crate::{
     SpinorCoreInputError, SpinorExchangeMpbError, SpinorExchangeMpbResult, SpinorExchangeMpbSpec,
     SpinorMpbError, SpinorMpbSelection, SpinorMpbSpec, SpinorProductInput,
     build_frozen_core_valence_exchange, build_frozen_site_valence_densities,
-    build_frozen_spinor_sector_exchange, build_spinor_exchange_mpb, build_spinor_mpb,
-    build_spinor_mpb_exchange, compare_frozen_core_valence, relax_frozen_core_at_fixed_potential,
+    build_spinor_exchange_mpb, build_spinor_mpb, build_spinor_mpb_exchange,
+    compare_frozen_core_valence, relax_frozen_core_at_fixed_potential,
 };
 
 const SPECTRAL_REFINEMENT_PASSES: usize = 16;
@@ -913,6 +924,20 @@ struct RelaxedSectorFrame {
     exchange: FrozenSpinorSectorExchange,
 }
 
+#[derive(Clone)]
+struct RelaxedFeedbackFrame {
+    inputs: Vec<SpinorProductInput>,
+    occupations: SectorOccupations,
+    exchange: FrozenSpinorValenceFeedbackExchange,
+}
+
+struct RelaxedExchangeCache {
+    vv_bases: Vec<SpinorMpbBasis>,
+    vv_operators: Vec<CoulombOperator>,
+    core_bases: Vec<SpinorExchangeMpbBasis>,
+    core_operators: Vec<CoulombOperator>,
+}
+
 struct RelaxedFixedPotentialResult {
     bands: CheckpointBandSolution,
     occupation: OccupationSolution,
@@ -943,12 +968,13 @@ fn solve_relaxed_fixed_potential(
     // The next step's input bands and occupations are this step's solved ones,
     // so its input density is the density already synthesized here.
     let mut current_density = None;
+    let mut exchange_cache = None;
 
     for fock_iteration in 1..=spec.max_fock_iterations {
         let occupation =
             solve_occupations(bands.states(), valence_electrons, spec.config.occupations)?;
         if outer_iteration == 1 && fock_iteration == 1 {
-            let driver = rebuild_relaxed_sector_frame(
+            let driver = rebuild_relaxed_feedback_frame(
                 physics,
                 spec,
                 &bands,
@@ -956,6 +982,7 @@ fn solve_relaxed_fixed_potential(
                 k_fractional,
                 q_fractional,
                 core_sidecars,
+                &mut exchange_cache,
             )?;
             rebuilds += 1;
             let band_feedback = relaxed_valence_feedback(&driver.exchange)?;
@@ -1000,7 +1027,7 @@ fn solve_relaxed_fixed_potential(
             continue;
         }
 
-        let rebuilt = rebuild_relaxed_sector_frame(
+        let rebuilt = rebuild_relaxed_feedback_frame(
             physics,
             spec,
             &bands,
@@ -1008,6 +1035,7 @@ fn solve_relaxed_fixed_potential(
             k_fractional,
             q_fractional,
             core_sidecars,
+            &mut exchange_cache,
         )?;
         rebuilds += 1;
         let fresh_band_feedback = relaxed_valence_feedback(&rebuilt.exchange)?;
@@ -1047,10 +1075,11 @@ fn solve_relaxed_fixed_potential(
         if last_residual <= spec.fock_density_tolerance
             && feedback_fixed_residual <= IDENTITY_TOLERANCE
         {
+            let exchange = complete_relaxed_sector_frame(spec, rebuilt)?;
             return Ok(RelaxedFixedPotentialResult {
                 bands,
                 occupation,
-                exchange: rebuilt,
+                exchange,
                 fock_iterations: fock_iteration,
                 exchange_rebuilds: rebuilds,
                 fixed_point_residual: last_residual,
@@ -1069,7 +1098,7 @@ fn solve_relaxed_fixed_potential(
     })
 }
 
-fn rebuild_relaxed_sector_frame(
+fn rebuild_relaxed_feedback_frame(
     physics: &CheckpointPhysics,
     spec: &RelaxedCoreHfSpec,
     bands: &CheckpointBandSolution,
@@ -1077,38 +1106,102 @@ fn rebuild_relaxed_sector_frame(
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
     core_sidecars: &[CoreShellOrbitals],
-) -> Result<RelaxedSectorFrame, RelaxedCoreHfError> {
+    cache: &mut Option<RelaxedExchangeCache>,
+) -> Result<RelaxedFeedbackFrame, RelaxedCoreHfError> {
     let inputs =
         build_q_inputs_with_cores(physics, bands, k_fractional, q_fractional, core_sidecars)?;
     let first = inputs.first().ok_or(RelaxedCoreHfError::QTopology)?;
     let n_k = first.pair_columns.n_k;
     let n_orb = first.pair_columns.n_orb;
-    let selections = (0..n_k)
-        .flat_map(|k| {
-            (0..n_orb).flat_map(move |left_band| {
-                (0..n_orb).map(move |right_band| SpinorMpbSelection {
+    let occupations = sector_occupations(bands, occupation, &inputs, spec.gamma)?;
+    let occupied_bands = (0..n_orb)
+        .filter(|&band| occupations.valence.iter().any(|row| row[band] != 0.0))
+        .collect::<Vec<_>>();
+    let mut selections = Vec::with_capacity(n_k * occupied_bands.len() * n_orb);
+    for k in 0..n_k {
+        for &left_band in &occupied_bands {
+            for right_band in 0..n_orb {
+                selections.push(SpinorMpbSelection {
                     k,
                     left_band,
                     right_band,
-                })
-            })
-        })
-        .collect::<Vec<_>>();
+                });
+            }
+        }
+    }
+    let vv_spec = SpinorMpbSpec {
+        product_l_max: spec.product_l_max,
+        product_g_max: spec.product_g_max,
+        overlap_tolerance: spec.overlap_tolerance,
+        selections,
+    };
+    let core_spec = SpinorExchangeMpbSpec {
+        product_l_max: spec.product_l_max,
+        product_g_max: spec.product_g_max,
+        overlap_tolerance: spec.overlap_tolerance,
+    };
+    if cache.is_none() {
+        let vv_bases = inputs
+            .iter()
+            .map(|input| compile_spinor_mpb_basis(input, &vv_spec))
+            .collect::<Result<Vec<_>, _>>()?;
+        let vv_operators = vv_bases
+            .iter()
+            .map(|basis| assemble_coulomb(&basis.auxiliary, &spec.coulomb))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(FrozenSpinorSectorExchangeError::from)?;
+        let core_bases = inputs
+            .iter()
+            .map(|input| compile_spinor_exchange_mpb_basis(input, &core_spec))
+            .collect::<Result<Vec<_>, _>>()?;
+        let core_operators = core_bases
+            .iter()
+            .map(|basis| assemble_coulomb(&basis.auxiliary, &spec.coulomb))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(FrozenSpinorSectorExchangeError::from)?;
+        *cache = Some(RelaxedExchangeCache {
+            vv_bases,
+            vv_operators,
+            core_bases,
+            core_operators,
+        });
+    }
+    let cache = cache
+        .as_ref()
+        .expect("the fixed-potential exchange cache was just initialized");
     let vv_mpb = inputs
         .iter()
-        .map(|input| {
-            build_spinor_mpb(
-                input,
-                &SpinorMpbSpec {
-                    product_l_max: spec.product_l_max,
-                    product_g_max: spec.product_g_max,
-                    overlap_tolerance: spec.overlap_tolerance,
-                    selections: selections.clone(),
-                },
-            )
-        })
+        .zip(&cache.vv_bases)
+        .map(|(input, basis)| build_spinor_mpb_from_basis(input, &vv_spec, basis))
         .collect::<Result<Vec<_>, _>>()?;
     let core_mpb = inputs
+        .iter()
+        .zip(&cache.core_bases)
+        .map(|(input, basis)| build_spinor_exchange_feedback_from_basis(input, &core_spec, basis))
+        .collect::<Result<Vec<_>, _>>()?;
+    let exchange = build_cached_spinor_valence_feedback_exchange(
+        &inputs,
+        &vv_mpb,
+        &cache.vv_operators,
+        &occupied_bands,
+        &core_mpb,
+        &cache.core_operators,
+        &spec.coulomb,
+        &occupations,
+    )?;
+    Ok(RelaxedFeedbackFrame {
+        inputs,
+        occupations,
+        exchange,
+    })
+}
+
+fn complete_relaxed_sector_frame(
+    spec: &RelaxedCoreHfSpec,
+    feedback: RelaxedFeedbackFrame,
+) -> Result<RelaxedSectorFrame, RelaxedCoreHfError> {
+    let core_mpb = feedback
+        .inputs
         .iter()
         .map(|input| {
             build_spinor_exchange_mpb(
@@ -1121,18 +1214,17 @@ fn rebuild_relaxed_sector_frame(
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let occupations = sector_occupations(bands, occupation, &inputs, spec.gamma)?;
-    let exchange = build_frozen_spinor_sector_exchange(
-        &inputs,
-        &vv_mpb,
+    let exchange = complete_frozen_spinor_sector_exchange(
+        &feedback.inputs,
         &core_mpb,
         &spec.coulomb,
-        &occupations,
+        &feedback.occupations,
+        feedback.exchange.vv,
     )?;
     Ok(RelaxedSectorFrame {
-        inputs,
+        inputs: feedback.inputs,
         core_mpb,
-        occupations,
+        occupations: feedback.occupations,
         exchange,
     })
 }
@@ -1175,7 +1267,7 @@ fn sector_occupations(
 }
 
 fn relaxed_valence_feedback(
-    exchange: &FrozenSpinorSectorExchange,
+    exchange: &FrozenSpinorValenceFeedbackExchange,
 ) -> Result<Vec<DenseHermitianMatrix>, RelaxedCoreHfError> {
     if exchange.vv.target_matrices.len() != exchange.cv.target_matrices.len() {
         return Err(RelaxedCoreHfError::ExchangeKIndex {

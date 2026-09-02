@@ -23,6 +23,7 @@ use muffintin_prodbasis::{
     AuxiliaryInterstitialWave, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
 };
 use num_complex::Complex64;
+use rayon::prelude::*;
 use std::f64::consts::PI;
 
 const WAVE_TOLERANCE: f64 = 1.0e-12;
@@ -158,12 +159,19 @@ fn assemble_kind(
     };
     let n = densities.len();
     let mut matrix = vec![Complex64::default(); n * n];
+    matrix
+        .par_chunks_mut(n)
+        .enumerate()
+        .try_for_each(|(i, row)| -> Result<(), CoulombError> {
+            for j in i..n {
+                row[j] = weinert_inner(&densities[i], &densities[j], &prepared)?;
+            }
+            Ok(())
+        })?;
     for i in 0..n {
         for j in i..n {
-            let value = weinert_inner(&densities[i], &densities[j], &prepared)?;
-            matrix[i * n + j] = value;
             if i != j {
-                matrix[j * n + i] = value.conj();
+                matrix[j * n + i] = matrix[i * n + j].conj();
             }
         }
     }

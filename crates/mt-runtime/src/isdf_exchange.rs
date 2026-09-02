@@ -11,8 +11,7 @@ use crate::spinor_product::{
 };
 use muffintin_core::Hartree;
 use muffintin_coulomb::{
-    AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, CoulombVertexContractor,
-    assemble_coulomb,
+    AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, assemble_coulomb,
 };
 use muffintin_prodbasis::{
     AuxiliaryPartition, CompiledAuxiliaryBasis, ExchangePairLayout, ExchangeSpace, OrbitalPair,
@@ -299,6 +298,140 @@ pub fn build_spinor_mpb_exchange(
     contract_exchange(first.pair_columns, &maps, &records, spec)
 }
 
+pub(crate) fn contract_selected_spinor_mpb_exchange_with_operators(
+    inputs: &[SpinorProductInput],
+    mpb: &[SpinorMpbResult],
+    operators: &[CoulombOperator],
+    occupied_bands: &[usize],
+    spec: &IsdfExchangeSpec,
+) -> Result<IsdfExchangeResult, IsdfExchangeError> {
+    let first = require_spinor_q_slice(inputs).map_err(spinor_q_slice_error)?;
+    let n_k = first.pair_columns.n_k;
+    let n_target = first.pair_columns.n_orb;
+    validate_spec(spec, n_k, n_target)?;
+    if occupied_bands.is_empty()
+        || occupied_bands
+            .iter()
+            .enumerate()
+            .any(|(position, &band)| band >= n_target || occupied_bands[..position].contains(&band))
+    {
+        return Err(IsdfExchangeError::MpbContext { index: 0 });
+    }
+    if mpb.len() != inputs.len() || operators.len() != inputs.len() {
+        return Err(IsdfExchangeError::MpbCount {
+            actual: if mpb.len() != inputs.len() {
+                mpb.len()
+            } else {
+                operators.len()
+            },
+            expected: inputs.len(),
+        });
+    }
+    let layout = ExchangePairLayout::new(
+        ExchangeSpace::Valence,
+        ExchangeSpace::Valence,
+        n_k,
+        occupied_bands.len(),
+        n_target,
+    );
+    let expected = layout
+        .n_columns()
+        .map_err(|_| IsdfExchangeError::MpbContext { index: 0 })?;
+    let mut ordered_vertices = Vec::with_capacity(mpb.len());
+    for (q_index, (input, result)) in inputs.iter().zip(mpb).enumerate() {
+        if !result.frozen_input_identity().matches(input)
+            || result.reciprocal != input.reciprocal
+            || result.pair_columns != input.pair_columns
+            || result.auxiliary.q != input.source.q
+            || result.auxiliary.partition != input.source.partition
+            || *operators[q_index].layout() != result.auxiliary.layout()
+            || result.vertices.len() != expected
+        {
+            return Err(IsdfExchangeError::MpbContext { index: q_index });
+        }
+        let mut columns = vec![None; expected];
+        for selected in &result.vertices {
+            let occupied = occupied_bands
+                .iter()
+                .position(|&band| band == selected.left_band)
+                .ok_or(IsdfExchangeError::MpbContext { index: q_index })?;
+            let column = layout
+                .encode(selected.k, occupied, selected.right_band)
+                .map_err(|_| IsdfExchangeError::MpbContext { index: q_index })?;
+            if selected.vertex.pair()
+                != (OrbitalPair::Bloch {
+                    k_index: selected.k,
+                    left: selected.left_band,
+                    right: selected.right_band,
+                })
+                || columns[column].replace(selected.vertex.clone()).is_some()
+            {
+                return Err(IsdfExchangeError::MpbContext { index: q_index });
+            }
+        }
+        ordered_vertices.push(
+            columns
+                .into_iter()
+                .enumerate()
+                .map(|(column, vertex)| {
+                    vertex.ok_or(IsdfExchangeError::MpbMissingColumn { q_index, column })
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+    }
+    let records = ordered_vertices
+        .iter()
+        .zip(operators)
+        .map(|(vertices, operator)| RectangularExchangeRecord {
+            layout,
+            vertices,
+            operator,
+        })
+        .collect::<Vec<_>>();
+    let maps = inputs
+        .iter()
+        .map(|input| input.k_minus_q.clone())
+        .collect::<Vec<_>>();
+    let maps = spinor_maps(&maps, n_k)?;
+    let active_occupations = spec
+        .occupations
+        .iter()
+        .map(|row| {
+            occupied_bands
+                .iter()
+                .map(|&band| row[band])
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let contracted = contract_rectangular_exchange(
+        layout,
+        &maps,
+        &records,
+        &spec.k_weights,
+        &active_occupations,
+        spec.gamma,
+    )?;
+    let exchange_energy = contracted
+        .target_matrices
+        .iter()
+        .enumerate()
+        .map(|(k, matrix)| {
+            (0..n_target)
+                .map(|target| {
+                    0.5 * spec.k_weights[k]
+                        * spec.occupations[k][target]
+                        * matrix.values[target * n_target + target].re
+                })
+                .sum::<f64>()
+        })
+        .sum();
+    Ok(IsdfExchangeResult {
+        exchange_energy: Hartree(exchange_energy),
+        band_matrices: contracted.target_matrices,
+        maximum_antihermitian_residual: contracted.maximum_antihermitian_residual,
+    })
+}
+
 fn scalar_record(record: &ScalarCoulombQRecord) -> RectangularExchangeRecord<'_> {
     RectangularExchangeRecord {
         layout: valence_layout(record.layout),
@@ -567,32 +700,43 @@ pub(crate) fn contract_rectangular_exchange(
         }
     }
 
-    let mut resident: Option<(usize, CoulombVertexContractor<'_>)> = None;
-    let mut columns: Vec<&PairVertex> = Vec::with_capacity(layout.n_target);
-    contract_rectangular_values(
-        layout,
-        maps,
-        k_weights,
-        occupied_occupations,
-        |q_index, k, occupied, block| {
-            if resident.as_ref().map(|(index, _)| *index) != Some(q_index) {
-                resident = Some((q_index, records[q_index].operator.contractor()?));
-            }
-            let contractor = &resident
-                .as_ref()
-                .expect("the current q contractor was just prepared")
-                .1;
+    let n_target = layout.n_target;
+    let mut band_values = vec![vec![Complex64::default(); n_target * n_target]; n_k];
+    let mut columns = Vec::with_capacity(n_occupied * n_target);
+    let mut occupied_weights = Vec::with_capacity(n_occupied);
+    for (q_index, map) in maps.iter().enumerate() {
+        let contractor = records[q_index].operator.contractor()?;
+        for (k, values) in band_values.iter_mut().enumerate() {
+            let kq = map[k];
             columns.clear();
-            for target in 0..layout.n_target {
-                let column = layout
-                    .encode(k, occupied, target)
-                    .map_err(|_| IsdfExchangeError::QContext { index: q_index })?;
-                columns.push(&records[q_index].vertices[column]);
+            occupied_weights.clear();
+            for occupied in 0..n_occupied {
+                let weight = k_weights[kq] * occupied_occupations[kq][occupied];
+                if weight == 0.0 {
+                    continue;
+                }
+                occupied_weights.push(weight);
+                for target in 0..n_target {
+                    let column = layout
+                        .encode(k, occupied, target)
+                        .map_err(|_| IsdfExchangeError::QContext { index: q_index })?;
+                    columns.push(&records[q_index].vertices[column]);
+                }
             }
-            block.copy_from_slice(&contractor.quadratic_block(&columns, &columns)?);
-            Ok(())
-        },
-    )
+            if occupied_weights.is_empty() {
+                continue;
+            }
+            let contracted = contractor.weighted_occupied_quadratic_sum(
+                &columns,
+                &occupied_weights,
+                n_target,
+            )?;
+            for (value, integral) in values.iter_mut().zip(contracted) {
+                *value -= integral;
+            }
+        }
+    }
+    finalize_rectangular_values(layout, band_values)
 }
 
 /// Accumulate the rectangular exchange kernel from occupied-band column blocks.
@@ -603,6 +747,7 @@ pub(crate) fn contract_rectangular_exchange(
 /// the block is the smallest unit that still amortizes one $V^q$ application
 /// over every target pair. The loop is q-major, which lets a caller keep exactly
 /// one $q$-resident operator alive at a time.
+#[cfg(test)]
 fn contract_rectangular_values(
     layout: ExchangePairLayout,
     maps: &[Vec<usize>],
@@ -630,6 +775,15 @@ fn contract_rectangular_values(
             }
         }
     }
+    finalize_rectangular_values(layout, band_values)
+}
+
+fn finalize_rectangular_values(
+    layout: ExchangePairLayout,
+    band_values: Vec<Vec<Complex64>>,
+) -> Result<RectangularExchangeResult, IsdfExchangeError> {
+    let n_k = layout.n_k;
+    let n_target = layout.n_target;
     let mut band_matrices = Vec::with_capacity(n_k);
     let mut maximum_antihermitian_residual = 0.0_f64;
     for (k, values) in band_values.into_iter().enumerate() {

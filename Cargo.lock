@@ -1021,6 +1021,7 @@ dependencies = [
  "libmuffintin-prodbasis",
  "libmuffintin-tensor",
  "num-complex",
+ "rayon",
  "thiserror 2.0.20",
 ]
 
@@ -1132,6 +1133,7 @@ dependencies = [
  "libmuffintin-symmetry",
  "libmuffintin-tensor",
  "num-complex",
+ "rayon",
  "serde",
  "thiserror 2.0.20",
  "toml",
