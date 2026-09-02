@@ -86,6 +86,7 @@ struct Cli {
     radial_points: usize,
     hdlo: HdloSelection,
     temperature: f64,
+    max_fock_iterations: usize,
 }
 
 impl Default for Cli {
@@ -103,6 +104,7 @@ impl Default for Cli {
             radial_points: 2_401,
             hdlo: HdloSelection::None,
             temperature: 0.02,
+            max_fock_iterations: MAX_FOCK_ITERATIONS,
         }
     }
 }
@@ -128,6 +130,7 @@ impl Cli {
                 "--radial-points" => cli.radial_points = parse_value(&name, &value)?,
                 "--hdlo" => cli.hdlo = HdloSelection::parse(&value)?,
                 "--temperature" => cli.temperature = parse_value(&name, &value)?,
+                "--fock-max-iterations" => cli.max_fock_iterations = parse_value(&name, &value)?,
                 _ => return Err(invalid_input(format!("unknown option {name:?}"))),
             }
         }
@@ -161,6 +164,9 @@ impl Cli {
         }
         if self.radial_points < 2 {
             return Err(invalid_input("--radial-points must be at least 2"));
+        }
+        if self.max_fock_iterations < 2 {
+            return Err(invalid_input("--fock-max-iterations must be at least 2"));
         }
         if self.product_l_max > self.lexp || self.lexp > 12 {
             return Err(invalid_input(
@@ -623,7 +629,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             core_radial_tolerance: LOOSE_TOLERANCE,
             core_vc_imaginary_tolerance: 1.0e-8,
             core_max_iterations: CORE_MAX_ITERATIONS,
-            max_fock_iterations: MAX_FOCK_ITERATIONS,
+            max_fock_iterations: cli.max_fock_iterations,
             fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
             fock_mixing: FOCK_MIXING,
             overlap_tolerance: DEFAULT_TOLERANCE,
@@ -665,7 +671,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         overlap_tolerance: DEFAULT_TOLERANCE,
         coulomb: CoulombRequest::cubic(cli.box_size, cli.lexp)?,
         gamma: GammaExchangeTreatment::FiniteBody,
-        max_fock_iterations: MAX_FOCK_ITERATIONS,
+        max_fock_iterations: cli.max_fock_iterations,
         fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
         fock_mixing: FOCK_MIXING,
         core: CoreFixedPotentialSpec {
