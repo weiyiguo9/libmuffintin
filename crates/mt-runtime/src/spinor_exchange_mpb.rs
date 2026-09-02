@@ -8,7 +8,7 @@ use crate::spinor_product::{
 use muffintin_core::{InverseBohr, RelativisticChannel};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
 use muffintin_prodbasis::mpb::{
-    DiracBlochVertexAccumulator, MpbError, apply_dirac_overlap_cutoff,
+    DiracBlochVertexAccumulator, DiracMtSectorTable, MpbError, apply_dirac_overlap_cutoff,
     untruncated_dirac_product_space,
 };
 use muffintin_prodbasis::{
@@ -161,6 +161,7 @@ pub fn build_spinor_exchange_mpb(
 
     let known_pp = raw_mt_pairs(&raw, DiracChargeSector::LargeLarge);
     let known_qq = raw_mt_pairs(&raw, DiracChargeSector::SmallSmall);
+    let mut table = DiracBlochVertexAccumulator::sector_table(&raw, &auxiliary);
     let gamma = is_gamma(&source);
     let mut cv_vertices = Vec::with_capacity(cv_layout.n_columns()?);
     let mut vc_vertices = Vec::with_capacity(vc_layout.n_columns()?);
@@ -177,6 +178,7 @@ pub fn build_spinor_exchange_mpb(
                 let mut acc = DiracBlochVertexAccumulator::new(&source, &raw, &auxiliary, pair)?;
                 let direct = add_cv(
                     &mut acc,
+                    &mut table,
                     &source,
                     input,
                     mapped,
@@ -206,6 +208,7 @@ pub fn build_spinor_exchange_mpb(
                 let mut acc = DiracBlochVertexAccumulator::new(&source, &raw, &auxiliary, pair)?;
                 let direct = add_vc(
                     &mut acc,
+                    &mut table,
                     &source,
                     input,
                     mapped,
@@ -233,7 +236,9 @@ pub fn build_spinor_exchange_mpb(
                 let column = cc_layout.encode(mapped.k_index, occupied, target)?;
                 let pair = exchange_pair(cc_layout, mapped.k_index, occupied, target);
                 let mut acc = DiracBlochVertexAccumulator::new(&source, &raw, &auxiliary, pair)?;
-                add_cc(&mut acc, input, mapped, left, right, &known_pp, &known_qq)?;
+                add_cc(
+                    &mut acc, &mut table, input, mapped, left, right, &known_pp, &known_qq,
+                )?;
                 cc_vertices.push(SpinorExchangeMpbPairVertex {
                     column,
                     k: mapped.k_index,
@@ -327,6 +332,7 @@ fn exchange_pair(
 #[allow(clippy::too_many_arguments)]
 fn add_cv(
     acc: &mut DiracBlochVertexAccumulator<'_>,
+    table: &mut DiracMtSectorTable<'_>,
     source: &DiracProductSource,
     input: &SpinorProductInput,
     mapped: SpinorKMinusQ,
@@ -357,7 +363,7 @@ fn add_cv(
         };
         let amplitude =
             phases.left_bloch.conj() * right.at(coordinate, target) * phases.auxiliary_compensation;
-        add_pair(acc, pair, amplitude, known_pp, known_qq)?;
+        add_pair(acc, table, pair, amplitude, known_pp, known_qq)?;
         direct += amplitude * direct_overlap(source, pair)?;
     }
     Ok(direct)
@@ -366,6 +372,7 @@ fn add_cv(
 #[allow(clippy::too_many_arguments)]
 fn add_vc(
     acc: &mut DiracBlochVertexAccumulator<'_>,
+    table: &mut DiracMtSectorTable<'_>,
     source: &DiracProductSource,
     input: &SpinorProductInput,
     mapped: SpinorKMinusQ,
@@ -397,14 +404,16 @@ fn add_vc(
         let amplitude = left.at(coordinate, occupied).conj()
             * phases.right_bloch
             * phases.auxiliary_compensation;
-        add_pair(acc, pair, amplitude, known_pp, known_qq)?;
+        add_pair(acc, table, pair, amplitude, known_pp, known_qq)?;
         direct += amplitude * direct_overlap(source, pair)?;
     }
     Ok(direct)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_cc(
     acc: &mut DiracBlochVertexAccumulator<'_>,
+    table: &mut DiracMtSectorTable<'_>,
     input: &SpinorProductInput,
     mapped: SpinorKMinusQ,
     left: &SpinorCoreOrbital,
@@ -430,7 +439,7 @@ fn add_cc(
     else {
         return Ok(());
     };
-    add_pair(acc, pair, amplitude, known_pp, known_qq)
+    add_pair(acc, table, pair, amplitude, known_pp, known_qq)
 }
 
 fn cc_pair_term(
@@ -455,6 +464,7 @@ fn cc_pair_term(
 
 fn add_pair(
     acc: &mut DiracBlochVertexAccumulator<'_>,
+    table: &mut DiracMtSectorTable<'_>,
     pair: DiracMtPairSpec,
     amplitude: Complex64,
     known_pp: &HashSet<(
@@ -467,10 +477,10 @@ fn add_pair(
     )>,
 ) -> Result<(), SpinorExchangeMpbError> {
     if known_pp.contains(&(pair.left, pair.right)) {
-        acc.add_pp(pair, amplitude)?;
+        acc.add_pp(table, pair, amplitude)?;
     }
     if known_qq.contains(&(pair.left, pair.right)) {
-        acc.add_qq(pair, amplitude)?;
+        acc.add_qq(table, pair, amplitude)?;
     }
     Ok(())
 }

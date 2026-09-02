@@ -18,6 +18,7 @@ use crate::{
 use muffintin_core::{Lm, RelativisticChannel, RelativisticChannelError, spinor_gaunt};
 use muffintin_envelope::site_translation_phase;
 use num_complex::Complex64;
+use std::collections::HashMap;
 
 /// Accumulator that adds separate PP and QQ muffin-tin terms onto one layout.
 ///
@@ -25,8 +26,8 @@ use num_complex::Complex64;
 #[derive(Debug)]
 pub struct DiracPairVertexAccumulator<'a> {
     source: &'a DiracProductSource,
-    raw: &'a DiracRawProductSpace,
     auxiliary: &'a CompiledAuxiliaryBasis,
+    table: DiracMtSectorTable<'a>,
     pair: DiracMtPairSpec,
     coefficients: Vec<Complex64>,
 }
@@ -43,8 +44,8 @@ impl<'a> DiracPairVertexAccumulator<'a> {
         require_pair_orbitals(source, pair)?;
         Ok(Self {
             source,
-            raw,
             auxiliary,
+            table: DiracMtSectorTable::new(raw, auxiliary),
             pair,
             coefficients: vec![Complex64::default(); auxiliary.dimension()],
         })
@@ -82,8 +83,7 @@ impl<'a> DiracPairVertexAccumulator<'a> {
     ) -> Result<(), MpbError> {
         add_sector(
             self.source,
-            self.raw,
-            self.auxiliary,
+            &mut self.table,
             self.pair,
             sector,
             amplitude,
@@ -106,6 +106,19 @@ pub struct DiracBlochVertexAccumulator<'a> {
     auxiliary: &'a CompiledAuxiliaryBasis,
     pair: OrbitalPair,
     coefficients: Vec<Complex64>,
+}
+
+impl<'a> DiracBlochVertexAccumulator<'a> {
+    /// Radial-overlap table this accumulator's PP and QQ terms expect.
+    ///
+    /// Build it once per q slice and pass it to every column; the table is
+    /// independent of the band pair.
+    pub fn sector_table(
+        raw: &'a DiracRawProductSpace,
+        auxiliary: &'a CompiledAuxiliaryBasis,
+    ) -> DiracMtSectorTable<'a> {
+        DiracMtSectorTable::new(raw, auxiliary)
+    }
 }
 
 impl<'a> DiracBlochVertexAccumulator<'a> {
@@ -133,12 +146,20 @@ impl<'a> DiracBlochVertexAccumulator<'a> {
     }
 
     /// Add PP ($\Omega_\kappa$) muffin-tin terms for one radial-factor pair.
-    pub fn add_pp(&mut self, spec: DiracMtPairSpec, amplitude: Complex64) -> Result<(), MpbError> {
+    ///
+    /// `table` must be bound to this accumulator's raw product space and
+    /// auxiliary; see [`Self::sector_table`].
+    pub fn add_pp(
+        &mut self,
+        table: &mut DiracMtSectorTable<'_>,
+        spec: DiracMtPairSpec,
+        amplitude: Complex64,
+    ) -> Result<(), MpbError> {
         require_pair_orbitals(self.source, spec)?;
+        self.require_table(table)?;
         add_sector(
             self.source,
-            self.raw,
-            self.auxiliary,
+            table,
             spec,
             DiracChargeSector::LargeLarge,
             amplitude,
@@ -147,17 +168,32 @@ impl<'a> DiracBlochVertexAccumulator<'a> {
     }
 
     /// Add QQ ($\Omega_{-\kappa}$) muffin-tin terms for one radial-factor pair.
-    pub fn add_qq(&mut self, spec: DiracMtPairSpec, amplitude: Complex64) -> Result<(), MpbError> {
+    ///
+    /// `table` must be bound to this accumulator's raw product space and
+    /// auxiliary; see [`Self::sector_table`].
+    pub fn add_qq(
+        &mut self,
+        table: &mut DiracMtSectorTable<'_>,
+        spec: DiracMtPairSpec,
+        amplitude: Complex64,
+    ) -> Result<(), MpbError> {
         require_pair_orbitals(self.source, spec)?;
+        self.require_table(table)?;
         add_sector(
             self.source,
-            self.raw,
-            self.auxiliary,
+            table,
             spec,
             DiracChargeSector::SmallSmall,
             amplitude,
             &mut self.coefficients,
         )
+    }
+
+    fn require_table(&self, table: &DiracMtSectorTable<'_>) -> Result<(), MpbError> {
+        if table.auxiliary.q != self.auxiliary.q || table.raw.q != self.raw.q {
+            return Err(MpbError::TransferQMismatch);
+        }
+        Ok(())
     }
 
     /// Add one interstitial pair expansion through shared $\Theta_I$.
@@ -285,10 +321,123 @@ fn find_orbital(
     })
 }
 
+/// One retained auxiliary mode that receives a muffin-tin sector contribution.
+///
+/// `overlap` and `indices` depend only on the radial pair channel and the
+/// compiled auxiliary, never on the band pair or the magnetic projections.
+#[derive(Clone, Debug, PartialEq)]
+struct DiracMtModeTerm {
+    l: u32,
+    overlap: f64,
+    /// Auxiliary index per $M=-L,\ldots,L$; `None` where the mode is absent.
+    indices: Vec<Option<usize>>,
+}
+
+/// Radial overlaps and auxiliary indices shared by every band pair at one $q$.
+///
+/// The stored coefficient of one PP or QQ term is
+/// `amplitude * phase * angular * radial_overlap`. Only `amplitude` and the
+/// magnetic projections vary between band pairs and between the spinor
+/// coordinates of one pair, so the radial quadrature and the auxiliary index
+/// lookup are a function of `(sector, left, right)` alone. Reusing one table
+/// across a whole q slice removes that quadrature from the inner loop, which
+/// otherwise repeats it once per band-pair column.
+///
+/// Entries are filled on first use, so a caller that expands a single pair
+/// pays exactly the quadrature it needs.
+#[derive(Debug)]
+pub struct DiracMtSectorTable<'a> {
+    raw: &'a DiracRawProductSpace,
+    auxiliary: &'a CompiledAuxiliaryBasis,
+    terms: HashMap<(DiracChargeSector, DiracRadialId, DiracRadialId), Vec<DiracMtModeTerm>>,
+}
+
+impl<'a> DiracMtSectorTable<'a> {
+    /// Empty table bound to one raw product space and one compiled auxiliary.
+    pub fn new(raw: &'a DiracRawProductSpace, auxiliary: &'a CompiledAuxiliaryBasis) -> Self {
+        Self {
+            raw,
+            auxiliary,
+            terms: HashMap::new(),
+        }
+    }
+
+    fn terms(
+        &mut self,
+        sector: DiracChargeSector,
+        spec: DiracMtPairSpec,
+    ) -> Result<&[DiracMtModeTerm], MpbError> {
+        let key = (sector, spec.left, spec.right);
+        if !self.terms.contains_key(&key) {
+            let built = self.build(sector, spec)?;
+            self.terms.insert(key, built);
+        }
+        Ok(&self.terms[&key])
+    }
+
+    fn build(
+        &self,
+        sector: DiracChargeSector,
+        spec: DiracMtPairSpec,
+    ) -> Result<Vec<DiracMtModeTerm>, MpbError> {
+        let site = spec.left.site;
+        if !self
+            .raw
+            .radial_products
+            .iter()
+            .any(|product| product.channel.sector == sector && pair_matches(product.channel, spec))
+        {
+            return Err(MpbError::UnknownDiracMtPair {
+                left: spec.left,
+                right: spec.right,
+                sector,
+            });
+        }
+        let unknown_orbital = || MpbError::UnknownDiracOrbital {
+            site,
+            kind: spec.left.kind,
+            kappa: spec.left.kappa.get(),
+            n: spec.left.n,
+        };
+        let mesh = self.auxiliary.site_mesh(site).ok_or_else(unknown_orbital)?;
+        let block = self
+            .auxiliary
+            .require_mixed_product()?
+            .sites
+            .iter()
+            .find(|block| block.site == site)
+            .ok_or_else(unknown_orbital)?;
+        let mut terms = Vec::new();
+        for mode in &block.modes {
+            let Some(product) = self.raw.radial_products.iter().find(|product| {
+                product.channel.coupled_l == mode.l
+                    && product.channel.sector == sector
+                    && pair_matches(product.channel, spec)
+            }) else {
+                continue;
+            };
+            let integrand = product
+                .samples
+                .iter()
+                .zip(&mode.radial)
+                .map(|(sample, mode)| sample * mode)
+                .collect::<Vec<_>>();
+            let l_i = mode.l as i32;
+            terms.push(DiracMtModeTerm {
+                l: mode.l,
+                overlap: mesh.integrate(&integrand)?,
+                indices: (-l_i..=l_i)
+                    .map(|m| self.auxiliary.mt_index(site, mode.l, m, mode.n))
+                    .collect(),
+            });
+        }
+        Ok(terms)
+    }
+}
+
 fn add_sector(
     source: &DiracProductSource,
-    raw: &DiracRawProductSpace,
-    auxiliary: &CompiledAuxiliaryBasis,
+    table: &mut DiracMtSectorTable<'_>,
     spec: DiracMtPairSpec,
     sector: DiracChargeSector,
     amplitude: Complex64,
@@ -300,64 +449,19 @@ fn add_sector(
     let site = spec.left.site;
     find_orbital(source, spec.left)?;
     find_orbital(source, spec.right)?;
-    if !raw
-        .radial_products
-        .iter()
-        .any(|product| product.channel.sector == sector && pair_matches(product.channel, spec))
-    {
-        return Err(MpbError::UnknownDiracMtPair {
-            left: spec.left,
-            right: spec.right,
-            sector,
-        });
-    }
-    let mesh = auxiliary
-        .site_mesh(site)
-        .ok_or(MpbError::UnknownDiracOrbital {
-            site,
-            kind: spec.left.kind,
-            kappa: spec.left.kappa.get(),
-            n: spec.left.n,
-        })?;
     let (left_channel, right_channel) = pair_channels(spec)?;
     let left_omega = sector.omega_channel(left_channel);
     let right_omega = sector.omega_channel(right_channel);
     let position = source.partition.sites()[site].position;
     let phase = site_translation_phase(source.q.cartesian, position);
-    let block = auxiliary
-        .require_mixed_product()?
-        .sites
-        .iter()
-        .find(|block| block.site == site)
-        .ok_or(MpbError::UnknownDiracOrbital {
-            site,
-            kind: spec.left.kind,
-            kappa: spec.left.kappa.get(),
-            n: spec.left.n,
-        })?;
-    for mode in &block.modes {
-        let Some(product) = raw.radial_products.iter().find(|product| {
-            product.channel.coupled_l == mode.l
-                && product.channel.sector == sector
-                && pair_matches(product.channel, spec)
-        }) else {
-            continue;
-        };
-        let integrand = product
-            .samples
-            .iter()
-            .zip(&mode.radial)
-            .map(|(sample, mode)| sample * mode)
-            .collect::<Vec<_>>();
-        let radial_overlap = mesh.integrate(&integrand)?;
-        let l_i = mode.l as i32;
-        for m in -l_i..=l_i {
-            let Some(index) = auxiliary.mt_index(site, mode.l, m, mode.n) else {
+    for term in table.terms(sector, spec)? {
+        let l_i = term.l as i32;
+        for (slot, m) in (-l_i..=l_i).enumerate() {
+            let Some(index) = term.indices[slot] else {
                 continue;
             };
-            let angular = density_angular(left_omega, mode.l, m, right_omega);
-            coefficients[index] +=
-                amplitude * phase * Complex64::new(angular * radial_overlap, 0.0);
+            let angular = density_angular(left_omega, term.l, m, right_omega);
+            coefficients[index] += amplitude * phase * Complex64::new(angular * term.overlap, 0.0);
         }
     }
     Ok(())
