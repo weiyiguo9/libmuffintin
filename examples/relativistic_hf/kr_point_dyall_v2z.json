@@ -1,0 +1,1188 @@
+{
+  "provenance": {
+    "software": {
+      "python": "3.14.7",
+      "python_full": "3.14.7 (main, Aug  5 2026, 10:29:49) [Clang 17.0.0 (clang-1700.6.4.2)]",
+      "python_executable": "/opt/homebrew/opt/python@3.14/bin/python3.14",
+      "pyscf": "2.11.0",
+      "basis_set_exchange": "0.12",
+      "numpy": "2.5.2",
+      "scipy": "1.18.1"
+    },
+    "basis": {
+      "name": "dyall-v2z",
+      "normalized_format": "PySCF Mole._basis serialized as UTF-8 JSON with sort_keys=True and separators=(',', ':')",
+      "normalized_sha256": "ab39921c5020aaaaac18dd07bb7b68d81206789a01fd0c43208688278883335f",
+      "normalized_content": {
+        "Kr": [
+          [
+            0,
+            0,
+            [
+              4140987.36,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              488473.543,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              92664.0299,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              22777.6348,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              6644.18072,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              2191.09855,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              792.722388,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              308.512335,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              126.083423,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              40.3665991,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              17.2720374,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              5.39736984,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              2.37509131,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              0.503394409,
+              1.0
+            ]
+          ],
+          [
+            0,
+            0,
+            [
+              0.192437314,
+              1.0
+            ]
+          ],
+          [
+            1,
+            0,
+            [
+              9015.90791,
+              1.0
+            ]
+          ],
+          [
+            1,
+            0,
+            [
+              1731.31083,
+              1.0
+            ]
+          ],
+          [
+            1,
+            0,
+            [
+              502.261944,
+              1.0
+            ]
+          ],
+          [
+            1,
+            0,
+            [
+              177.201567,
+              1.0
+            ]
+          ],
+          [
+            1,
+            0,
+            [
+              69.8507883,
+              1.0
+            ]
+          ],
+          [
+            1,
+            0,
+            [
+              29.3416011,
+              1.0
+            ]
+          ],
+          [
+            1,
+            0,
+            [
+              12.5014174,
+              1.0
+            ]
+          ],
+          [
+            1,
+            0,
+            [
+              5.2199001,
+              1.0
+            ]
+          ],
+          [
+            1,
+            0,
+            [
+              2.15741984,
+              1.0
+            ]
+          ],
+          [
+            1,
+            0,
+            [
+              0.57498183,
+              1.0
+            ]
+          ],
+          [
+            1,
+            0,
+            [
+              0.174772323,
+              1.0
+            ]
+          ],
+          [
+            2,
+            0,
+            [
+              225.939509,
+              1.0
+            ]
+          ],
+          [
+            2,
+            0,
+            [
+              66.4569801,
+              1.0
+            ]
+          ],
+          [
+            2,
+            0,
+            [
+              24.4283436,
+              1.0
+            ]
+          ],
+          [
+            2,
+            0,
+            [
+              9.88093527,
+              1.0
+            ]
+          ],
+          [
+            2,
+            0,
+            [
+              4.03887103,
+              1.0
+            ]
+          ],
+          [
+            2,
+            0,
+            [
+              1.58810227,
+              1.0
+            ]
+          ],
+          [
+            2,
+            0,
+            [
+              0.465251237,
+              1.0
+            ]
+          ]
+        ]
+      }
+    },
+    "calculation": {
+      "nuclear_model": "point",
+      "light_speed_au": 137.03599967994,
+      "conv_tol": 1e-11,
+      "max_cycle": 200,
+      "threads": 1,
+      "gaunt": false,
+      "breit": false
+    }
+  },
+  "input": {
+    "atom": "Kr",
+    "charge": 0,
+    "spin": 0,
+    "basis": "dyall-v2z",
+    "nuclear_model": "point",
+    "light_speed_au": 137.03599967994,
+    "conv_tol": 1e-11,
+    "max_cycle": 200,
+    "threads": 1,
+    "gaunt": false,
+    "breit": false
+  },
+  "results": [
+    {
+      "method": "NR-HF",
+      "energy_hartree": -2752.021012962119,
+      "homo_hartree": -0.5194850663502737,
+      "converged": true,
+      "matrix_dimension": 83,
+      "overlap_condition_number": 886.8645764363923,
+      "seconds": 0.2237791249935981,
+      "pyscf_object": "pyscf.scf.hf.RHF",
+      "mo_energy_shape": [
+        83
+      ],
+      "mo_occ_shape": [
+        83
+      ],
+      "orbital_representation": "spatial orbital",
+      "occupation_semantics": "Each entry is one PySCF spatial MO; occupation is the electron count stored in that mo_occ entry.",
+      "spinor_degeneracy_recording": "Not applicable: the entries are spatial orbitals, not spinors.",
+      "positive_energy_selection": "All mo_occ entries greater than 1e-8; this method has no negative-energy Dirac branch.",
+      "occupied_orbitals": [
+        {
+          "mo_index": 0,
+          "spin_channel": null,
+          "energy_hartree": -520.1581124117117,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 1,
+          "spin_channel": null,
+          "energy_hartree": -69.89640197029046,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 2,
+          "spin_channel": null,
+          "energy_hartree": -63.00342536440335,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 3,
+          "spin_channel": null,
+          "energy_hartree": -63.00342536440202,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 4,
+          "spin_channel": null,
+          "energy_hartree": -63.00342536439747,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 5,
+          "spin_channel": null,
+          "energy_hartree": -10.843100540118053,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 6,
+          "spin_channel": null,
+          "energy_hartree": -8.32560808042834,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 7,
+          "spin_channel": null,
+          "energy_hartree": -8.325608080427324,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 8,
+          "spin_channel": null,
+          "energy_hartree": -8.325608080426079,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 9,
+          "spin_channel": null,
+          "energy_hartree": -3.819004561648136,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 10,
+          "spin_channel": null,
+          "energy_hartree": -3.81900456164751,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 11,
+          "spin_channel": null,
+          "energy_hartree": -3.8190045616471955,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 12,
+          "spin_channel": null,
+          "energy_hartree": -3.8190045616456487,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 13,
+          "spin_channel": null,
+          "energy_hartree": -3.8190045616448947,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 14,
+          "spin_channel": null,
+          "energy_hartree": -1.1486937904756545,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 15,
+          "spin_channel": null,
+          "energy_hartree": -0.5194850663518938,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 16,
+          "spin_channel": null,
+          "energy_hartree": -0.5194850663510499,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 17,
+          "spin_channel": null,
+          "energy_hartree": -0.5194850663502737,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        }
+      ]
+    },
+    {
+      "method": "sf-X2C1e-HF",
+      "energy_hartree": -2788.250458525375,
+      "homo_hartree": -0.5181630976312455,
+      "converged": true,
+      "matrix_dimension": 83,
+      "overlap_condition_number": 886.8645764363923,
+      "seconds": 0.18930833299236838,
+      "pyscf_object": "pyscf.x2c.sfx2c1e.sfX2C1eRHF",
+      "mo_energy_shape": [
+        83
+      ],
+      "mo_occ_shape": [
+        83
+      ],
+      "orbital_representation": "spatial orbital",
+      "occupation_semantics": "Each entry is one PySCF spatial MO; occupation is the electron count stored in that mo_occ entry.",
+      "spinor_degeneracy_recording": "Not applicable: the entries are spatial orbitals, not spinors.",
+      "positive_energy_selection": "All mo_occ entries greater than 1e-8; this method has no negative-energy Dirac branch.",
+      "occupied_orbitals": [
+        {
+          "mo_index": 0,
+          "spin_channel": null,
+          "energy_hartree": -529.3665989284575,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 1,
+          "spin_channel": null,
+          "energy_hartree": -72.04397326116822,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 2,
+          "spin_channel": null,
+          "energy_hartree": -63.509512104269476,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 3,
+          "spin_channel": null,
+          "energy_hartree": -63.50951210426368,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 4,
+          "spin_channel": null,
+          "energy_hartree": -63.509512104241146,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 5,
+          "spin_channel": null,
+          "energy_hartree": -11.214458340411124,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 6,
+          "spin_channel": null,
+          "energy_hartree": -8.405961645241213,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 7,
+          "spin_channel": null,
+          "energy_hartree": -8.40596164522648,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 8,
+          "spin_channel": null,
+          "energy_hartree": -8.405961645209521,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 9,
+          "spin_channel": null,
+          "energy_hartree": -3.7415902848802745,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 10,
+          "spin_channel": null,
+          "energy_hartree": -3.7415902848749685,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 11,
+          "spin_channel": null,
+          "energy_hartree": -3.7415902848714966,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 12,
+          "spin_channel": null,
+          "energy_hartree": -3.741590284871319,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 13,
+          "spin_channel": null,
+          "energy_hartree": -3.741590284861979,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 14,
+          "spin_channel": null,
+          "energy_hartree": -1.1828962789251445,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 15,
+          "spin_channel": null,
+          "energy_hartree": -0.5181630976416084,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 16,
+          "spin_channel": null,
+          "energy_hartree": -0.5181630976375483,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 17,
+          "spin_channel": null,
+          "energy_hartree": -0.5181630976312455,
+          "occupation": 2.0,
+          "reported_multiplicity": 1
+        }
+      ]
+    },
+    {
+      "method": "X2C1e-HF",
+      "energy_hartree": -2788.355640457644,
+      "homo_hartree": -0.508760461392169,
+      "converged": true,
+      "matrix_dimension": 166,
+      "overlap_condition_number": 886.8645764364096,
+      "seconds": 7.9095764579979,
+      "pyscf_object": "pyscf.x2c.x2c.UHF",
+      "mo_energy_shape": [
+        166
+      ],
+      "mo_occ_shape": [
+        166
+      ],
+      "orbital_representation": "two-component spinor",
+      "occupation_semantics": "Each entry is one actual PySCF spinor MO and its stored mo_occ value; no occupation is multiplied by a degeneracy.",
+      "spinor_degeneracy_recording": "Kramers partners remain separate PySCF mo_energy/mo_occ entries; every reported entry has multiplicity 1 and no pair is collapsed.",
+      "positive_energy_selection": "All mo_occ entries greater than 1e-8; the X2C MO array contains only the electronic branch.",
+      "occupied_orbitals": [
+        {
+          "mo_index": 0,
+          "spin_channel": null,
+          "energy_hartree": -529.3584235239726,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 1,
+          "spin_channel": null,
+          "energy_hartree": -529.358423523924,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 2,
+          "spin_channel": null,
+          "energy_hartree": -72.04193564856016,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 3,
+          "spin_channel": null,
+          "energy_hartree": -72.04193564850932,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 4,
+          "spin_channel": null,
+          "energy_hartree": -64.94501064777683,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 5,
+          "spin_channel": null,
+          "energy_hartree": -64.9450106477758,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 6,
+          "spin_channel": null,
+          "energy_hartree": -62.81139676627218,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 7,
+          "spin_channel": null,
+          "energy_hartree": -62.811396766268736,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 8,
+          "spin_channel": null,
+          "energy_hartree": -62.81139676626805,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 9,
+          "spin_channel": null,
+          "energy_hartree": -62.811396766266235,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 10,
+          "spin_channel": null,
+          "energy_hartree": -11.213886789316867,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 11,
+          "spin_channel": null,
+          "energy_hartree": -11.213886789224196,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 12,
+          "spin_channel": null,
+          "energy_hartree": -8.627813291249325,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 13,
+          "spin_channel": null,
+          "energy_hartree": -8.627813291240175,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 14,
+          "spin_channel": null,
+          "energy_hartree": -8.297967010485118,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 15,
+          "spin_channel": null,
+          "energy_hartree": -8.297967010452261,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 16,
+          "spin_channel": null,
+          "energy_hartree": -8.29796701044379,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 17,
+          "spin_channel": null,
+          "energy_hartree": -8.297967010412195,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 18,
+          "spin_channel": null,
+          "energy_hartree": -3.784018762007867,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 19,
+          "spin_channel": null,
+          "energy_hartree": -3.784018762005316,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 20,
+          "spin_channel": null,
+          "energy_hartree": -3.784018761999205,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 21,
+          "spin_channel": null,
+          "energy_hartree": -3.7840187619940067,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 22,
+          "spin_channel": null,
+          "energy_hartree": -3.713120717190654,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 23,
+          "spin_channel": null,
+          "energy_hartree": -3.713120717187582,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 24,
+          "spin_channel": null,
+          "energy_hartree": -3.7131207171874046,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 25,
+          "spin_channel": null,
+          "energy_hartree": -3.713120717187144,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 26,
+          "spin_channel": null,
+          "energy_hartree": -3.7131207171865284,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 27,
+          "spin_channel": null,
+          "energy_hartree": -3.7131207171838376,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 28,
+          "spin_channel": null,
+          "energy_hartree": -1.182810614427756,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 29,
+          "spin_channel": null,
+          "energy_hartree": -1.182810614425228,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 30,
+          "spin_channel": null,
+          "energy_hartree": -0.5374966709103426,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 31,
+          "spin_channel": null,
+          "energy_hartree": -0.5374966709065311,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 32,
+          "spin_channel": null,
+          "energy_hartree": -0.5087604615025045,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 33,
+          "spin_channel": null,
+          "energy_hartree": -0.5087604614000827,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 34,
+          "spin_channel": null,
+          "energy_hartree": -0.5087604613990764,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 35,
+          "spin_channel": null,
+          "energy_hartree": -0.508760461392169,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        }
+      ]
+    },
+    {
+      "method": "4c-DC-HF",
+      "energy_hartree": -2788.835017358118,
+      "homo_hartree": -0.50945347573558,
+      "converged": true,
+      "matrix_dimension": 332,
+      "overlap_condition_number": 90229492.30311605,
+      "seconds": 38.343376749995514,
+      "pyscf_object": "pyscf.scf.dhf.DHF",
+      "mo_energy_shape": [
+        332
+      ],
+      "mo_occ_shape": [
+        332
+      ],
+      "orbital_representation": "four-component spinor",
+      "occupation_semantics": "Each entry is one actual PySCF spinor MO and its stored mo_occ value; no occupation is multiplied by a degeneracy.",
+      "spinor_degeneracy_recording": "Kramers partners remain separate PySCF mo_energy/mo_occ entries; every reported entry has multiplicity 1 and no pair is collapsed.",
+      "positive_energy_selection": "Occupied entries from the PySCF positive-energy solution half: mo_index >= len(mo_energy) // 2 and mo_occ > 1e-8.",
+      "occupied_orbitals": [
+        {
+          "mo_index": 166,
+          "spin_channel": null,
+          "energy_hartree": -529.6860201191208,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 167,
+          "spin_channel": null,
+          "energy_hartree": -529.6860201191025,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 168,
+          "spin_channel": null,
+          "energy_hartree": -72.07445145685794,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 169,
+          "spin_channel": null,
+          "energy_hartree": -72.07445145677093,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 170,
+          "spin_channel": null,
+          "energy_hartree": -64.86624114877021,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 171,
+          "spin_channel": null,
+          "energy_hartree": -64.86624114875812,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 172,
+          "spin_channel": null,
+          "energy_hartree": -62.87348140340149,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 173,
+          "spin_channel": null,
+          "energy_hartree": -62.87348140339753,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 174,
+          "spin_channel": null,
+          "energy_hartree": -62.873481403393995,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 175,
+          "spin_channel": null,
+          "energy_hartree": -62.873481403377504,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 176,
+          "spin_channel": null,
+          "energy_hartree": -11.218537641166971,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 177,
+          "spin_channel": null,
+          "energy_hartree": -11.218537641160607,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 178,
+          "spin_channel": null,
+          "energy_hartree": -8.613645059933745,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 179,
+          "spin_channel": null,
+          "energy_hartree": -8.613645059899532,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 180,
+          "spin_channel": null,
+          "energy_hartree": -8.307108424348705,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 181,
+          "spin_channel": null,
+          "energy_hartree": -8.307108424347547,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 182,
+          "spin_channel": null,
+          "energy_hartree": -8.307108424335752,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 183,
+          "spin_channel": null,
+          "energy_hartree": -8.307108424330753,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 184,
+          "spin_channel": null,
+          "energy_hartree": -3.771441360378716,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 185,
+          "spin_channel": null,
+          "energy_hartree": -3.7714413603691703,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 186,
+          "spin_channel": null,
+          "energy_hartree": -3.771441360366308,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 187,
+          "spin_channel": null,
+          "energy_hartree": -3.7714413603534354,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 188,
+          "spin_channel": null,
+          "energy_hartree": -3.720750694732488,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 189,
+          "spin_channel": null,
+          "energy_hartree": -3.7207506947319957,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 190,
+          "spin_channel": null,
+          "energy_hartree": -3.7207506947223274,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 191,
+          "spin_channel": null,
+          "energy_hartree": -3.7207506947192353,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 192,
+          "spin_channel": null,
+          "energy_hartree": -3.7207506947186326,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 193,
+          "spin_channel": null,
+          "energy_hartree": -3.7207506947125584,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 194,
+          "spin_channel": null,
+          "energy_hartree": -1.1831940375690693,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 195,
+          "spin_channel": null,
+          "energy_hartree": -1.183194037558901,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 196,
+          "spin_channel": null,
+          "energy_hartree": -0.5360668885705246,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 197,
+          "spin_channel": null,
+          "energy_hartree": -0.5360668885576864,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 198,
+          "spin_channel": null,
+          "energy_hartree": -0.5094534757557938,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 199,
+          "spin_channel": null,
+          "energy_hartree": -0.5094534757518181,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 200,
+          "spin_channel": null,
+          "energy_hartree": -0.5094534757389255,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        },
+        {
+          "mo_index": 201,
+          "spin_channel": null,
+          "energy_hartree": -0.50945347573558,
+          "occupation": 1.0,
+          "reported_multiplicity": 1
+        }
+      ]
+    }
+  ],
+  "deltas": {
+    "sf-X2C1e - NR": {
+      "energy_hartree": -36.22944556325592,
+      "energy_millihartree": -36229.445563255926,
+      "energy_ev": -985.8534366994995,
+      "homo_ev": 0.03597260141858197,
+      "homo_mev": 35.97260141858197
+    },
+    "X2C1e - sf-X2C1e": {
+      "energy_hartree": -0.10518193226880612,
+      "energy_millihartree": -105.18193226880612,
+      "energy_ev": -2.862146185065096,
+      "homo_ev": 0.2558587664319673,
+      "homo_mev": 255.8587664319673
+    },
+    "4c-DC - X2C1e": {
+      "energy_hartree": -0.47937690047410797,
+      "energy_millihartree": -479.37690047410797,
+      "energy_ev": -13.044509996202144,
+      "homo_ev": -0.0188578809725605,
+      "homo_mev": -18.8578809725605
+    },
+    "4c-DC - NR": {
+      "energy_hartree": -36.814004395998836,
+      "energy_millihartree": -36814.00439599884,
+      "energy_ev": -1001.7600928807668,
+      "homo_ev": 0.2729734868779888,
+      "homo_mev": 272.97348687798876
+    }
+  },
+  "interpretation": {
+    "4c-DC - X2C1e": "Residual between full Dirac-Coulomb HF and one-electron X2C HF; it includes missing two-electron picture-change effects in X2C1e.",
+    "warning": "This is not a direct Koelling-Harmon-versus-FRA LAPW benchmark."
+  }
+}
