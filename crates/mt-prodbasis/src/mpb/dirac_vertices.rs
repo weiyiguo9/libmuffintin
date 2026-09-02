@@ -108,16 +108,58 @@ pub struct DiracBlochVertexAccumulator<'a> {
     coefficients: Vec<Complex64>,
 }
 
-impl<'a> DiracBlochVertexAccumulator<'a> {
-    /// Radial-overlap table this accumulator's PP and QQ terms expect.
-    ///
-    /// Build it once per q slice and pass it to every column; the table is
-    /// independent of the band pair.
-    pub fn sector_table(
+/// Dirac source, raw product space, and compiled auxiliary validated together.
+///
+/// [`require_matching_dirac_context`] walks every raw radial product and every
+/// source radial, none of which depends on the band pair, so running it inside
+/// a per-column constructor dominates a q slice with many columns. Validate
+/// once here and build every accumulator and sector table of that slice from
+/// this context.
+#[derive(Clone, Copy, Debug)]
+pub struct DiracVertexContext<'a> {
+    source: &'a DiracProductSource,
+    raw: &'a DiracRawProductSpace,
+    auxiliary: &'a CompiledAuxiliaryBasis,
+}
+
+impl<'a> DiracVertexContext<'a> {
+    /// Validate one Dirac source / raw / auxiliary triple.
+    pub fn new(
+        source: &'a DiracProductSource,
         raw: &'a DiracRawProductSpace,
         auxiliary: &'a CompiledAuxiliaryBasis,
-    ) -> DiracMtSectorTable<'a> {
-        DiracMtSectorTable::new(raw, auxiliary)
+    ) -> Result<Self, MpbError> {
+        require_matching_dirac_context(source, raw, auxiliary)?;
+        Ok(Self {
+            source,
+            raw,
+            auxiliary,
+        })
+    }
+
+    /// Empty radial-overlap table for this slice, shared by every column.
+    pub fn sector_table(&self) -> DiracMtSectorTable<'a> {
+        DiracMtSectorTable::new(self.raw, self.auxiliary)
+    }
+
+    /// Start an empty Bloch or rectangular exchange vertex without revalidating.
+    pub fn bloch_accumulator(
+        &self,
+        pair: OrbitalPair,
+    ) -> Result<DiracBlochVertexAccumulator<'a>, MpbError> {
+        if !matches!(
+            pair,
+            OrbitalPair::Bloch { .. } | OrbitalPair::Exchange { .. }
+        ) {
+            return Err(MpbError::ExpectedDiracBlochPair);
+        }
+        Ok(DiracBlochVertexAccumulator {
+            source: self.source,
+            raw: self.raw,
+            auxiliary: self.auxiliary,
+            pair,
+            coefficients: vec![Complex64::default(); self.auxiliary.dimension()],
+        })
     }
 }
 
@@ -129,20 +171,7 @@ impl<'a> DiracBlochVertexAccumulator<'a> {
         auxiliary: &'a CompiledAuxiliaryBasis,
         pair: OrbitalPair,
     ) -> Result<Self, MpbError> {
-        require_matching_dirac_context(source, raw, auxiliary)?;
-        if !matches!(
-            pair,
-            OrbitalPair::Bloch { .. } | OrbitalPair::Exchange { .. }
-        ) {
-            return Err(MpbError::ExpectedDiracBlochPair);
-        }
-        Ok(Self {
-            source,
-            raw,
-            auxiliary,
-            pair,
-            coefficients: vec![Complex64::default(); auxiliary.dimension()],
-        })
+        DiracVertexContext::new(source, raw, auxiliary)?.bloch_accumulator(pair)
     }
 
     /// Add PP ($\Omega_\kappa$) muffin-tin terms for one radial-factor pair.

@@ -8,8 +8,8 @@ use crate::spinor_product::{
 use muffintin_core::{InverseBohr, RelativisticChannel};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
 use muffintin_prodbasis::mpb::{
-    DiracBlochVertexAccumulator, DiracMtSectorTable, MpbError, apply_dirac_overlap_cutoff,
-    untruncated_dirac_product_space,
+    DiracBlochVertexAccumulator, DiracMtSectorTable, DiracVertexContext, MpbError,
+    apply_dirac_overlap_cutoff, untruncated_dirac_product_space,
 };
 use muffintin_prodbasis::{
     AuxiliaryIrError, CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec,
@@ -161,7 +161,8 @@ pub fn build_spinor_exchange_mpb(
 
     let known_pp = raw_mt_pairs(&raw, DiracChargeSector::LargeLarge);
     let known_qq = raw_mt_pairs(&raw, DiracChargeSector::SmallSmall);
-    let mut table = DiracBlochVertexAccumulator::sector_table(&raw, &auxiliary);
+    let context = DiracVertexContext::new(&source, &raw, &auxiliary)?;
+    let mut table = context.sector_table();
     let gamma = is_gamma(&source);
     let mut cv_vertices = Vec::with_capacity(cv_layout.n_columns()?);
     let mut vc_vertices = Vec::with_capacity(vc_layout.n_columns()?);
@@ -175,7 +176,7 @@ pub fn build_spinor_exchange_mpb(
             for target in 0..n_valence {
                 let column = cv_layout.encode(mapped.k_index, core_index, target)?;
                 let pair = exchange_pair(cv_layout, mapped.k_index, core_index, target);
-                let mut acc = DiracBlochVertexAccumulator::new(&source, &raw, &auxiliary, pair)?;
+                let mut acc = context.bloch_accumulator(pair)?;
                 let direct = add_cv(
                     &mut acc,
                     &mut table,
@@ -205,7 +206,7 @@ pub fn build_spinor_exchange_mpb(
             for (core_index, core) in input.core.orbitals.iter().enumerate() {
                 let column = vc_layout.encode(mapped.k_index, occupied, core_index)?;
                 let pair = exchange_pair(vc_layout, mapped.k_index, occupied, core_index);
-                let mut acc = DiracBlochVertexAccumulator::new(&source, &raw, &auxiliary, pair)?;
+                let mut acc = context.bloch_accumulator(pair)?;
                 let direct = add_vc(
                     &mut acc,
                     &mut table,
@@ -235,7 +236,7 @@ pub fn build_spinor_exchange_mpb(
             for (target, right) in input.core.orbitals.iter().enumerate() {
                 let column = cc_layout.encode(mapped.k_index, occupied, target)?;
                 let pair = exchange_pair(cc_layout, mapped.k_index, occupied, target);
-                let mut acc = DiracBlochVertexAccumulator::new(&source, &raw, &auxiliary, pair)?;
+                let mut acc = context.bloch_accumulator(pair)?;
                 add_cc(
                     &mut acc, &mut table, input, mapped, left, right, &known_pp, &known_qq,
                 )?;
