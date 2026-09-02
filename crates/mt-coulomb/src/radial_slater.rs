@@ -409,8 +409,17 @@ fn slater_integral(
     let mut value = Components::default();
     for l in 0..=l_max {
         for m in -(l as i32)..=(l as i32) {
-            let left = pair_radials(mesh, left_bra, left_ket, l, m)?;
-            let right = pair_radials(mesh, right_bra, right_ket, l, m)?;
+            // The spinor Gaunt selection rule leaves one nonzero m per l.
+            // Both sides enter every component bilinearly, so a vanishing
+            // angular pair contributes an exact zero and the radial
+            // quadrature below is skipped.
+            let left_angular = pair_angular(left_bra, left_ket, l, m)?;
+            let right_angular = pair_angular(right_bra, right_ket, l, m)?;
+            if left_angular == (0.0, 0.0) || right_angular == (0.0, 0.0) {
+                continue;
+            }
+            let left = pair_radials(mesh, left_bra, left_ket, left_angular);
+            let right = pair_radials(mesh, right_bra, right_ket, right_angular);
             value.pp += intra_sphere_poisson(l, mesh, &left.0, &right.0)?;
             value.qq += intra_sphere_poisson(l, mesh, &left.1, &right.1)?;
             let left_total = left
@@ -431,20 +440,30 @@ fn slater_integral(
     Ok(value)
 }
 
-fn pair_radials(
-    mesh: &ExponentialMesh,
+/// PP and QQ spinor-Gaunt weights of one density pair at `(l, m)`.
+fn pair_angular(
     left: OrbitalRef<'_>,
     right: OrbitalRef<'_>,
     l: u32,
     m: i32,
-) -> Result<(Vec<f64>, Vec<f64>), RadialSlaterError> {
-    let pp_angular = density_angular(left.channel, l, m, right.channel)?;
-    let qq_angular = density_angular(
-        left.channel.opposite_kappa(),
-        l,
-        m,
-        right.channel.opposite_kappa(),
-    )?;
+) -> Result<(f64, f64), RadialSlaterError> {
+    Ok((
+        density_angular(left.channel, l, m, right.channel)?,
+        density_angular(
+            left.channel.opposite_kappa(),
+            l,
+            m,
+            right.channel.opposite_kappa(),
+        )?,
+    ))
+}
+
+fn pair_radials(
+    mesh: &ExponentialMesh,
+    left: OrbitalRef<'_>,
+    right: OrbitalRef<'_>,
+    (pp_angular, qq_angular): (f64, f64),
+) -> (Vec<f64>, Vec<f64>) {
     let scale = (left.normalization * right.normalization).sqrt();
     let pp = mesh
         .radii()
@@ -458,7 +477,7 @@ fn pair_radials(
         .enumerate()
         .map(|(index, radius)| qq_angular * left.q[index] * right.q[index] / (radius.get() * scale))
         .collect();
-    Ok((pp, qq))
+    (pp, qq)
 }
 
 fn pair_l_max(left: RelativisticChannel, right: RelativisticChannel) -> u32 {
