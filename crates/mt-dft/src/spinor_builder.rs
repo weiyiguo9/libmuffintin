@@ -148,7 +148,7 @@ pub fn build_spinor_iteration_basis(
                 site.full.orbitals.clone(),
             )
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect();
     Ok(SpinorIterationBasis {
         basis_spec,
         compiled,

@@ -65,10 +65,8 @@ pub enum Axis {
     Auxiliary,
     /// Pair-vertex column index of one exchange block.
     PairColumn,
-    /// Canonically ordered spherical-harmonic channel.
-    Harmonic,
-    /// Radial mesh point.
-    RadialGrid,
+    /// Explicit core spin-orbital index within one site block.
+    CoreOrbital,
 }
 
 /// Contiguous host layout of a dense tensor.

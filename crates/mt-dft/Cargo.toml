@@ -19,6 +19,7 @@ libmuffintin-symmetry = { path = "../mt-symmetry" }
 libmuffintin-tensor = { path = "../mt-tensor" }
 libm.workspace = true
 num-complex.workspace = true
+rayon.workspace = true
 thiserror.workspace = true
 
 [lints]
