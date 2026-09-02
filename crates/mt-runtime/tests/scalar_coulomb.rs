@@ -534,7 +534,7 @@ fn selected_nodes_or_permuted_parent_rows_fail_context_or_oracle() {
         ),
         Err(ScalarCoulombError::GridIdentity { index: 0 })
     ));
-    assert_eq!(production.records[0].sampled.n_grid(), 6);
+    assert_eq!(production.records()[0].sampled.n_grid(), 6);
 }
 
 #[test]

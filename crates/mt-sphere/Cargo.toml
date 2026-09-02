@@ -12,6 +12,7 @@ name = "muffintin_sphere"
 [dependencies]
 libmuffintin-core = { path = "../mt-core" }
 num-complex.workspace = true
+rayon.workspace = true
 thiserror.workspace = true
 
 [lints]

@@ -311,18 +311,34 @@ impl CompiledAuxiliaryBasis {
     }
 
     /// Deterministic muffin-tin index: $site \to L \to M \to n$.
+    ///
+    /// Computed from the mixed-product block arithmetic rather than by scanning
+    /// [`Self::regions`]; the flatten order is the one that function emits.
+    /// Interpolation-point bases carry no muffin-tin region and yield `None`.
     pub fn mt_index(&self, site: usize, l: u32, m: i32, n: usize) -> Option<usize> {
-        self.regions().into_iter().position(|region| {
-            matches!(
-                region,
-                AuxiliaryRegion::MuffinTin {
-                    site: s,
-                    l: ll,
-                    m: mm,
-                    n: nn,
-                } if s == site && ll == l && mm == m && nn == n
-            )
-        })
+        let payload = self.mixed_product()?;
+        let mut offset = 0;
+        for block in &payload.sites {
+            let mut coupled = block.modes.iter().map(|mode| mode.l).min();
+            while let Some(current) = coupled {
+                let modes = block.modes.iter().filter(|mode| mode.l == current);
+                let count = modes.clone().count();
+                if block.site == site && current == l && m.unsigned_abs() <= l {
+                    let slot = modes.clone().filter(|mode| mode.n < n).count();
+                    if modes.clone().any(|mode| mode.n == n) {
+                        return Some(offset + (m + l as i32) as usize * count + slot);
+                    }
+                }
+                offset += (2 * current as usize + 1) * count;
+                coupled = block
+                    .modes
+                    .iter()
+                    .map(|mode| mode.l)
+                    .filter(|&value| value > current)
+                    .min();
+            }
+        }
+        None
     }
 
     /// Mesh of one muffin-tin site (mixed product only).

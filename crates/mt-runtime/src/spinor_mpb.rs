@@ -7,7 +7,7 @@ use muffintin_core::{InverseBohr, ReciprocalLattice, RelativisticChannel};
 use muffintin_operators::lapw::SpinorCompiledBasis;
 use muffintin_operators::{CompiledSiteProjection, OperatorError};
 use muffintin_prodbasis::mpb::{
-    DiracBlochVertexAccumulator, MpbError, apply_dirac_overlap_cutoff,
+    DiracMtSectorTable, DiracVertexContext, MpbError, apply_dirac_overlap_cutoff,
     untruncated_dirac_product_space,
 };
 use muffintin_prodbasis::{
@@ -154,12 +154,16 @@ pub fn build_spinor_mpb(
         .iter()
         .map(|component| (component.g_relative.index, component.g_relative))
         .collect::<HashMap<_, _>>();
+    let context = DiracVertexContext::new(&input.source, &raw, &auxiliary)?;
+    let mut table = context.sector_table();
     let mut vertices = Vec::with_capacity(spec.selections.len());
     for selection in &spec.selections {
         vertices.push(contract_selection(
             input,
             &raw,
             &auxiliary,
+            context,
+            &mut table,
             &relative_g_by_index,
             *selection,
         )?);
@@ -220,6 +224,8 @@ fn contract_selection(
     input: &SpinorProductInput,
     raw: &DiracRawProductSpace,
     auxiliary: &CompiledAuxiliaryBasis,
+    context: DiracVertexContext<'_>,
+    table: &mut DiracMtSectorTable<'_>,
     relative_g_by_index: &HashMap<[i32; 3], muffintin_core::GVector>,
     selection: SpinorMpbSelection,
 ) -> Result<SpinorMpbPairVertex, SpinorMpbError> {
@@ -257,8 +263,8 @@ fn contract_selection(
         left: selection.left_band,
         right: selection.right_band,
     };
-    let mut acc = DiracBlochVertexAccumulator::new(&input.source, raw, auxiliary, bloch)?;
-    add_muffin_tin_terms(&mut acc, input, raw, &pair)?;
+    let mut acc = context.bloch_accumulator(bloch)?;
+    add_muffin_tin_terms(&mut acc, table, input, raw, &pair)?;
     add_interstitial_terms(&mut acc, input, relative_g_by_index, &pair)?;
     let vertex = acc.finish()?;
     if vertex.pair() != bloch {
@@ -287,7 +293,8 @@ struct BandPair<'a> {
 }
 
 fn add_muffin_tin_terms(
-    acc: &mut DiracBlochVertexAccumulator<'_>,
+    acc: &mut muffintin_prodbasis::mpb::DiracBlochVertexAccumulator<'_>,
+    table: &mut DiracMtSectorTable<'_>,
     input: &SpinorProductInput,
     raw: &DiracRawProductSpace,
     pair: &BandPair<'_>,
@@ -326,10 +333,10 @@ fn add_muffin_tin_terms(
                     * right_site.at(right_coord, pair.right_band)
                     * phase;
                 if known_pp.contains(&(left_id, right_id)) {
-                    acc.add_pp(spec, amplitude)?;
+                    acc.add_pp(table, spec, amplitude)?;
                 }
                 if known_qq.contains(&(left_id, right_id)) {
-                    acc.add_qq(spec, amplitude)?;
+                    acc.add_qq(table, spec, amplitude)?;
                 }
             }
         }
@@ -338,7 +345,7 @@ fn add_muffin_tin_terms(
 }
 
 fn add_interstitial_terms(
-    acc: &mut DiracBlochVertexAccumulator<'_>,
+    acc: &mut muffintin_prodbasis::mpb::DiracBlochVertexAccumulator<'_>,
     input: &SpinorProductInput,
     relative_g_by_index: &HashMap<[i32; 3], muffintin_core::GVector>,
     pair: &BandPair<'_>,

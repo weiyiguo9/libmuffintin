@@ -5,6 +5,7 @@ use muffintin_core::Cell;
 use muffintin_core::ReciprocalLattice;
 use muffintin_envelope::Provenance;
 use muffintin_prodbasis::{AuxiliaryLayout, AuxiliaryRegion, PairVertex, TransferQ};
+use muffintin_tensor::{Axis, ComplexTensor, einsum};
 use num_complex::Complex64;
 
 /// Typed auxiliary representation stored with $V^q$. Neither mixed-product nor
@@ -183,5 +184,76 @@ impl CoulombOperator {
             .zip(applied)
             .map(|(coefficient, value)| coefficient.conj() * value)
             .sum())
+    }
+
+    /// Reusable contractor that keeps $V^q$ resident for many column blocks.
+    pub fn contractor(&self) -> Result<CoulombVertexContractor<'_>, CoulombError> {
+        CoulombVertexContractor::new(self)
+    }
+}
+
+/// One resident $V^q$ prepared for batched $C_L^\dagger V C_R$ column blocks.
+///
+/// Building the tensor is $O(n^2)$ and independent of the columns, so a caller
+/// that contracts many blocks against the same $q$ must construct this once and
+/// reuse it. Each block is a single einsum on the shared tensor backend, not a
+/// per-scalar matrix-vector product.
+#[derive(Debug)]
+pub struct CoulombVertexContractor<'a> {
+    operator: &'a CoulombOperator,
+    matrix: ComplexTensor,
+}
+
+impl<'a> CoulombVertexContractor<'a> {
+    fn new(operator: &'a CoulombOperator) -> Result<Self, CoulombError> {
+        let n = operator.dimension();
+        let matrix = ComplexTensor::from_host_row_major(
+            &[n, n],
+            &[Axis::Auxiliary, Axis::Auxiliary],
+            operator.matrix.clone(),
+        )?;
+        Ok(Self { operator, matrix })
+    }
+
+    /// Operator this contractor was built from.
+    pub const fn operator(&self) -> &'a CoulombOperator {
+        self.operator
+    }
+
+    /// $C_L^\dagger V C_R$, row-major with `left.len()` rows and `right.len()` columns.
+    ///
+    /// Entry $(i, j)$ is `left[i].coefficients()` conjugated against
+    /// $V$ applied to `right[j].coefficients()`, identical to
+    /// [`CoulombOperator::quadratic_form`] on that pair.
+    pub fn quadratic_block(
+        &self,
+        left: &[&PairVertex],
+        right: &[&PairVertex],
+    ) -> Result<Vec<Complex64>, CoulombError> {
+        if left.is_empty() || right.is_empty() {
+            return Ok(Vec::new());
+        }
+        let left_block = self.column_block(left)?.conjugate();
+        let right_block = self.column_block(right)?;
+        let contracted = einsum("ai,ab,bj->ij", &[&left_block, &self.matrix, &right_block])?;
+        Ok(contracted.to_host_row_major())
+    }
+
+    /// Auxiliary-major matrix of the requested vertex coefficients.
+    fn column_block(&self, vertices: &[&PairVertex]) -> Result<ComplexTensor, CoulombError> {
+        let n = self.operator.dimension();
+        let columns = vertices.len();
+        let mut values = vec![Complex64::default(); n * columns];
+        for (column, vertex) in vertices.iter().enumerate() {
+            self.operator.require_vertex(vertex)?;
+            for (row, coefficient) in vertex.coefficients().iter().enumerate() {
+                values[row * columns + column] = *coefficient;
+            }
+        }
+        Ok(ComplexTensor::from_host_row_major(
+            &[n, columns],
+            &[Axis::Auxiliary, Axis::PairColumn],
+            values,
+        )?)
     }
 }

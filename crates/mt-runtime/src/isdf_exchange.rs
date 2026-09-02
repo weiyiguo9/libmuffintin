@@ -11,7 +11,8 @@ use crate::spinor_product::{
 };
 use muffintin_core::Hartree;
 use muffintin_coulomb::{
-    AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, assemble_coulomb,
+    AuxiliaryKind, CoulombError, CoulombOperator, CoulombRequest, CoulombVertexContractor,
+    assemble_coulomb,
 };
 use muffintin_prodbasis::{
     AuxiliaryPartition, CompiledAuxiliaryBasis, ExchangePairLayout, ExchangeSpace, OrbitalPair,
@@ -566,59 +567,72 @@ pub(crate) fn contract_rectangular_exchange(
         }
     }
 
+    let mut resident: Option<(usize, CoulombVertexContractor<'_>)> = None;
+    let mut columns: Vec<&PairVertex> = Vec::with_capacity(layout.n_target);
     contract_rectangular_values(
         layout,
         maps,
         k_weights,
         occupied_occupations,
-        |q_index, left_column, right_column| {
-            records[q_index]
-                .operator
-                .quadratic_form(
-                    &records[q_index].vertices[left_column],
-                    &records[q_index].vertices[right_column],
-                )
-                .map_err(IsdfExchangeError::from)
+        |q_index, k, occupied, block| {
+            if resident.as_ref().map(|(index, _)| *index) != Some(q_index) {
+                resident = Some((q_index, records[q_index].operator.contractor()?));
+            }
+            let contractor = &resident
+                .as_ref()
+                .expect("the current q contractor was just prepared")
+                .1;
+            columns.clear();
+            for target in 0..layout.n_target {
+                let column = layout
+                    .encode(k, occupied, target)
+                    .map_err(|_| IsdfExchangeError::QContext { index: q_index })?;
+                columns.push(&records[q_index].vertices[column]);
+            }
+            block.copy_from_slice(&contractor.quadratic_block(&columns, &columns)?);
+            Ok(())
         },
     )
 }
 
+/// Accumulate the rectangular exchange kernel from occupied-band column blocks.
+///
+/// `block(q_index, k, occupied, out)` fills one row-major `n_target * n_target`
+/// matrix whose entry `(b, b')` is $c_{k,l,b}^\dagger V^q c_{k,l,b'}$ for the
+/// single occupied band `l = occupied`. Only those entries enter the kernel, so
+/// the block is the smallest unit that still amortizes one $V^q$ application
+/// over every target pair. The loop is q-major, which lets a caller keep exactly
+/// one $q$-resident operator alive at a time.
 fn contract_rectangular_values(
     layout: ExchangePairLayout,
     maps: &[Vec<usize>],
     k_weights: &[f64],
     occupied_occupations: &[Vec<f64>],
-    mut integral: impl FnMut(usize, usize, usize) -> Result<Complex64, IsdfExchangeError>,
+    mut block: impl FnMut(usize, usize, usize, &mut [Complex64]) -> Result<(), IsdfExchangeError>,
 ) -> Result<RectangularExchangeResult, IsdfExchangeError> {
     let n_k = layout.n_k;
     let n_occupied = layout.n_occupied;
     let n_target = layout.n_target;
-    let mut band_matrices = Vec::with_capacity(n_k);
-    let mut maximum_antihermitian_residual = 0.0_f64;
-    for k in 0..n_k {
-        let mut values = vec![Complex64::default(); n_target * n_target];
-        for right_band in 0..n_target {
-            for right_band_prime in 0..n_target {
-                let mut value = Complex64::default();
-                for (q_index, map) in maps.iter().enumerate() {
-                    let kq = map[k];
-                    for left_band in 0..n_occupied {
-                        let weight = k_weights[kq] * occupied_occupations[kq][left_band];
-                        if weight == 0.0 {
-                            continue;
-                        }
-                        let left_column = layout
-                            .encode(k, left_band, right_band)
-                            .map_err(|_| IsdfExchangeError::QContext { index: 0 })?;
-                        let right_column = layout
-                            .encode(k, left_band, right_band_prime)
-                            .map_err(|_| IsdfExchangeError::QContext { index: 0 })?;
-                        value -= weight * integral(q_index, left_column, right_column)?;
-                    }
+    let mut band_values = vec![vec![Complex64::default(); n_target * n_target]; n_k];
+    let mut buffer = vec![Complex64::default(); n_target * n_target];
+    for (q_index, map) in maps.iter().enumerate() {
+        for (k, values) in band_values.iter_mut().enumerate() {
+            let kq = map[k];
+            for occupied in 0..n_occupied {
+                let weight = k_weights[kq] * occupied_occupations[kq][occupied];
+                if weight == 0.0 {
+                    continue;
                 }
-                values[right_band * n_target + right_band_prime] = value;
+                block(q_index, k, occupied, &mut buffer)?;
+                for (value, integral) in values.iter_mut().zip(&buffer) {
+                    *value -= weight * integral;
+                }
             }
         }
+    }
+    let mut band_matrices = Vec::with_capacity(n_k);
+    let mut maximum_antihermitian_residual = 0.0_f64;
+    for (k, values) in band_values.into_iter().enumerate() {
         for row in 0..n_target {
             for column in 0..n_target {
                 let residual = (values[row * n_target + column]
@@ -748,13 +762,17 @@ mod tests {
         let maps = vec![vec![0, 1], vec![1, 0]];
         let weights = vec![0.25, 0.75];
         let occupied = vec![vec![0.2, 0.4], vec![0.5, 0.8]];
-        let contracted =
-            contract_rectangular_values(layout, &maps, &weights, &occupied, |q, column, other| {
-                assert_eq!(column, other);
-                let (_, orbital, _) = layout.decode(column).unwrap();
-                Ok(Complex64::new((q + 1) as f64 * (orbital + 2) as f64, 0.0))
-            })
-            .unwrap();
+        let contracted = contract_rectangular_values(
+            layout,
+            &maps,
+            &weights,
+            &occupied,
+            |q, _, orbital, block| {
+                block[0] = Complex64::new((q + 1) as f64 * (orbital + 2) as f64, 0.0);
+                Ok(())
+            },
+        )
+        .unwrap();
         for k in 0..2 {
             let mut expected = 0.0;
             for q in 0..2 {
@@ -785,15 +803,17 @@ mod tests {
             &[vec![0]],
             &weights,
             &occupations,
-            |_, left, right| {
-                let (_, occupied_left, target_left) = layout.decode(left).unwrap();
-                let (_, occupied_right, target_right) = layout.decode(right).unwrap();
-                assert_eq!(occupied_left, occupied_right);
-                Ok(if target_left == target_right {
-                    Complex64::new((occupied_left + target_left + 1) as f64, 0.0)
-                } else {
-                    Complex64::default()
-                })
+            |_, _, occupied, block| {
+                for target in 0..layout.n_target {
+                    for other in 0..layout.n_target {
+                        block[target * layout.n_target + other] = if target == other {
+                            Complex64::new((occupied + target + 1) as f64, 0.0)
+                        } else {
+                            Complex64::default()
+                        };
+                    }
+                }
+                Ok(())
             },
         )
         .unwrap();
@@ -824,20 +844,29 @@ mod tests {
             &[vec![0]],
             &weights,
             &core,
-            |_, left, right| {
-                let (_, _, left_target) = cv_layout.decode(left).unwrap();
-                let (_, _, right_target) = cv_layout.decode(right).unwrap();
-                Ok((left_target == right_target)
-                    .then(|| Complex64::new((left_target + 1) as f64, 0.0))
-                    .unwrap_or_default())
+            |_, _, _, block| {
+                for target in 0..cv_layout.n_target {
+                    for other in 0..cv_layout.n_target {
+                        block[target * cv_layout.n_target + other] = (target == other)
+                            .then(|| Complex64::new((target + 1) as f64, 0.0))
+                            .unwrap_or_default();
+                    }
+                }
+                Ok(())
             },
         )
         .unwrap();
-        let vc =
-            contract_rectangular_values(vc_layout, &[vec![0]], &weights, &valence, |_, _, _| {
-                Ok(Complex64::new(3.0, 0.0))
-            })
-            .unwrap();
+        let vc = contract_rectangular_values(
+            vc_layout,
+            &[vec![0]],
+            &weights,
+            &valence,
+            |_, _, _, block| {
+                block[0] = Complex64::new(3.0, 0.0);
+                Ok(())
+            },
+        )
+        .unwrap();
         let t_cv = target_trace(cv_layout, &cv.target_matrices, &weights, &valence);
         let t_vc = target_trace(vc_layout, &vc.target_matrices, &weights, &core);
         assert_eq!(t_cv, -0.875);

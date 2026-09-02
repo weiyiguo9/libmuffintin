@@ -66,6 +66,14 @@ pub struct AtomicEnergyRequest {
     pub nuclear_charge: f64,
     pub muffin_tin_radius: Bohr,
     pub intervals: usize,
+    /// Energy of this state under a nearby potential, if one is known.
+    ///
+    /// A caller that re-solves the same state while its potential moves, such
+    /// as a free-atom SCF loop, can supply the previous energy. The search
+    /// then scans a narrow window around it first and falls back to the full
+    /// window when that window holds no node-compatible bracket, so the seed
+    /// cannot change which state is returned.
+    pub seed: Option<Hartree>,
 }
 
 impl AtomicEnergyRequest {
@@ -75,6 +83,7 @@ impl AtomicEnergyRequest {
             nuclear_charge,
             muffin_tin_radius,
             intervals: 512,
+            seed: None,
         }
     }
 
@@ -82,7 +91,19 @@ impl AtomicEnergyRequest {
         self.intervals = intervals;
         self
     }
+
+    pub const fn with_seed(mut self, seed: Hartree) -> Self {
+        self.seed = Some(seed);
+        self
+    }
 }
+
+/// Half-width of the seeded window as a fraction of the seed magnitude.
+const SEEDED_WINDOW_FRACTION: f64 = 0.1;
+/// Absolute half-width floor in Hartree, so a shallow state still moves freely.
+const SEEDED_WINDOW_FLOOR_HARTREE: f64 = 1.0;
+/// Scan intervals inside the seeded window.
+const SEEDED_WINDOW_INTERVALS: usize = 256;
 
 /// One nonnegative contribution to an occupied projected density of states.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -136,6 +157,21 @@ pub fn generate_atomic_energy(
     })
 }
 
+/// Narrow scan window around `seed`, clamped inside the full `window`.
+///
+/// Returns `None` when the clamped window is empty or degenerate, in which case
+/// the caller uses the full window.
+fn seeded_window(seed: Hartree, window: EnergyBracket) -> Option<EnergyBracket> {
+    let (full_lower, full_upper) = window.values();
+    let half_width = (SEEDED_WINDOW_FRACTION * seed.get().abs()).max(SEEDED_WINDOW_FLOOR_HARTREE);
+    if !half_width.is_finite() || half_width <= 0.0 {
+        return None;
+    }
+    let lower = (seed.get() - half_width).max(full_lower);
+    let upper = (seed.get() + half_width).min(full_upper);
+    EnergyBracket::from_values(lower, upper).ok()
+}
+
 pub(crate) struct SolvedAtomicBoundState {
     pub(crate) solution: CoreDiracSolution,
     pub(crate) bracket: EnergyBracket,
@@ -164,16 +200,31 @@ pub(crate) fn solve_atomic_bound_state(
         state: request.state,
         source,
     })?;
-    let bracket = isolate_core_dirac_bracket(
-        mesh,
-        potential,
-        CoreBracketSearch::new(request.state, request.muffin_tin_radius, energy_window)
-            .with_intervals(request.intervals),
-    )
-    .map_err(|source| LinearizationEnergyError::Atomic {
-        state: request.state,
-        source,
-    })?;
+    let seeded = request
+        .seed
+        .and_then(|seed| seeded_window(seed, energy_window))
+        .and_then(|window| {
+            isolate_core_dirac_bracket(
+                mesh,
+                potential,
+                CoreBracketSearch::new(request.state, request.muffin_tin_radius, window)
+                    .with_intervals(SEEDED_WINDOW_INTERVALS),
+            )
+            .ok()
+        });
+    let bracket = match seeded {
+        Some(bracket) => bracket,
+        None => isolate_core_dirac_bracket(
+            mesh,
+            potential,
+            CoreBracketSearch::new(request.state, request.muffin_tin_radius, energy_window)
+                .with_intervals(request.intervals),
+        )
+        .map_err(|source| LinearizationEnergyError::Atomic {
+            state: request.state,
+            source,
+        })?,
+    };
     let solution = solve_core_dirac(
         mesh,
         potential,

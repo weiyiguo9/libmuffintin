@@ -26,8 +26,8 @@ pub use dirac_construct::{
     untruncated_dirac_product_space,
 };
 pub use dirac_vertices::{
-    DiracBlochVertexAccumulator, DiracPairVertexAccumulator, dirac_mt_pair_vertex,
-    require_matching_dirac_context,
+    DiracBlochVertexAccumulator, DiracMtSectorTable, DiracPairVertexAccumulator,
+    DiracVertexContext, dirac_mt_pair_vertex, require_matching_dirac_context,
 };
 pub use interstitial::auxiliary_interstitial_support;
 pub use vertices::{PairVertexAccumulator, pair_vertex};

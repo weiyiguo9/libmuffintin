@@ -61,6 +61,10 @@ pub enum Axis {
     Reduced,
     /// Eigenvector / band columns.
     Band,
+    /// Compiled mixed-product or interpolation-point auxiliary index of $V^q$.
+    Auxiliary,
+    /// Pair-vertex column index of one exchange block.
+    PairColumn,
 }
 
 /// Contiguous host layout of a dense tensor.

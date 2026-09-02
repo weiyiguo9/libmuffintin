@@ -8,11 +8,13 @@
 use std::borrow::Borrow;
 
 use muffintin_core::{Bohr, DiracAngularContract, ExponentialMesh, Hartree, Kappa};
+use rayon::prelude::*;
 use thiserror::Error;
 
 use crate::valence::{BoundaryData, LocalOrbitalCoefficients, SPEX_SPEED_OF_LIGHT};
 
 const C_SQUARED: f64 = SPEX_SPEED_OF_LIGHT * SPEX_SPEED_OF_LIGHT;
+const CORE_NORM_PARTITION_TOLERANCE: f64 = 1.0e-8;
 
 /// The role of a relativistic radial solution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -783,6 +785,14 @@ pub enum DiracError {
     NodeCountMismatch { expected: u32, actual: u32 },
     #[error("solution norm is singular or non-finite: {norm_squared}")]
     SingularNorm { norm_squared: f64 },
+    #[error(
+        "muffin-tin core norm {norm_mt} exceeds total norm {norm_total} beyond quadrature tolerance {tolerance}"
+    )]
+    InconsistentNormPartition {
+        norm_total: f64,
+        norm_mt: f64,
+        tolerance: f64,
+    },
     #[error("Dirac local-orbital boundary system is singular (determinant {determinant})")]
     SingularLocalOrbital { determinant: f64 },
     #[error("Dirac local-orbital kappa mismatch: base {base}, raw {raw}")]
@@ -1063,17 +1073,27 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
     )?;
 
     let step = (upper - lower) / search.intervals as f64;
+    // The scan points are independent, so shoot them together and keep the
+    // sign-change walk serial; the walk still sees them in energy order.
+    let energies = (0..=search.intervals)
+        .map(|interval| match interval {
+            0 => lower,
+            _ if interval == search.intervals => upper,
+            _ => lower + interval as f64 * step,
+        })
+        .collect::<Vec<_>>();
+    let shots = energies
+        .par_iter()
+        .map(|&energy| shoot(mesh, potential, search.state.kappa, energy, false))
+        .collect::<Vec<_>>();
+    let mut shots = shots.into_iter();
     let mut previous_energy = lower;
-    let mut previous = shoot(mesh, potential, search.state.kappa, previous_energy, false)?;
+    let mut previous = shots.next().expect("the scan holds at least two points")?;
     let mut candidates = Vec::new();
     let mut previous_exact_root = false;
-    for interval in 1..=search.intervals {
-        let energy = if interval == search.intervals {
-            upper
-        } else {
-            lower + interval as f64 * step
-        };
-        let current = shoot(mesh, potential, search.state.kappa, energy, false)?;
+    for (interval, shot) in (1..=search.intervals).zip(shots) {
+        let energy = energies[interval];
+        let current = shot?;
         let sign_change = !previous_exact_root
             && (previous.residual == 0.0
                 || current.residual == 0.0
@@ -2365,11 +2385,22 @@ fn finalize_core_solution(
     let muffin_tin_mesh =
         ExponentialMesh::new(mesh.first(), mesh.increment(), muffin_tin_index + 1)
             .map_err(|error| DiracError::Quadrature(error.to_string()))?;
-    let norm_mt = muffin_tin_mesh
+    let raw_norm_mt = muffin_tin_mesh
         .integrate(&normalized_density[..=muffin_tin_index])
         .map_err(|error| DiracError::Quadrature(error.to_string()))?;
+    let partition_tolerance =
+        CORE_NORM_PARTITION_TOLERANCE * norm_total.abs().max(raw_norm_mt.abs()).max(1.0);
+    if raw_norm_mt > norm_total + partition_tolerance {
+        return Err(DiracError::InconsistentNormPartition {
+            norm_total,
+            norm_mt: raw_norm_mt,
+            tolerance: partition_tolerance,
+        });
+    }
+    let norm_mt = raw_norm_mt.min(norm_total);
     // The outside is the complement of the independently integrated prefix;
-    // no cutoff sample is double counted.
+    // no cutoff sample is double counted. Independent seventh-order stencils
+    // resolve a smaller prefix excess only as zero spill.
     let norm_outside = norm_total - norm_mt;
     let nodes = count_nodes(&p);
     let expected_nodes = spec.state.expected_nodes();
@@ -2469,6 +2500,7 @@ mod tests {
         assert!((solution.energy.get() - exact).abs() < 1.0e-8);
         assert!((solution.norm_total - 1.0).abs() < 2.0e-13);
         assert!((solution.norm_mt + solution.norm_outside - 1.0).abs() < 2.0e-13);
+        assert!(solution.norm_outside >= 0.0);
         assert!(solution.spill > 0.0 && solution.spill < 1.0e-3);
         assert_eq!(solution.nodes, 0);
         assert!(solution.matching_residual.abs() <= spec.matching_tolerance);

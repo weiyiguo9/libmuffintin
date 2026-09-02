@@ -51,7 +51,7 @@ pub use moments::{
     bessel_overlap, bessel_weinert_integral, multipole_moment, second_moment,
     sphbessel_pw_integral, spherical_bessel_moment,
 };
-pub use operator::{AuxiliaryKind, CoulombOperator, GammaHead};
+pub use operator::{AuxiliaryKind, CoulombOperator, CoulombVertexContractor, GammaHead};
 pub use primitive::{intra_sphere_poisson, radial_primitive};
 pub use radial_core_valence::{
     RadialValenceCoreActions, RadialValenceCoreError, RadialValenceCoreShellAction,

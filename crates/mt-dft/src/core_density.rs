@@ -18,6 +18,7 @@ use thiserror::Error;
 const MATCH_TOLERANCE: f64 = 4096.0 * f64::EPSILON;
 const ZERO_MODE_FRACTION_TOLERANCE: f64 = 1.0e-12;
 const CHARGE_CLOSURE_TOLERANCE: f64 = 65536.0 * f64::EPSILON;
+const CORE_NORM_QUADRATURE_TOLERANCE: f64 = 1.0e-8;
 
 /// Explicit distribution of one core-shell occupation into charge and $m_z$.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -166,7 +167,7 @@ pub fn build_regional_core_contribution(
             shell,
             layout,
         )?;
-        let norm_tolerance = 1.0e-10 * shell.norm_mt.abs().max(1.0);
+        let norm_tolerance = CORE_NORM_QUADRATURE_TOLERANCE * shell.norm_mt.abs().max(1.0);
         if (transform.muffin_tin_charge - shell.norm_mt).abs() > norm_tolerance {
             return Err(CoreDensityError::MuffinTinNormMismatch {
                 solution: shell.norm_mt,

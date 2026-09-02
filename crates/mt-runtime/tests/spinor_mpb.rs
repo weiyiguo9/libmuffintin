@@ -28,7 +28,7 @@ use muffintin_io::{
     RadialEquationTag, SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag,
 };
 use muffintin_operators::CompiledSiteProjection;
-use muffintin_prodbasis::mpb::{DEFAULT_TOLERANCE, DiracBlochVertexAccumulator};
+use muffintin_prodbasis::mpb::{DEFAULT_TOLERANCE, DiracBlochVertexAccumulator, DiracVertexContext};
 use muffintin_prodbasis::{
     CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, ExchangeSpace, OrbitalPair,
     ProductOrbitalKind,
@@ -413,6 +413,9 @@ fn independent_mt_sector(
         },
     )
     .unwrap();
+    let mut table = DiracVertexContext::new(&input.source, raw, auxiliary)
+        .unwrap()
+        .sector_table();
     for (site, region) in input.source.partition.sites().iter().enumerate() {
         let left_channels = left_basis.site_augmentations[site][0].channels.as_slice();
         let right_channels = right_basis.site_augmentations[site][0].channels.as_slice();
@@ -450,8 +453,12 @@ fn independent_mt_sector(
                     * right_site.at(right_coord, selection.right_band)
                     * phase;
                 match sector {
-                    DiracChargeSector::LargeLarge => acc.add_pp(spec, amplitude).unwrap(),
-                    DiracChargeSector::SmallSmall => acc.add_qq(spec, amplitude).unwrap(),
+                    DiracChargeSector::LargeLarge => {
+                        acc.add_pp(&mut table, spec, amplitude).unwrap()
+                    }
+                    DiracChargeSector::SmallSmall => {
+                        acc.add_qq(&mut table, spec, amplitude).unwrap()
+                    }
                 }
             }
         }

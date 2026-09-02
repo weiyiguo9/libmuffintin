@@ -104,18 +104,22 @@ pub fn run_free_atom_lda(
     let mut potential_residual = f64::INFINITY;
     let mut charge_error = f64::INFINITY;
     let mut tail_charge = f64::INFINITY;
+    // The potential moves by less than a full bracket scan between steps, so
+    // each state re-enters its search seeded by the previous step's energy.
+    let mut seeds = vec![None; configuration.occupations().len()];
 
     for iteration in 1..=spec.max_iterations {
         let mut orbitals = Vec::with_capacity(configuration.occupations().len());
-        for occupation in configuration.occupations() {
+        for (index, occupation) in configuration.occupations().iter().enumerate() {
             let state = CoreState::new(
                 u32::from(occupation.orbital.principal_quantum_number()),
                 Kappa::new(i32::from(occupation.orbital.kappa()))
                     .expect("the embedded atomic configuration has nonzero kappa"),
             )
             .expect("the embedded atomic configuration is physically admissible");
-            let request = AtomicEnergyRequest::new(state, nuclear_charge, muffin_tin_radius)
+            let mut request = AtomicEnergyRequest::new(state, nuclear_charge, muffin_tin_radius)
                 .with_intervals(2048);
+            request.seed = seeds[index];
             let solved = solve_atomic_bound_state(mesh, &potential, request).map_err(|source| {
                 FreeAtomScfError::BoundState {
                     iteration,
@@ -123,6 +127,7 @@ pub fn run_free_atom_lda(
                     source,
                 }
             })?;
+            seeds[index] = Some(solved.solution.energy);
             orbitals.push(FreeAtomOrbital {
                 occupation: occupation.occupation,
                 solution: solved.solution,

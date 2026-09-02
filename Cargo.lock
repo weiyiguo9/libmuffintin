@@ -1019,6 +1019,7 @@ dependencies = [
  "libmuffintin-core",
  "libmuffintin-envelope",
  "libmuffintin-prodbasis",
+ "libmuffintin-tensor",
  "num-complex",
  "thiserror 2.0.20",
 ]
@@ -1142,6 +1143,7 @@ version = "0.2.0"
 dependencies = [
  "libmuffintin-core",
  "num-complex",
+ "rayon",
  "thiserror 2.0.20",
 ]
 

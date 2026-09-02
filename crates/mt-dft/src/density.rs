@@ -231,36 +231,40 @@ pub fn synthesize_full_spinor_valence_density(
             let projected =
                 CompiledSiteProjection::spinor(k_point.compiled, site_index, &site.channels)?
                     .project_eigenvectors(&k_point.solution.eigenvectors)?;
-            for (band, &occupation) in k_point.occupations.iter().enumerate() {
-                let state_weight = k_point.weight * occupation;
-                if state_weight == 0.0 {
-                    continue;
-                }
-                for left in 0..site.orbitals.len() {
-                    for right in 0..site.orbitals.len() {
-                        let coefficient = state_weight
-                            * projected.at(left, band).conj()
-                            * projected.at(right, band);
-                        if coefficient == Complex64::new(0.0, 0.0) {
+            // The pair density of two site orbitals does not depend on the
+            // band, so contract the occupied bands into one site density
+            // matrix element and project each orbital pair once.
+            for left in 0..site.orbitals.len() {
+                for right in 0..site.orbitals.len() {
+                    let mut coefficient = Complex64::new(0.0, 0.0);
+                    for (band, &occupation) in k_point.occupations.iter().enumerate() {
+                        let state_weight = k_point.weight * occupation;
+                        if state_weight == 0.0 {
                             continue;
                         }
-                        let pair = project_spinor_pair_density_components(
-                            &site.mesh,
-                            &site.orbitals[left],
-                            &site.orbitals[right],
-                        )?;
+                        coefficient += state_weight
+                            * projected.at(left, band).conj()
+                            * projected.at(right, band);
+                    }
+                    if coefficient == Complex64::new(0.0, 0.0) {
+                        continue;
+                    }
+                    let pair = project_spinor_pair_density_components(
+                        &site.mesh,
+                        &site.orbitals[left],
+                        &site.orbitals[right],
+                    )?;
+                    accumulate_sphere(
+                        &mut muffin_tins[0][site_index],
+                        coefficient,
+                        pair.charge(),
+                    );
+                    for axis in 0..3 {
                         accumulate_sphere(
-                            &mut muffin_tins[0][site_index],
+                            &mut muffin_tins[axis + 1][site_index],
                             coefficient,
-                            pair.charge(),
+                            &pair.spin()[axis],
                         );
-                        for axis in 0..3 {
-                            accumulate_sphere(
-                                &mut muffin_tins[axis + 1][site_index],
-                                coefficient,
-                                &pair.spin()[axis],
-                            );
-                        }
                     }
                 }
             }

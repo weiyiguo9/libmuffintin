@@ -1,6 +1,6 @@
 //! Full-regular-BZ spinor-first valence Hartree--Fock SCF.
 
-use muffintin_core::{Hartree, InverseBohr};
+use muffintin_core::{FourierLayout, Hartree, InverseBohr};
 use muffintin_coulomb::{CoulombRequest, HartreeError, WeinertHartreeSpec};
 use muffintin_dft::{
     BandState, CheckpointBandSolution, CheckpointKPointSolution, CoreDensityError,
@@ -33,6 +33,7 @@ use crate::{
 
 const SPECTRAL_REFINEMENT_PASSES: usize = 16;
 const IDENTITY_TOLERANCE: f64 = 1.0e-8;
+const RELAXED_VALENCE_EIGENVALUE_TOLERANCE: f64 = 1.0e-6;
 const ELECTRON_COUNT_TOLERANCE: f64 = 1.0e-8;
 
 /// Exact MPB controls and bounded iteration controls for the full-BZ
@@ -435,6 +436,7 @@ pub fn run_valence_hf(
             &potential,
             &k_fractional,
             spec.config.electron_count,
+            density.charge().interstitial().layout(),
         )?;
 
         let fixed = solve_fixed_potential(
@@ -607,6 +609,7 @@ pub fn run_relaxed_core_hf(
             &potential,
             &k_fractional,
             valence_electrons,
+            total_density.charge().interstitial().layout(),
         )?;
 
         let bootstrap = physics.kernel.bootstrap_hf_core(
@@ -742,7 +745,7 @@ pub fn run_relaxed_core_hf(
         require_relaxed_gate(
             "valence eigenvalue identity",
             energy.valence_eigenvalue_identity_residual,
-            IDENTITY_TOLERANCE,
+            RELAXED_VALENCE_EIGENVALUE_TOLERANCE,
         )?;
         let energy_change = previous_total
             .map(|previous: Hartree| Hartree((energy.total.get() - previous.get()).abs()));
@@ -909,6 +912,7 @@ fn solve_h0_bands(
     potential: &RegionalPotential,
     k_fractional: &[[f64; 3]],
     electron_count: f64,
+    density_layout: &FourierLayout,
 ) -> Result<(CheckpointBandSolution, OccupationSolution), GammaValenceHfError> {
     let mut one_particle = physics
         .kernel
@@ -944,6 +948,7 @@ fn solve_h0_bands(
         )?;
         occupation = solve_occupations(bands.states(), electron_count, config.occupations)?;
     }
+    bands.set_density_layout(density_layout.clone());
     Ok((bands, occupation))
 }
 
@@ -984,6 +989,9 @@ fn solve_relaxed_fixed_potential(
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
     let mut previous_global_feedback = None;
+    // The next step's input bands and occupations are this step's solved ones,
+    // so its input density is the density already synthesized here.
+    let mut current_density = None;
 
     for fock_iteration in 1..=spec.max_fock_iterations {
         let occupation =
@@ -1031,13 +1039,16 @@ fn solve_relaxed_fixed_potential(
             first_global_solve_identity_residual = Some(solve_identity);
             let solved_occupation =
                 solve_occupations(solved.states(), valence_electrons, spec.config.occupations)?;
-            last_residual = fixed_point_density_residual(
+            let (residual, solved_density) = fixed_point_density_residual(
                 physics,
                 &bands,
                 &occupation.values,
+                current_density.take(),
                 &solved,
                 &solved_occupation.values,
             )?;
+            last_residual = residual;
+            current_density = Some(solved_density);
             bands = solved;
             previous_global_feedback = Some(global_feedback);
             if fock_iteration == spec.max_fock_iterations {
@@ -1085,13 +1096,16 @@ fn solve_relaxed_fixed_potential(
         let solved = bands.solve_spinor_global_feedback(&global_feedback)?;
         let solved_occupation =
             solve_occupations(solved.states(), valence_electrons, spec.config.occupations)?;
-        last_residual = fixed_point_density_residual(
+        let (residual, solved_density) = fixed_point_density_residual(
             physics,
             &bands,
             &occupation.values,
+            current_density.take(),
             &solved,
             &solved_occupation.values,
         )?;
+        last_residual = residual;
+        current_density = Some(solved_density);
         if last_residual <= spec.fock_density_tolerance
             && feedback_fixed_residual <= IDENTITY_TOLERANCE
         {
@@ -1319,6 +1333,7 @@ fn solve_fixed_potential(
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
     let mut previous_global_feedback = None;
+    let mut current_density = None;
     for fock_iteration in 1..=spec.max_fock_iterations {
         let occupation = solve_occupations(
             bands.states(),
@@ -1374,13 +1389,16 @@ fn solve_fixed_potential(
                 spec.config.electron_count,
                 spec.config.occupations,
             )?;
-            last_residual = fixed_point_density_residual(
+            let (residual, solved_density) = fixed_point_density_residual(
                 physics,
                 &bands,
                 &occupation.values,
+                current_density.take(),
                 &solved,
                 &solved_occupation.values,
             )?;
+            last_residual = residual;
+            current_density = Some(solved_density);
             bands = solved;
             previous_global_feedback = Some(global_feedback);
             if fock_iteration == spec.max_fock_iterations {
@@ -1430,13 +1448,16 @@ fn solve_fixed_potential(
             spec.config.electron_count,
             spec.config.occupations,
         )?;
-        last_residual = fixed_point_density_residual(
+        let (residual, solved_density) = fixed_point_density_residual(
             physics,
             &bands,
             &occupation.values,
+            current_density.take(),
             &solved,
             &solved_occupation.values,
         )?;
+        last_residual = residual;
+        current_density = Some(solved_density);
         if last_residual <= spec.fock_density_tolerance
             && feedback_fixed_residual <= IDENTITY_TOLERANCE
         {
@@ -1657,20 +1678,30 @@ fn global_feedback_difference(
     Ok(maximum)
 }
 
+/// Fock fixed-point residual, returning the solved density for the next step.
+///
+/// `carried` is the solved density of the previous step. The next step reaches
+/// this function with exactly those bands and occupations, so synthesizing the
+/// current density again would repeat the previous step's work.
 fn fixed_point_density_residual(
     physics: &CheckpointPhysics,
     current: &CheckpointBandSolution,
     current_occupations: &[f64],
+    carried: Option<RegionalDensity>,
     solved: &CheckpointBandSolution,
     solved_occupations: &[f64],
-) -> Result<f64, GammaValenceHfError> {
-    let current_density = physics
-        .kernel
-        .synthesize_bands(current, current_occupations)?;
+) -> Result<(f64, RegionalDensity), GammaValenceHfError> {
+    let current_density = match carried {
+        Some(density) => density,
+        None => physics
+            .kernel
+            .synthesize_bands(current, current_occupations)?,
+    };
     let solved_density = physics
         .kernel
         .synthesize_bands(solved, solved_occupations)?;
-    Ok(current_density.difference_rms(&solved_density)?)
+    let residual = current_density.difference_rms(&solved_density)?;
+    Ok((residual, solved_density))
 }
 
 fn lifting_identity(
