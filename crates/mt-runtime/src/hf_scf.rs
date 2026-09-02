@@ -1,6 +1,6 @@
 //! Full-regular-BZ spinor-first valence Hartree--Fock SCF.
 
-use muffintin_core::{Hartree, InverseBohr};
+use muffintin_core::{FourierLayout, Hartree, InverseBohr};
 use muffintin_coulomb::{CoulombRequest, HartreeError, WeinertHartreeSpec};
 use muffintin_dft::{
     BandState, CheckpointBandSolution, CheckpointKPointSolution, CoreDensityError,
@@ -430,6 +430,7 @@ pub fn run_valence_hf(
             &potential,
             &k_fractional,
             spec.config.electron_count,
+            density.charge().interstitial().layout(),
         )?;
 
         let fixed = solve_fixed_potential(
@@ -602,6 +603,7 @@ pub fn run_relaxed_core_hf(
             &potential,
             &k_fractional,
             valence_electrons,
+            total_density.charge().interstitial().layout(),
         )?;
 
         let bootstrap = physics.kernel.bootstrap_hf_core(
@@ -903,6 +905,7 @@ fn solve_h0_bands(
     potential: &RegionalPotential,
     k_fractional: &[[f64; 3]],
     electron_count: f64,
+    density_layout: &FourierLayout,
 ) -> Result<(CheckpointBandSolution, OccupationSolution), GammaValenceHfError> {
     let mut one_particle = physics
         .kernel
@@ -938,6 +941,7 @@ fn solve_h0_bands(
         )?;
         occupation = solve_occupations(bands.states(), electron_count, config.occupations)?;
     }
+    bands.set_density_layout(density_layout.clone());
     Ok((bands, occupation))
 }
 

@@ -258,6 +258,15 @@ impl CheckpointBandSolution {
         &self.states
     }
 
+    /// Select the exact reciprocal layout used when synthesizing this band
+    /// solution's regional density.
+    ///
+    /// The layout must contain every plane-wave difference required by the
+    /// retained basis; density synthesis rejects an incomplete layout.
+    pub fn set_density_layout(&mut self, layout: FourierLayout) {
+        self.density_layout = Some(layout);
+    }
+
     /// Re-solve the retained spinor subspace with fresh Hermitian band-space
     /// feedback at every k point.
     ///
