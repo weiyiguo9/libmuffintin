@@ -783,6 +783,14 @@ pub enum DiracError {
     NodeCountMismatch { expected: u32, actual: u32 },
     #[error("solution norm is singular or non-finite: {norm_squared}")]
     SingularNorm { norm_squared: f64 },
+    #[error(
+        "muffin-tin core norm {norm_mt} exceeds total norm {norm_total} beyond quadrature tolerance {tolerance}"
+    )]
+    InconsistentNormPartition {
+        norm_total: f64,
+        norm_mt: f64,
+        tolerance: f64,
+    },
     #[error("Dirac local-orbital boundary system is singular (determinant {determinant})")]
     SingularLocalOrbital { determinant: f64 },
     #[error("Dirac local-orbital kappa mismatch: base {base}, raw {raw}")]
@@ -2365,11 +2373,21 @@ fn finalize_core_solution(
     let muffin_tin_mesh =
         ExponentialMesh::new(mesh.first(), mesh.increment(), muffin_tin_index + 1)
             .map_err(|error| DiracError::Quadrature(error.to_string()))?;
-    let norm_mt = muffin_tin_mesh
+    let raw_norm_mt = muffin_tin_mesh
         .integrate(&normalized_density[..=muffin_tin_index])
         .map_err(|error| DiracError::Quadrature(error.to_string()))?;
+    let partition_tolerance = 1.0e-10 * norm_total.abs().max(raw_norm_mt.abs()).max(1.0);
+    if raw_norm_mt > norm_total + partition_tolerance {
+        return Err(DiracError::InconsistentNormPartition {
+            norm_total,
+            norm_mt: raw_norm_mt,
+            tolerance: partition_tolerance,
+        });
+    }
+    let norm_mt = raw_norm_mt.min(norm_total);
     // The outside is the complement of the independently integrated prefix;
-    // no cutoff sample is double counted.
+    // no cutoff sample is double counted. A prefix excess within quadrature
+    // tolerance is the same boundary partition and is rounded to zero spill.
     let norm_outside = norm_total - norm_mt;
     let nodes = count_nodes(&p);
     let expected_nodes = spec.state.expected_nodes();
@@ -2469,6 +2487,7 @@ mod tests {
         assert!((solution.energy.get() - exact).abs() < 1.0e-8);
         assert!((solution.norm_total - 1.0).abs() < 2.0e-13);
         assert!((solution.norm_mt + solution.norm_outside - 1.0).abs() < 2.0e-13);
+        assert!(solution.norm_outside >= 0.0);
         assert!(solution.spill > 0.0 && solution.spill < 1.0e-3);
         assert_eq!(solution.nodes, 0);
         assert!(solution.matching_residual.abs() <= spec.matching_tolerance);
