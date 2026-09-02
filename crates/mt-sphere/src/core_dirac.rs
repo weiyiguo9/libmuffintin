@@ -8,6 +8,7 @@
 use std::borrow::Borrow;
 
 use muffintin_core::{Bohr, DiracAngularContract, ExponentialMesh, Hartree, Kappa};
+use rayon::prelude::*;
 use thiserror::Error;
 
 use crate::valence::{BoundaryData, LocalOrbitalCoefficients, SPEX_SPEED_OF_LIGHT};
@@ -1072,17 +1073,27 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
     )?;
 
     let step = (upper - lower) / search.intervals as f64;
+    // The scan points are independent, so shoot them together and keep the
+    // sign-change walk serial; the walk still sees them in energy order.
+    let energies = (0..=search.intervals)
+        .map(|interval| match interval {
+            0 => lower,
+            _ if interval == search.intervals => upper,
+            _ => lower + interval as f64 * step,
+        })
+        .collect::<Vec<_>>();
+    let shots = energies
+        .par_iter()
+        .map(|&energy| shoot(mesh, potential, search.state.kappa, energy, false))
+        .collect::<Vec<_>>();
+    let mut shots = shots.into_iter();
     let mut previous_energy = lower;
-    let mut previous = shoot(mesh, potential, search.state.kappa, previous_energy, false)?;
+    let mut previous = shots.next().expect("the scan holds at least two points")?;
     let mut candidates = Vec::new();
     let mut previous_exact_root = false;
-    for interval in 1..=search.intervals {
-        let energy = if interval == search.intervals {
-            upper
-        } else {
-            lower + interval as f64 * step
-        };
-        let current = shoot(mesh, potential, search.state.kappa, energy, false)?;
+    for (interval, shot) in (1..=search.intervals).zip(shots) {
+        let energy = energies[interval];
+        let current = shot?;
         let sign_change = !previous_exact_root
             && (previous.residual == 0.0
                 || current.residual == 0.0

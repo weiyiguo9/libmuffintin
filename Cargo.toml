@@ -29,6 +29,7 @@ libm = "0.2.16"
 num-complex = "0.4.6"
 thiserror = "2.0.12"
 proptest = "1.7.0"
+rayon = "1.11.0"
 faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
 serde = { version = "1.0.219", features = ["derive"] }
 toml = "0.8.20"
