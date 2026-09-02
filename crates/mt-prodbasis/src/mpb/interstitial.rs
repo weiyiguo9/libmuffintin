@@ -2,11 +2,70 @@
 
 use crate::mpb::MpbError;
 use crate::{
-    AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, CompiledAuxiliaryBasis,
-    InterstitialPairSpec, RawInterstitialPairSupport, TransferQ,
+    AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryLayout,
+    CompiledAuxiliaryBasis, InterstitialPairSpec, RawInterstitialPairSupport, TransferQ,
 };
 use muffintin_core::{InverseBohr, ReciprocalLattice};
 use num_complex::Complex64;
+use std::collections::HashMap;
+
+/// Precomputed interstitial step-function rows for every raw pair momentum.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InterstitialThetaTable {
+    layout: AuxiliaryLayout,
+    rows: HashMap<[i32; 3], Vec<Complex64>>,
+}
+
+impl InterstitialThetaTable {
+    pub fn new(
+        pair_support: &RawInterstitialPairSupport,
+        auxiliary: &CompiledAuxiliaryBasis,
+    ) -> Result<Self, MpbError> {
+        let wrap = auxiliary.q.umklapp;
+        let waves = &auxiliary.require_mixed_product()?.interstitial.waves;
+        let mut rows = HashMap::with_capacity(pair_support.components.len());
+        for component in &pair_support.components {
+            let mut row = Vec::with_capacity(waves.len());
+            for wave in waves {
+                let argument = std::array::from_fn(|axis| {
+                    InverseBohr(
+                        wave.g.cartesian[axis].get()
+                            - wrap.cartesian[axis].get()
+                            - component.g_relative.cartesian[axis].get(),
+                    )
+                });
+                row.push(auxiliary.partition.interstitial().coefficient(argument)?);
+            }
+            rows.insert(component.g_relative.index, row);
+        }
+        Ok(Self {
+            layout: auxiliary.layout(),
+            rows,
+        })
+    }
+
+    pub(crate) fn add(
+        &self,
+        auxiliary: &CompiledAuxiliaryBasis,
+        spec: InterstitialPairSpec,
+        coefficients: &mut [Complex64],
+    ) -> Result<(), MpbError> {
+        if self.layout != auxiliary.layout() {
+            return Err(MpbError::InterstitialThetaContext);
+        }
+        let row =
+            self.rows
+                .get(&spec.g_relative.index)
+                .ok_or(MpbError::UnknownInterstitialPair {
+                    g: spec.g_relative.index,
+                })?;
+        let offset = auxiliary.mt_dimension();
+        for (coefficient, &theta) in coefficients[offset..].iter_mut().zip(row) {
+            *coefficient += spec.amplitude * theta;
+        }
+        Ok(())
+    }
+}
 
 /// SPEX mixed-basis interstitial PW set: $|q+G|\le g_{\mathrm{cut}}$, ordered
 /// by $|G|$ then $G$ index.

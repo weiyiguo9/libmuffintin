@@ -434,7 +434,7 @@ fn canonical_raw_identity(channel: DiracPairChannel) -> CanonicalRawIdentity {
 }
 
 /// Dirac muffin-tin pair labelled by signed $\kappa$ and $2\mu$.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct DiracMtPairSpec {
     pub left: DiracRadialId,
     pub left_twice_mu: TwiceMu,

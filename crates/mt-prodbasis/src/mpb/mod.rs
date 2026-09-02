@@ -26,10 +26,11 @@ pub use dirac_construct::{
     untruncated_dirac_product_space,
 };
 pub use dirac_vertices::{
-    DiracBlochVertexAccumulator, DiracMtSectorTable, DiracPairVertexAccumulator,
-    DiracVertexContext, dirac_mt_pair_vertex, require_matching_dirac_context,
+    DiracBlochVertexAccumulator, DiracMtCompiledPair, DiracMtSectorTable,
+    DiracPairVertexAccumulator, DiracVertexContext, dirac_mt_pair_vertex,
+    require_matching_dirac_context,
 };
-pub use interstitial::auxiliary_interstitial_support;
+pub use interstitial::{InterstitialThetaTable, auxiliary_interstitial_support};
 pub use vertices::{PairVertexAccumulator, pair_vertex};
 
 use crate::{
@@ -87,6 +88,10 @@ pub enum MpbError {
     PartitionMismatch,
     #[error("source and raw interstitial pair support must be identical, including order")]
     InterstitialPairSupportMismatch,
+    #[error("precomputed interstitial step-function table does not match the auxiliary basis")]
+    InterstitialThetaContext,
+    #[error("precompiled Dirac muffin-tin pair does not match the auxiliary basis")]
+    CompiledDiracMtContext,
     #[error("requested muffin-tin pair is absent from the raw product space")]
     UnknownMtPair {
         left: ProductRadialId,

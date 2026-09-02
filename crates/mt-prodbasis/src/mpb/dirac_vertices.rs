@@ -7,11 +7,11 @@
 //! on both bra and ket; QQ uses $\Omega_{-\kappa}$ on both. The matrix
 //! element of $Y_{LM}$ is not stored in slot $M$.
 
-use crate::mpb::MpbError;
 use crate::mpb::dirac_construct::require_matching_dirac_source_and_raw;
 use crate::mpb::interstitial::add_raw_support_theta_i;
+use crate::mpb::{InterstitialThetaTable, MpbError};
 use crate::{
-    CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracPairVertex,
+    AuxiliaryLayout, CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracPairVertex,
     DiracProductSource, DiracRadialId, DiracRawProductSpace, InterstitialPairSpec, OrbitalPair,
     PairVertex,
 };
@@ -142,6 +142,11 @@ impl<'a> DiracVertexContext<'a> {
         DiracMtSectorTable::new(self.raw, self.auxiliary)
     }
 
+    /// Precompute every raw-pair interstitial step-function row once.
+    pub fn interstitial_table(&self) -> Result<InterstitialThetaTable, MpbError> {
+        InterstitialThetaTable::new(&self.raw.interstitial_pair_support, self.auxiliary)
+    }
+
     /// Start an empty Bloch or rectangular exchange vertex without revalidating.
     pub fn bloch_accumulator(
         &self,
@@ -218,6 +223,35 @@ impl<'a> DiracBlochVertexAccumulator<'a> {
         )
     }
 
+    /// Add a coordinate-pair contribution compiled for this auxiliary basis.
+    pub fn add_compiled_pair(
+        &mut self,
+        pair: &DiracMtCompiledPair,
+        amplitude: Complex64,
+    ) -> Result<(), MpbError> {
+        if pair.layout != self.auxiliary.layout() {
+            return Err(MpbError::CompiledDiracMtContext);
+        }
+        for &(index, factor) in &pair.coefficients {
+            self.coefficients[index] += amplitude * factor;
+        }
+        Ok(())
+    }
+
+    /// Add one already contracted auxiliary coefficient vector.
+    pub fn add_auxiliary_coefficients(
+        &mut self,
+        coefficients: &[Complex64],
+    ) -> Result<(), MpbError> {
+        if coefficients.len() != self.coefficients.len() {
+            return Err(MpbError::CompiledDiracMtContext);
+        }
+        for (target, &coefficient) in self.coefficients.iter_mut().zip(coefficients) {
+            *target += coefficient;
+        }
+        Ok(())
+    }
+
     fn require_table(&self, table: &DiracMtSectorTable<'_>) -> Result<(), MpbError> {
         if table.auxiliary.q != self.auxiliary.q || table.raw.q != self.raw.q {
             return Err(MpbError::TransferQMismatch);
@@ -239,6 +273,15 @@ impl<'a> DiracBlochVertexAccumulator<'a> {
             spec,
             &mut self.coefficients,
         )
+    }
+
+    /// Add one interstitial pair through a precomputed step-function table.
+    pub fn add_interstitial_from_table(
+        &mut self,
+        table: &InterstitialThetaTable,
+        spec: InterstitialPairSpec,
+    ) -> Result<(), MpbError> {
+        table.add(self.auxiliary, spec, &mut self.coefficients)
     }
 
     /// Seal the accumulated coefficients as a checked [`PairVertex`].
@@ -379,6 +422,24 @@ pub struct DiracMtSectorTable<'a> {
     raw: &'a DiracRawProductSpace,
     auxiliary: &'a CompiledAuxiliaryBasis,
     terms: HashMap<(DiracChargeSector, DiracRadialId, DiracRadialId), Vec<DiracMtModeTerm>>,
+    expanded: HashMap<(DiracChargeSector, DiracMtPairSpec), Vec<(usize, Complex64)>>,
+}
+
+/// Precompiled PP/QQ contribution of one spin-angular coordinate pair.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DiracMtCompiledPair {
+    layout: AuxiliaryLayout,
+    coefficients: Vec<(usize, Complex64)>,
+}
+
+impl DiracMtCompiledPair {
+    pub fn is_empty(&self) -> bool {
+        self.coefficients.is_empty()
+    }
+
+    pub fn coefficients(&self) -> &[(usize, Complex64)] {
+        &self.coefficients
+    }
 }
 
 impl<'a> DiracMtSectorTable<'a> {
@@ -388,7 +449,64 @@ impl<'a> DiracMtSectorTable<'a> {
             raw,
             auxiliary,
             terms: HashMap::new(),
+            expanded: HashMap::new(),
         }
+    }
+
+    pub fn auxiliary_dimension(&self) -> usize {
+        self.auxiliary.dimension()
+    }
+
+    fn expanded(
+        &mut self,
+        source: &DiracProductSource,
+        sector: DiracChargeSector,
+        spec: DiracMtPairSpec,
+    ) -> Result<&[(usize, Complex64)], MpbError> {
+        let key = (sector, spec);
+        if !self.expanded.contains_key(&key) {
+            if spec.left.site != spec.right.site {
+                return Err(MpbError::DiracCrossSitePair);
+            }
+            find_orbital(source, spec.left)?;
+            find_orbital(source, spec.right)?;
+            let (left_channel, right_channel) = pair_channels(spec)?;
+            let left_omega = sector.omega_channel(left_channel);
+            let right_omega = sector.omega_channel(right_channel);
+            let position = source.partition.sites()[spec.left.site].position;
+            let phase = site_translation_phase(source.q.cartesian, position);
+            let terms = self.terms(sector, spec)?.to_vec();
+            let mut expanded = Vec::new();
+            for term in terms {
+                let l_i = term.l as i32;
+                for (slot, m) in (-l_i..=l_i).enumerate() {
+                    let Some(index) = term.indices[slot] else {
+                        continue;
+                    };
+                    let angular = density_angular(left_omega, term.l, m, right_omega);
+                    expanded.push((index, phase * Complex64::new(angular * term.overlap, 0.0)));
+                }
+            }
+            self.expanded.insert(key, expanded);
+        }
+        Ok(&self.expanded[&key])
+    }
+
+    /// Compile selected PP/QQ sectors for one coordinate pair.
+    pub fn compile_pair(
+        &mut self,
+        source: &DiracProductSource,
+        spec: DiracMtPairSpec,
+        sectors: &[DiracChargeSector],
+    ) -> Result<DiracMtCompiledPair, MpbError> {
+        let mut coefficients = Vec::new();
+        for &sector in sectors {
+            coefficients.extend_from_slice(self.expanded(source, sector, spec)?);
+        }
+        Ok(DiracMtCompiledPair {
+            layout: self.auxiliary.layout(),
+            coefficients,
+        })
     }
 
     fn terms(
@@ -472,26 +590,8 @@ fn add_sector(
     amplitude: Complex64,
     coefficients: &mut [Complex64],
 ) -> Result<(), MpbError> {
-    if spec.left.site != spec.right.site {
-        return Err(MpbError::DiracCrossSitePair);
-    }
-    let site = spec.left.site;
-    find_orbital(source, spec.left)?;
-    find_orbital(source, spec.right)?;
-    let (left_channel, right_channel) = pair_channels(spec)?;
-    let left_omega = sector.omega_channel(left_channel);
-    let right_omega = sector.omega_channel(right_channel);
-    let position = source.partition.sites()[site].position;
-    let phase = site_translation_phase(source.q.cartesian, position);
-    for term in table.terms(sector, spec)? {
-        let l_i = term.l as i32;
-        for (slot, m) in (-l_i..=l_i).enumerate() {
-            let Some(index) = term.indices[slot] else {
-                continue;
-            };
-            let angular = density_angular(left_omega, term.l, m, right_omega);
-            coefficients[index] += amplitude * phase * Complex64::new(angular * term.overlap, 0.0);
-        }
+    for &(index, factor) in table.expanded(source, sector, spec)? {
+        coefficients[index] += amplitude * factor;
     }
     Ok(())
 }
