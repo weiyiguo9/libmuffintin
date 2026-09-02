@@ -35,7 +35,7 @@ const RADIAL_FIRST_BOHR: f64 = 1.0e-6;
 const FREE_ATOM_FIRST_BOHR: f64 = 1.0e-8;
 const FREE_ATOM_INCREMENT: f64 = 0.01;
 const FREE_ATOM_POINTS: usize = 2_143;
-const ANGULAR_GRID_POINTS: usize = 50;
+const MINIMUM_ANGULAR_GRID_POINTS: usize = 50;
 const OUTER_MAX_ITERATIONS: usize = 2;
 const CORE_MAX_ITERATIONS: usize = 2;
 const OUTER_MIXING_ALPHA: f64 = 0.1;
@@ -85,6 +85,7 @@ struct Cli {
     muffin_tin_radius: f64,
     radial_points: usize,
     hdlo: HdloSelection,
+    temperature: f64,
 }
 
 impl Default for Cli {
@@ -101,6 +102,7 @@ impl Default for Cli {
             muffin_tin_radius: 2.0,
             radial_points: 2_401,
             hdlo: HdloSelection::None,
+            temperature: 0.02,
         }
     }
 }
@@ -125,6 +127,7 @@ impl Cli {
                 "--rmt" => cli.muffin_tin_radius = parse_value(&name, &value)?,
                 "--radial-points" => cli.radial_points = parse_value(&name, &value)?,
                 "--hdlo" => cli.hdlo = HdloSelection::parse(&value)?,
+                "--temperature" => cli.temperature = parse_value(&name, &value)?,
                 _ => return Err(invalid_input(format!("unknown option {name:?}"))),
             }
         }
@@ -139,6 +142,7 @@ impl Cli {
             ("--orbital-g", self.orbital_g),
             ("--field-g", self.field_g),
             ("--product-g", self.product_g),
+            ("--temperature", self.temperature),
         ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(invalid_input(format!(
@@ -438,6 +442,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .checked_add(1)
         .and_then(|l_max| l_max.checked_mul(2))
         .ok_or_else(|| invalid_input("--orbital-lmax is too large to derive field_lmax"))?;
+    let angular_grid_points = usize::try_from(field_l_max + 1)?
+        .checked_pow(2)
+        .and_then(|modes| modes.checked_mul(2))
+        .ok_or_else(|| invalid_input("--orbital-lmax is too large to derive angular grid"))?
+        .max(MINIMUM_ANGULAR_GRID_POINTS);
     let radial_log_increment =
         (cli.muffin_tin_radius / RADIAL_FIRST_BOHR).ln() / (cli.radial_points - 1) as f64;
 
@@ -519,7 +528,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             resolved_channels: Vec::new(),
         },
         occupations: ScfOccupations::FermiDirac {
-            temperature: Hartree(0.02),
+            temperature: Hartree(cli.temperature),
         },
         exchange_correlation: ScfExchangeCorrelation {
             functional: XcFunctional::LdaPw92,
@@ -560,7 +569,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             tail_tolerance: 1.0e-7,
             max_iterations: 120,
         },
-        angular_grid: AngularGrid::fibonacci(ANGULAR_GRID_POINTS)?,
+        angular_grid: AngularGrid::fibonacci(angular_grid_points)?,
     })?;
 
     let (git_sha, git_dirty) = git_provenance()?;
@@ -598,7 +607,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             product_l_max: cli.product_l_max,
             weinert_lexp: cli.lexp,
             hdlo: cli.hdlo.as_str(),
-            temperature_hartree: 0.02,
+            temperature_hartree: cli.temperature,
             k_mesh_divisions: [1, 1, 1],
             k_mesh_shift: [0.0; 3],
             k_mesh_reduction: "full",
@@ -627,7 +636,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             free_atom_potential_tolerance_hartree: 2.0e-5,
             free_atom_tail_tolerance: 1.0e-7,
             free_atom_max_iterations: 120,
-            angular_grid_points: ANGULAR_GRID_POINTS,
+            angular_grid_points,
         },
         derived: DerivedManifest {
             core_charge_electrons: core_charge,
