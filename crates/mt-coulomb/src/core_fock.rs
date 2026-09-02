@@ -324,6 +324,9 @@ mod tests {
 
     #[test]
     fn multi_kappa_nonzero_q_action_trace_matches_independent_slater_oracle() {
+        // kappa -2 and 2 carry small-component l of 2 and 3, so pair_l_max
+        // reaches 6 here. That is the only coverage of the high-l spinor
+        // Gaunt channels the radial Slater oracle skips when they vanish.
         let mesh = ExponentialMesh::new(Bohr(1.0e-4), 0.18, 55).unwrap();
         let p_s = mesh
             .radii()
@@ -354,8 +357,30 @@ mod tests {
             )
             .unwrap()
         };
+        let p_p32 = mesh
+            .radii()
+            .iter()
+            .map(|radius| radius.get().powi(2) * (-0.9 * radius.get()).exp())
+            .collect::<Vec<_>>();
+        let q_p32 = mesh
+            .radii()
+            .iter()
+            .map(|radius| 0.13 * radius.get().powi(3) * (-0.9 * radius.get()).exp())
+            .collect::<Vec<_>>();
+        let p_d32 = mesh
+            .radii()
+            .iter()
+            .map(|radius| radius.get().powi(3) * (-0.6 * radius.get()).exp())
+            .collect::<Vec<_>>();
+        let q_d32 = mesh
+            .radii()
+            .iter()
+            .map(|radius| -0.11 * radius.get().powi(4) * (-0.6 * radius.get()).exp())
+            .collect::<Vec<_>>();
         let kappa_s = Kappa::new(-1).unwrap();
         let kappa_p = Kappa::new(1).unwrap();
+        let kappa_p32 = Kappa::new(-2).unwrap();
+        let kappa_d32 = Kappa::new(2).unwrap();
         let shell_inputs = [
             CoreCoreFockShell {
                 kappa: kappa_s,
@@ -371,6 +396,20 @@ mod tests {
                 normalization: normalization(&p_p, &q_p),
                 occupation_per_mu: 0.65,
             },
+            CoreCoreFockShell {
+                kappa: kappa_p32,
+                p: &p_p32,
+                q: &q_p32,
+                normalization: normalization(&p_p32, &q_p32),
+                occupation_per_mu: 0.55,
+            },
+            CoreCoreFockShell {
+                kappa: kappa_d32,
+                p: &p_d32,
+                q: &q_d32,
+                normalization: normalization(&p_d32, &q_d32),
+                occupation_per_mu: 0.45,
+            },
         ];
         let actions = core_core_fock_actions(&mesh, &shell_inputs).unwrap();
 
@@ -381,6 +420,14 @@ mod tests {
         let occupations_p = kappa_p
             .twice_mu_values()
             .map(|mu| (mu, 0.65))
+            .collect::<Vec<(TwiceMu, f64)>>();
+        let occupations_p32 = kappa_p32
+            .twice_mu_values()
+            .map(|mu| (mu, 0.55))
+            .collect::<Vec<(TwiceMu, f64)>>();
+        let occupations_d32 = kappa_d32
+            .twice_mu_values()
+            .map(|mu| (mu, 0.45))
             .collect::<Vec<(TwiceMu, f64)>>();
         let oracle_shells = [
             BorrowedCoreShell {
@@ -397,6 +444,20 @@ mod tests {
                 normalization: shell_inputs[1].normalization,
                 occupations: ClosedCoreOccupations::MuResolved(&occupations_p),
             },
+            BorrowedCoreShell {
+                kappa: kappa_p32,
+                p: &p_p32,
+                q: &q_p32,
+                normalization: shell_inputs[2].normalization,
+                occupations: ClosedCoreOccupations::MuResolved(&occupations_p32),
+            },
+            BorrowedCoreShell {
+                kappa: kappa_d32,
+                p: &p_d32,
+                q: &q_d32,
+                normalization: shell_inputs[3].normalization,
+                occupations: ClosedCoreOccupations::MuResolved(&occupations_d32),
+            },
         ];
         let oracle = radial_slater_traces(&[RadialSlaterSite {
             site_index: 0,
@@ -410,7 +471,7 @@ mod tests {
         }])
         .unwrap();
 
-        assert_eq!(actions.actions.len(), 2);
+        assert_eq!(actions.actions.len(), 4);
         assert!(actions.actions.iter().any(|action| {
             action
                 .q

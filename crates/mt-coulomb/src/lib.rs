@@ -59,8 +59,8 @@ pub use radial_core_valence::{
 };
 pub use radial_slater::{
     BorrowedCoreShell, BorrowedValenceRadial, ClosedCoreOccupations, PreweightedSiteValenceDensity,
-    RadialSlaterComponents, RadialSlaterError, RadialSlaterSite, RadialSlaterTraces,
-    radial_slater_traces,
+    RadialSlaterComponents, RadialSlaterCvTraces, RadialSlaterError, RadialSlaterSite,
+    RadialSlaterTraces, radial_slater_cv_traces, radial_slater_traces,
 };
 pub use spec::{CoulombRequest, DEFAULT_LEXP, InterpolationProjection};
 pub use structure::{

@@ -8,8 +8,8 @@ use crate::spinor_sector_exchange::{
 use muffintin_core::{Hartree, RelativisticChannel, TwiceMu};
 use muffintin_coulomb::{
     BorrowedCoreShell, BorrowedValenceRadial, ClosedCoreOccupations, PreweightedSiteValenceDensity,
-    RadialSlaterError, RadialSlaterSite, RadialSlaterTraces, RadialValenceCoreActions,
-    RadialValenceCoreError, radial_slater_traces, radial_valence_core_actions,
+    RadialSlaterCvTraces, RadialSlaterError, RadialSlaterSite, RadialValenceCoreActions,
+    RadialValenceCoreError, radial_slater_cv_traces, radial_valence_core_actions,
 };
 use muffintin_dft::{
     CoreFixedPotentialResult, CoreFixedPotentialSpec, CoreRelaxationError, CoreShellOccupations,
@@ -110,7 +110,7 @@ pub struct CoreValenceDeltaDiagnostic {
 #[derive(Clone, Debug, PartialEq)]
 pub struct FrozenCoreValenceComparison {
     pub actions: RadialValenceCoreActions,
-    pub radial_oracle: RadialSlaterTraces,
+    pub radial_oracle: RadialSlaterCvTraces,
     /// Production VC action versus the legacy `radial.cv_mt` oracle field.
     pub vc_action_legacy_radial_residual: Hartree,
     /// Full finite-body MPB CV trace minus the spherical on-site VC action trace.
@@ -366,7 +366,7 @@ pub fn compare_frozen_core_valence(
         return Err(FrozenCoreValenceError::ComparisonContext);
     }
     let actions = build_frozen_radial_valence_core_actions(densities)?.actions;
-    let radial_oracle = with_radial_sites(densities, |sites| Ok(radial_slater_traces(sites)?))?;
+    let radial_oracle = with_radial_sites(densities, |sites| Ok(radial_slater_cv_traces(sites)?))?;
     let action_radial = (actions.action_trace.get() - radial_oracle.cv_mt.total.get()).abs();
     let action_cv_difference = exchange.cv.trace.get() - actions.action_trace.get();
     let action_vc_difference = exchange.vc.trace.get() - actions.action_trace.get();

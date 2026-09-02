@@ -321,9 +321,6 @@ struct IterationRecord {
     fresh_core_replacement_rms: f64,
     delta_c: Vec<DeltaCRecord>,
     weighted_delta_closure_residual_hartree: f64,
-    cc_mpb_mt_difference_hartree: f64,
-    cc_action_extended_residual_hartree: f64,
-    cc_extended_spill_allowance_hartree: f64,
 }
 
 #[derive(Serialize)]
@@ -431,9 +428,6 @@ struct ResidualRecord {
     vc_action_cross_cv_mpb_difference_hartree: f64,
     vc_action_mpb_difference_hartree: f64,
     mpb_cross_trace_hartree: f64,
-    cc_mpb_mt_difference_hartree: f64,
-    cc_action_extended_hartree: f64,
-    cc_extended_spill_allowance_hartree: f64,
     maximum_measured_shell_spill: f64,
 }
 
@@ -919,9 +913,6 @@ fn iteration_record(item: &RelaxedCoreHfIterationDiagnostic) -> IterationRecord 
         fresh_core_replacement_rms: item.fresh_core_replacement_rms,
         delta_c: delta_c_records(&item.delta_c),
         weighted_delta_closure_residual_hartree: item.weighted_delta_closure_residual.get(),
-        cc_mpb_mt_difference_hartree: item.cc_mpb_mt_difference.get(),
-        cc_action_extended_residual_hartree: item.cc_action_extended_residual.get(),
-        cc_extended_spill_allowance_hartree: item.cc_extended_spill_allowance.get(),
     }
 }
 
@@ -1027,9 +1018,6 @@ fn result_record(result: &RelaxedCoreHfResult) -> ResultFile {
                 .get(),
             vc_action_mpb_difference_hartree: comparison.vc_action_mpb_difference.get(),
             mpb_cross_trace_hartree: comparison.mpb_cross_trace_residual.get(),
-            cc_mpb_mt_difference_hartree: final_iteration.cc_mpb_mt_difference.get(),
-            cc_action_extended_hartree: final_iteration.cc_action_extended_residual.get(),
-            cc_extended_spill_allowance_hartree: final_iteration.cc_extended_spill_allowance.get(),
             maximum_measured_shell_spill: comparison.maximum_measured_shell_spill,
         },
         exchange_rebuilds: result.exchange_rebuilds,

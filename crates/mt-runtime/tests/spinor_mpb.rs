@@ -28,7 +28,9 @@ use muffintin_io::{
     RadialEquationTag, SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag,
 };
 use muffintin_operators::CompiledSiteProjection;
-use muffintin_prodbasis::mpb::{DEFAULT_TOLERANCE, DiracBlochVertexAccumulator, DiracVertexContext};
+use muffintin_prodbasis::mpb::{
+    DEFAULT_TOLERANCE, DiracBlochVertexAccumulator, DiracVertexContext,
+};
 use muffintin_prodbasis::{
     CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, ExchangeSpace, OrbitalPair,
     ProductOrbitalKind,

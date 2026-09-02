@@ -168,10 +168,6 @@ pub struct RelaxedCoreHfIterationDiagnostic {
     /// Per-core exact-minus-spherical VC expectations from the final rebuilt frame.
     pub delta_c: Vec<CoreValenceDeltaDiagnostic>,
     pub weighted_delta_closure_residual: Hartree,
-    /// Signed finite-body MPB CC trace minus the isolated onsite radial trace.
-    pub cc_mpb_mt_difference: Hartree,
-    pub cc_action_extended_residual: Hartree,
-    pub cc_extended_spill_allowance: Hartree,
 }
 
 /// Converged relaxed-core spinor HF state on one explicit full regular mesh.
@@ -691,30 +687,6 @@ pub fn run_relaxed_core_hf(
                 maximum_shell_spill: spec.maximum_core_shell_spill,
             },
         )?;
-        let cc_mpb_mt_difference = Hartree(
-            fixed.exchange.exchange.cc.trace.get()
-                - core_valence_comparison.radial_oracle.cc_mt.total.get(),
-        );
-        let final_cc_action_trace = Hartree(
-            core_relaxations
-                .iter()
-                .map(|result| result.final_cc_trace.total.get())
-                .sum(),
-        );
-        let cc_action_extended_residual = Hartree(
-            (final_cc_action_trace.get()
-                - core_valence_comparison
-                    .radial_oracle
-                    .cc_extended
-                    .total
-                    .get())
-            .abs(),
-        );
-        require_relaxed_gate(
-            "CC action/extended radial trace",
-            cc_action_extended_residual.get(),
-            spec.sector_numerical_tolerance.get(),
-        )?;
         let core_one_body_traces = fresh_sidecars
             .iter()
             .map(core_local_one_body_trace)
@@ -794,9 +766,6 @@ pub fn run_relaxed_core_hf(
             delta_c: core_valence_comparison.deltas.clone(),
             weighted_delta_closure_residual: core_valence_comparison
                 .weighted_delta_closure_residual,
-            cc_mpb_mt_difference,
-            cc_action_extended_residual,
-            cc_extended_spill_allowance: core_valence_comparison.radial_oracle.cc_spill_allowance,
         });
         if converged {
             let orbital_energies = spinor_energies_relaxed(&fixed.bands)?;
@@ -1248,7 +1217,6 @@ fn relaxed_valence_feedback(
         })
         .collect()
 }
-
 
 struct FixedPotentialResult {
     bands: CheckpointBandSolution,
@@ -1958,7 +1926,6 @@ fn k_weights(bands: &CheckpointBandSolution) -> Result<Vec<f64>, GammaValenceHfE
         })
         .collect()
 }
-
 
 fn density_mixer(spec: ScfMixing) -> Result<DensityMixer, MixingError> {
     match spec {

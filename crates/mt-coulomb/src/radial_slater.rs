@@ -63,6 +63,13 @@ pub struct RadialSlaterComponents {
     pub total: Hartree,
 }
 
+/// Independent core-valence radial exchange trace.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RadialSlaterCvTraces {
+    pub cv_mt: RadialSlaterComponents,
+    pub cv_imaginary_residual: f64,
+}
+
 /// Independent core-core and core-valence radial exchange traces.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RadialSlaterTraces {
@@ -189,30 +196,7 @@ pub fn radial_slater_traces(
             }
         }
 
-        let valence = site
-            .valence
-            .orbitals
-            .iter()
-            .map(|orbital| OrbitalRef {
-                channel: orbital.channel,
-                p: orbital.p,
-                q: orbital.q,
-                normalization: orbital.normalization,
-            })
-            .collect::<Vec<_>>();
-        for &(core, core_occupation) in &cores {
-            let core = truncate(core, site.mt_mesh.len());
-            let metric = hermitian_cv_metric(site.mt_mesh, core, &valence)?;
-            for left_index in 0..valence.len() {
-                for right_index in 0..valence.len() {
-                    let density = site.valence.matrix[right_index * valence.len() + left_index];
-                    cv_mt.scaled_add(
-                        -core_occupation * density,
-                        metric[left_index * valence.len() + right_index],
-                    );
-                }
-            }
-        }
+        accumulate_cv(site, &cores, &mut cv_mt)?;
     }
     let cc_mt = cc_mt.into_public();
     let cc_extended = cc_extended.into_public();
@@ -225,6 +209,61 @@ pub fn radial_slater_traces(
         cv_mt,
         cv_imaginary_residual,
     })
+}
+
+/// Evaluate only the core-valence half of [`radial_slater_traces`].
+///
+/// The core-core half is an independent reimplementation of
+/// `core_core_fock_actions` over core orbitals that are fixed inside one SCF
+/// step. It is cross-checked in
+/// `core_fock::tests::multi_kappa_nonzero_q_action_trace_matches_independent_slater_oracle`
+/// and is not evaluated on the SCF path.
+pub fn radial_slater_cv_traces(
+    sites: &[RadialSlaterSite<'_>],
+) -> Result<RadialSlaterCvTraces, RadialSlaterError> {
+    let mut cv_mt = ComplexComponents::default();
+    for site in sites {
+        validate_site(site)?;
+        let cores = expand_cores(site)?;
+        accumulate_cv(site, &cores, &mut cv_mt)?;
+    }
+    let cv_imaginary_residual = cv_mt.total.im.abs();
+    Ok(RadialSlaterCvTraces {
+        cv_mt: cv_mt.real().into_public(),
+        cv_imaginary_residual,
+    })
+}
+
+fn accumulate_cv(
+    site: &RadialSlaterSite<'_>,
+    cores: &[(OrbitalRef<'_>, f64)],
+    cv_mt: &mut ComplexComponents,
+) -> Result<(), RadialSlaterError> {
+    let valence = site
+        .valence
+        .orbitals
+        .iter()
+        .map(|orbital| OrbitalRef {
+            channel: orbital.channel,
+            p: orbital.p,
+            q: orbital.q,
+            normalization: orbital.normalization,
+        })
+        .collect::<Vec<_>>();
+    for &(core, core_occupation) in cores {
+        let core = truncate(core, site.mt_mesh.len());
+        let metric = hermitian_cv_metric(site.mt_mesh, core, &valence)?;
+        for left_index in 0..valence.len() {
+            for right_index in 0..valence.len() {
+                let density = site.valence.matrix[right_index * valence.len() + left_index];
+                cv_mt.scaled_add(
+                    -core_occupation * density,
+                    metric[left_index * valence.len() + right_index],
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 fn hermitian_cv_metric(
