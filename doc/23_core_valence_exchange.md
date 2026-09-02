@@ -466,7 +466,7 @@ no claim of a converged periodic Hartree–Fock limit.
 | M3a | Implemented: channel-reduced radial core-core Fock kernel with per-shell inner self-consistency | converged core shells; finite-body MPB-minus-onsite-radial CC difference is reported; final CC action matches the extended radial trace numerically; extended-minus-MT spill is reported separately |
 | M3b | Implemented: complete site-valence density, channel-reduced radial VC action, CV/VC-only exact MPB contraction, per-core $\delta_c$, and shared CC+VC core relaxation | production VC action matches the independent radial oracle; MPB CV and VC traces agree; their finite-body difference from the spherical on-site action is reported and closes through weighted $\delta_c$; imaginary residual and shell spill gated; final VC action rebuilt from final core radials |
 | M3c | Implemented internally: unified Track A2 valence driver and relaxed core with full CV feedback | bounded neutral closed-shell synthetic pipeline gates the density fixed point, valence eigenvalue identity, core convergence, fresh-core replacement, valence-only mixing, VV+CV feedback, and Gamma/generic parity; external Kr AO comparison remains blocked by the missing checked-in LAPW molecule/box-series fixture and acceptance tolerance |
-| M4 | Core-aware THC selection and fit, MPB as oracle | `residual_vv/cv/vc/cc` reported separately; core columns never dropped by pooled selection; rank scaling reported |
+| M4 | Implemented: core-aware THC selection and fit over exact rectangular VV/CV/VC/CC layouts, with MPB quadratic forms as the representation-neutral oracle | four sector-resolved fit residuals and four sector-resolved MPB quadratic residuals reported separately; every sector column enters the pooled selector; rank and column scaling reported |
 | M5 | MLDUMP/pyexport v2 with sector energies and exchange provenance | schema versioned; v1 files remain exchange-absent |
 
 ### 4.2 Core-sector track and relaxed-core merge
@@ -599,6 +599,32 @@ series, or agreed AO-to-LAPW acceptance tolerance. Consequently the existing
 Kr Dyall v2z AO record is not claimed as an M3c external numerical validation;
 that comparison remains an explicit fixture blocker rather than an invented
 tolerance.
+
+M4 keeps the existing VV-only `build_spinor_thc` route unchanged and adds a
+rectangular core-aware route. `build_spinor_sector_thc` collocates physical
+valence and core spinors on one parent grid. A core orbital is nonzero only in
+its owning muffin tin, uses its physical P/Q radial arrays with
+$\Omega_{\kappa\mu}$ and $\Omega_{-\kappa\mu}$, and contributes no
+interstitial sample. Occupations are absent from collocation and vertices and
+enter only the later exchange contraction.
+
+The selector matrix has the stable row order q-major, then VV, CV, VC, CC,
+then the exact `ExchangePairLayout` column order. Every rectangular pair
+column enters that matrix; QRCP or pivoted Cholesky selects parent-grid points,
+not pair columns. One selected point set is shared by all transfers and one
+$\zeta$ is fitted per transfer against all four sectors without sector quotas
+or implicit balancing. The result records the four weighted L2 residuals
+separately and reports $N_k$, $N_v$, $N_c$, candidate count, effective rank,
+all four column counts, pooled columns per transfer, and total selector rows.
+
+`compare_spinor_sector_thc_mpb` is the M4 representation-neutral oracle. It
+requires complete exact-MPB VV, CV, VC, and CC column sets and compares the
+matched scalar quadratic forms $c^\dagger Vc$ for every pair. It does not
+compare coefficient vectors, action norms, or auxiliary subspaces across MPB
+and THC. Maximum absolute and relative discrepancies, including the worst
+transfer and column, are retained independently for VV, CV, VC, and CC. No
+acceptance threshold is invented at this stage; rank convergence remains an
+explicit caller study over the reported diagnostics.
 
 Before M3c, bring-up may run the valence driver against a core solved in the
 current DFT-style local potential solely as a test harness. That core carries

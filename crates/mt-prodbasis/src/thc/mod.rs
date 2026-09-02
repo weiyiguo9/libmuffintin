@@ -23,18 +23,21 @@ mod select;
 
 pub use error::{ThcError, checked_storage_len, validate_quadrature_weights};
 pub use fit::{
-    PerQFit, WeightedResidual, fit_per_q, gamma_report, worst_finite_q, worst_finite_q_coulomb,
+    ExchangePerQFit, ExchangeSectorResiduals, PerQFit, WeightedResidual, fit_exchange_per_q,
+    fit_per_q, gamma_report, worst_finite_q, worst_finite_q_coulomb,
 };
 pub use gram::{CoulombGramSet, GRAM_HERMITIAN_TOLERANCE, GRAM_PSD_TOLERANCE, InjectedCoulombGram};
-pub use pair::PairBlock;
+pub use pair::{ExchangePairBlock, PairBlock};
 pub use run::{
-    StrategyDiagnostics, ThcResult, bloch_pair_vertices, fit_allq_l2_pair_blocks,
-    interpolation_auxiliary,
+    ExchangeThcQVertices, ExchangeThcRankScaling, ExchangeThcResult, ExchangeThcSectorVertices,
+    StrategyDiagnostics, ThcResult, bloch_pair_vertices, exchange_pair_vertices,
+    fit_allq_l2_exchange_pair_blocks, fit_allq_l2_pair_blocks, interpolation_auxiliary,
 };
 pub use select::{
-    DEFAULT_SELECTOR, GridPath, L2Engine, RankPolicy, Selection, SelectionProvenance,
-    SelectorStrategy, UniformShift, cholesky_pivots_from_pair_blocks, interpolation_points, matmul,
-    pivots_from_pair_blocks, reconstruct_pairs, truncate_rank, weighted_residual,
+    DEFAULT_SELECTOR, ExchangeSelection, ExchangeSelectionProvenance, GridPath, L2Engine,
+    RankPolicy, Selection, SelectionProvenance, SelectorStrategy, UniformShift,
+    cholesky_pivots_from_pair_blocks, interpolation_points, matmul, pivots_from_pair_blocks,
+    reconstruct_pairs, truncate_rank, weighted_residual,
 };
 
 #[cfg(test)]

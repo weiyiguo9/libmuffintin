@@ -1,6 +1,6 @@
 //! THC construction and validation errors.
 
-use crate::AuxiliaryIrError;
+use crate::{AuxiliaryIrError, ExchangePairLayout, ExchangeSpace};
 use muffintin_core::LmError;
 use thiserror::Error;
 
@@ -73,6 +73,32 @@ pub enum ThcError {
     },
     #[error("pair block {index} layout does not match the first block")]
     PairBlockLayout { index: usize },
+    #[error("expected {expected} q-major VV/CV/VC/CC exchange blocks, got {actual}")]
+    ExchangePairBlockCount { expected: usize, actual: usize },
+    #[error(
+        "exchange pair block {index} has sector {actual_occupied:?}->{actual_target:?}, expected {expected_occupied:?}->{expected_target:?}"
+    )]
+    ExchangePairBlockSector {
+        index: usize,
+        expected_occupied: ExchangeSpace,
+        expected_target: ExchangeSpace,
+        actual_occupied: ExchangeSpace,
+        actual_target: ExchangeSpace,
+    },
+    #[error("exchange pair block {index} has layout {actual:?}, expected {expected:?}")]
+    ExchangePairBlockLayout {
+        index: usize,
+        expected: ExchangePairLayout,
+        actual: ExchangePairLayout,
+    },
+    #[error("exchange pair block {index} has q-index {actual}, expected {expected}")]
+    ExchangePairBlockQIndex {
+        index: usize,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("exchange {0:?} space has no orbitals")]
+    EmptyExchangeSpace(ExchangeSpace),
     #[error("Coulomb gram entry is not finite at q-index {0}")]
     GramNonFinite(usize),
     #[error(

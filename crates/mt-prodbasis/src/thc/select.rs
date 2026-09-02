@@ -2,9 +2,10 @@
 
 use crate::thc::ThcError;
 use crate::thc::linalg::{column_pivots, pivoted_cholesky_pivots};
-use crate::thc::pair::PairBlock;
+use crate::thc::pair::{ExchangePairBlock, PairBlock};
 use crate::{
-    InterpolationAuxiliaryPoint, InterpolationRegion, PairColumnLayout, sort_interpolation_points,
+    ExchangePairLayout, InterpolationAuxiliaryPoint, InterpolationRegion, PairColumnLayout,
+    sort_interpolation_points,
 };
 use muffintin_core::{Bohr, VolumeBohr3};
 use num_complex::Complex64;
@@ -133,6 +134,31 @@ pub struct Selection {
     pub provenance: SelectionProvenance,
 }
 
+/// Provenance for a shared four-sector exchange selection.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExchangeSelectionProvenance {
+    pub strategy: SelectorStrategy,
+    pub n_mu: usize,
+    pub q_set: &'static str,
+    pub grid_path: GridPath,
+    pub engine: L2Engine,
+    pub weights: &'static str,
+    /// Exact VV, CV, VC, and CC layouts, in that order.
+    pub pair_column_windows: [ExchangePairLayout; 4],
+    /// Stable selector row order used to form the weighted matrix.
+    pub row_order: &'static str,
+}
+
+/// Shared interpolation-point set selected from all exchange sectors.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExchangeSelection {
+    /// Point indices in selector-engine pivot order.
+    pub pivots: Vec<usize>,
+    /// The same points in canonical auxiliary layout order.
+    pub points: Vec<InterpolationAuxiliaryPoint>,
+    pub provenance: ExchangeSelectionProvenance,
+}
+
 pub fn truncate_rank(
     mut pivots: (Vec<usize>, Vec<f64>),
     rank: RankPolicy,
@@ -199,6 +225,75 @@ pub(crate) fn pair_block_l2_pivots(
         L2Engine::FullPivotedCholesky => cholesky_pivots_from_pair_blocks(blocks, weights, n_keep),
         L2Engine::StructuredSketch { .. } => Err(ThcError::PairBlockRequiresFullEngine),
     }
+}
+
+/// Weighted AllQL2 pivots from rectangular exchange blocks.
+///
+/// `blocks` must already be ordered q-major, then VV/CV/VC/CC. Every column
+/// from every block becomes one selector row; there is no sector balancing,
+/// quota, or column sampling.
+pub(crate) fn exchange_pair_block_l2_pivots(
+    engine: L2Engine,
+    blocks: &[ExchangePairBlock],
+    weights: &[f64],
+    n_keep: usize,
+) -> Result<(Vec<usize>, Vec<f64>), ThcError> {
+    let (stacked, nrows, n_pts) = stacked_weighted_exchange_pair_blocks(blocks, weights)?;
+    match engine {
+        L2Engine::FullColumnPivotedQr => {
+            let (mut pivots, diagonal) = column_pivots(&stacked, nrows, n_pts)?;
+            pivots.truncate(n_keep.min(pivots.len()));
+            Ok((pivots, diagonal))
+        }
+        L2Engine::FullPivotedCholesky => pivoted_cholesky_pivots(&stacked, nrows, n_pts, n_keep),
+        L2Engine::StructuredSketch { .. } => Err(ThcError::PairBlockRequiresFullEngine),
+    }
+}
+
+fn stacked_weighted_exchange_pair_blocks(
+    blocks: &[ExchangePairBlock],
+    weights: &[f64],
+) -> Result<(Vec<Complex64>, usize, usize), ThcError> {
+    if blocks.is_empty() {
+        return Err(ThcError::EmptyRank);
+    }
+    let n_pts = blocks[0].n_points;
+    if weights.len() != n_pts {
+        return Err(ThcError::GridWeightCount {
+            points: n_pts,
+            weights: weights.len(),
+        });
+    }
+    crate::thc::error::validate_quadrature_weights(weights)?;
+    let mut nrows = 0_usize;
+    for (index, block) in blocks.iter().enumerate() {
+        if block.n_points != n_pts {
+            return Err(ThcError::PairBlockPointCount {
+                index,
+                expected: n_pts,
+                actual: block.n_points,
+            });
+        }
+        nrows =
+            nrows
+                .checked_add(block.n_columns())
+                .ok_or_else(|| ThcError::DimensionOverflow {
+                    dimensions: blocks.iter().map(ExchangePairBlock::n_columns).collect(),
+                })?;
+    }
+    let mut stacked =
+        vec![Complex64::default(); crate::thc::error::checked_storage_len(&[nrows, n_pts])?];
+    let mut row_offset = 0;
+    for block in blocks {
+        for column in 0..block.n_columns() {
+            for point in 0..n_pts {
+                stacked[(row_offset + column) * n_pts + point] =
+                    block.at(point, column) * weights[point].sqrt();
+            }
+        }
+        row_offset += block.n_columns();
+    }
+    Ok((stacked, nrows, n_pts))
 }
 
 fn stacked_weighted_pair_blocks(

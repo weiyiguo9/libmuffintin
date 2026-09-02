@@ -32,6 +32,7 @@ mod spinor_mldump;
 mod spinor_mpb;
 mod spinor_product;
 mod spinor_sector_exchange;
+mod spinor_sector_thc;
 mod spinor_thc;
 mod thc_grid;
 
@@ -134,6 +135,12 @@ pub use spinor_sector_exchange::{
     SectorOccupations, SectorRadialComparison, SectorRadialComparisonSpec,
     build_frozen_core_valence_exchange, build_frozen_spinor_sector_exchange,
     compare_frozen_sector_radial, compare_relaxed_core_core_radial,
+};
+pub use spinor_sector_thc::{
+    SpinorSectorThcDiagnostics, SpinorSectorThcError, SpinorSectorThcMpbComparison,
+    SpinorSectorThcMpbPairDiagnostic, SpinorSectorThcMpbSectorComparison, SpinorSectorThcQRecord,
+    SpinorSectorThcRankScaling, SpinorSectorThcResult, SpinorSectorThcVertices,
+    build_spinor_sector_thc, compare_spinor_sector_thc_mpb,
 };
 pub use spinor_thc::{SpinorThcError, SpinorThcResult, SpinorThcSpec, build_spinor_thc};
 pub use thc_grid::{

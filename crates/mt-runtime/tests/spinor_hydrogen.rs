@@ -4,10 +4,14 @@
 
 use std::collections::BTreeMap;
 
-use muffintin::{RankPolicy, SpinorCoulombSpec, SpinorThcSpec, ThcCandidates, ThcEngine};
-use muffintin_core::{Hartree, InverseBohr};
+use muffintin::{
+    RankPolicy, SPINOR_RADIAL_P, SpinorCoulombSpec, SpinorExchangeMpbSpec, SpinorProductInput,
+    SpinorThcSpec, ThcCandidates, ThcEngine,
+};
+use muffintin_core::{ExponentialMesh, Hartree, InverseBohr, Kappa, TwiceMu};
 use muffintin_coulomb::{CoulombRequest, InterpolationProjection};
 use muffintin_dft::{
+    CoreShellOccupations, CoreShellOrbital, CoreShellOrbitals, CoreShellOrbitalsProvenance,
     LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
     ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfConvergence,
     ScfCoreSite, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations, ScfRelativity,
@@ -20,6 +24,8 @@ use muffintin_io::{
     LinearizationV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
     RadialEquationTag, SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag,
 };
+use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
+use muffintin_sphere::CoreState;
 
 #[path = "thc_fixture_common.rs"]
 mod thc_fixture_common;
@@ -193,5 +199,62 @@ pub fn coulomb_spec() -> SpinorCoulombSpec {
     SpinorCoulombSpec {
         request: CoulombRequest::cubic(LATTICE, 2).unwrap(),
         projection: InterpolationProjection::new(InverseBohr(1.5), 1).unwrap(),
+    }
+}
+
+pub fn core_sidecar(input: &SpinorProductInput, occupation: f64) -> CoreShellOrbitals {
+    let mesh = &input.source.radials[0].mesh;
+    let extended_mesh =
+        ExponentialMesh::new(mesh.first(), mesh.increment(), mesh.len() + 7).unwrap();
+    let radial = input.source.radials[0]
+        .valence
+        .iter()
+        .find(|radial| radial.kappa == Kappa::new(-1).unwrap() && radial.n == SPINOR_RADIAL_P)
+        .unwrap();
+    let mut p = radial.samples.large.clone();
+    let mut q = radial.samples.small.clone();
+    p.resize(extended_mesh.len(), 0.0);
+    q.resize(extended_mesh.len(), 0.0);
+    let norm_mt = mesh
+        .integrate(
+            &radial
+                .samples
+                .large
+                .iter()
+                .zip(&radial.samples.small)
+                .map(|(p, q)| p * p + q * q)
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+    CoreShellOrbitals {
+        site_index: 0,
+        site_id: "H-1".to_owned(),
+        extended_mesh,
+        shells: vec![CoreShellOrbital {
+            state: CoreState::new(1, Kappa::new(-1).unwrap()).unwrap(),
+            energy: Hartree(-0.5),
+            p,
+            q,
+            norm_total: norm_mt + 0.01,
+            norm_mt,
+            spill: 0.01,
+            occupations: CoreShellOccupations::MuResolved(vec![
+                (TwiceMu::new(-1).unwrap(), occupation),
+                (TwiceMu::new(1).unwrap(), occupation),
+            ]),
+        }],
+        provenance: CoreShellOrbitalsProvenance {
+            extended_potential: Vec::new(),
+            solve_specs: Vec::new(),
+            sourced_searches: Vec::new(),
+        },
+    }
+}
+
+pub fn exchange_mpb_spec() -> SpinorExchangeMpbSpec {
+    SpinorExchangeMpbSpec {
+        product_l_max: 2,
+        product_g_max: InverseBohr(1.5),
+        overlap_tolerance: DEFAULT_TOLERANCE,
     }
 }
