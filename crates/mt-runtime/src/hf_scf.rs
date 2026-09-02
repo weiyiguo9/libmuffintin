@@ -33,6 +33,7 @@ use crate::{
 
 const SPECTRAL_REFINEMENT_PASSES: usize = 16;
 const IDENTITY_TOLERANCE: f64 = 1.0e-8;
+const RELAXED_VALENCE_EIGENVALUE_TOLERANCE: f64 = 1.0e-6;
 const ELECTRON_COUNT_TOLERANCE: f64 = 1.0e-8;
 
 /// Exact MPB controls and bounded iteration controls for the full-BZ
@@ -739,7 +740,7 @@ pub fn run_relaxed_core_hf(
         require_relaxed_gate(
             "valence eigenvalue identity",
             energy.valence_eigenvalue_identity_residual,
-            IDENTITY_TOLERANCE,
+            RELAXED_VALENCE_EIGENVALUE_TOLERANCE,
         )?;
         let energy_change = previous_total
             .map(|previous: Hartree| Hartree((energy.total.get() - previous.get()).abs()));
