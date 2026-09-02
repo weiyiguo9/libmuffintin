@@ -32,8 +32,9 @@ use serde::Serialize;
 const KR_Z: u8 = 36;
 const SITE_ID: &str = "Kr-1";
 const RADIAL_FIRST_BOHR: f64 = 1.0e-6;
+const FREE_ATOM_FIRST_BOHR: f64 = 1.0e-8;
 const FREE_ATOM_INCREMENT: f64 = 0.01;
-const FREE_ATOM_POINTS: usize = 1_683;
+const FREE_ATOM_POINTS: usize = 2_143;
 const ANGULAR_GRID_POINTS: usize = 50;
 const OUTER_MAX_ITERATIONS: usize = 2;
 const CORE_MAX_ITERATIONS: usize = 2;
@@ -548,7 +549,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let field_layout =
         RegionalFieldLayout::from_g_cutoff(&structure, InverseBohr(field_g), field_l_max)?;
     let free_atom_mesh = ExponentialMesh::new(
-        Bohr(RADIAL_FIRST_BOHR),
+        Bohr(FREE_ATOM_FIRST_BOHR),
         FREE_ATOM_INCREMENT,
         FREE_ATOM_POINTS,
     )?;
@@ -624,7 +625,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             overlap_tolerance: DEFAULT_TOLERANCE,
             sector_numerical_tolerance_hartree: SECTOR_NUMERICAL_TOLERANCE_HARTREE,
             maximum_core_shell_spill: MAXIMUM_CORE_SHELL_SPILL,
-            free_atom_radial_first_bohr: RADIAL_FIRST_BOHR,
+            free_atom_radial_first_bohr: FREE_ATOM_FIRST_BOHR,
             free_atom_radial_log_increment: FREE_ATOM_INCREMENT,
             free_atom_radial_points: FREE_ATOM_POINTS,
             free_atom_mixing: 0.3,
