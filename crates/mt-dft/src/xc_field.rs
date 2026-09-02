@@ -205,7 +205,31 @@ fn transform_interstitial(
     let mut density_potential_integral = 0.0;
 
     for point in interstitial_grid.points() {
-        let (charge, magnetization) = interstitial_pauli_jets(density, point.position)?;
+        let (charge, magnetization) = if functional == XcFunctional::LdaPw92 {
+            let magnetization = density.magnetization();
+            (
+                FieldJet::value(interstitial_field_value(
+                    density.charge().interstitial(),
+                    point.position,
+                )?),
+                [
+                    FieldJet::value(interstitial_field_value(
+                        magnetization[0].interstitial(),
+                        point.position,
+                    )?),
+                    FieldJet::value(interstitial_field_value(
+                        magnetization[1].interstitial(),
+                        point.position,
+                    )?),
+                    FieldJet::value(interstitial_field_value(
+                        magnetization[2].interstitial(),
+                        point.position,
+                    )?),
+                ],
+            )
+        } else {
+            interstitial_pauli_jets(density, point.position)?
+        };
         let xc = evaluate_noncollinear_xc_point(functional, route, charge, magnetization)?;
         exchange_correlation_energy += point.weight.get() * xc.energy_density;
         density_potential_integral += point.weight.get() * xc.density_potential;
@@ -282,6 +306,16 @@ struct FieldJet {
     value: f64,
     gradient: [f64; 3],
     hessian: [f64; 6],
+}
+
+impl FieldJet {
+    const fn value(value: f64) -> Self {
+        Self {
+            value,
+            gradient: [0.0; 3],
+            hessian: [0.0; 6],
+        }
+    }
 }
 
 struct NoncollinearXcPoint {
@@ -413,22 +447,41 @@ fn transform_muffin_tin(
     let mut radial_energy = vec![0.0; mesh.len()];
     let mut radial_density_potential = vec![0.0; mesh.len()];
     let convention = charge.field().convention();
+    let angular_harmonics = angular
+        .points()
+        .iter()
+        .map(|point| match convention {
+            HarmonicConvention::Complex => {
+                complex_spherical_harmonics(output_l_max, point.direction)
+            }
+            HarmonicConvention::Real => real_spherical_harmonics(output_l_max, point.direction)
+                .into_iter()
+                .map(|value| Complex64::new(value, 0.0))
+                .collect(),
+        })
+        .collect::<Vec<_>>();
 
     for radial_index in 0..mesh.len() {
         let radius = mesh.radius(radial_index).unwrap().get();
         let derivative_step = derivative_step(mesh.radii(), radial_index);
-        for point in angular.points() {
+        for (point, harmonics) in angular.points().iter().zip(&angular_harmonics) {
             let position = point.direction.map(|component| component * radius);
-            let [charge, mx, my, mz] = fields
-                .map(|field| muffin_tin_field_jet(field, radial_index, position, derivative_step));
+            let [charge, mx, my, mz] = if functional == XcFunctional::LdaPw92 {
+                fields.map(|field| {
+                    evaluate_muffin_tin_shell(field, radial_index, harmonics).map(FieldJet::value)
+                })
+            } else {
+                fields.map(|field| {
+                    muffin_tin_field_jet(field, radial_index, position, derivative_step)
+                })
+            };
             let xc = evaluate_noncollinear_xc_point(functional, route, charge?, [mx?, my?, mz?])?;
             radial_energy[radial_index] += point.weight * xc.energy_density;
             radial_density_potential[radial_index] += point.weight * xc.density_potential;
             for (target, value) in projected.iter_mut().zip(xc.potential) {
                 project_angular_value(
                     convention,
-                    output_l_max,
-                    point.direction,
+                    harmonics,
                     point.weight,
                     value,
                     radial_index,
@@ -539,6 +592,21 @@ fn interstitial_field_jet(
     })
 }
 
+fn interstitial_field_value(
+    field: &InterstitialField,
+    position: [Bohr; 3],
+) -> Result<f64, RegionalXcError> {
+    let mut value = Complex64::new(0.0, 0.0);
+    let mut scale = 0.0;
+    for (vector, &coefficient) in field.field().iter() {
+        let phase = Complex64::from_polar(1.0, dot_g_r(vector.cartesian, position));
+        let term = coefficient * phase;
+        value += term;
+        scale += term.norm();
+    }
+    checked_real(value, scale, "interstitial field")
+}
+
 fn muffin_tin_field_jet(
     field: &MuffinTinField,
     radial_index: usize,
@@ -623,6 +691,18 @@ fn evaluate_muffin_tin_field(
     checked_real(value, value.norm(), "muffin-tin density")
 }
 
+fn evaluate_muffin_tin_shell(
+    field: &MuffinTinField,
+    radial_index: usize,
+    harmonics: &[Complex64],
+) -> Result<f64, RegionalXcError> {
+    let mut value = Complex64::new(0.0, 0.0);
+    for (channel, samples) in field.field().channels() {
+        value += samples[radial_index] * harmonics[channel.index()];
+    }
+    checked_real(value, value.norm(), "muffin-tin density")
+}
+
 fn interpolate_radial(
     radii: &[Bohr],
     samples: &[Complex64],
@@ -659,8 +739,7 @@ fn derivative_step(radii: &[Bohr], index: usize) -> f64 {
 
 fn project_angular_value(
     convention: HarmonicConvention,
-    l_max: u32,
-    direction: [f64; 3],
+    harmonics: &[Complex64],
     weight: f64,
     value: f64,
     radial_index: usize,
@@ -668,19 +747,13 @@ fn project_angular_value(
 ) {
     match convention {
         HarmonicConvention::Complex => {
-            for (target, harmonic) in projected
-                .iter_mut()
-                .zip(complex_spherical_harmonics(l_max, direction))
-            {
+            for (target, &harmonic) in projected.iter_mut().zip(harmonics) {
                 target[radial_index] += weight * value * harmonic.conj();
             }
         }
         HarmonicConvention::Real => {
-            for (target, harmonic) in projected
-                .iter_mut()
-                .zip(real_spherical_harmonics(l_max, direction))
-            {
-                target[radial_index] += weight * value * harmonic;
+            for (target, harmonic) in projected.iter_mut().zip(harmonics) {
+                target[radial_index] += weight * value * harmonic.re;
             }
         }
     }
