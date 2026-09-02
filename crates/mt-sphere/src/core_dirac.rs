@@ -13,6 +13,7 @@ use thiserror::Error;
 use crate::valence::{BoundaryData, LocalOrbitalCoefficients, SPEX_SPEED_OF_LIGHT};
 
 const C_SQUARED: f64 = SPEX_SPEED_OF_LIGHT * SPEX_SPEED_OF_LIGHT;
+const CORE_NORM_PARTITION_TOLERANCE: f64 = 1.0e-8;
 
 /// The role of a relativistic radial solution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2376,7 +2377,8 @@ fn finalize_core_solution(
     let raw_norm_mt = muffin_tin_mesh
         .integrate(&normalized_density[..=muffin_tin_index])
         .map_err(|error| DiracError::Quadrature(error.to_string()))?;
-    let partition_tolerance = 1.0e-10 * norm_total.abs().max(raw_norm_mt.abs()).max(1.0);
+    let partition_tolerance =
+        CORE_NORM_PARTITION_TOLERANCE * norm_total.abs().max(raw_norm_mt.abs()).max(1.0);
     if raw_norm_mt > norm_total + partition_tolerance {
         return Err(DiracError::InconsistentNormPartition {
             norm_total,
@@ -2386,8 +2388,8 @@ fn finalize_core_solution(
     }
     let norm_mt = raw_norm_mt.min(norm_total);
     // The outside is the complement of the independently integrated prefix;
-    // no cutoff sample is double counted. A prefix excess within quadrature
-    // tolerance is the same boundary partition and is rounded to zero spill.
+    // no cutoff sample is double counted. Independent seventh-order stencils
+    // resolve a smaller prefix excess only as zero spill.
     let norm_outside = norm_total - norm_mt;
     let nodes = count_nodes(&p);
     let expected_nodes = spec.state.expected_nodes();
