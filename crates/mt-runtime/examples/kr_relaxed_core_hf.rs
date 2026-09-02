@@ -38,6 +38,7 @@ const FREE_ATOM_POINTS: usize = 2_143;
 const ANGULAR_GRID_POINTS: usize = 50;
 const OUTER_MAX_ITERATIONS: usize = 2;
 const CORE_MAX_ITERATIONS: usize = 2;
+const OUTER_MIXING_ALPHA: f64 = 0.1;
 const MAX_FOCK_ITERATIONS: usize = 32;
 const LOOSE_TOLERANCE: f64 = 1.0e100;
 const FOCK_DENSITY_TOLERANCE: f64 = 1.0e-7;
@@ -536,7 +537,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             functional: XcFunctional::LdaPw92,
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
         },
-        mixing: ScfMixing::Linear { alpha: 0.5 },
+        mixing: ScfMixing::Linear {
+            alpha: OUTER_MIXING_ALPHA,
+        },
         relativity: ScfRelativity::SpinorFirstVariation,
         convergence: ScfConvergence {
             energy_tolerance: Hartree(LOOSE_TOLERANCE),
@@ -614,7 +617,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             gamma_exchange: "finite-body",
             relativity: "spinor-first-variation with fully-relativistic Dirac radial equation",
             exchange_correlation: "LDA-PW92 local-spin-frame",
-            outer_mixing_alpha: 0.5,
+            outer_mixing_alpha: OUTER_MIXING_ALPHA,
             outer_energy_tolerance_hartree: LOOSE_TOLERANCE,
             outer_density_tolerance: LOOSE_TOLERANCE,
             outer_max_iterations: OUTER_MAX_ITERATIONS,

@@ -50,8 +50,10 @@ cargo run -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
 
 These defaults are the deliberately loose P0 smoke profile: no HDLOs,
 $T=0.02$ Hartree, at most two outer and core steps, and at most 32 Fock
-iterations. Completion demonstrates that the production pipeline executed; it
-is not a claim of physical convergence. `--field-g 4.5` sets the independent
+iterations. The outer loop mixes only 0.1 of the fresh valence density; the
+core density is still replaced without mixing. Completion demonstrates that
+the production pipeline executed; it is not a claim of physical convergence.
+`--field-g 4.5` sets the independent
 atomic-start regional-field cutoff in inverse bohr, while `--orbital-g 1`
 remains the orbital-basis cutoff. The field angular cutoff is
 `2 * (orbital_lmax + 1)` so the Dirac small-component products retain their
