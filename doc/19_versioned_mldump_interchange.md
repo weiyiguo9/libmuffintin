@@ -1,6 +1,6 @@
 # 19. Versioned MLDUMP HDF5 interchange
 
-This note freezes MLDUMP v1, a libmuffintin-owned, inspectable HDF5 schema
+This note freezes MLDUMP v1 and v2, libmuffintin-owned, inspectable HDF5 schemas
 for later runtime materialization. It is not CoQui-native and not
 SPEX-native. `libmuffintin-io` owns the typed DTOs, schema constants, and
 the reader/writer. Runtime, mixed-product, THC, and Coulomb types stay out
@@ -8,7 +8,9 @@ of `libmuffintin-io`. A file holds the accepted header plus an optional
 representation-neutral scalar or spinor payload written from borrowed
 slices; runtime `write_scalar_mldump` and `write_spinor_mldump`
 materialize frozen product/THC/Coulomb objects through the streaming
-writers. Scalar and spinor payloads share schema version 1.
+writers. Scalar and spinor common payloads share the schema-v1 wire layout.
+Schema v2 keeps a complete v1 spinor common payload and adds only the typed
+core-aware exchange summary described in section 7.
 `write_scalar_coqui_cholesky` is a separate CoQui-native Cholesky ERI
 adapter; it is not an MLDUMP payload and does not extend schema version 1.
 
@@ -17,7 +19,11 @@ adapter; it is not an MLDUMP payload and does not extend schema version 1.
 Every file carries root attributes
 
 - `schema_name = "libmuffintin.mldump"`
-- `schema_version = 1`
+- `schema_version = 1 | 2`
+
+`MLDUMP_SCHEMA_VERSION` remains the v1 compatibility constant. The explicit
+constants `MLDUMP_SCHEMA_VERSION_V1` and `MLDUMP_SCHEMA_VERSION_V2` select the
+strict readers; neither reader accepts the other version.
 
 Indices are zero-based. Floating-point payloads are IEEE-754 `f64`; integer
 indices/counts use `i64`, and reciprocal labels use `i32`. Complex arrays use a final length-2 axis with index $0$
@@ -423,7 +429,128 @@ selected parent-grid weights, auxiliary, $\zeta$, and vertex layout alignment,
 required groups/datasets, and status-versus-payload consistency. These
 payload validators apply on write and on read.
 
-## 7. Exclusions
+## 7. v2 core-aware exchange summary
+
+MLDUMP v2 is not a second common-payload writer. It is a strict upgrade of one
+complete, valid spinor v1 file whose `/orbitals`, `/products`, `/thc`, and
+`/coulomb` groups are all present and whose legacy exchange children remain
+absent. The common groups retain their v1 names, layouts, and representation
+tags. Scalar and header-only files cannot be upgraded.
+
+`upgrade_mldump_v1_with_exchange_v2(path, &exchange)` first reads the input
+through the strict v1 reader and validates the complete typed exchange record
+against that common payload. It then writes and reads back the exchange-v2
+payload while the root still says version 1. Changing root `schema_version`
+to 2 is the last operation. A failed write can leave an incomplete v1 file,
+but it cannot label an unvalidated exchange payload as v2. The v1 streaming
+writer itself is unchanged and always leaves exchange data absent.
+
+`read_mldump_v2(path)` returns
+`MldumpFileV2 { header, payload: SpinorMldumpV1, exchange }`. It requires
+schema version 2 and all four common spinor sections. `read_mldump_v1` still
+requires version 1, so version dispatch is explicit rather than a fallback.
+
+The v2 exchange tree is:
+
+```text
+/exchange                                      status=present
+  @total_relation                              fixed string below
+  @exchange_vv_hartree                         f64
+  @exchange_cv_hartree                         f64
+  @exchange_cc_hartree                         f64
+  @exchange_total_hartree                      f64
+  @cross_trace_average_hartree                 f64
+  @cross_trace_mismatch_hartree                f64
+  /valence                                     status=absent_not_computed
+  /core                                        status=absent_not_computed
+  /total                                       status=absent_not_computed
+  /sectors
+    /vv | /cv | /vc | /cc
+      @occupied_space                          "valence" | "core"
+      @target_space                            "valence" | "core"
+      @n_k @n_occupied @n_target               i64
+      @trace_hartree                           f64
+      @maximum_antihermitian                   f64
+      /fit_residual
+        @frobenius @column_max                 f64
+      /mpb_quadratic
+        @maximum_absolute @maximum_relative    f64
+        @worst_absolute_q_index                i64
+        @worst_absolute_column                 i64
+        @worst_relative_q_index                i64
+        @worst_relative_column                 i64
+  /provenance
+    @source_frame                              fixed string below
+    @backend                                   fixed string below
+    @gamma_policy                              "finite_body" | "reject"
+    @product_l_max                             i64
+    @product_g_max_inv_bohr                    f64
+    @overlap_tolerance                         f64
+    @coulomb_lexp                              i64
+    @interpolation_l_max                       i64
+    @interpolation_pw_cutoff_inv_bohr          f64
+    @selector_strategy                         "allq_l2"
+    @selector_engine                           "full_column_pivoted_qr" |
+                                               "full_pivoted_cholesky"
+    @requested_rank_policy                     "exact" | "threshold"
+    @requested_rank_n_mu                       i64, exact only
+    @requested_rank_threshold                  f64, threshold only
+    @requested_rank_n_max                      i64, threshold only
+    k_weights                                  f64 [n_k] axes=["k"]
+    valence_occupations                        f64 [n_k,n_valence]
+                                                   axes=["k","valence"]
+    core_site_index                            i64 [n_core] axes=["core"]
+    core_n                                     i64 [n_core] axes=["core"]
+    core_signed_kappa                          i64 [n_core] axes=["core"]
+    core_twice_mu                              i64 [n_core] axes=["core"]
+    core_occupations                           f64 [n_core] axes=["core"]
+    /rank_scaling
+      @n_k @n_valence @n_core @n_candidates @effective_rank
+      @vv_columns_per_q @cv_columns_per_q @vc_columns_per_q
+      @cc_columns_per_q @pooled_columns_per_q @selector_rows
+```
+
+The fixed provenance values are
+`source_frame = "relaxed_core_hf_final_rebuilt_frame"` and
+`backend = "core_aware_thc_with_exact_mpb_oracle"`. The fixed root relation is
+`exchange_total=exchange_vv+exchange_cv+exchange_cc;exchange_cv=(trace_cv+trace_vc)/2`.
+The old `/exchange/{valence,core,total}` groups deliberately remain absent;
+v2 does not map the four exact rectangular sectors onto those ambiguous v1
+names.
+
+The four layouts are exact and ordered VV, CV, VC, CC: valence–valence,
+core–valence, valence–core, and core–core. Each layout uses the stable
+$(k,i,j)$ column count $N_k N_{mathrm{occupied}}N_{mathrm{target}}$.
+Validation binds $N_k$ and $N_v$ to the common spinor payload, binds $N_c$ to
+the flat core table, requires a complete canonical q slice, and checks all
+four column counts and the pooled selector-row count. Worst MPB-oracle q and
+column indices are checked against their exact sector ranges.
+
+Every floating-point value must be finite. Fit, Hermiticity, quadratic, and
+cross-trace mismatch diagnostics are nonnegative. k weights are stored in
+full common-mesh order, match `/mesh/k_weights` exactly, are positive, and sum
+to one. Valence and core occupations lie in $[0,1]$; valence occupations have
+shape $[N_k,N_v]$, while every flat core row retains site, principal quantum
+number, signed $\kappa$, twice-$\mu$, and occupation. Rank requests are explicit,
+effective rank is positive and no larger than candidate or threshold caps,
+and interpolation $l_{\max}$ cannot exceed Coulomb `LEXP`. The core-aware
+selector admits only the two full engines implemented by M4; the square-only
+structured sketch is not a v2 exchange provenance value.
+
+The energy identities are checked directly:
+
+```math
+E_x^{vv}=\frac{T_{vv}}{2},\qquad
+E_x^{cv}=\frac{T_{cv}+T_{vc}}{2},\qquad
+E_x^{cc}=\frac{T_{cc}}{2},\qquad
+E_x=E_x^{vv}+E_x^{cv}+E_x^{cc}.
+```
+
+The stored cross average is $(T_{cv}+T_{vc})/2$ and the stored mismatch is
+$|T_{cv}-T_{vc}|$. The v2 summary does not store target matrices, per-core
+$\delta_c$, or iteration history.
+
+## 8. Exclusions
 
 MLDUMP v1 does not serialize CoQui or SPEX native layouts, runtime
 `SpinorProductInput` / `ScalarProductInput` objects, MPB payloads,

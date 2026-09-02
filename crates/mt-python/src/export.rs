@@ -21,6 +21,14 @@ pub(crate) fn export_dict(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
     Ok(dict)
 }
 
+pub(crate) fn export_exchange_dict_v2(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+    let dict = PyDict::new(py);
+    dict.set_item("schema", SCHEMA)?;
+    dict.set_item("version", 2)?;
+    dict.set_item("kind", "exchange")?;
+    Ok(dict)
+}
+
 pub(crate) fn array2<'py, T: Element>(
     py: Python<'py>,
     rows: usize,
@@ -931,12 +939,12 @@ fn set_optional_residual(
 #[pymethods]
 impl ScalarCoulombResult {
     fn export_matrix(&self, py: Python<'_>, q_index: isize) -> PyResult<Py<PyDict>> {
-        if q_index < 0 || q_index as usize >= self.inner.records.len() {
+        if q_index < 0 || q_index as usize >= self.inner.records().len() {
             return Err(PyIndexError::new_err(format!(
                 "q index {q_index} is out of range"
             )));
         }
-        let record = &self.inner.records[q_index as usize];
+        let record = &self.inner.records()[q_index as usize];
         let dict = export_coulomb_operator(py, &record.operator)?;
         dict.set_item("q_index", record.q_index)?;
         dict.set_item("spin", record.spin)?;

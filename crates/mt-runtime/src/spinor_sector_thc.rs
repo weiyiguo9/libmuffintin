@@ -90,7 +90,7 @@ pub struct SpinorSectorThcQRecord {
 }
 
 /// Core-aware spinor AllQL2 result with one selector and one zeta per q.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct SpinorSectorThcResult {
     pub grid: ThcParentGrid,
     pub selection: muffintin_prodbasis::thc::ExchangeSelection,
@@ -100,6 +100,19 @@ pub struct SpinorSectorThcResult {
     pub diagnostics: SpinorSectorThcDiagnostics,
     pub rank_scaling: SpinorSectorThcRankScaling,
     pub records: Vec<SpinorSectorThcQRecord>,
+    sealed_inputs: Vec<SpinorProductInput>,
+}
+
+impl PartialEq for SpinorSectorThcResult {
+    fn eq(&self, other: &Self) -> bool {
+        self.grid == other.grid
+            && self.selection == other.selection
+            && self.requested_rank == other.requested_rank
+            && self.effective_rank == other.effective_rank
+            && self.diagnostics == other.diagnostics
+            && self.rank_scaling == other.rank_scaling
+            && self.records == other.records
+    }
 }
 
 impl SpinorSectorThcResult {
@@ -108,6 +121,11 @@ impl SpinorSectorThcResult {
         self.records
             .iter()
             .all(|record| record.grid_identity == self.grid.identity())
+    }
+
+    /// Whether this fit was constructed from exactly this frozen orbital/core frame.
+    pub fn frozen_context_matches(&self, inputs: &[SpinorProductInput]) -> bool {
+        self.sealed_inputs == inputs
     }
 }
 
@@ -136,12 +154,26 @@ pub struct SpinorSectorThcMpbSectorComparison {
 }
 
 /// Full four-sector MPB oracle comparison.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct SpinorSectorThcMpbComparison {
     pub vv: SpinorSectorThcMpbSectorComparison,
     pub cv: SpinorSectorThcMpbSectorComparison,
     pub vc: SpinorSectorThcMpbSectorComparison,
     pub cc: SpinorSectorThcMpbSectorComparison,
+    sealed_inputs: Vec<SpinorProductInput>,
+}
+
+impl PartialEq for SpinorSectorThcMpbComparison {
+    fn eq(&self, other: &Self) -> bool {
+        self.vv == other.vv && self.cv == other.cv && self.vc == other.vc && self.cc == other.cc
+    }
+}
+
+impl SpinorSectorThcMpbComparison {
+    /// Whether this MPB comparison was evaluated on exactly this frozen frame.
+    pub fn frozen_context_matches(&self, inputs: &[SpinorProductInput]) -> bool {
+        self.sealed_inputs == inputs
+    }
 }
 
 /// Core-aware spinor THC construction and MPB-comparison failure.
@@ -363,6 +395,7 @@ pub fn build_spinor_sector_thc(
         diagnostics,
         rank_scaling,
         records,
+        sealed_inputs: inputs.to_vec(),
     })
 }
 
@@ -859,6 +892,9 @@ pub fn compare_spinor_sector_thc_mpb(
     if !thc.records_match_parent_grid() {
         return Err(SpinorSectorThcError::ThcRecord { q_index: 0 });
     }
+    if !thc.frozen_context_matches(inputs) {
+        return Err(SpinorSectorThcError::IncompatibleInputs);
+    }
     let sampled_request = match spec.request.interpolation() {
         None => spec.request.clone().with_interpolation(spec.projection)?,
         Some(existing) if existing == spec.projection => spec.request.clone(),
@@ -948,6 +984,7 @@ pub fn compare_spinor_sector_thc_mpb(
         cv: summarize_mpb_sector(cv_pairs, layouts[1])?,
         vc: summarize_mpb_sector(vc_pairs, layouts[2])?,
         cc: summarize_mpb_sector(cc_pairs, layouts[3])?,
+        sealed_inputs: inputs.to_vec(),
     })
 }
 

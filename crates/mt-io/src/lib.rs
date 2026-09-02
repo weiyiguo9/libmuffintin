@@ -4,7 +4,9 @@
 //! noncollinear Pauli-field [`CheckpointV2`] files. [`GridArtifactV1`] is
 //! deliberately a separate format for materialized integration grids and is
 //! never embedded in a checkpoint. [`MldumpFileV1`] is the libmuffintin-owned
-//! MLDUMP v1 HDF5 schema; it is not CoQui-native or SPEX-native.
+//! MLDUMP v1 HDF5 schema; [`MldumpFileV2`] keeps the complete v1 spinor common
+//! payload and adds the core-aware exchange summary. Neither is CoQui-native
+//! or SPEX-native.
 //! [`read_spex_snapshot_hdf`] reads SPEX-owned `spex.snapshot_hdf` v1
 //! frozen fields; [`materialize_checkpoint_v2`] builds [`CheckpointV2`] only
 //! with an explicit signed-$\kappa$ recipe and a tight Hermitian ingest of
@@ -49,22 +51,28 @@ pub use grid::{
     grid_artifact_to_toml,
 };
 pub use mldump::{
-    ComplexF64V1, MLDUMP_CORE_EMPTY_NOT_FITTED, MLDUMP_INTERSTITIAL_SENTINEL,
-    MLDUMP_OCCUPATIONS_NOT_EXPORTED, MLDUMP_PAIR_ORDER_K_LEFT_RIGHT,
+    ComplexF64V1, MLDUMP_CORE_EMPTY_NOT_FITTED, MLDUMP_EXCHANGE_BACKEND_V2,
+    MLDUMP_EXCHANGE_SOURCE_FRAME_V2, MLDUMP_EXCHANGE_TOTAL_RELATION_V2,
+    MLDUMP_INTERSTITIAL_SENTINEL, MLDUMP_OCCUPATIONS_NOT_EXPORTED, MLDUMP_PAIR_ORDER_K_LEFT_RIGHT,
     MLDUMP_PARENT_REGION_INTERSTITIAL, MLDUMP_PARENT_REGION_MUFFIN_TIN, MLDUMP_RADIAL_KIND_CORE,
     MLDUMP_RADIAL_KIND_VALENCE, MLDUMP_REPRESENTATION_SCALAR_KOELLING_HARMON,
     MLDUMP_REPRESENTATION_SPINOR_FULL_FIRST_VARIATION, MLDUMP_SCHEMA_NAME, MLDUMP_SCHEMA_VERSION,
-    MLDUMP_STATUS_ABSENT_NOT_COMPUTED, MLDUMP_STATUS_PRESENT, MLDUMP_THC_ENGINE_PIVOTED_CHOLESKY,
-    MLDUMP_THC_ENGINE_QRCP, MLDUMP_THC_STRATEGY_ALL_QL2, MLDUMP_UNIT_ENERGY, MLDUMP_UNIT_G_UMKLAPP,
+    MLDUMP_SCHEMA_VERSION_V1, MLDUMP_SCHEMA_VERSION_V2, MLDUMP_STATUS_ABSENT_NOT_COMPUTED,
+    MLDUMP_STATUS_PRESENT, MLDUMP_THC_ENGINE_PIVOTED_CHOLESKY, MLDUMP_THC_ENGINE_QRCP,
+    MLDUMP_THC_STRATEGY_ALL_QL2, MLDUMP_UNIT_ENERGY, MLDUMP_UNIT_G_UMKLAPP,
     MLDUMP_UNIT_INVERSE_LENGTH, MLDUMP_UNIT_K_Q, MLDUMP_UNIT_LENGTH, MLDUMP_UNIT_VOLUME,
-    MldumpCoulombBeginV1, MldumpCoulombGammaRefV1, MldumpCoulombGammaV1, MldumpCoulombQRecordRefV1,
-    MldumpCoulombQRecordV1, MldumpCoulombV1, MldumpExchangeStatusesV1, MldumpFileV1,
-    MldumpGeometryV1, MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1, MldumpMeshV1, MldumpMetaV1,
-    MldumpPayloadV1, MldumpQEntryV1, MldumpRadialMeshV1, MldumpSiteV1, MldumpStatus,
-    MldumpThcBeginV1, MldumpThcParentGridRefV1, MldumpThcParentGridV1, MldumpThcQRecordRefV1,
-    MldumpThcQRecordV1, MldumpThcResidualV1, MldumpThcSelectionRefV1, MldumpThcSelectionV1,
-    MldumpThcV1, MldumpThcVertexTableRefV1, MldumpThcVertexV1, MldumpWriterV1,
-    ScalarApwSiteMatchRefV1, ScalarApwSiteMatchV1, ScalarLocalOrbitalRowV1,
+    MldumpCoreOccupationV2, MldumpCoulombBeginV1, MldumpCoulombGammaRefV1, MldumpCoulombGammaV1,
+    MldumpCoulombQRecordRefV1, MldumpCoulombQRecordV1, MldumpCoulombV1,
+    MldumpExchangeFitResidualV2, MldumpExchangeLayoutV2, MldumpExchangeMpbQuadraticV2,
+    MldumpExchangeProvenanceV2, MldumpExchangeRankScalingV2, MldumpExchangeSectorV2,
+    MldumpExchangeSpaceV2, MldumpExchangeStatusesV1, MldumpExchangeV2, MldumpFileV1, MldumpFileV2,
+    MldumpGammaPolicyV2, MldumpGeometryV1, MldumpHeaderV1, MldumpKMinusQV1, MldumpKPointV1,
+    MldumpMeshV1, MldumpMetaV1, MldumpPayloadV1, MldumpQEntryV1, MldumpRadialMeshV1,
+    MldumpRequestedRankV2, MldumpSelectorEngineV2, MldumpSelectorStrategyV2, MldumpSiteV1,
+    MldumpStatus, MldumpThcBeginV1, MldumpThcParentGridRefV1, MldumpThcParentGridV1,
+    MldumpThcQRecordRefV1, MldumpThcQRecordV1, MldumpThcResidualV1, MldumpThcSelectionRefV1,
+    MldumpThcSelectionV1, MldumpThcV1, MldumpThcVertexTableRefV1, MldumpThcVertexV1,
+    MldumpWriterV1, ScalarApwSiteMatchRefV1, ScalarApwSiteMatchV1, ScalarLocalOrbitalRowV1,
     ScalarLocalOrbitalTableRefV1, ScalarMldumpStreamV1, ScalarMldumpV1, ScalarOrbitalKRecordV1,
     ScalarOrbitalKRefV1, ScalarOrbitalSpinV1, ScalarOrbitalsBeginV1, ScalarOrbitalsV1,
     ScalarProductQRecordRefV1, ScalarProductQRecordV1, ScalarProductSiteRefV1, ScalarProductSiteV1,
@@ -73,7 +81,7 @@ pub use mldump::{
     SpinorOrbitalsBeginV1, SpinorOrbitalsV1, SpinorPauliRowMapRefV1, SpinorPauliRowMapV1,
     SpinorProductQRecordRefV1, SpinorProductQRecordV1, SpinorProductSiteRefV1, SpinorProductSiteV1,
     SpinorProductsBeginV1, SpinorProductsV1, SpinorProjectionCoordV1, SpinorSiteMatchRefV1,
-    SpinorSiteMatchV1, read_mldump_v1,
+    SpinorSiteMatchV1, read_mldump_v1, read_mldump_v2, upgrade_mldump_v1_with_exchange_v2,
 };
 pub use spex_symmetry::{
     SPEX_SYMMETRY_SCHEMA_NAME, SPEX_SYMMETRY_SCHEMA_VERSION, SpexSymmetryFileV1,

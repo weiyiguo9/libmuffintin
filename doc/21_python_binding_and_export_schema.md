@@ -482,6 +482,65 @@ constructor accepts a k mesh, `ScfConfig`, or `CompiledBasis`.
 `write(path)` method emits canonical Checkpoint V2 TOML. The fixed binding
 metadata is source-neutral and contains no material name.
 
+### 4.6 MLDUMP v2 exchange reader
+
+`read_mldump_v2(path)` is the sole pyexport v2 entry point. It reads a real
+Rust-written MLDUMP v2 file through the typed `libmuffintin-io`
+`read_mldump_v2` API and returns an exchange summary. It does not construct an
+HF calculation, start relaxed-core HF, or accept an MLDUMP v1 file. All exports
+documented in sections 4.1–4.5 continue to use the unchanged pyexport v1
+header. Only this dictionary has `schema = "libmuffintin.pyexport"`,
+`version = 2`, and `kind = "exchange"`.
+
+The top-level dictionary has exactly these payload fields in addition to the
+three-field pyexport v2 header:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `producer_name`, `producer_version`, `source_revision`, `feature_representation` | `str` | MLDUMP producer and frozen representation identity copied from its typed header. |
+| `exchange_vv_hartree`, `exchange_cv_hartree`, `exchange_cc_hartree`, `exchange_total_hartree` | `float` | Sector and total exchange energies in Hartree. |
+| `exchange_total_relation` | `str` | Frozen MLDUMP relation defining the total from VV, cross, and CC contributions. |
+| `cross_trace_average_hartree`, `cross_trace_mismatch_hartree` | `float` | Average of the independently contracted CV and VC traces and their absolute mismatch, in Hartree. |
+| `sectors` | `dict[str,dict]` | Exactly the keys `vv`, `cv`, `vc`, and `cc`; each value has the sector schema below. |
+| `provenance` | `dict` | Complete exchange construction, selector, rank, and occupation provenance with the schema below. |
+
+Each `sectors` value contains:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `layout` | `dict` | Exact rectangular layout with `occupied_space`, `target_space` (`"valence"` or `"core"`), `n_k`, `n_occupied`, and `n_target`. |
+| `trace_hartree` | `float` | Independently contracted occupied-target trace in Hartree. |
+| `maximum_antihermitian_residual` | `float` | Maximum anti-Hermitian residual of the exact sector contraction. |
+| `fit_frobenius`, `fit_column_max` | `float` | Weighted THC fit residuals for this complete exact sector. |
+| `mpb_quadratic_maximum_absolute`, `mpb_quadratic_maximum_relative` | `float` | Maximum MPB-versus-THC quadratic residuals. |
+| `mpb_quadratic_worst_absolute_q_index`, `mpb_quadratic_worst_absolute_column` | `int` | Transfer and exact layout column attaining the maximum absolute residual. |
+| `mpb_quadratic_worst_relative_q_index`, `mpb_quadratic_worst_relative_column` | `int` | Transfer and exact layout column attaining the maximum relative residual. |
+
+The `provenance` dictionary is complete and has no optional compatibility
+branch:
+
+| Key | Python representation | Meaning |
+|---|---|---|
+| `source_frame`, `backend` | `str` | Frozen exchange source-frame and backend identities. |
+| `gamma_policy` | `str` | `"finite_body"` or `"reject"`. |
+| `product_l_max`, `coulomb_lexp`, `interpolation_l_max` | `int` | Exact product and Coulomb angular controls. |
+| `product_g_max_inv_bohr`, `overlap_tolerance`, `interpolation_pw_cutoff_inv_bohr` | `float` | Exact product/interpolation cutoffs and overlap tolerance; reciprocal cutoffs are in inverse Bohr. |
+| `selector_strategy` | `str` | Frozen literal `"allq_l2"`. |
+| `selector_engine` | `str` | `"full_column_pivoted_qr"` or `"full_pivoted_cholesky"`; the square-only structured sketch is not accepted by the core-aware route. |
+| `requested_rank_policy` | `str` | `"exact"` or `"threshold"`. |
+| `requested_rank_n_mu` | `int` or `None` | Requested exact rank, present only for `"exact"`. |
+| `requested_rank_threshold`, `requested_rank_n_max` | `float` or `None`, `int` or `None` | Relative threshold and cap, present only for `"threshold"`. |
+| `rank_scaling` | `dict` | Integer fields `n_k`, `n_valence`, `n_core`, `n_candidates`, `effective_rank`, `vv_columns_per_q`, `cv_columns_per_q`, `vc_columns_per_q`, `cc_columns_per_q`, `pooled_columns_per_q`, and `selector_rows`. |
+| `k_weights` | `float64[n_k]` | Exact full-zone weights applied by the frozen exchange contraction. |
+| `valence_occupations` | `float64[n_k,n_valence]` | Fractional valence occupations before the separate k weight. |
+| `core_identity` | `int64[n_core,4]` | Flat core rows `(site_index,n,signed_kappa,twice_mu)` in the exchange layout order. |
+| `core_occupations` | `float64[n_core]` | Fractional occupations aligned one-to-one with `core_identity`. |
+
+The reader intentionally does not export the remaining MLDUMP v1-compatible
+orbital/product/THC/Coulomb payload through a second schema. Those data already
+have the explicit pyexport v1 producer-side APIs in sections 4.1–4.3; this new
+path is the typed persisted exchange reader only.
+
 ## 5. Entry points
 
 The surface is about fifteen functions and methods, scalar lane
@@ -489,6 +548,9 @@ first:
 
 ```python
 import libmuffintin as mt
+
+exchange = mt.read_mldump_v2("exchange.h5")          # persisted exchange only;
+                                                    # rejects MLDUMP v1
 
 snap = mt.load_checkpoint("checkpoint.toml")            # Checkpoint V1/V2 via mt-io
 phys = mt.CheckpointPhysics(snap)                     # CheckpointPhysics::new
@@ -749,6 +811,7 @@ properties on their opaque handles.
 | 3 | Spinor twins of stages 1 and 2, plus the MLDUMP and CoQui Cholesky writer pass-throughs. |
 | 4 | Two-level DFT-SCF binding: global `run_dft_scf` first, then the doc 17 staged `ScfSession`; the global entry is implemented on the staged layer. |
 | 5 | Bootstrap of the separate `pymuffintin` package: provider protocols, the muffintin backend adapter over pyexport v1, `auxiliary/{lri,thc,hybrid}.py`, `mbpt/hf.py`, and gate 3. Gates 1 and 2 stay in this repository as binding tests. |
+| M5 | Strict typed MLDUMP v2 exchange reader and pyexport v2 dictionary; no Python HF driver and no MLDUMP v1 compatibility branch. |
 
 Stage 5 keeps the native boundary explicit. `MuffintinAdapter` reconstructs
 pair samples from `sample_scalar_orbitals` plus the exported $k-q$ wraps,
@@ -787,6 +850,10 @@ assembled a new hybrid representation.
    interstitial-THC composition on the small fixture and reports the
    $E_x$ and $\Sigma_x$ matrix-element differences. The number is a
    pipeline check on the fixture, not a material accuracy claim.
+4. **Persisted exchange schema.** `read_mldump_v2` reads the Rust-written MLDUMP
+   v2 fixture and exposes the exact four layouts, diagnostics, provenance,
+   occupations, and rank scaling above. Passing an MLDUMP v1 fixture fails at
+   the typed reader boundary rather than returning a partial dictionary.
 
 Gates 1 and 2 use focused tests in `mt-python` and `python/`; gate 3
 is a `pymuffintin` test against the same fixture. The binding does not join

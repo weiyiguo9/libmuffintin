@@ -192,6 +192,11 @@ pub struct RelaxedCoreHfResult {
     pub orbital_energies: Vec<Vec<Hartree>>,
     pub core_orbitals: Vec<CoreShellOrbitals>,
     pub core_one_body_traces: Vec<CoreLocalOneBodyTrace>,
+    /// Complete canonical q slice rebuilt from the converged band/core frame.
+    ///
+    /// This is the same frozen input slice sealed into [`Self::sector_exchange`],
+    /// not the bootstrap frame or an earlier Fock iteration.
+    pub final_exchange_inputs: Vec<SpinorProductInput>,
     pub sector_exchange: FrozenSpinorSectorExchange,
     pub core_valence_comparison: FrozenCoreValenceComparison,
     pub core_h0_trace: Hartree,
@@ -821,6 +826,7 @@ pub fn run_relaxed_core_hf(
                 orbital_energies,
                 core_orbitals: fresh_sidecars,
                 core_one_body_traces,
+                final_exchange_inputs: fixed.exchange.inputs,
                 sector_exchange: fixed.exchange.exchange,
                 core_valence_comparison,
                 core_h0_trace,

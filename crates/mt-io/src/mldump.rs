@@ -1,4 +1,4 @@
-//! Versioned MLDUMP v1 HDF5 interchange.
+//! Versioned MLDUMP HDF5 interchange.
 //!
 //! This is a libmuffintin-owned, inspectable HDF5 schema. It is not
 //! CoQui-native or SPEX-native. Runtime, mixed-product, THC, and Coulomb
@@ -20,6 +20,7 @@ mod scalar_products;
 mod session;
 mod spinor_orbitals;
 mod spinor_products;
+mod v2;
 
 pub use response::{
     ComplexF64V1, MLDUMP_INTERSTITIAL_SENTINEL, MLDUMP_PARENT_REGION_INTERSTITIAL,
@@ -52,11 +53,23 @@ pub use spinor_products::{
     SpinorProductQRecordRefV1, SpinorProductQRecordV1, SpinorProductSiteRefV1, SpinorProductSiteV1,
     SpinorProductsBeginV1, SpinorProductsV1,
 };
+pub use v2::{
+    MLDUMP_EXCHANGE_BACKEND_V2, MLDUMP_EXCHANGE_SOURCE_FRAME_V2, MLDUMP_EXCHANGE_TOTAL_RELATION_V2,
+    MldumpCoreOccupationV2, MldumpExchangeFitResidualV2, MldumpExchangeLayoutV2,
+    MldumpExchangeMpbQuadraticV2, MldumpExchangeProvenanceV2, MldumpExchangeRankScalingV2,
+    MldumpExchangeSectorV2, MldumpExchangeSpaceV2, MldumpExchangeV2, MldumpFileV2,
+    MldumpGammaPolicyV2, MldumpRequestedRankV2, MldumpSelectorEngineV2, MldumpSelectorStrategyV2,
+    read_mldump_v2, upgrade_mldump_v1_with_exchange_v2,
+};
 
 /// Stable schema name written on every MLDUMP file.
 pub const MLDUMP_SCHEMA_NAME: &str = "libmuffintin.mldump";
 /// MLDUMP schema version implemented by this crate.
 pub const MLDUMP_SCHEMA_VERSION: u32 = 1;
+/// Explicit MLDUMP v1 schema version.
+pub const MLDUMP_SCHEMA_VERSION_V1: u32 = 1;
+/// Explicit MLDUMP v2 schema version.
+pub const MLDUMP_SCHEMA_VERSION_V2: u32 = 2;
 
 /// HDF5 `status` value for a group that carries its v1 payload.
 pub const MLDUMP_STATUS_PRESENT: &str = "present";

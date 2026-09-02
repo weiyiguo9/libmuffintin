@@ -29,6 +29,7 @@ mod spinor_core_valence;
 mod spinor_coulomb;
 mod spinor_exchange_mpb;
 mod spinor_mldump;
+mod spinor_mldump_v2;
 mod spinor_mpb;
 mod spinor_product;
 mod spinor_sector_exchange;
@@ -121,6 +122,7 @@ pub use spinor_exchange_mpb::{
     SpinorGammaConstantModeDiagnostic, build_spinor_exchange_mpb,
 };
 pub use spinor_mldump::{SpinorMldumpError, write_spinor_mldump};
+pub use spinor_mldump_v2::{SpinorMldumpV2Error, write_spinor_mldump_v2};
 pub use spinor_mpb::{
     SPINOR_MPB_NSPIN, SpinorMpbError, SpinorMpbPairVertex, SpinorMpbResult, SpinorMpbSelection,
     SpinorMpbSpec, build_spinor_mpb,

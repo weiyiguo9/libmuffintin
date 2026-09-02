@@ -6,6 +6,7 @@ mod coulomb;
 mod energy;
 mod export;
 mod mixing;
+mod mldump_v2;
 mod products;
 mod regional;
 mod scf;
@@ -45,6 +46,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(build_scalar_coulomb, module)?)?;
     module.add_function(wrap_pyfunction!(build_scalar_mpb_coulomb, module)?)?;
     module.add_function(wrap_pyfunction!(sample_scalar_orbitals, module)?)?;
+    module.add_function(wrap_pyfunction!(mldump_v2::read_mldump_v2, module)?)?;
     core::register(module)?;
     energy::register(module)?;
     mixing::register(module)?;

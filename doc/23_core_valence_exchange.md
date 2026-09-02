@@ -6,8 +6,9 @@ M0, M1, and M2 are implemented as described in section 4.2. M3a and M3b are
 also implemented, including the shared relaxed-core loop with fresh CC and VC
 actions at every inner iteration. M3c now closes the repository-internal
 unified driver and its bounded synthetic pipeline; the external Kr AO comparison
-remains blocked as recorded below. The later compression/export stages remain
-planned. The contract lifts two explicit exclusions of
+remains blocked as recorded below. M4 core-aware THC and the M5 versioned
+exchange export are implemented on the final rebuilt relaxed-core frame. The
+contract lifts two explicit exclusions of
 [18](18_lapw_mpb_thc_integration.md) §4 —
 core–valence products and the self-consistent Fock loop — and it replaces the
 earlier frozen-core staging idea with a relaxed core at FlapwMBPT parity.
@@ -467,7 +468,7 @@ no claim of a converged periodic Hartree–Fock limit.
 | M3b | Implemented: complete site-valence density, channel-reduced radial VC action, CV/VC-only exact MPB contraction, per-core $\delta_c$, and shared CC+VC core relaxation | production VC action matches the independent radial oracle; MPB CV and VC traces agree; their finite-body difference from the spherical on-site action is reported and closes through weighted $\delta_c$; imaginary residual and shell spill gated; final VC action rebuilt from final core radials |
 | M3c | Implemented internally: unified Track A2 valence driver and relaxed core with full CV feedback | bounded neutral closed-shell synthetic pipeline gates the density fixed point, valence eigenvalue identity, core convergence, fresh-core replacement, valence-only mixing, VV+CV feedback, and Gamma/generic parity; external Kr AO comparison remains blocked by the missing checked-in LAPW molecule/box-series fixture and acceptance tolerance |
 | M4 | Implemented: core-aware THC selection and fit over exact rectangular VV/CV/VC/CC layouts, with MPB quadratic forms as the representation-neutral oracle | four sector-resolved fit residuals and four sector-resolved MPB quadratic residuals reported separately; every sector column enters the pooled selector; rank and column scaling reported |
-| M5 | MLDUMP/pyexport v2 with sector energies and exchange provenance | schema versioned; v1 files remain exchange-absent |
+| M5 | Implemented: MLDUMP/pyexport v2 with sector energies and exchange provenance | schema versioned; the common payload remains a strict spinor v1 payload; v1 files remain exchange-absent; final-frame and energy identities preflighted |
 
 ### 4.2 Core-sector track and relaxed-core merge
 
@@ -626,6 +627,36 @@ transfer and column, are retained independently for VV, CV, VC, and CC. No
 acceptance threshold is invented at this stage; rank convergence remains an
 explicit caller study over the reported diagnostics.
 
+M5 adds `write_spinor_mldump_v2` without changing
+`write_spinor_mldump` or the v1 schema. The writer first preflights one exact
+final frame across `RelaxedCoreHfResult::final_exchange_inputs`, the sealed
+exact sector exchange, the VV THC/Coulomb objects, the core-aware THC result,
+and its MPB comparison. The header's ordered k points, canonical q points, and
+k weights must match that same result. Only then does the existing v1 writer
+emit orbitals, products, VV THC, and sampled Coulomb. That intermediate file is
+a complete valid spinor v1 file; the IO upgrader changes it to v2 by adding the
+typed exchange summary.
+
+The v2 exchange payload stores all four rectangular layouts and traces; the
+VV, CV, CC, and total exchange energies; the CV/VC average and mismatch; the
+four aggregate THC fit residuals; and the four MPB quadratic maxima with their
+worst q and column indices. Its provenance records the explicit finite-body or
+reject Gamma policy, exact MPB cutoffs and tolerance, Weinert `LEXP`, the
+sampled interpolation projection, selector strategy and engine, requested and
+effective rank accounting, k weights, valence occupations, and the canonical
+flat core occupation table. The source-frame and backend labels are fixed
+schema strings for the final rebuilt relaxed-core frame and the core-aware THC
+plus exact-MPB-oracle route; they are not inferred from display provenance.
+
+Preflight rechecks the four layout dimensions, rank and selector-row
+relations, finite fit residuals, complete MPB pair coverage, maxima and worst
+indices, and the exact energy identities of section 1.1. It also reconstructs
+`SectorOccupations` from result weights and occupations plus the final flat
+core table and requires the sealed exact exchange to match that snapshot and
+the `RelaxedCoreHfSpec` Coulomb/Gamma controls. The M5 summary deliberately
+does not export per-core $\delta_c$, iteration history, or band-space target
+matrices.
+
 Before M3c, bring-up may run the valence driver against a core solved in the
 current DFT-style local potential solely as a test harness. That core carries
 an uncancelled core self-interaction, so the configuration is not a
@@ -645,6 +676,7 @@ This contract does not include:
 - a scalar-relativistic HF route (spinor-first);
 - core contributions to polarizability or screening (the FlapwMBPT
   `core_corr` analogue belongs to a later GW/RPA contract);
-- forces, and any MLDUMP/pyexport schema change before M5;
+- forces, or any M5 extension beyond the bounded exchange summary described
+  above;
 - retiring or extending the AO oracle in `libmuffintin-hf` beyond its
   comparison role.
