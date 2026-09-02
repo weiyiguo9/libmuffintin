@@ -3,6 +3,7 @@
 use muffintin_core::GridError;
 use muffintin_core::{LatticeError, LmError, MeshError, StepFunctionError};
 use muffintin_prodbasis::AuxiliaryIrError;
+use muffintin_tensor::TensorError;
 use thiserror::Error;
 
 /// Coulomb operator construction or application error.
@@ -20,6 +21,8 @@ pub enum CoulombError {
     Grid(#[from] GridError),
     #[error(transparent)]
     Angular(#[from] LmError),
+    #[error(transparent)]
+    Tensor(#[from] TensorError),
     #[error("Weinert LEXP must be finite and at most 12, got {0}")]
     InvalidLexp(u32),
     #[error("interpolation-point Coulomb assembly requires sampled zeta functions")]

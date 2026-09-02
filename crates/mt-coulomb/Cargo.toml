@@ -14,6 +14,7 @@ name = "muffintin_coulomb"
 libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-prodbasis = { path = "../mt-prodbasis" }
+libmuffintin-tensor = { path = "../mt-tensor" }
 num-complex.workspace = true
 thiserror.workspace = true
 
