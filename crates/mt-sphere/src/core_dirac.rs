@@ -92,6 +92,8 @@ impl EnergyBracket {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CoreDiracSpec {
     pub state: CoreState,
+    /// Positive finite nuclear charge used by the regular Coulomb-origin branch.
+    pub nuclear_charge: f64,
     /// Energy interval that must isolate one eigenvalue with the node count
     /// implied by `state`; the solver does not search a multi-root interval.
     pub bracket: EnergyBracket,
@@ -180,9 +182,15 @@ impl ValenceDiracSpec {
 
 impl CoreDiracSpec {
     /// Construct a specification with conservative shooting tolerances.
-    pub const fn new(state: CoreState, bracket: EnergyBracket, muffin_tin_radius: Bohr) -> Self {
+    pub const fn new(
+        state: CoreState,
+        nuclear_charge: f64,
+        bracket: EnergyBracket,
+        muffin_tin_radius: Bohr,
+    ) -> Self {
         Self {
             state,
+            nuclear_charge,
             bracket,
             muffin_tin_radius,
             energy_tolerance: 1.0e-11,
@@ -208,6 +216,8 @@ impl CoreDiracSpec {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CoreBracketSearch {
     pub state: CoreState,
+    /// Positive finite nuclear charge used by every scanned outward branch.
+    pub nuclear_charge: f64,
     pub muffin_tin_radius: Bohr,
     pub energy_window: EnergyBracket,
     /// Number of equal adjacent intervals in `energy_window`.
@@ -217,11 +227,13 @@ pub struct CoreBracketSearch {
 impl CoreBracketSearch {
     pub const fn new(
         state: CoreState,
+        nuclear_charge: f64,
         muffin_tin_radius: Bohr,
         energy_window: EnergyBracket,
     ) -> Self {
         Self {
             state,
+            nuclear_charge,
             muffin_tin_radius,
             energy_window,
             intervals: 256,
@@ -744,6 +756,8 @@ pub enum DiracError {
     NonFiniteEnergy(f64),
     #[error("speed of light must be finite and positive, got {0}")]
     InvalidSpeedOfLight(f64),
+    #[error("nuclear charge must be finite and positive, got {0}")]
+    InvalidNuclearCharge(f64),
     #[error("radial array has {actual} samples, but expected {expected}")]
     ArrayLength { expected: usize, actual: usize },
     #[error("bound-core shooting requires an outward positive radial mesh")]
@@ -752,8 +766,6 @@ pub enum DiracError {
     InvalidMuffinTinRadius { radius: f64, first: f64, last: f64 },
     #[error("muffin-tin radius {radius} bohr is not a radial mesh point")]
     MuffinTinRadiusNotOnMesh { radius: f64 },
-    #[error("origin is not Coulombic enough to initialize a core Dirac state (estimated Z={0})")]
-    NonCoulombicOrigin(f64),
     #[error("point-Coulomb origin is supercritical: kappa^2-(Z/c)^2={radicand}")]
     SupercriticalOrigin { radicand: f64 },
     #[error("Dirac mass factor at index {index} is non-positive or non-finite: {mass}")]
@@ -834,8 +846,22 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
     validate_inputs(mesh, potential, spec)?;
 
     let (mut lower, mut upper) = spec.bracket.values();
-    let mut lower_shot = shoot(mesh, potential, spec.state.kappa, lower, false)?;
-    let upper_shot = shoot(mesh, potential, spec.state.kappa, upper, false)?;
+    let mut lower_shot = shoot(
+        mesh,
+        potential,
+        spec.nuclear_charge,
+        spec.state.kappa,
+        lower,
+        false,
+    )?;
+    let upper_shot = shoot(
+        mesh,
+        potential,
+        spec.nuclear_charge,
+        spec.state.kappa,
+        upper,
+        false,
+    )?;
     if lower_shot.residual == 0.0 {
         return assemble_solution(
             mesh,
@@ -867,7 +893,14 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
 
     for _ in 0..spec.max_iterations {
         let energy = lower + 0.5 * (upper - lower);
-        let shot = shoot(mesh, potential, spec.state.kappa, energy, false)?;
+        let shot = shoot(
+            mesh,
+            potential,
+            spec.nuclear_charge,
+            spec.state.kappa,
+            energy,
+            false,
+        )?;
         if shot.residual.abs() <= spec.matching_tolerance
             && 0.5 * (upper - lower) <= spec.energy_tolerance
         {
@@ -971,6 +1004,7 @@ pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSourcedSpec>>(
             shots[interval] = Some(shoot_with_action(
                 mesh,
                 potential,
+                spec.nuclear_charge,
                 spec.state.kappa,
                 lower,
                 action,
@@ -980,6 +1014,7 @@ pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSourcedSpec>>(
             shots[interval + 1] = Some(shoot_with_action(
                 mesh,
                 potential,
+                spec.nuclear_charge,
                 spec.state.kappa,
                 upper,
                 action,
@@ -1069,7 +1104,12 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
     validate_inputs(
         mesh,
         potential,
-        &CoreDiracSpec::new(search.state, search.energy_window, search.muffin_tin_radius),
+        &CoreDiracSpec::new(
+            search.state,
+            search.nuclear_charge,
+            search.energy_window,
+            search.muffin_tin_radius,
+        ),
     )?;
 
     let step = (upper - lower) / search.intervals as f64;
@@ -1084,7 +1124,16 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
         .collect::<Vec<_>>();
     let shots = energies
         .par_iter()
-        .map(|&energy| shoot(mesh, potential, search.state.kappa, energy, false))
+        .map(|&energy| {
+            shoot(
+                mesh,
+                potential,
+                search.nuclear_charge,
+                search.state.kappa,
+                energy,
+                false,
+            )
+        })
         .collect::<Vec<_>>();
     let mut shots = shots.into_iter();
     let mut previous_energy = lower;
@@ -1100,7 +1149,12 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
                 || previous.residual.signum() != current.residual.signum());
         if sign_change {
             let bracket = EnergyBracket::from_values(previous_energy, energy)?;
-            let spec = CoreDiracSpec::new(search.state, bracket, search.muffin_tin_radius);
+            let spec = CoreDiracSpec::new(
+                search.state,
+                search.nuclear_charge,
+                bracket,
+                search.muffin_tin_radius,
+            );
             match solve_core_dirac(mesh, potential, spec) {
                 Ok(_) => candidates.push(bracket),
                 Err(
@@ -1468,6 +1522,9 @@ fn validate_inputs(
     spec: &CoreDiracSpec,
 ) -> Result<(), DiracError> {
     spec.bracket.validate()?;
+    if !spec.nuclear_charge.is_finite() || spec.nuclear_charge <= 0.0 {
+        return Err(DiracError::InvalidNuclearCharge(spec.nuclear_charge));
+    }
     if potential.len() != mesh.len() {
         return Err(DiracError::PotentialLength {
             expected: mesh.len(),
@@ -1565,13 +1622,22 @@ fn validate_sourced_spec(spec: &CoreDiracSourcedSpec) -> Result<(), DiracError> 
 fn shoot(
     mesh: &ExponentialMesh,
     potential: &[f64],
+    nuclear_charge: f64,
     kappa: Kappa,
     energy: f64,
     keep_arrays: bool,
 ) -> Result<Shot, DiracError> {
     let match_index = select_match_index(mesh, potential, energy);
     let outer_index = select_outer_index(mesh, match_index);
-    let outward = integrate_outward(mesh, potential, kappa, energy, match_index, keep_arrays)?;
+    let outward = integrate_outward(
+        mesh,
+        potential,
+        nuclear_charge,
+        kappa,
+        energy,
+        match_index,
+        keep_arrays,
+    )?;
     let inward = integrate_inward(
         mesh,
         potential,
@@ -1602,13 +1668,22 @@ fn shoot(
 fn shoot_with_action(
     mesh: &ExponentialMesh,
     potential: &[f64],
+    nuclear_charge: f64,
     kappa: Kappa,
     energy: f64,
     action: CoreDiracExchangeAction<'_>,
 ) -> Result<DrivenShot, DiracError> {
     let match_index = select_match_index(mesh, potential, energy);
     let outer_index = select_outer_index(mesh, match_index);
-    let homogeneous_out = integrate_outward(mesh, potential, kappa, energy, match_index, true)?;
+    let homogeneous_out = integrate_outward(
+        mesh,
+        potential,
+        nuclear_charge,
+        kappa,
+        energy,
+        match_index,
+        true,
+    )?;
     let homogeneous_in = integrate_inward(
         mesh,
         potential,
@@ -1737,7 +1812,14 @@ fn solve_driven_bracket(
 
     for _ in 0..spec.max_iterations {
         let energy = lower + 0.5 * (upper - lower);
-        let shot = shoot_with_action(mesh, potential, spec.state.kappa, energy, action)?;
+        let shot = shoot_with_action(
+            mesh,
+            potential,
+            spec.nuclear_charge,
+            spec.state.kappa,
+            energy,
+            action,
+        )?;
         if shot.root_residual == 0.0 {
             return finalize_driven_solution(mesh, spec, energy, shot);
         }
@@ -1786,6 +1868,7 @@ impl Branch {
 fn integrate_outward(
     mesh: &ExponentialMesh,
     potential: &[f64],
+    nuclear_charge: f64,
     kappa: Kappa,
     energy: f64,
     stop: usize,
@@ -1802,20 +1885,8 @@ fn integrate_outward(
     } else {
         Vec::new()
     };
-    // Averaging the first few -rV samples damps harmless grid noise while
-    // retaining the Coulomb coefficient exactly for V=-Z/r.
-    let sample_count = n.min(4);
-    let z = mesh.radii()[..sample_count]
-        .iter()
-        .zip(&potential[..sample_count])
-        .map(|(r, &v)| -r.get() * v)
-        .sum::<f64>()
-        / sample_count as f64;
-    if !z.is_finite() || z <= 1.0e-12 {
-        return Err(DiracError::NonCoulombicOrigin(z));
-    }
     let k = f64::from(kappa.get());
-    let radicand = k * k - (z / SPEX_SPEED_OF_LIGHT).powi(2);
+    let radicand = k * k - (nuclear_charge / SPEX_SPEED_OF_LIGHT).powi(2);
     if !radicand.is_finite() || radicand <= 0.0 {
         return Err(DiracError::SupercriticalOrigin { radicand });
     }
@@ -2291,7 +2362,15 @@ fn assemble_solution(
     match_index: usize,
     outer_index: usize,
 ) -> Result<CoreDiracSolution, DiracError> {
-    let outward = integrate_outward(mesh, potential, spec.state.kappa, energy, match_index, true)?;
+    let outward = integrate_outward(
+        mesh,
+        potential,
+        spec.nuclear_charge,
+        spec.state.kappa,
+        energy,
+        match_index,
+        true,
+    )?;
     let inward = integrate_inward(
         mesh,
         potential,
@@ -2491,6 +2570,7 @@ mod tests {
         let state = CoreState::new(1, Kappa::new(-1).unwrap()).unwrap();
         let spec = CoreDiracSpec::new(
             state,
+            1.0,
             EnergyBracket::from_values(-0.6, -0.4).unwrap(),
             mt_radius,
         );
@@ -2524,6 +2604,7 @@ mod tests {
         let exact = C_SQUARED * ((1.0 - z * z / C_SQUARED).sqrt() - 1.0);
         let spec = CoreDiracSpec::new(
             state,
+            z,
             EnergyBracket::from_values(exact - 20.0, exact + 20.0).unwrap(),
             mt_radius,
         );
@@ -2569,6 +2650,7 @@ mod tests {
         let state = CoreState::new(1, Kappa::new(-1).unwrap()).unwrap();
         let search = CoreBracketSearch::new(
             state,
+            1.0,
             mt_radius,
             EnergyBracket::from_values(-0.8, -0.2).unwrap(),
         )
@@ -2579,13 +2661,14 @@ mod tests {
         let solution = solve_core_dirac(
             &mesh,
             &potential,
-            CoreDiracSpec::new(state, bracket, mt_radius),
+            CoreDiracSpec::new(state, 1.0, bracket, mt_radius),
         )
         .unwrap();
         assert_eq!(solution.nodes, state.expected_nodes());
 
         let missing = CoreBracketSearch::new(
             state,
+            1.0,
             mt_radius,
             EnergyBracket::from_values(-0.2, -0.05).unwrap(),
         )
@@ -2614,13 +2697,13 @@ mod tests {
         let bracket = isolate_core_dirac_bracket(
             &mesh,
             &potential,
-            CoreBracketSearch::new(state, mt_radius, window).with_intervals(48),
+            CoreBracketSearch::new(state, 1.0, mt_radius, window).with_intervals(48),
         )
         .unwrap();
         let solution = solve_core_dirac(
             &mesh,
             &potential,
-            CoreDiracSpec::new(state, bracket, mt_radius),
+            CoreDiracSpec::new(state, 1.0, bracket, mt_radius),
         )
         .unwrap();
 
@@ -2635,7 +2718,7 @@ mod tests {
         let shifted_bracket = isolate_core_dirac_bracket(
             &mesh,
             &shifted_potential,
-            CoreBracketSearch::new(state, mt_radius, shifted_window).with_intervals(48),
+            CoreBracketSearch::new(state, 1.0, mt_radius, shifted_window).with_intervals(48),
         )
         .unwrap();
         assert!((shifted_bracket.lower.get() - bracket.lower.get() - shift).abs() < 1.0e-13);
@@ -2643,7 +2726,7 @@ mod tests {
         let shifted_solution = solve_core_dirac(
             &mesh,
             &shifted_potential,
-            CoreDiracSpec::new(state, shifted_bracket, mt_radius),
+            CoreDiracSpec::new(state, 1.0, shifted_bracket, mt_radius),
         )
         .unwrap();
         assert!((shifted_solution.energy.get() - solution.energy.get() - shift).abs() < 1.0e-11);
@@ -2682,6 +2765,7 @@ mod tests {
         let state = CoreState::new(2, kappa).unwrap();
         let spec = CoreDiracSpec::new(
             state,
+            1.0,
             EnergyBracket::from_values(-0.14, -0.11).unwrap(),
             mt_radius,
         );
@@ -2715,6 +2799,7 @@ mod tests {
         let state = CoreState::new(2, kappa).unwrap();
         let spec = CoreDiracSpec::new(
             state,
+            1.0,
             EnergyBracket::from_values(-0.14, -0.11).unwrap(),
             mt_radius,
         );

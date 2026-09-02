@@ -26,6 +26,7 @@ fn hydrogenic_coulomb_1s_has_the_shifted_dirac_energy_and_physical_norm() {
         .unwrap();
     let spec = CoreDiracSpec::new(
         state,
+        1.0,
         EnergyBracket::from_values(-0.6, -0.4).unwrap(),
         muffin_tin_radius,
     );
@@ -61,6 +62,7 @@ fn zero_exchange_action_is_identical_to_homogeneous_core_solve() {
         .unwrap();
     let spec = CoreDiracSpec::new(
         state,
+        1.0,
         EnergyBracket::from_values(-0.6, -0.4).unwrap(),
         muffin_tin_radius,
     );
@@ -97,6 +99,7 @@ fn manufactured_exchange_action_closes_source_equations_and_norm_root() {
         .unwrap();
     let homogeneous_spec = CoreDiracSpec::new(
         state,
+        1.0,
         EnergyBracket::from_values(-0.6, -0.4).unwrap(),
         muffin_tin_radius,
     );
@@ -120,6 +123,7 @@ fn manufactured_exchange_action_closes_source_equations_and_norm_root() {
     let expected_energy = homogeneous.energy.get() + delta;
     let driven_spec = CoreDiracSpec::new(
         state,
+        1.0,
         EnergyBracket::from_values(-0.56, -0.44).unwrap(),
         muffin_tin_radius,
     )
@@ -172,6 +176,71 @@ fn manufactured_exchange_action_closes_source_equations_and_norm_root() {
         let q_numeric = sampled_derivative(&mesh, &driven.q, index);
         assert!((p_numeric - p_rhs).abs() <= 6.0e-5 * p_rhs.abs().max(1.0));
         assert!((q_numeric - q_rhs).abs() <= 6.0e-5 * q_rhs.abs().max(1.0));
+    }
+}
+
+#[test]
+fn explicit_charge_initializes_core_on_a_shallow_fleur_like_mesh() {
+    let mesh = extended_mesh(1.0e-4, 40.0, 0.02);
+    let regular = 20_000.0;
+    let potential = mesh
+        .radii()
+        .iter()
+        .map(|radius| -1.0 / radius.get() + regular)
+        .collect::<Vec<_>>();
+    let inferred_from_first_four = mesh.radii()[..4]
+        .iter()
+        .zip(&potential[..4])
+        .map(|(radius, &value)| -radius.get() * value)
+        .sum::<f64>()
+        / 4.0;
+    assert!(inferred_from_first_four < 0.0);
+
+    let state = CoreState::new(1, Kappa::new(-1).unwrap()).unwrap();
+    let muffin_tin_radius = *mesh
+        .radii()
+        .iter()
+        .min_by(|left, right| {
+            (left.get() - 6.0)
+                .abs()
+                .total_cmp(&(right.get() - 6.0).abs())
+        })
+        .unwrap();
+    let spec = CoreDiracSpec::new(
+        state,
+        1.0,
+        EnergyBracket::from_values(regular - 0.6, regular - 0.4).unwrap(),
+        muffin_tin_radius,
+    );
+    let solution = solve_core_dirac(&mesh, &potential, spec).unwrap();
+    let exact = regular
+        + SPEX_SPEED_OF_LIGHT.powi(2) * ((1.0 - 1.0 / SPEX_SPEED_OF_LIGHT.powi(2)).sqrt() - 1.0);
+    assert!((solution.energy.get() - exact).abs() < 2.0e-5);
+    assert_eq!(solution.nodes, 0);
+}
+
+#[test]
+fn core_dirac_rejects_invalid_explicit_nuclear_charge() {
+    let mesh = extended_mesh(1.0e-4, 40.0, 0.02);
+    let potential = mesh
+        .radii()
+        .iter()
+        .map(|radius| -1.0 / radius.get())
+        .collect::<Vec<_>>();
+    let state = CoreState::new(1, Kappa::new(-1).unwrap()).unwrap();
+    let muffin_tin_radius = mesh.radii()[mesh.len() / 2];
+    for nuclear_charge in [0.0, -1.0, f64::INFINITY, f64::NAN] {
+        let spec = CoreDiracSpec::new(
+            state,
+            nuclear_charge,
+            EnergyBracket::from_values(-0.6, -0.4).unwrap(),
+            muffin_tin_radius,
+        );
+        assert!(matches!(
+            solve_core_dirac(&mesh, &potential, spec),
+            Err(DiracError::InvalidNuclearCharge(value))
+                if value.to_bits() == nuclear_charge.to_bits()
+        ));
     }
 }
 

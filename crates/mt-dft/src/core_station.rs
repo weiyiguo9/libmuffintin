@@ -967,9 +967,10 @@ fn solve_bound_core_state(
     let bracket = isolate_core_dirac_bracket(
         &extended.mesh,
         &extended.values,
-        CoreBracketSearch::new(state, muffin_tin_radius, window).with_intervals(search_intervals),
+        CoreBracketSearch::new(state, nuclear_charge, muffin_tin_radius, window)
+            .with_intervals(search_intervals),
     )?;
-    let spec = CoreDiracSpec::new(state, bracket, muffin_tin_radius);
+    let spec = CoreDiracSpec::new(state, nuclear_charge, bracket, muffin_tin_radius);
     let solution = solve_core_dirac(&extended.mesh, &extended.values, spec)?;
     Ok(SolvedBoundCoreState {
         solution,
@@ -1201,6 +1202,7 @@ mod tests {
         let state = CoreState::new(1, Kappa::new(-1).unwrap()).unwrap();
         let spec = CoreDiracSpec::new(
             state,
+            1.0,
             EnergyBracket::from_values(-0.6, -0.4).unwrap(),
             muffin_tin_mesh.last(),
         );
@@ -1396,6 +1398,7 @@ mod tests {
         let state = CoreState::new(1, Kappa::new(-1).unwrap()).unwrap();
         let solve_spec = CoreDiracSpec::new(
             state,
+            1.0,
             EnergyBracket::from_values(-0.6, -0.4).unwrap(),
             mesh.radii()[muffin_tin_index],
         );

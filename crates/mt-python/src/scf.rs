@@ -10,8 +10,15 @@ use pyo3::types::PyDict;
 use crate::checkpoint::{Checkpoint, CheckpointPhysics};
 use crate::export::{array2, export_dict};
 
-fn py_error(error: impl std::fmt::Display) -> PyErr {
-    PyValueError::new_err(error.to_string())
+fn py_error(error: impl std::error::Error) -> PyErr {
+    let mut message = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        message.push_str(": ");
+        message.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    PyValueError::new_err(message)
 }
 
 fn take<T>(slot: &Mutex<Option<T>>, name: &str) -> PyResult<T> {

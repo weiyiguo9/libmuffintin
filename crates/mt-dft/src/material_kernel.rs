@@ -44,7 +44,7 @@ use muffintin_operators::{
 };
 use muffintin_sphere::{
     CorePotentialContinuationSpec, CoreState, DiracError, ExtendedCorePotential, RadialEquation,
-    SpexSpinOrbitPotential, SpinOrbitRadialError, spex_spin_orbit_radial_shell,
+    SpexSpinOrbitPotential, SphereField, SpinOrbitRadialError, spex_spin_orbit_radial_shell,
 };
 use muffintin_symmetry::kmesh::{
     KMeshReduction, KMeshReductionError, RegularKMesh, reduce_regular_mesh,
@@ -1029,7 +1029,7 @@ impl MaterialKernel {
             points: solved_points,
             states,
             reduction: None,
-            density_layout: None,
+            density_layout: Some(potential.scalar().interstitial().layout().clone()),
             symmetry_transforms: Vec::new(),
             spacegroup_number: None,
         })
@@ -1082,7 +1082,7 @@ impl MaterialKernel {
             points: solved_points,
             states,
             reduction: None,
-            density_layout: None,
+            density_layout: Some(potential.scalar().interstitial().layout().clone()),
             symmetry_transforms: Vec::new(),
             spacegroup_number: None,
         })
@@ -1656,10 +1656,8 @@ impl MaterialKernel {
                 let charge = combine_scalar_fields(up.charge(), 0.5, down.charge(), 0.5)?;
                 let longitudinal = combine_scalar_fields(up.charge(), 0.5, down.charge(), -0.5)?;
                 let zero = charge.zero_like();
-                Ok(RegionalDensity::new(
-                    charge,
-                    [zero.clone(), zero, longitudinal],
-                )?)
+                let density = RegionalDensity::new(charge, [zero.clone(), zero, longitudinal])?;
+                self.project_density_muffin_tin_layout(&density)
             }
             CheckpointKPointSolution::Spinor { basis, .. } => {
                 let spinor_points = bands
@@ -1682,14 +1680,32 @@ impl MaterialKernel {
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(synthesize_full_spinor_valence_density(
+                let density = synthesize_full_spinor_valence_density(
                     self.geometry.clone(),
                     density_layout,
                     &basis.density_sites,
                     &spinor_points,
-                )?)
+                )?;
+                self.project_density_muffin_tin_layout(&density)
             }
         }
+    }
+
+    fn project_density_muffin_tin_layout(
+        &self,
+        density: &RegionalDensity,
+    ) -> Result<RegionalDensity, MaterialKernelError> {
+        let charge =
+            project_scalar_muffin_tin_layout(density.charge(), self.frozen_potential.scalar())?;
+        let magnetization = density
+            .magnetization()
+            .iter()
+            .zip(self.frozen_potential.magnetic())
+            .map(|(source, template)| project_scalar_muffin_tin_layout(source, template))
+            .collect::<Result<Vec<_>, _>>()?
+            .try_into()
+            .expect("density and potential both have three magnetic components");
+        Ok(RegionalDensity::new(charge, magnetization)?)
     }
 
     fn extended_core_meshes(
@@ -1935,14 +1951,6 @@ impl ScfPhysics for MaterialKernel {
             &weights,
             relativity,
         )?;
-        bands.density_layout = Some(production_density_layout(
-            self.reciprocal,
-            ScfKMesh {
-                reduction: ScfKReduction::Full,
-                ..k_mesh
-            },
-            one_particle.basis.plane_wave_cutoff,
-        )?);
         bands.reduction = Some(reduction);
         bands.symmetry_transforms = transforms;
         bands.spacegroup_number = spacegroup_number;
@@ -2199,6 +2207,34 @@ fn combine_scalar_fields(
     result.add_scaled(left_scale, left)?;
     result.add_scaled(right_scale, right)?;
     Ok(result)
+}
+
+fn project_scalar_muffin_tin_layout(
+    source: &RegionalScalarField,
+    template: &RegionalScalarField,
+) -> Result<RegionalScalarField, MaterialKernelError> {
+    let muffin_tins = source
+        .muffin_tins()
+        .iter()
+        .zip(template.muffin_tins())
+        .map(|(source, template)| {
+            let channels = template.field().channels().map(|(channel, _)| {
+                let values = source.field().channel(channel.l, channel.m).map_or_else(
+                    || vec![Complex64::new(0.0, 0.0); source.mesh().len()],
+                    <[Complex64]>::to_vec,
+                );
+                ((channel.l, channel.m), values)
+            });
+            let field = SphereField::new(template.field().convention(), channels)
+                .map_err(crate::RegionalError::from)?;
+            MuffinTinField::new(source.mesh().clone(), field).map_err(Into::into)
+        })
+        .collect::<Result<Vec<_>, MaterialKernelError>>()?;
+    Ok(RegionalScalarField::new(
+        source.geometry().clone(),
+        muffin_tins,
+        source.interstitial().clone(),
+    )?)
 }
 
 fn collinear_interstitial_potential(

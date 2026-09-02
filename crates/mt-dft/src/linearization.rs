@@ -207,8 +207,13 @@ pub(crate) fn solve_atomic_bound_state(
             isolate_core_dirac_bracket(
                 mesh,
                 potential,
-                CoreBracketSearch::new(request.state, request.muffin_tin_radius, window)
-                    .with_intervals(SEEDED_WINDOW_INTERVALS),
+                CoreBracketSearch::new(
+                    request.state,
+                    request.nuclear_charge,
+                    request.muffin_tin_radius,
+                    window,
+                )
+                .with_intervals(SEEDED_WINDOW_INTERVALS),
             )
             .ok()
         });
@@ -217,8 +222,13 @@ pub(crate) fn solve_atomic_bound_state(
         None => isolate_core_dirac_bracket(
             mesh,
             potential,
-            CoreBracketSearch::new(request.state, request.muffin_tin_radius, energy_window)
-                .with_intervals(request.intervals),
+            CoreBracketSearch::new(
+                request.state,
+                request.nuclear_charge,
+                request.muffin_tin_radius,
+                energy_window,
+            )
+            .with_intervals(request.intervals),
         )
         .map_err(|source| LinearizationEnergyError::Atomic {
             state: request.state,
@@ -228,7 +238,12 @@ pub(crate) fn solve_atomic_bound_state(
     let solution = solve_core_dirac(
         mesh,
         potential,
-        CoreDiracSpec::new(request.state, bracket, request.muffin_tin_radius),
+        CoreDiracSpec::new(
+            request.state,
+            request.nuclear_charge,
+            bracket,
+            request.muffin_tin_radius,
+        ),
     )
     .map_err(|source| LinearizationEnergyError::Atomic {
         state: request.state,

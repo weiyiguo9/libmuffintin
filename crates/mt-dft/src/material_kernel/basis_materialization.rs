@@ -1,5 +1,28 @@
 use super::*;
 
+/// Preserve the current muffin-tin monopole and attach the confining atomic
+/// reference tail used to generate occupied and high-l linearization states.
+/// The periodic continuation remains untouched for the physical core solve.
+fn atomic_reference_potential(extended: &ExtendedCorePotential) -> (ExponentialMesh, Vec<f64>) {
+    let boundary = extended.muffin_tin_points - 1;
+    let boundary_radius = extended.mesh.radii()[boundary].get();
+    let boundary_value = extended.values[boundary];
+    let confining_slope = 0.125;
+    let last = extended
+        .mesh
+        .radii()
+        .iter()
+        .position(|radius| radius.get() >= boundary_radius + 20.0)
+        .unwrap_or(extended.mesh.len() - 1);
+    let mesh = ExponentialMesh::new(extended.mesh.first(), extended.mesh.increment(), last + 1)
+        .expect("a prefix of a validated exponential mesh is valid");
+    let mut potential = extended.values[..=last].to_vec();
+    for (index, value) in potential.iter_mut().enumerate().skip(boundary + 1) {
+        *value = boundary_value + confining_slope * (mesh.radii()[index].get() - boundary_radius);
+    }
+    (mesh, potential)
+}
+
 impl MaterialKernel {
     pub fn scalar_linearization_energies(
         &self,
@@ -329,21 +352,36 @@ impl MaterialKernel {
                 });
             }
             LinearizationEnergyGenerator::Atomic => {
+                let (atomic_mesh, atomic_potential) = atomic_reference_potential(extended);
+                let seed = match recipe.seed {
+                    Some(seed) => Some(seed),
+                    None => match self.checkpoint_anchor(recipe, lo_ordinal) {
+                        Ok(seed) => Some(seed),
+                        Err(
+                            MaterialKernelError::MissingFrozenCheckpointAnchor { .. }
+                            | MaterialKernelError::MissingFrozenCheckpointBase { .. }
+                            | MaterialKernelError::MissingFrozenCheckpointLo { .. },
+                        ) => None,
+                        Err(error) => return Err(error),
+                    },
+                };
                 let kappas = channel_kappas(recipe.identity)?;
                 let mut components = Vec::with_capacity(kappas.len());
                 let mut partner_energies = Vec::with_capacity(kappas.len());
                 for kappa in kappas {
                     let state = CoreState::new(channel_n(recipe.identity), kappa)?;
-                    let generated = generate_atomic_energy(
-                        &extended.mesh,
-                        &extended.values,
-                        AtomicEnergyRequest::new(
-                            state,
-                            self.nuclear_charges[site_index],
-                            site.radius,
-                        ),
-                    )
-                    .map_err(|source| channel_generator_error(recipe, source))?;
+                    let request = AtomicEnergyRequest::new(
+                        state,
+                        self.nuclear_charges[site_index],
+                        site.radius,
+                    );
+                    let request = match seed {
+                        Some(seed) => request.with_seed(seed),
+                        None => request,
+                    };
+                    let generated =
+                        generate_atomic_energy(&atomic_mesh, &atomic_potential, request)
+                            .map_err(|source| channel_generator_error(recipe, source))?;
                     partner_energies.push((kappa, generated.energy));
                     components.push(generated);
                 }

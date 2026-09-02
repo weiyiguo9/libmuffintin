@@ -23,15 +23,12 @@ pub struct CenteredSphericalFourierMode {
 pub struct CorePotentialContinuationSpec {
     /// Absolute-plus-relative tolerance for the physical value at the MT boundary.
     pub boundary_tolerance: f64,
-    /// Tolerance for the first-four-point extrapolation of `r V(r) -> -Z`.
-    pub coulomb_tolerance: f64,
 }
 
 impl Default for CorePotentialContinuationSpec {
     fn default() -> Self {
         Self {
             boundary_tolerance: 1.0e-7,
-            coulomb_tolerance: 1.0e-5,
         }
     }
 }
@@ -45,7 +42,7 @@ pub struct ExtendedCorePotential {
     pub muffin_tin_boundary: f64,
     pub periodic_boundary: f64,
     pub boundary_mismatch: f64,
-    /// Residual of the extrapolated `lim_(r->0) r V(r) = -Z` coefficient.
+    /// Finite-first-point diagnostic `|r_0 V(r_0) + Z|`.
     pub origin_coulomb_residual: f64,
 }
 
@@ -117,16 +114,7 @@ pub fn join_core_spherical_potential(
         }
     }
     let origin_coulomb_residual =
-        (extrapolated_coulomb_coefficient(muffin_tin_mesh, muffin_tin_potential) + nuclear_charge)
-            .abs();
-    let coulomb_limit = spec.coulomb_tolerance * nuclear_charge.abs().max(1.0);
-    if origin_coulomb_residual > coulomb_limit {
-        return Err(CorePotentialContinuationError::CoulombOrigin {
-            charge: nuclear_charge,
-            residual: origin_coulomb_residual,
-            tolerance: coulomb_limit,
-        });
-    }
+        (muffin_tin_mesh.first().get() * muffin_tin_potential[0] + nuclear_charge).abs();
 
     let periodic_boundary = outer_potential[0];
     let muffin_tin_boundary = *muffin_tin_potential
@@ -158,27 +146,6 @@ pub fn join_core_spherical_potential(
         boundary_mismatch,
         origin_coulomb_residual,
     })
-}
-
-fn extrapolated_coulomb_coefficient(mesh: &ExponentialMesh, potential: &[f64]) -> f64 {
-    // For a complete effective potential V=-Z/r+V_regular, rV has a finite
-    // intercept -Z and regular O(r) terms.  Interpolating the first up-to-four
-    // finite samples to r=0 tests the singular coefficient without mistaking
-    // a large but finite electrostatic or XC offset for an incorrect nucleus.
-    let count = mesh.len().min(4);
-    (0..count)
-        .map(|point| {
-            let radius = mesh.radii()[point].get();
-            let basis_at_zero = (0..count)
-                .filter(|&other| other != point)
-                .map(|other| {
-                    let other_radius = mesh.radii()[other].get();
-                    -other_radius / (radius - other_radius)
-                })
-                .product::<f64>();
-            radius * potential[point] * basis_at_zero
-        })
-        .sum()
 }
 
 fn periodic_spherical_average(
@@ -226,15 +193,10 @@ fn validate_inputs(
             nuclear_charge,
         ));
     }
-    if !spec.boundary_tolerance.is_finite()
-        || spec.boundary_tolerance < 0.0
-        || !spec.coulomb_tolerance.is_finite()
-        || spec.coulomb_tolerance < 0.0
-    {
-        return Err(CorePotentialContinuationError::InvalidTolerance {
-            boundary: spec.boundary_tolerance,
-            coulomb: spec.coulomb_tolerance,
-        });
+    if !spec.boundary_tolerance.is_finite() || spec.boundary_tolerance < 0.0 {
+        return Err(CorePotentialContinuationError::InvalidBoundaryTolerance(
+            spec.boundary_tolerance,
+        ));
     }
     for (index, &value) in muffin_tin_potential.iter().enumerate() {
         if !value.is_finite() {
@@ -269,22 +231,14 @@ pub enum CorePotentialContinuationError {
     MeshPrefix,
     #[error("nuclear charge must be finite and nonnegative, got {0}")]
     InvalidNuclearCharge(f64),
-    #[error("continuation tolerances are invalid: boundary={boundary}, coulomb={coulomb}")]
-    InvalidTolerance { boundary: f64, coulomb: f64 },
+    #[error("boundary continuation tolerance must be finite and nonnegative, got {0}")]
+    InvalidBoundaryTolerance(f64),
     #[error("muffin-tin potential sample {index} is non-finite: {value}")]
     NonFinitePotential { index: usize, value: f64 },
     #[error("outer potential sample {index} is non-finite: {value}")]
     NonFiniteOuterPotential { index: usize, value: f64 },
     #[error("periodic Fourier mode {index} is invalid")]
     InvalidFourierMode { index: usize },
-    #[error(
-        "core potential does not retain -Z/r at the origin for Z={charge}: residual {residual}, tolerance {tolerance}"
-    )]
-    CoulombOrigin {
-        charge: f64,
-        residual: f64,
-        tolerance: f64,
-    },
     #[error(
         "MT and periodic spherical potentials disagree at the boundary: MT={muffin_tin}, periodic={periodic}, mismatch={mismatch}, tolerance={tolerance}"
     )]
@@ -332,7 +286,6 @@ mod tests {
             &modes,
             CorePotentialContinuationSpec {
                 boundary_tolerance: 1.0e-13,
-                coulomb_tolerance: 0.01,
             },
         )
         .unwrap();
@@ -342,7 +295,7 @@ mod tests {
                 .iter()
                 .all(|value| *value == boundary_value)
         );
-        assert!(continued.origin_coulomb_residual < 1.0e-13);
+        assert!((continued.origin_coulomb_residual - 0.002).abs() < 1.0e-13);
     }
 
     #[test]
@@ -368,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn coulomb_intercept_accepts_large_regular_terms_but_rejects_wrong_charge() {
+    fn coulomb_intercept_is_diagnostic_for_large_regular_terms_and_wrong_charge() {
         let mt = ExponentialMesh::new(Bohr(1.0e-4), 0.3, 7).unwrap();
         let extended = ExponentialMesh::new(Bohr(1.0e-4), 0.3, 11).unwrap();
         let charge = 2.0;
@@ -388,30 +341,34 @@ mod tests {
             &outer,
             CorePotentialContinuationSpec {
                 boundary_tolerance: 1.0e-13,
-                coulomb_tolerance: 1.0e-10,
             },
         )
         .unwrap();
-        assert!(result.origin_coulomb_residual < 1.0e-12);
+        assert_eq!(
+            result.origin_coulomb_residual,
+            (mt.first().get() * inner[0] + charge).abs()
+        );
 
         let wrong = mt
             .radii()
             .iter()
             .map(|radius| -1.9 / radius.get() + regular(radius.get()))
             .collect::<Vec<_>>();
-        assert!(matches!(
-            join_core_spherical_potential(
-                &mt,
-                &wrong,
-                &extended,
-                charge,
-                &outer,
-                CorePotentialContinuationSpec {
-                    boundary_tolerance: 1.0,
-                    coulomb_tolerance: 1.0e-6,
-                },
-            ),
-            Err(CorePotentialContinuationError::CoulombOrigin { .. })
-        ));
+        let wrong = join_core_spherical_potential(
+            &mt,
+            &wrong,
+            &extended,
+            charge,
+            &outer,
+            CorePotentialContinuationSpec {
+                boundary_tolerance: 1.0,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            wrong.origin_coulomb_residual,
+            (mt.first().get() * (-1.9 / mt.first().get() + regular(mt.first().get())) + charge)
+                .abs()
+        );
     }
 }

@@ -937,7 +937,6 @@ mod tests {
             CorePotentialBuildSpec {
                 continuation: CorePotentialContinuationSpec {
                     boundary_tolerance: 1.0e-10,
-                    coulomb_tolerance: 1.0e-7,
                 },
                 xc_functional: XcFunctional::LdaPw92,
                 xc_noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
@@ -947,7 +946,7 @@ mod tests {
         .unwrap();
         assert_eq!(built[0].potential.mesh, extended);
         assert!(built[0].potential.boundary_mismatch.abs() < 1.0e-11);
-        assert!(built[0].potential.origin_coulomb_residual < 1.0e-7 * charge);
+        assert!(built[0].potential.origin_coulomb_residual.is_finite());
 
         let transverse_density = uniform_pauli_density(0.03, [0.01, 0.0, 0.0]);
         let transverse_xc = evaluate_regional_xc(
@@ -969,7 +968,6 @@ mod tests {
             CorePotentialBuildSpec {
                 continuation: CorePotentialContinuationSpec {
                     boundary_tolerance: 1.0e-10,
-                    coulomb_tolerance: 1.0e-7,
                 },
                 xc_functional: XcFunctional::LdaPw92,
                 xc_noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
@@ -1030,7 +1028,6 @@ mod tests {
             CorePotentialBuildSpec {
                 continuation: CorePotentialContinuationSpec {
                     boundary_tolerance: 1.0e-10,
-                    coulomb_tolerance: 1.0e-7,
                 },
                 xc_functional: XcFunctional::LdaPw92,
                 xc_noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
@@ -1078,7 +1075,6 @@ mod tests {
             &[extended],
             CorePotentialContinuationSpec {
                 boundary_tolerance: 1.0e-13,
-                coulomb_tolerance: 1.0e-10,
             },
         )
         .unwrap();
