@@ -127,7 +127,9 @@ untruncated dump of orbital-pair reciprocal support.
 
 `libmuffintin-prodbasis` follows `mixedbasis.f` (SPEX 06.00pre36):
 
-1. unordered valence–valence pairs and selected core–valence pairs;
+1. one explicit pair mode: unordered valence–valence pairs, plus selected
+   core–valence pairs, core–core pairs, or both (`vv`, `cv+vv`, `cc+vv`,
+   `cc+cv+vv` in `mixedbasis.f:19–22`);
 2. triangle $|l_1-l_2|\le L\le l_1+l_2$ and parity $L+l_1+l_2$ even
    (`mixedbasis.f:335–337`);
 3. product convention `/r` (`mixedbasis.f:344–346`);
@@ -141,6 +143,14 @@ untruncated dump of orbital-pair reciprocal support.
 8. interstitial auxiliary membership $|q+G|\le g_{\mathrm{cut}}$
    (`mixedbasis.f:247–249`), ordered by $|G|$ then integer index, constructed
    independently of the raw pair-G list.
+
+For the Dirac path, `DiracProductMode` represents those four modes. It also
+provides the explicitly non-SPEX `CoreMember` mode, containing only CV and CC,
+for the library's rectangular core-exchange builder. The core radials attached
+to `DiracProductSource` are the caller-selected core set. Each core radial's
+signed `kappa` fixes its orbital angular momentum, so the source list plays the
+role of SPEX's `CORES` mask and `lcutc` loop; `product_l_max` remains the
+mixed-product angular cutoff corresponding to SPEX `lcutm`.
 
 `write_mixedbasis` is post-`TOL`. Untruncated overlap spectra are therefore
 not recovered from a `spex.mb` file. This milestone does not check in a live
@@ -162,7 +172,8 @@ Acceptance requires:
   filter drops a label that the capability still supplied;
 - retained $L=0$ constant function and an independently recomputed
   nonzero-cutoff projector on the retained (non-constant) span;
-- valence–valence plus selected core–valence provenance;
+- mode-dependent valence–valence, selected core–valence, and core–core
+  provenance;
 - $|q+G|$ auxiliary completeness and a nonzero analytic interstitial
   pair vertex whose every coefficient matches
   $\Theta_I(G_{\mathrm{aux}}-G_{\mathrm{wrap}}-G_{\mathrm{raw}})$, including

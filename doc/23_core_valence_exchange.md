@@ -663,6 +663,30 @@ an uncancelled core self-interaction, so the configuration is not a
 publishable result or a shippable mode. The production exit is M3c with the
 relaxed Fock core.
 
+### 4.3 CoQui core-policy slot
+
+The CoQui handoff keeps the downstream core policy separate from the product
+space used to obtain the converged libmuffintin frame:
+
+| Policy | CoQui active orbital space | Interaction handoff | Status |
+|---|---|---|---|
+| `FrozenCore` | valence only | VV THC plus the one-body contribution of the final internally relaxed core | planned first route |
+| `RelaxedCore` | valence and explicit core orbitals | a unified active-space interaction covering VV, CV, VC, and CC, together with a core-update/rebuild contract | reserved, not implemented |
+
+`FrozenCore` at this boundary does not require a DFT-frozen core. The producer
+may first converge the M3c relaxed-core loop and freeze only that final core
+frame for CoQui. The `RelaxedCore` slot is deferred because the current
+CoQui-native writer has neither a typed core-radial update handshake nor a
+contract for rebuilding all core-member interaction factors after an update.
+Until both exist, exporting explicit mutable core orbitals would create a
+stale interaction after the first core update.
+
+This future slot is an interface and schema reservation, not a numerical
+reservation. The VV mixed-product basis remains VV-only for both policies;
+no unused core products are added to it. If `RelaxedCore` is implemented, its
+unified active-space interaction is built as a separate product rather than
+by enlarging every existing VV contraction.
+
 ## 5. Explicit exclusions
 
 This contract does not include:

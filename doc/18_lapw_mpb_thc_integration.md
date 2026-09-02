@@ -320,7 +320,13 @@ cryptographic digest, with a per-comparison collision residual of one part
 in $2^{64}$; external struct literals cannot forge that stamp.
 
 The overlap cutoff of section 1.3 projects the ordered PP/QQ union into retained
-scalar-charge modes. Muffin-tin contraction applies the coefficient/phase
+scalar-charge modes. `build_spinor_mpb` constructs that union from
+valence–valence radial products only (`DiracProductMode::ValenceValence`),
+even when the shared input also carries core sidecars. The rectangular
+CV/VC/CC oracle instead uses the library-specific
+`DiracProductMode::CoreMember` span containing CV and CC products only, so no
+core products are imposed on the VV basis and no unused VV products are
+imposed on the core basis. Muffin-tin contraction applies the coefficient/phase
 convention of section 1.2 (adapted to the Dirac coefficient pair) with routing by
 component sector; interstitial contraction sums the Pauli terms of section 1.3 at
 $G_{\mathrm{rel}}$, which must exist on the spinor raw pair support. One

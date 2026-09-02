@@ -7,8 +7,8 @@ use muffintin_core::{
 use muffintin_envelope::Provenance;
 use muffintin_operators::solve_real_symmetric;
 use muffintin_prodbasis::mpb::{
-    DEFAULT_TOLERANCE, DiracBlochVertexAccumulator, MpbError, apply_dirac_overlap_cutoff,
-    auxiliary_interstitial_support, untruncated_dirac_product_space,
+    DEFAULT_TOLERANCE, DiracBlochVertexAccumulator, DiracProductMode, MpbError,
+    apply_dirac_overlap_cutoff, auxiliary_interstitial_support, untruncated_dirac_product_space,
 };
 use muffintin_prodbasis::{
     AuxiliaryPartition, AuxiliaryRegion, ChannelSpectrum, CompiledAuxiliaryBasis,
@@ -228,7 +228,8 @@ fn dirac_union_spectra_keep_separate_pp_and_qq_and_match_independent_lowdin() {
     let source = union_source();
     let lattice = cubic_lattice();
     let g_cut = InverseBohr(0.8);
-    let raw = untruncated_dirac_product_space(&source, 1).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 1, DiracProductMode::ValenceValence).unwrap();
     let l0: Vec<_> = raw
         .radial_products
         .iter()
@@ -365,7 +366,8 @@ fn dirac_union_spectra_keep_separate_pp_and_qq_and_match_independent_lowdin() {
 fn dirac_cutoff_keeps_eigenvalues_equal_to_threshold() {
     let source = union_source();
     let lattice = cubic_lattice();
-    let raw = untruncated_dirac_product_space(&source, 0).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 0, DiracProductMode::ValenceValence).unwrap();
     let spectrum = raw.spectrum(0, 0).unwrap();
     let threshold = spectrum
         .eigenvalues
@@ -395,7 +397,8 @@ fn dirac_cutoff_keeps_eigenvalues_equal_to_threshold() {
 fn dirac_retained_layout_is_site_l_m_n_then_interstitial() {
     let source = union_source();
     let lattice = cubic_lattice();
-    let raw = untruncated_dirac_product_space(&source, 1).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 1, DiracProductMode::ValenceValence).unwrap();
     let auxiliary = apply_dirac_overlap_cutoff(
         &raw,
         &source,
@@ -444,7 +447,8 @@ fn dirac_retained_layout_is_site_l_m_n_then_interstitial() {
 fn dirac_bloch_interstitial_matches_independent_theta_including_umklapp() {
     let source = union_source();
     let lattice = cubic_lattice();
-    let raw = untruncated_dirac_product_space(&source, 0).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 0, DiracProductMode::ValenceValence).unwrap();
     let auxiliary = apply_dirac_overlap_cutoff(
         &raw,
         &source,
@@ -497,7 +501,9 @@ fn dirac_bloch_interstitial_matches_independent_theta_including_umklapp() {
         Provenance::default(),
     )
     .unwrap();
-    let raw_u = untruncated_dirac_product_space(&folded_source, 0).unwrap();
+    let raw_u =
+        untruncated_dirac_product_space(&folded_source, 0, DiracProductMode::ValenceValence)
+            .unwrap();
     let auxiliary_u = apply_dirac_overlap_cutoff(
         &raw_u,
         &folded_source,
@@ -539,7 +545,8 @@ fn apply_dirac_overlap_cutoff_rejects_missing_extra_and_malformed_spectra() {
     let source = union_source();
     let lattice = cubic_lattice();
     let g_cut = InverseBohr(0.5);
-    let raw = untruncated_dirac_product_space(&source, 1).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 1, DiracProductMode::ValenceValence).unwrap();
     assert!(
         apply_dirac_overlap_cutoff(&raw, &source, DEFAULT_TOLERANCE, 1.0, &lattice, g_cut).is_ok()
     );
@@ -601,7 +608,8 @@ fn apply_dirac_overlap_cutoff_rejects_missing_extra_and_malformed_spectra() {
 fn dirac_bloch_accumulator_rejects_non_bloch_identity() {
     let source = union_source();
     let lattice = cubic_lattice();
-    let raw = untruncated_dirac_product_space(&source, 0).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 0, DiracProductMode::ValenceValence).unwrap();
     let auxiliary = apply_dirac_overlap_cutoff(
         &raw,
         &source,

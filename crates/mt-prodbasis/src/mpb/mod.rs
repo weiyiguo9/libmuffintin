@@ -22,7 +22,7 @@ mod vertices;
 
 pub use construct::{apply_overlap_cutoff, spex_mixed_product_basis};
 pub use dirac_construct::{
-    apply_dirac_overlap_cutoff, require_matching_dirac_source_and_raw,
+    DiracProductMode, apply_dirac_overlap_cutoff, require_matching_dirac_source_and_raw,
     untruncated_dirac_product_space,
 };
 pub use dirac_vertices::{
@@ -63,6 +63,8 @@ pub enum MpbError {
     InvalidNspinFactor(f64),
     #[error("product G-cutoff must be finite and nonnegative, got {0}")]
     InvalidGCutoff(f64),
+    #[error("core-valence product mode requires at least one selected core radial")]
+    CoreValenceModeWithoutSelectedCore,
     #[error("no muffin-tin products for site {site} and L={l}")]
     EmptyChannel { site: usize, l: u32 },
     #[error("overlap cutoff left no modes for site {site} and L={l}")]

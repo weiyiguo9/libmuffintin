@@ -8,7 +8,7 @@ use crate::spinor_product::{
 use muffintin_core::{InverseBohr, RelativisticChannel};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
 use muffintin_prodbasis::mpb::{
-    DiracBlochVertexAccumulator, DiracMtSectorTable, DiracVertexContext, MpbError,
+    DiracBlochVertexAccumulator, DiracMtSectorTable, DiracProductMode, DiracVertexContext, MpbError,
     apply_dirac_overlap_cutoff, untruncated_dirac_product_space,
 };
 use muffintin_prodbasis::{
@@ -121,7 +121,8 @@ pub fn build_spinor_exchange_mpb(
     let mut source = input.source.clone();
     source.interstitial_pair_support = RawInterstitialPairSupport::empty(source.q);
     source.validate().map_err(MpbError::from)?;
-    let raw = untruncated_dirac_product_space(&source, spec.product_l_max)?;
+    let raw =
+        untruncated_dirac_product_space(&source, spec.product_l_max, DiracProductMode::CoreMember)?;
     let auxiliary = apply_dirac_overlap_cutoff(
         &raw,
         &source,

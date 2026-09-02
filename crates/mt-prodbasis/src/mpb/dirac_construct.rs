@@ -12,10 +12,48 @@ use muffintin_core::{ExponentialMesh, InverseBohr, ReciprocalLattice};
 use muffintin_envelope::Provenance;
 use std::collections::{BTreeMap, HashSet};
 
+/// SPEX orbital-pair mode for the untruncated muffin-tin product set.
+///
+/// The first four variants reproduce `mixedbasis(mode)` exactly: `vv`,
+/// `cv+vv`, `cc+vv`, and `cc+cv+vv` (`mixedbasis.f:67`). `CoreMember` is the
+/// library-specific span for rectangular CV/VC/CC exchange and deliberately
+/// excludes VV. Core radials present in the [`DiracProductSource`] are the
+/// caller-selected core set.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum DiracProductMode {
+    ValenceValence,
+    ValenceValenceAndCoreValence,
+    ValenceValenceAndCoreCore,
+    All,
+    CoreMember,
+}
+
+impl DiracProductMode {
+    const fn includes_valence_valence(self) -> bool {
+        !matches!(self, Self::CoreMember)
+    }
+
+    const fn includes_core_valence(self) -> bool {
+        matches!(
+            self,
+            Self::ValenceValenceAndCoreValence | Self::All | Self::CoreMember
+        )
+    }
+
+    const fn includes_core_core(self) -> bool {
+        matches!(
+            self,
+            Self::ValenceValenceAndCoreCore | Self::All | Self::CoreMember
+        )
+    }
+}
+
 /// Untruncated Dirac mixed-product space: separate PP and QQ radial products.
 ///
-/// Each allowed scalar $L$ emits PP using $P_i P_j/r$ and QQ using $Q_i Q_j/r$
-/// without merging sectors. Each populated $(site,L)$ stores a complete PP
+/// `mode` decides which orbital-pair families of `source` are
+/// enumerated; core radials present in the source are ignored unless a core
+/// family is selected. Each allowed scalar $L$ emits PP using $P_i P_j/r$
+/// and QQ using $Q_i Q_j/r$ without merging sectors. Each populated $(site,L)$ stores a complete PP
 /// prefix in canonical orbital-pair order, then a complete QQ suffix in that
 /// same pair order. `CoupledChannel::radial_index` is local to each
 /// $(site,L)$ block (`0..products_for_this_site_L`, SPEX flatten
@@ -25,14 +63,23 @@ use std::collections::{BTreeMap, HashSet};
 pub fn untruncated_dirac_product_space(
     source: &DiracProductSource,
     product_l_max: u32,
+    mode: DiracProductMode,
 ) -> Result<DiracRawProductSpace, MpbError> {
     source.validate()?;
+    if mode.includes_core_valence()
+        && source
+            .radials
+            .iter()
+            .all(|radials| radials.cores.is_empty())
+    {
+        return Err(MpbError::CoreValenceModeWithoutSelectedCore);
+    }
     let mut radial_products = Vec::new();
     let mut channels = Vec::new();
     let mut overlap_spectra = Vec::new();
     for (site, radials) in source.radials.iter().enumerate() {
         for l in 0..=product_l_max {
-            let products = enumerate_site_channel(source, site, radials, l)?;
+            let products = enumerate_site_channel(source, site, radials, l, mode)?;
             if products.is_empty() {
                 continue;
             }
@@ -265,38 +312,45 @@ fn enumerate_site_channel(
     site: usize,
     radials: &DiracSiteRadialSet,
     l: u32,
+    mode: DiracProductMode,
 ) -> Result<Vec<DiracRawRadialProduct>, MpbError> {
     let valence = radials.valence.iter().collect::<Vec<_>>();
     let mut seen = HashSet::new();
     let mut pairs = Vec::new();
-    for &left in &valence {
-        for &right in &valence {
-            record_unique_pair(
-                (ProductOrbitalKind::Valence, left),
-                (ProductOrbitalKind::Valence, right),
-                &mut seen,
-                &mut pairs,
-            );
+    if mode.includes_valence_valence() {
+        for &left in &valence {
+            for &right in &valence {
+                record_unique_pair(
+                    (ProductOrbitalKind::Valence, left),
+                    (ProductOrbitalKind::Valence, right),
+                    &mut seen,
+                    &mut pairs,
+                );
+            }
         }
     }
-    for core in &radials.cores {
-        for &valence in &valence {
-            record_unique_pair(
-                (ProductOrbitalKind::Core, core),
-                (ProductOrbitalKind::Valence, valence),
-                &mut seen,
-                &mut pairs,
-            );
+    if mode.includes_core_valence() {
+        for core in &radials.cores {
+            for &valence in &valence {
+                record_unique_pair(
+                    (ProductOrbitalKind::Core, core),
+                    (ProductOrbitalKind::Valence, valence),
+                    &mut seen,
+                    &mut pairs,
+                );
+            }
         }
     }
-    for left in &radials.cores {
-        for right in &radials.cores {
-            record_unique_pair(
-                (ProductOrbitalKind::Core, left),
-                (ProductOrbitalKind::Core, right),
-                &mut seen,
-                &mut pairs,
-            );
+    if mode.includes_core_core() {
+        for left in &radials.cores {
+            for right in &radials.cores {
+                record_unique_pair(
+                    (ProductOrbitalKind::Core, left),
+                    (ProductOrbitalKind::Core, right),
+                    &mut seen,
+                    &mut pairs,
+                );
+            }
         }
     }
     let mut products = Vec::new();

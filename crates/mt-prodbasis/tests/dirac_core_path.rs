@@ -6,7 +6,8 @@ use muffintin_core::{
 };
 use muffintin_envelope::Provenance;
 use muffintin_prodbasis::mpb::{
-    DiracPairVertexAccumulator, dirac_mt_pair_vertex, untruncated_dirac_product_space,
+    DiracPairVertexAccumulator, DiracProductMode, MpbError, dirac_mt_pair_vertex,
+    untruncated_dirac_product_space,
 };
 use muffintin_prodbasis::{
     AuxiliaryInterstitialSupport, AuxiliaryPartition, AuxiliaryRepresentation,
@@ -16,7 +17,7 @@ use muffintin_prodbasis::{
     SiteAuxiliaryBlock, TransferQ,
 };
 use num_complex::Complex64;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 
 fn mesh() -> ExponentialMesh {
     let first = 1.0e-5;
@@ -284,7 +285,8 @@ fn pp_omega_kappa_and_qq_omega_minus_kappa_coefficients_differ() {
         samples: samples(0, 0.45),
         normalization: DiracRadialNormalization::OnMesh,
     }]);
-    let raw = untruncated_dirac_product_space(&source, 2).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 2, DiracProductMode::ValenceValence).unwrap();
     let auxiliary = auxiliary(&source, &[2]);
     let spec = spec(-2, 0, 3);
     let left = channel(-2, 3);
@@ -366,8 +368,9 @@ fn explicit_core_normalization_is_not_replaced_by_mt_norm_and_cc_is_enumerated()
         .unwrap();
     let on_mesh = source_with_core(radial.clone(), DiracRadialNormalization::OnMesh);
     let all_space = source_with_core(radial, DiracRadialNormalization::Explicit(4.0 * norm_mt));
-    let raw_on_mesh = untruncated_dirac_product_space(&on_mesh, 0).unwrap();
-    let raw_all_space = untruncated_dirac_product_space(&all_space, 0).unwrap();
+    let raw_on_mesh = untruncated_dirac_product_space(&on_mesh, 0, DiracProductMode::All).unwrap();
+    let raw_all_space =
+        untruncated_dirac_product_space(&all_space, 0, DiracProductMode::All).unwrap();
     let product = |raw: &muffintin_prodbasis::DiracRawProductSpace,
                    left: ProductOrbitalKind,
                    right: ProductOrbitalKind| {
@@ -422,7 +425,8 @@ fn pp_and_qq_accumulate_separately_and_merged_angular_differs() {
         samples: samples(0, 0.45),
         normalization: DiracRadialNormalization::OnMesh,
     }]);
-    let raw = untruncated_dirac_product_space(&source, 2).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 2, DiracProductMode::ValenceValence).unwrap();
     let auxiliary = auxiliary(&source, &[2]);
     let spec = spec(-2, 0, 3);
     let left = channel(-2, 3);
@@ -464,7 +468,8 @@ fn same_orbital_diagonal_scalar_charge_is_real_and_nonnegative() {
         samples: samples(0, 0.3),
         normalization: DiracRadialNormalization::OnMesh,
     }]);
-    let raw = untruncated_dirac_product_space(&source, 2).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 2, DiracProductMode::ValenceValence).unwrap();
     assert!(raw.radial_products.iter().all(|product| {
         matches!(
             product.channel.sector,
@@ -493,7 +498,8 @@ fn dirac_context_rejects_auxiliary_partition_mismatch() {
         samples: samples(0, 0.3),
         normalization: DiracRadialNormalization::OnMesh,
     }]);
-    let raw = untruncated_dirac_product_space(&source, 0).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 0, DiracProductMode::ValenceValence).unwrap();
     let mut auxiliary = auxiliary(&source, &[0]);
     auxiliary.partition = AuxiliaryPartition::from_interstitial(
         InterstitialGeometry::new(
@@ -526,8 +532,10 @@ fn scaling_physical_q_suppresses_qq_relative_to_pp() {
         samples: samples(0, 0.04),
         normalization: DiracRadialNormalization::OnMesh,
     }]);
-    let raw_full = untruncated_dirac_product_space(&full, 0).unwrap();
-    let raw_small = untruncated_dirac_product_space(&small, 0).unwrap();
+    let raw_full =
+        untruncated_dirac_product_space(&full, 0, DiracProductMode::ValenceValence).unwrap();
+    let raw_small =
+        untruncated_dirac_product_space(&small, 0, DiracProductMode::ValenceValence).unwrap();
     let pp_full = product_samples(&raw_full, DiracChargeSector::LargeLarge, 0).unwrap();
     let qq_full = product_samples(&raw_full, DiracChargeSector::SmallSmall, 0).unwrap();
     let pp_small = product_samples(&raw_small, DiracChargeSector::LargeLarge, 0).unwrap();
@@ -556,7 +564,8 @@ fn mixed_mu_nonzero_m_uses_density_coefficient_not_ylm_slot() {
         samples: samples(0, 0.45),
         normalization: DiracRadialNormalization::OnMesh,
     }]);
-    let raw = untruncated_dirac_product_space(&source, 2).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 2, DiracProductMode::ValenceValence).unwrap();
     let auxiliary = auxiliary(&source, &[2]);
     let spec = mixed_mu_spec();
     let left = channel(-2, 3);
@@ -703,7 +712,8 @@ fn coupled_channel_radial_index_restarts_in_each_site_l_block() {
         Provenance::default(),
     )
     .unwrap();
-    let raw = untruncated_dirac_product_space(&source, 2).unwrap();
+    let raw =
+        untruncated_dirac_product_space(&source, 2, DiracProductMode::ValenceValence).unwrap();
     let mut global_offset = 0usize;
     let mut seen_blocks = 0usize;
     for site in 0..2 {
@@ -748,4 +758,59 @@ fn coupled_channel_radial_index_restarts_in_each_site_l_block() {
         "need multiple site/L blocks, got {seen_blocks}"
     );
     assert!(global_offset > 0);
+}
+
+#[test]
+fn product_mode_matches_the_four_spex_pair_families() {
+    let radial = DiracRadial {
+        kappa: kappa(-1),
+        n: 0,
+        samples: samples(0, 0.3),
+        normalization: DiracRadialNormalization::OnMesh,
+    };
+    let selected_source = source_with_core(radial, DiracRadialNormalization::OnMesh);
+    let families = |mode: DiracProductMode| {
+        untruncated_dirac_product_space(&selected_source, 0, mode)
+            .unwrap()
+            .radial_products
+            .iter()
+            .map(|product| (product.channel.left.kind, product.channel.right.kind))
+            .collect::<HashSet<_>>()
+    };
+    let valence = ProductOrbitalKind::Valence;
+    let core = ProductOrbitalKind::Core;
+    assert_eq!(
+        families(DiracProductMode::ValenceValence),
+        HashSet::from([(valence, valence)])
+    );
+    assert_eq!(
+        families(DiracProductMode::ValenceValenceAndCoreValence),
+        HashSet::from([(valence, valence), (core, valence)])
+    );
+    assert_eq!(
+        families(DiracProductMode::ValenceValenceAndCoreCore),
+        HashSet::from([(valence, valence), (core, core)])
+    );
+    assert_eq!(
+        families(DiracProductMode::All),
+        HashSet::from([(valence, valence), (core, valence), (core, core)])
+    );
+    assert_eq!(
+        families(DiracProductMode::CoreMember),
+        HashSet::from([(core, valence), (core, core)])
+    );
+    let valence_only = source(vec![DiracRadial {
+        kappa: kappa(-1),
+        n: 0,
+        samples: samples(0, 0.3),
+        normalization: DiracRadialNormalization::OnMesh,
+    }]);
+    assert!(matches!(
+        untruncated_dirac_product_space(
+            &valence_only,
+            0,
+            DiracProductMode::ValenceValenceAndCoreValence,
+        ),
+        Err(MpbError::CoreValenceModeWithoutSelectedCore)
+    ));
 }

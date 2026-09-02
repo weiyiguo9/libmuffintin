@@ -7,7 +7,7 @@ use muffintin_core::{InverseBohr, ReciprocalLattice, RelativisticChannel};
 use muffintin_operators::lapw::SpinorCompiledBasis;
 use muffintin_operators::{CompiledSiteProjection, OperatorError};
 use muffintin_prodbasis::mpb::{
-    DiracMtSectorTable, DiracVertexContext, MpbError, apply_dirac_overlap_cutoff,
+    DiracMtSectorTable, DiracProductMode, DiracVertexContext, MpbError, apply_dirac_overlap_cutoff,
     untruncated_dirac_product_space,
 };
 use muffintin_prodbasis::{
@@ -138,7 +138,11 @@ pub fn build_spinor_mpb(
     for selection in &spec.selections {
         require_selection(input, *selection)?;
     }
-    let raw = untruncated_dirac_product_space(&input.source, spec.product_l_max)?;
+    let raw = untruncated_dirac_product_space(
+        &input.source,
+        spec.product_l_max,
+        DiracProductMode::ValenceValence,
+    )?;
     let auxiliary = apply_dirac_overlap_cutoff(
         &raw,
         &input.source,
