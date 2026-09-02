@@ -76,6 +76,7 @@ struct Cli {
     out: PathBuf,
     box_size: f64,
     orbital_g: f64,
+    field_g: f64,
     orbital_l_max: u32,
     product_g: f64,
     product_l_max: u32,
@@ -91,6 +92,7 @@ impl Default for Cli {
             out: PathBuf::from("kr-relaxed-core-hf-p0"),
             box_size: 8.0,
             orbital_g: 1.0,
+            field_g: 4.5,
             orbital_l_max: 1,
             product_g: 1.0,
             product_l_max: 2,
@@ -114,6 +116,7 @@ impl Cli {
                 "--out" => cli.out = PathBuf::from(value),
                 "--box" => cli.box_size = parse_value(&name, &value)?,
                 "--orbital-g" => cli.orbital_g = parse_value(&name, &value)?,
+                "--field-g" => cli.field_g = parse_value(&name, &value)?,
                 "--orbital-lmax" => cli.orbital_l_max = parse_value(&name, &value)?,
                 "--product-g" => cli.product_g = parse_value(&name, &value)?,
                 "--product-lmax" => cli.product_l_max = parse_value(&name, &value)?,
@@ -133,6 +136,7 @@ impl Cli {
             ("--box", self.box_size),
             ("--rmt", self.muffin_tin_radius),
             ("--orbital-g", self.orbital_g),
+            ("--field-g", self.field_g),
             ("--product-g", self.product_g),
         ] {
             if !value.is_finite() || value <= 0.0 {
@@ -440,7 +444,6 @@ struct ResidualRecord {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse()?;
-    let field_g = 3.0 * cli.orbital_g;
     let field_l_max = cli
         .orbital_l_max
         .checked_mul(2)
@@ -547,7 +550,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let structure = Structure::new(geometry)?;
     let field_layout =
-        RegionalFieldLayout::from_g_cutoff(&structure, InverseBohr(field_g), field_l_max)?;
+        RegionalFieldLayout::from_g_cutoff(&structure, InverseBohr(cli.field_g), field_l_max)?;
     let free_atom_mesh = ExponentialMesh::new(
         Bohr(FREE_ATOM_FIRST_BOHR),
         FREE_ATOM_INCREMENT,
@@ -597,7 +600,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             radial_log_increment,
             orbital_g_max_bohr_inverse: cli.orbital_g,
             orbital_l_max: cli.orbital_l_max,
-            field_g_max_bohr_inverse: field_g,
+            field_g_max_bohr_inverse: cli.field_g,
             field_l_max,
             product_g_max_bohr_inverse: cli.product_g,
             product_l_max: cli.product_l_max,

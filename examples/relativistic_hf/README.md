@@ -43,7 +43,7 @@ path with explicit finite-body exchange:
 ```sh
 cargo run -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
   --out kr-relaxed-core-hf-p0 \
-  --box 8 --orbital-g 1 --orbital-lmax 1 \
+  --box 8 --orbital-g 1 --field-g 4.5 --orbital-lmax 1 \
   --product-g 1 --product-lmax 2 --lexp 2 \
   --rmt 2 --radial-points 1201 --hdlo none
 ```
@@ -51,8 +51,10 @@ cargo run -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
 These defaults are the deliberately loose P0 smoke profile: no HDLOs,
 $T=0.02$ Hartree, at most two outer and core steps, and at most 32 Fock
 iterations. Completion demonstrates that the production pipeline executed; it
-is not a claim of physical convergence. The field layout is derived as three
-times the orbital reciprocal cutoff and twice the orbital angular cutoff.
+is not a claim of physical convergence. `--field-g 4.5` sets the independent
+atomic-start regional-field cutoff in inverse bohr, while `--orbital-g 1`
+remains the orbital-basis cutoff. The field angular cutoff remains twice the
+orbital angular cutoff.
 
 The output directory contains:
 
