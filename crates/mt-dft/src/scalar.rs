@@ -217,6 +217,7 @@ pub fn solve_scalar_second_variation(
         &first,
         site_soc_blocks,
         &[],
+        None,
     )
     .map_err(Into::into)
 }

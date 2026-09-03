@@ -19,17 +19,19 @@ use crate::{
     ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfKReduction, ScfKSamplingProvenance,
     ScfOccupations, ScfPhysics, ScfPotentialBuild, ScfPotentialBuildError, ScfRelativity,
     ScfResolvedChannelEnergy, ScfState, SecondVariationBandDiagnostic, SecondVariationError,
-    SpinorBuilderError, SpinorFirstVariationError, SpinorIterationBasis, SpinorLinearizationEnergy,
-    SpinorLocalOrbitalRequest, SpinorSiteInput, StaticCoreSiteExchangeError, TetrahedronError,
-    build_collinear_scalar_iteration_bases, build_extended_checkpoint_core_potentials,
-    build_extended_core_potentials, build_extended_electrostatic_core_potentials,
-    build_scf_potential, build_spinor_iteration_basis, build_static_core_exchange_site_blocks,
-    channel_kappas, channel_l, channel_n, generate_atomic_energy, generate_band_center_energy,
+    SecondVariationKPoint, SpinorBuilderError, SpinorFirstVariationError, SpinorIterationBasis,
+    SpinorLinearizationEnergy, SpinorLocalOrbitalRequest, SpinorSiteInput,
+    StaticCoreSiteExchangeError, TetrahedronError, build_collinear_scalar_iteration_bases,
+    build_extended_checkpoint_core_potentials, build_extended_core_potentials,
+    build_extended_electrostatic_core_potentials, build_scf_potential,
+    build_spinor_iteration_basis, build_static_core_exchange_site_blocks, channel_kappas,
+    channel_l, channel_n, generate_atomic_energy, generate_band_center_energy,
     generate_band_cog_energy, generate_explicit_energy, generate_fermi_offset_energy,
     generate_frozen_checkpoint_energy, generate_log_derivative_energy, kappa_degeneracy_average,
     physical_site_band_projections, scalar_component_energy, solve_fermi_dirac, solve_gaussian,
     solve_soc_second_variation, solve_spinor_k_point, spin_resolved_energy, spinor_kappas_for_l,
     synthesize_collinear_valence_density, synthesize_full_spinor_valence_density,
+    synthesize_second_variation_valence_density,
 };
 use muffintin_core::{
     Bohr, ExponentialMesh, FourierFieldError, FourierLayout, GVector, Hartree,
@@ -41,9 +43,10 @@ use muffintin_operators::lapw::{
     Collinear, GeneralizedEigensolution, InterstitialPotential, LapwEigenproblem, LapwError,
 };
 use muffintin_operators::{
-    CompiledSiteProjection, OperatorError, SiteSpinOrbitBlock, SocOperatorError,
-    SpinorSiteOperatorBlocks, assemble_scalar_site_operator, lift_band_hermitian_feedback,
-    solve_generalized_hermitian,
+    CompiledSiteProjection, OperatorError, SecondVariationMixing, SiteSpinOrbitBlock,
+    SocOperatorError, SpinorSiteOperatorBlocks, assemble_scalar_site_operator,
+    lift_band_hermitian_feedback, project_site_soc_to_subspace,
+    project_site_spinor_operator_to_subspace, solve_generalized_hermitian,
 };
 use muffintin_sphere::{
     CorePotentialContinuationSpec, CoreState, DiracError, ExtendedCorePotential, RadialEquation,
@@ -505,7 +508,106 @@ pub enum CheckpointKPointSolution {
 #[derive(Clone, Debug)]
 pub struct CheckpointSecondVariationResult {
     pub bands: CheckpointBandSolution,
+    /// Current SOC eigenvectors in the fixed doubled scalar-band frame.
+    pub mixings: Vec<SecondVariationMixing>,
     pub diagnostics: Vec<Vec<SecondVariationBandDiagnostic>>,
+}
+
+/// Fixed scalar-band frame for repeated SOC second-variation Fock solves.
+#[derive(Clone, Debug)]
+pub struct CheckpointSecondVariationFrame {
+    scalar: CheckpointBandSolution,
+    first_variations: Vec<FirstVariationSubspace>,
+    site_blocks: Vec<Vec<SiteSpinOrbitBlock>>,
+    site_feedback: Vec<Vec<DenseHermitianMatrix>>,
+    fixed_hamiltonians: Vec<DenseHermitianMatrix>,
+    resolved_core_feedback: Vec<DenseHermitianMatrix>,
+}
+
+impl CheckpointSecondVariationFrame {
+    /// Scalar-Fock plus SOC plus resolved frozen-core exchange in the fixed
+    /// doubled source-band frame, before valence-exchange replacement.
+    pub fn fixed_hamiltonians(&self) -> &[DenseHermitianMatrix] {
+        &self.fixed_hamiltonians
+    }
+
+    /// Resolved frozen-core exchange in the same fixed doubled frame.
+    pub fn resolved_core_feedback(&self) -> &[DenseHermitianMatrix] {
+        &self.resolved_core_feedback
+    }
+
+    /// Re-solve the fixed SOC frame with one additional Hermitian matrix per
+    /// k point. An empty slice means zero additional feedback.
+    pub fn solve(
+        &self,
+        feedback: &[DenseHermitianMatrix],
+    ) -> Result<CheckpointSecondVariationResult, MaterialKernelError> {
+        if !feedback.is_empty() && feedback.len() != self.scalar.points.len() {
+            return Err(MaterialKernelError::FeedbackPointCount {
+                actual: feedback.len(),
+                expected: self.scalar.points.len(),
+            });
+        }
+        let mut points = Vec::with_capacity(self.scalar.points.len());
+        let mut states = Vec::new();
+        let mut mixings = Vec::with_capacity(self.scalar.points.len());
+        let mut diagnostics = Vec::with_capacity(self.scalar.points.len());
+        for (point_index, point) in self.scalar.points.iter().enumerate() {
+            let CheckpointKPointSolution::Collinear {
+                bases,
+                eigenproblems,
+                ..
+            } = &point.solution
+            else {
+                return Err(MaterialKernelError::SecondVariationRequiresScalarBands {
+                    point: point_index,
+                });
+            };
+            let second = solve_soc_second_variation(
+                FirstVariationRoute::NonmagneticScalarKoellingHarmon,
+                &bases.up.compiled,
+                &self.first_variations[point_index],
+                &self.site_blocks[point_index],
+                &self.site_feedback[point_index],
+                feedback.get(point_index),
+            )?;
+            let split = split_second_variation(&second)?;
+            mixings.push(second.mixing.clone());
+            diagnostics.push(second.diagnostics.clone());
+            let start = states.len();
+            states.extend(
+                second
+                    .eigenvalues
+                    .iter()
+                    .copied()
+                    .map(|energy| BandState::new(energy, point.weight, 1)),
+            );
+            let end = states.len();
+            points.push(CheckpointKPoint {
+                weight: point.weight,
+                energies: second.eigenvalues,
+                solution: CheckpointKPointSolution::Collinear {
+                    bases: bases.clone(),
+                    eigenproblems: eigenproblems.clone(),
+                    solutions: split,
+                    up_occupations: start..end,
+                    down_occupations: start..end,
+                },
+            });
+        }
+        Ok(CheckpointSecondVariationResult {
+            bands: CheckpointBandSolution {
+                points,
+                states,
+                reduction: self.scalar.reduction.clone(),
+                density_layout: self.scalar.density_layout.clone(),
+                symmetry_transforms: self.scalar.symmetry_transforms.clone(),
+                spacegroup_number: self.scalar.spacegroup_number,
+            },
+            mixings,
+            diagnostics,
+        })
+    }
 }
 
 impl MaterialKernel {
@@ -982,31 +1084,32 @@ impl MaterialKernel {
         self.solve_points_with_weights(potential, basis, points, &weights, relativity)
     }
 
-    /// Apply conventional SOC second variation to an already solved,
-    /// spin-degenerate scalar KH Fock spectrum.
-    pub fn apply_soc_second_variation(
+    /// Prepare a fixed doubled scalar-band frame for repeated SOC Fock solves.
+    pub fn prepare_soc_second_variation(
         &self,
         potential: &RegionalPotential,
         scalar: &CheckpointBandSolution,
         window: FirstVariationWindow,
         core_sidecars: &[CoreShellOrbitals],
-    ) -> Result<CheckpointSecondVariationResult, MaterialKernelError> {
+    ) -> Result<CheckpointSecondVariationFrame, MaterialKernelError> {
         self.require_second_variation_route(potential)?;
         if window.start() != 0 {
             return Err(MaterialKernelError::SecondVariationDropsLowerBands {
                 start: window.start(),
             });
         }
-        let mut points = Vec::with_capacity(scalar.points.len());
-        let mut states = Vec::new();
-        let mut diagnostics = Vec::with_capacity(scalar.points.len());
+        let mut first_variations = Vec::with_capacity(scalar.points.len());
+        let mut site_blocks = Vec::with_capacity(scalar.points.len());
+        let mut site_feedback = Vec::with_capacity(scalar.points.len());
+        let mut fixed_hamiltonians = Vec::with_capacity(scalar.points.len());
+        let mut resolved_core_feedback = Vec::with_capacity(scalar.points.len());
         for (point_index, point) in scalar.points.iter().enumerate() {
             let CheckpointKPointSolution::Collinear {
                 bases,
-                eigenproblems,
                 solutions,
                 up_occupations,
                 down_occupations,
+                ..
             } = &point.solution
             else {
                 return Err(MaterialKernelError::SecondVariationRequiresScalarBands {
@@ -1036,46 +1139,25 @@ impl MaterialKernel {
                 .iter()
                 .map(|block| block.matrix().clone())
                 .collect::<Vec<_>>();
-            let second = solve_soc_second_variation(
-                FirstVariationRoute::NonmagneticScalarKoellingHarmon,
+            let (fixed_hamiltonian, projected_core) = second_variation_frame_matrices(
                 &bases.up.compiled,
                 &first,
                 &blocks,
                 &core_feedback,
             )?;
-            let split = split_second_variation(&second)?;
-            diagnostics.push(second.diagnostics.clone());
-            let start = states.len();
-            states.extend(
-                second
-                    .eigenvalues
-                    .iter()
-                    .copied()
-                    .map(|energy| BandState::new(energy, point.weight, 1)),
-            );
-            let end = states.len();
-            points.push(CheckpointKPoint {
-                weight: point.weight,
-                energies: second.eigenvalues,
-                solution: CheckpointKPointSolution::Collinear {
-                    bases: bases.clone(),
-                    eigenproblems: eigenproblems.clone(),
-                    solutions: split,
-                    up_occupations: start..end,
-                    down_occupations: start..end,
-                },
-            });
+            first_variations.push(first);
+            site_blocks.push(blocks);
+            site_feedback.push(core_feedback);
+            fixed_hamiltonians.push(fixed_hamiltonian);
+            resolved_core_feedback.push(projected_core);
         }
-        Ok(CheckpointSecondVariationResult {
-            bands: CheckpointBandSolution {
-                points,
-                states,
-                reduction: scalar.reduction.clone(),
-                density_layout: scalar.density_layout.clone(),
-                symmetry_transforms: scalar.symmetry_transforms.clone(),
-                spacegroup_number: scalar.spacegroup_number,
-            },
-            diagnostics,
+        Ok(CheckpointSecondVariationFrame {
+            scalar: scalar.clone(),
+            first_variations,
+            site_blocks,
+            site_feedback,
+            fixed_hamiltonians,
+            resolved_core_feedback,
         })
     }
 
@@ -1149,6 +1231,60 @@ impl MaterialKernel {
         occupations: &[f64],
     ) -> Result<RegionalDensity, MaterialKernelError> {
         self.synthesize(bands, occupations)
+    }
+
+    /// Synthesize the complete Pauli density of bands produced by a prepared
+    /// SOC second-variation frame.
+    pub fn synthesize_second_variation_bands(
+        &self,
+        bands: &CheckpointBandSolution,
+        occupations: &[f64],
+    ) -> Result<RegionalDensity, MaterialKernelError> {
+        if occupations.len() != bands.states.len() {
+            return Err(MaterialKernelError::OccupationCount {
+                expected: bands.states.len(),
+                actual: occupations.len(),
+            });
+        }
+        let density_layout = match &bands.density_layout {
+            Some(layout) => layout.clone(),
+            None => self.density_layout(&bands.points)?,
+        };
+        let first = bands
+            .points
+            .first()
+            .ok_or(MaterialKernelError::EmptyKPointSet)?;
+        let CheckpointKPointSolution::Collinear { bases, .. } = &first.solution else {
+            return Err(MaterialKernelError::InconsistentRelativityRoute);
+        };
+        let points = bands
+            .points
+            .iter()
+            .map(|point| match &point.solution {
+                CheckpointKPointSolution::Collinear {
+                    bases: point_bases,
+                    solutions,
+                    up_occupations,
+                    down_occupations,
+                    ..
+                } if up_occupations == down_occupations && point_bases.up == point_bases.down => {
+                    Ok(SecondVariationKPoint {
+                        weight: point.weight,
+                        compiled: &point_bases.up.compiled,
+                        solutions: Collinear::new(&solutions.up, &solutions.down),
+                        occupations: &occupations[up_occupations.clone()],
+                    })
+                }
+                _ => Err(MaterialKernelError::InconsistentRelativityRoute),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let density = synthesize_second_variation_valence_density(
+            self.geometry.clone(),
+            density_layout,
+            &bases.up.density_sites,
+            &points,
+        )?;
+        self.project_density_muffin_tin_layout(&density)
     }
 
     fn solve_points_with_weights(
@@ -1251,6 +1387,7 @@ impl MaterialKernel {
                         &first,
                         &blocks,
                         &[],
+                        None,
                     )?;
                     let split = split_second_variation(&second)?;
                     let start = states.len();
@@ -2493,6 +2630,56 @@ fn split_second_variation(
         })
     };
     Ok(Collinear::new(split(0)?, split(1)?))
+}
+
+fn second_variation_frame_matrices(
+    compiled: &muffintin_envelope::CompiledBasis,
+    first: &FirstVariationSubspace,
+    site_blocks: &[SiteSpinOrbitBlock],
+    site_feedback: &[DenseHermitianMatrix],
+) -> Result<(DenseHermitianMatrix, DenseHermitianMatrix), MaterialKernelError> {
+    if site_blocks.len() != compiled.site_count() || site_feedback.len() != compiled.site_count() {
+        return Err(MaterialKernelError::SecondVariation(
+            SecondVariationError::SiteCount {
+                expected: compiled.site_count(),
+                actual: site_blocks.len().min(site_feedback.len()),
+            },
+        ));
+    }
+    let dimension = 2 * first.eigenvalues.len();
+    let mut fixed = vec![Complex64::default(); dimension * dimension];
+    let mut core = vec![Complex64::default(); dimension * dimension];
+    let bands = first.eigenvalues.len();
+    for spin in 0..2 {
+        for (band, energy) in first.eigenvalues.iter().enumerate() {
+            let index = spin * bands + band;
+            fixed[index * dimension + index] = Complex64::new(energy.get(), 0.0);
+        }
+    }
+    for site in 0..compiled.site_count() {
+        let projection = CompiledSiteProjection::scalar(compiled, site)?;
+        let coefficients = projection.project_eigenvectors(&first.eigenvectors)?;
+        let soc = project_site_soc_to_subspace(&site_blocks[site], &coefficients)?;
+        let resolved = project_site_spinor_operator_to_subspace(
+            projection.coordinate_count(),
+            &site_feedback[site],
+            &coefficients,
+        )?;
+        for ((fixed_value, core_value), (soc_value, resolved_value)) in
+            fixed.iter_mut().zip(&mut core).zip(
+                soc.to_host_row_major()
+                    .into_iter()
+                    .zip(resolved.to_host_row_major()),
+            )
+        {
+            *fixed_value += soc_value + resolved_value;
+            *core_value += resolved_value;
+        }
+    }
+    Ok((
+        DenseHermitianMatrix::from_host_row_major(dimension, Axis::Band, fixed)?,
+        DenseHermitianMatrix::from_host_row_major(dimension, Axis::Band, core)?,
+    ))
 }
 
 fn combine_muffin_tin_fields(

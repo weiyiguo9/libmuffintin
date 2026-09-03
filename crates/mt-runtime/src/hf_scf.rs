@@ -6,16 +6,18 @@ use muffintin_coulomb::{
     WeinertHartreeSpec, assemble_coulomb, core_core_fock_actions,
 };
 use muffintin_dft::{
-    BandState, CheckpointBandSolution, CheckpointKPointSolution, CoreDensityError,
-    CoreFixedPotentialResult, CoreFixedPotentialSpec, CoreLocalOneBodyError, CoreLocalOneBodyTrace,
-    CoreShellOccupations, CoreShellOrbitals, DensityError, DensityMixer, ElectrostaticSpec,
-    MaterialKernelError, MixingError, OccupationError, RegionalDensity, RegionalElectrostaticError,
-    RegionalError, RegionalPotential, ScfConfig, ScfConfigError, ScfKReduction, ScfLoop, ScfMixing,
-    ScfOccupations, ScfPhysics, ScfRelativity, build_regional_core_contribution_from_sidecar,
-    core_local_one_body_trace, electron_count, evaluate_regional_electrostatics,
+    BandState, CheckpointBandSolution, CheckpointKPointSolution, CheckpointSecondVariationFrame,
+    CoreDensityError, CoreFixedPotentialResult, CoreFixedPotentialSpec, CoreLocalOneBodyError,
+    CoreLocalOneBodyTrace, CoreShellOccupations, CoreShellOrbitals, DensityError, DensityMixer,
+    ElectrostaticSpec, MaterialKernelError, MixingError, OccupationError, RegionalDensity,
+    RegionalElectrostaticError, RegionalError, RegionalPotential, ScfConfig, ScfConfigError,
+    ScfKReduction, ScfLoop, ScfMixing, ScfOccupations, ScfPhysics, ScfRelativity,
+    build_regional_core_contribution_from_sidecar, core_local_one_body_trace, electron_count,
+    evaluate_regional_electrostatics,
 };
 use muffintin_operators::{
-    Collinear, OperatorError, lift_band_hermitian_feedback, solve_generalized_hermitian,
+    Collinear, OperatorError, SecondVariationMixing, lift_band_hermitian_feedback,
+    solve_generalized_hermitian,
 };
 use muffintin_tensor::{Axis, ComplexTensor, DenseHermitianMatrix, TensorError, einsum};
 use num_complex::Complex64;
@@ -25,7 +27,8 @@ use crate::isdf_exchange::contract_scalar_mpb_exchange_with_operators;
 use crate::q_mesh::{CanonicalQMapError, canonical_q_points};
 use crate::scalar_mpb::{
     ScalarMpbBasis, ScalarMpbSelection, ScalarMpbSpec, build_scalar_mpb_from_basis,
-    compile_scalar_mpb_basis,
+    build_second_variation_mpb_from_basis, compile_scalar_mpb_basis,
+    compile_second_variation_mpb_basis,
 };
 use crate::spinor_exchange_mpb::{
     SpinorExchangeMpbBasis, build_spinor_exchange_feedback_from_basis,
@@ -44,8 +47,7 @@ use crate::{
     SecondVariationMpbSpec, SectorOccupations, SpinorCoreInputError, SpinorExchangeMpbError,
     SpinorExchangeMpbResult, SpinorExchangeMpbSpec, SpinorMpbError, SpinorMpbSelection,
     SpinorMpbSpec, SpinorProductInput, build_frozen_core_valence_exchange,
-    build_frozen_site_valence_densities, build_second_variation_mpb,
-    build_second_variation_mpb_exchange, build_spinor_exchange_mpb, build_spinor_mpb,
+    build_frozen_site_valence_densities, build_spinor_exchange_mpb, build_spinor_mpb,
     build_spinor_mpb_exchange, compare_frozen_core_valence, relax_frozen_core_at_fixed_potential,
 };
 
@@ -771,15 +773,11 @@ fn run_kh_soc_valence_hf_inner(
             &q_fractional,
             core_sidecars,
         )?;
-        total_exchange_rebuilds += fixed.exchange_rebuilds;
-        let valence_output = physics
+        let scalar_valence_output = physics
             .kernel
             .synthesize_bands(&fixed.bands, &fixed.occupation.values)?;
-        let total_output = sum_kh_density(&valence_output, &core_density)?;
-        let valence_density_rms = valence_density.difference_rms(&valence_output)?;
-        let density_rms = total_density.difference_rms(&total_output)?;
         let core_terms = frozen_core_energy_terms(core_sidecars)?;
-        let energy = kh_soc_energy_diagnostic(
+        let scalar_energy = kh_soc_energy_diagnostic(
             &fixed.bands,
             &fixed.occupation,
             &fixed.exchange,
@@ -790,27 +788,80 @@ fn run_kh_soc_valence_hf_inner(
         let scalar_identity_tolerance =
             IDENTITY_TOLERANCE.max(valence_electrons.max(1.0) * spec.fock_feedback_tolerance.get());
         require_gate(
-            "scalar valence electron count",
-            (electron_count(&valence_output)? - valence_electrons).abs(),
-            ELECTRON_COUNT_TOLERANCE,
-        )?;
-        require_gate(
-            "scalar total electron count",
-            (electron_count(&total_output)? - spec.config.electron_count).abs(),
-            ELECTRON_COUNT_TOLERANCE,
-        )?;
-        require_gate(
             "scalar exchange energy identity",
-            energy.exchange_identity_residual,
+            scalar_energy.exchange_identity_residual,
             IDENTITY_TOLERANCE,
         )?;
         require_gate(
             "scalar eigenvalue identity",
-            energy.eigenvalue_identity_residual,
+            scalar_energy.eigenvalue_identity_residual,
             scalar_identity_tolerance,
         )?;
         require_gate(
             "scalar HF total-energy identity",
+            scalar_energy.total_identity_residual,
+            scalar_identity_tolerance,
+        )?;
+
+        let frame = physics.kernel.prepare_soc_second_variation(
+            &potential,
+            &fixed.bands,
+            window,
+            core_sidecars,
+        )?;
+        let spinor = solve_second_variation_fixed_potential(
+            physics,
+            spec,
+            &frame,
+            &fixed,
+            valence_electrons,
+            outer_iteration,
+            &k_fractional,
+            &q_fractional,
+        )?;
+        total_exchange_rebuilds += fixed.exchange_rebuilds + spinor.exchange_rebuilds;
+        let valence_output = physics
+            .kernel
+            .synthesize_second_variation_bands(&spinor.bands, &spinor.occupation.values)?;
+        let total_output = sum_kh_density(&valence_output, &core_density)?;
+        let valence_density_rms = valence_density.difference_rms(&valence_output)?;
+        let density_rms = total_density.difference_rms(&total_output)?;
+        let second_variation_density_rms = scalar_valence_output.difference_rms(&valence_output)?;
+        let scalar_feedback = scalar_feedback_in_second_variation_frame(&fixed.bands, &frame)?;
+        let one_body_with_core =
+            subtract_global_feedback(frame.fixed_hamiltonians(), &scalar_feedback)?;
+        let energy = kh_soc_spinor_energy_diagnostic(
+            &spinor.bands,
+            &spinor.mixings,
+            &spinor.occupation,
+            &spinor.exchange,
+            &one_body_with_core,
+            frame.resolved_core_feedback(),
+            &electrostatic,
+            core_terms,
+        )?;
+        require_gate(
+            "spinor valence electron count",
+            (electron_count(&valence_output)? - valence_electrons).abs(),
+            ELECTRON_COUNT_TOLERANCE,
+        )?;
+        require_gate(
+            "spinor total electron count",
+            (electron_count(&total_output)? - spec.config.electron_count).abs(),
+            ELECTRON_COUNT_TOLERANCE,
+        )?;
+        require_gate(
+            "spinor exchange energy identity",
+            energy.exchange_identity_residual,
+            IDENTITY_TOLERANCE,
+        )?;
+        require_gate(
+            "spinor eigenvalue identity",
+            energy.eigenvalue_identity_residual,
+            scalar_identity_tolerance,
+        )?;
+        require_gate(
+            "spinor HF total-energy identity",
             energy.total_identity_residual,
             scalar_identity_tolerance,
         )?;
@@ -818,13 +869,11 @@ fn run_kh_soc_valence_hf_inner(
             .map(|previous: Hartree| Hartree((energy.total.get() - previous.get()).abs()));
         diagnostics.push(KhSocValenceHfIterationDiagnostic {
             iteration: outer_iteration,
-            fock_iterations: fixed.fock_iterations,
-            exchange_rebuilds: fixed.exchange_rebuilds,
-            exchange_energy: Hartree(
-                fixed.exchange.up.exchange_energy.get() + fixed.exchange.down.exchange_energy.get(),
-            ),
-            fock_fixed_point_residual: fixed.fixed_point_residual,
-            fock_feedback_residual: Hartree(fixed.feedback_residual),
+            fock_iterations: fixed.fock_iterations + spinor.fock_iterations,
+            exchange_rebuilds: fixed.exchange_rebuilds + spinor.exchange_rebuilds,
+            exchange_energy: spinor.exchange.exchange_energy,
+            fock_fixed_point_residual: spinor.fixed_point_residual,
+            fock_feedback_residual: Hartree(spinor.feedback_residual),
             valence_density_rms,
             regional_density_rms: density_rms,
             total_energy: energy.total,
@@ -833,59 +882,34 @@ fn run_kh_soc_valence_hf_inner(
         let converged = energy_change
             .is_some_and(|change| change.get() <= spec.config.convergence.energy_tolerance.get())
             && density_rms <= spec.config.convergence.density_tolerance
-            && fixed.fixed_point_residual <= spec.fock_density_tolerance;
+            && spinor.fixed_point_residual <= spec.fock_density_tolerance;
         if converged {
-            let second_variation = physics.kernel.apply_soc_second_variation(
-                &potential,
-                &fixed.bands,
-                window,
-                core_sidecars,
-            )?;
-            let bands = second_variation.bands;
-            let occupation =
-                solve_occupations(bands.states(), valence_electrons, spec.config.occupations)?;
-            let second_variation_valence_density = physics
-                .kernel
-                .synthesize_bands(&bands, &occupation.values)?;
-            let second_variation_density_rms =
-                valence_output.difference_rms(&second_variation_valence_density)?;
-            let second_variation_total_density =
-                sum_kh_density(&second_variation_valence_density, &core_density)?;
-            let occupations = second_variation_occupation_rows(&occupation.values, &bands)?;
-            let second_variation_exchange = rebuild_second_variation_exchange(
-                physics,
-                spec,
-                &bands,
-                &occupations,
-                &k_fractional,
-                &q_fractional,
-            )?;
-            total_exchange_rebuilds += 1;
             let scalar_exchange_energy =
                 fixed.exchange.up.exchange_energy.get() + fixed.exchange.down.exchange_energy.get();
-            let exchange_energy_change = Hartree(
-                (second_variation_exchange.exchange_energy.get() - scalar_exchange_energy).abs(),
-            );
+            let exchange_energy_change =
+                Hartree((spinor.exchange.exchange_energy.get() - scalar_exchange_energy).abs());
             let k_weights = scalar_k_weights(&fixed.bands)?;
+            let occupations =
+                second_variation_occupation_rows(&spinor.occupation.values, &spinor.bands)?;
             return Ok(KhSocValenceHfResult {
-                valence_density: second_variation_valence_density,
+                valence_density: valence_output,
                 core_density,
-                total_density: second_variation_total_density,
+                total_density: total_output,
                 potential,
                 scalar_bands: fixed.bands,
-                orbital_energies: second_variation_energies(&bands)?,
-                bands,
+                orbital_energies: second_variation_energies(&spinor.bands)?,
+                bands: spinor.bands,
                 occupations,
                 scalar_exchange: fixed.exchange,
-                second_variation_exchange,
-                second_variation_diagnostics: second_variation.diagnostics,
+                second_variation_exchange: spinor.exchange,
+                second_variation_diagnostics: spinor.diagnostics,
                 core_orbitals: core_sidecars.to_vec(),
                 core_h0_trace: core_terms.h0,
                 core_core_exchange: Hartree(0.5 * core_terms.cc_trace.get()),
                 core_valence_exchange: energy.core_valence_exchange,
                 total_energy: energy.total,
-                fock_fixed_point_residual: fixed.fixed_point_residual,
-                fock_feedback_residual: Hartree(fixed.feedback_residual),
+                fock_fixed_point_residual: spinor.fixed_point_residual,
+                fock_feedback_residual: Hartree(spinor.feedback_residual),
                 valence_density_rms,
                 regional_density_rms: density_rms,
                 second_variation_density_rms,
@@ -1726,7 +1750,24 @@ struct ScalarFixedPotentialResult {
     feedback_residual: f64,
 }
 
+struct SecondVariationFixedPotentialResult {
+    bands: CheckpointBandSolution,
+    mixings: Vec<SecondVariationMixing>,
+    occupation: OccupationSolution,
+    exchange: IsdfExchangeResult,
+    diagnostics: Vec<Vec<muffintin_dft::SecondVariationBandDiagnostic>>,
+    fock_iterations: usize,
+    exchange_rebuilds: usize,
+    fixed_point_residual: f64,
+    feedback_residual: f64,
+}
+
 struct ScalarExchangeCache {
+    bases: Vec<ScalarMpbBasis>,
+    operators: Vec<CoulombOperator>,
+}
+
+struct SecondVariationExchangeCache {
     bases: Vec<ScalarMpbBasis>,
     operators: Vec<CoulombOperator>,
 }
@@ -1852,6 +1893,306 @@ fn solve_scalar_fixed_potential(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn solve_second_variation_fixed_potential(
+    physics: &CheckpointPhysics,
+    spec: &KhSocValenceHfSpec,
+    frame: &CheckpointSecondVariationFrame,
+    scalar: &ScalarFixedPotentialResult,
+    valence_electrons: f64,
+    outer_iteration: usize,
+    k_fractional: &[[f64; 3]],
+    q_fractional: &[[f64; 3]],
+) -> Result<SecondVariationFixedPotentialResult, GammaValenceHfError> {
+    let scalar_feedback = scalar_feedback_in_second_variation_frame(&scalar.bands, frame)?;
+    let scalar_core_feedback = scalar_core_feedback_in_second_variation_frame(
+        &scalar.bands,
+        &scalar.core_feedback,
+        frame,
+    )?;
+    let seed_feedback = scale_feedback(&scalar_core_feedback, -1.0)?;
+    let mut current = frame.solve(&seed_feedback)?;
+    let fixed_hamiltonians =
+        subtract_global_feedback(frame.fixed_hamiltonians(), &scalar_feedback)?;
+    let mut previous_feedback: Option<Vec<DenseHermitianMatrix>> = None;
+    let mut feedback_mixer = FeedbackMixer::new(spec.fock_mixing);
+    let mut current_density = None;
+    let mut exchange_cache = None;
+    let mut last_residual = f64::INFINITY;
+    let mut last_feedback_residual = f64::INFINITY;
+
+    for fock_iteration in 1..=spec.max_fock_iterations {
+        let occupation = solve_occupations(
+            current.bands.states(),
+            valence_electrons,
+            spec.config.occupations,
+        )?;
+        let occupation_rows = second_variation_occupation_rows(&occupation.values, &current.bands)?;
+        let exchange = rebuild_second_variation_exchange(
+            physics,
+            spec,
+            &current.bands,
+            &occupation_rows,
+            k_fractional,
+            q_fractional,
+            &mut exchange_cache,
+        )?;
+        let band_feedback = exchange_feedback(&exchange)?;
+        let fresh_feedback = lift_second_variation_feedback(&current.mixings, &band_feedback)?;
+        let feedback_residual = previous_feedback
+            .as_ref()
+            .map(|previous| global_feedback_difference(previous, &fresh_feedback))
+            .transpose()?
+            .unwrap_or(f64::INFINITY);
+        last_feedback_residual = feedback_residual;
+        let mixed_feedback = match &previous_feedback {
+            Some(previous) => feedback_mixer.mix_second_variation(
+                &current.bands,
+                &fixed_hamiltonians,
+                &current.mixings,
+                &occupation_rows,
+                previous,
+                &fresh_feedback,
+            )?,
+            None => fresh_feedback.clone(),
+        };
+        let replacement = subtract_global_feedback(&mixed_feedback, &scalar_feedback)?;
+        let solved = frame.solve(&replacement)?;
+        let solved_occupation = solve_occupations(
+            solved.bands.states(),
+            valence_electrons,
+            spec.config.occupations,
+        )?;
+        let (density_residual, solved_density) = second_variation_density_residual(
+            physics,
+            &current.bands,
+            &occupation.values,
+            current_density.take(),
+            &solved.bands,
+            &solved_occupation.values,
+        )?;
+        last_residual = density_residual;
+        current_density = Some(solved_density);
+        if density_residual <= spec.fock_density_tolerance
+            && feedback_residual <= spec.fock_feedback_tolerance.get()
+        {
+            return Ok(SecondVariationFixedPotentialResult {
+                bands: current.bands,
+                mixings: current.mixings,
+                occupation,
+                exchange,
+                diagnostics: current.diagnostics,
+                fock_iterations: fock_iteration,
+                exchange_rebuilds: fock_iteration,
+                fixed_point_residual: density_residual,
+                feedback_residual,
+            });
+        }
+        current = solved;
+        previous_feedback = Some(mixed_feedback);
+    }
+    Err(GammaValenceHfError::FockNotConverged {
+        outer_iteration,
+        iterations: spec.max_fock_iterations,
+        density_residual: last_residual,
+        feedback_residual: last_feedback_residual,
+    })
+}
+
+fn scalar_feedback_in_second_variation_frame(
+    bands: &CheckpointBandSolution,
+    frame: &CheckpointSecondVariationFrame,
+) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+    if bands.points().len() != frame.fixed_hamiltonians().len() {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: bands.points().len(),
+            actual: frame.fixed_hamiltonians().len(),
+        });
+    }
+    bands
+        .points()
+        .iter()
+        .zip(frame.fixed_hamiltonians())
+        .map(|(point, fixed)| {
+            let CheckpointKPointSolution::Collinear {
+                eigenproblems,
+                solutions,
+                ..
+            } = &point.solution
+            else {
+                return Err(GammaValenceHfError::SpinorFirstVariation);
+            };
+            let bands_per_spin = fixed.dimension() / 2;
+            let up_h0 = project_scalar_global_matrix(
+                &solutions.up,
+                &eigenproblems.up.hamiltonian,
+                bands_per_spin,
+            )?;
+            let down_h0 = project_scalar_global_matrix(
+                &solutions.down,
+                &eigenproblems.down.hamiltonian,
+                bands_per_spin,
+            )?;
+            DenseHermitianMatrix::from_upper_triangle(
+                fixed.dimension(),
+                Axis::Band,
+                |row, column| {
+                    let row_spin = row / bands_per_spin;
+                    let column_spin = column / bands_per_spin;
+                    if row_spin != column_spin {
+                        return Complex64::default();
+                    }
+                    let row_band = row % bands_per_spin;
+                    let column_band = column % bands_per_spin;
+                    let (solution, h0) = if row_spin == 0 {
+                        (&solutions.up, &up_h0)
+                    } else {
+                        (&solutions.down, &down_h0)
+                    };
+                    let diagonal = if row_band == column_band {
+                        Complex64::new(solution.eigenvalues[row_band].get(), 0.0)
+                    } else {
+                        Complex64::default()
+                    };
+                    diagonal - h0.at(row_band, column_band)
+                },
+            )
+            .map_err(Into::into)
+        })
+        .collect()
+}
+
+fn scalar_core_feedback_in_second_variation_frame(
+    bands: &CheckpointBandSolution,
+    core_feedback: &[Collinear<DenseHermitianMatrix>],
+    frame: &CheckpointSecondVariationFrame,
+) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+    if bands.points().len() != core_feedback.len()
+        || bands.points().len() != frame.fixed_hamiltonians().len()
+    {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: bands.points().len(),
+            actual: core_feedback.len().min(frame.fixed_hamiltonians().len()),
+        });
+    }
+    bands
+        .points()
+        .iter()
+        .zip(core_feedback)
+        .zip(frame.fixed_hamiltonians())
+        .map(|((point, core), fixed)| {
+            let CheckpointKPointSolution::Collinear { solutions, .. } = &point.solution else {
+                return Err(GammaValenceHfError::SpinorFirstVariation);
+            };
+            let bands_per_spin = fixed.dimension() / 2;
+            let up = project_scalar_global_matrix(&solutions.up, &core.up, bands_per_spin)?;
+            let down = project_scalar_global_matrix(&solutions.down, &core.down, bands_per_spin)?;
+            DenseHermitianMatrix::from_upper_triangle(
+                fixed.dimension(),
+                Axis::Band,
+                |row, column| {
+                    let row_spin = row / bands_per_spin;
+                    let column_spin = column / bands_per_spin;
+                    if row_spin != column_spin {
+                        Complex64::default()
+                    } else if row_spin == 0 {
+                        up.at(row % bands_per_spin, column % bands_per_spin)
+                    } else {
+                        down.at(row % bands_per_spin, column % bands_per_spin)
+                    }
+                },
+            )
+            .map_err(Into::into)
+        })
+        .collect()
+}
+
+fn project_scalar_global_matrix(
+    solution: &muffintin_operators::GeneralizedEigensolution,
+    matrix: &DenseHermitianMatrix,
+    band_count: usize,
+) -> Result<DenseHermitianMatrix, GammaValenceHfError> {
+    if band_count > solution.eigenvectors.columns() {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: band_count,
+            actual: solution.eigenvectors.columns(),
+        });
+    }
+    let projected = DenseHermitianMatrix::from_tensor(einsum(
+        "ia,ij,jb->ab",
+        &[
+            &solution.eigenvectors.as_tensor().conjugate(),
+            matrix.as_tensor(),
+            solution.eigenvectors.as_tensor(),
+        ],
+    )?)?;
+    Ok(DenseHermitianMatrix::from_upper_triangle(
+        band_count,
+        Axis::Band,
+        |row, column| projected.at(row, column),
+    )?)
+}
+
+fn lift_second_variation_feedback(
+    mixings: &[SecondVariationMixing],
+    band_feedback: &[DenseHermitianMatrix],
+) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+    if mixings.len() != band_feedback.len() {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: mixings.len(),
+            actual: band_feedback.len(),
+        });
+    }
+    mixings
+        .iter()
+        .zip(band_feedback)
+        .map(|(mixing, feedback)| {
+            let tensor = second_variation_mixing_tensor(mixing)?;
+            Ok(DenseHermitianMatrix::from_tensor(einsum(
+                "ia,ab,jb->ij",
+                &[&tensor, feedback.as_tensor(), &tensor.conjugate()],
+            )?)?)
+        })
+        .collect()
+}
+
+fn scale_feedback(
+    feedback: &[DenseHermitianMatrix],
+    scale: f64,
+) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+    feedback
+        .iter()
+        .map(|matrix| {
+            Ok(DenseHermitianMatrix::from_upper_triangle(
+                matrix.dimension(),
+                matrix.axis(),
+                |row, column| scale * matrix.at(row, column),
+            )?)
+        })
+        .collect()
+}
+
+fn second_variation_density_residual(
+    physics: &CheckpointPhysics,
+    current: &CheckpointBandSolution,
+    current_occupations: &[f64],
+    carried: Option<RegionalDensity>,
+    solved: &CheckpointBandSolution,
+    solved_occupations: &[f64],
+) -> Result<(f64, RegionalDensity), GammaValenceHfError> {
+    let current_density = match carried {
+        Some(density) => density,
+        None => physics
+            .kernel
+            .synthesize_second_variation_bands(current, current_occupations)?,
+    };
+    let solved_density = physics
+        .kernel
+        .synthesize_second_variation_bands(solved, solved_occupations)?;
+    let residual = current_density.difference_rms(&solved_density)?;
+    Ok((residual, solved_density))
+}
+
 fn rebuild_scalar_exchange(
     physics: &CheckpointPhysics,
     spec: &KhSocValenceHfSpec,
@@ -1946,6 +2287,7 @@ fn rebuild_second_variation_exchange(
     occupations: &[Vec<f64>],
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
+    cache: &mut Option<SecondVariationExchangeCache>,
 ) -> Result<IsdfExchangeResult, GammaValenceHfError> {
     let inputs = q_fractional
         .iter()
@@ -1967,31 +2309,45 @@ fn rebuild_second_variation_exchange(
             })
         })
         .collect::<Vec<_>>();
+    let mpb_spec = SecondVariationMpbSpec {
+        lattice: first.reciprocal,
+        product_l_max: spec.product_l_max,
+        product_g_max: spec.product_g_max,
+        overlap_tolerance: spec.overlap_tolerance,
+        selections,
+    };
+    if cache.is_none() {
+        let bases = inputs
+            .iter()
+            .map(|input| compile_second_variation_mpb_basis(input, &mpb_spec))
+            .collect::<Result<Vec<_>, _>>()?;
+        let operators = bases
+            .iter()
+            .map(|basis| assemble_coulomb(&basis.auxiliary, &spec.coulomb))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(IsdfExchangeError::from)?;
+        *cache = Some(SecondVariationExchangeCache { bases, operators });
+    }
+    let cache = cache
+        .as_ref()
+        .expect("the second-variation exchange cache was just initialized");
     let mpb = inputs
         .iter()
-        .map(|input| {
-            build_second_variation_mpb(
-                input,
-                &SecondVariationMpbSpec {
-                    lattice: input.reciprocal,
-                    product_l_max: spec.product_l_max,
-                    product_g_max: spec.product_g_max,
-                    overlap_tolerance: spec.overlap_tolerance,
-                    selections: selections.clone(),
-                },
-            )
-        })
+        .zip(&cache.bases)
+        .map(|(input, basis)| build_second_variation_mpb_from_basis(input, &mpb_spec, basis))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(build_second_variation_mpb_exchange(
-        &inputs,
-        &mpb,
-        &spec.coulomb,
-        &IsdfExchangeSpec {
-            k_weights: scalar_k_weights(bands)?,
-            occupations: occupations.to_vec(),
-            gamma: spec.gamma,
-        },
-    )?)
+    Ok(
+        crate::isdf_exchange::contract_second_variation_mpb_exchange_with_operators(
+            &inputs,
+            &mpb,
+            &cache.operators,
+            &IsdfExchangeSpec {
+                k_weights: scalar_k_weights(bands)?,
+                occupations: occupations.to_vec(),
+                gamma: spec.gamma,
+            },
+        )?,
+    )
 }
 
 fn scalar_exchange_feedback(
@@ -2402,6 +2758,49 @@ impl FeedbackMixer {
         )
     }
 
+    fn mix_second_variation(
+        &mut self,
+        bands: &CheckpointBandSolution,
+        fixed_hamiltonians: &[DenseHermitianMatrix],
+        mixings: &[SecondVariationMixing],
+        occupations: &[Vec<f64>],
+        input: &[DenseHermitianMatrix],
+        output: &[DenseHermitianMatrix],
+    ) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+        let (candidate, error) = match self.mixing {
+            FockMixing::Linear { alpha } => {
+                return mix_global_feedback(input, output, alpha);
+            }
+            FockMixing::PulayAnderson { alpha, .. } => (
+                mix_global_feedback(input, output, alpha)?,
+                flatten_global_feedback(&subtract_global_feedback(input, output)?),
+            ),
+            FockMixing::CommutatorDiis { .. } => (
+                output.to_vec(),
+                second_variation_commutator_diis_error(
+                    bands,
+                    fixed_hamiltonians,
+                    mixings,
+                    occupations,
+                    output,
+                    None,
+                )?,
+            ),
+            FockMixing::QuasiNewtonDiis { level_shift, .. } => (
+                output.to_vec(),
+                second_variation_commutator_diis_error(
+                    bands,
+                    fixed_hamiltonians,
+                    mixings,
+                    occupations,
+                    output,
+                    Some(level_shift),
+                )?,
+            ),
+        };
+        self.push_and_combine(candidate, error)
+    }
+
     fn mix_channel(
         &mut self,
         bands: &CheckpointBandSolution,
@@ -2427,6 +2826,14 @@ impl FeedbackMixer {
                 commutator_diis_error(bands, occupations, output, Some(level_shift), channel)?,
             ),
         };
+        self.push_and_combine(candidate, error)
+    }
+
+    fn push_and_combine(
+        &mut self,
+        candidate: Vec<DenseHermitianMatrix>,
+        error: Vec<Complex64>,
+    ) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
         let max_history = self
             .mixing
             .history()
@@ -2472,15 +2879,11 @@ fn mix_global_feedback(
         .iter()
         .zip(fresh)
         .map(|(previous, fresh)| {
-            if previous.axis() != Axis::GlobalBasis || fresh.axis() != Axis::GlobalBasis {
+            if previous.axis() != fresh.axis() {
                 return Err(GammaValenceHfError::Tensor(TensorError::Axis {
                     index: 0,
-                    expected: Axis::GlobalBasis,
-                    actual: if previous.axis() != Axis::GlobalBasis {
-                        previous.axis()
-                    } else {
-                        fresh.axis()
-                    },
+                    expected: previous.axis(),
+                    actual: fresh.axis(),
                 }));
             }
             if previous.dimension() != fresh.dimension() {
@@ -2491,7 +2894,7 @@ fn mix_global_feedback(
             }
             Ok(DenseHermitianMatrix::from_upper_triangle(
                 fresh.dimension(),
-                Axis::GlobalBasis,
+                fresh.axis(),
                 |row, column| {
                     (1.0 - alpha) * previous.at(row, column) + alpha * fresh.at(row, column)
                 },
@@ -2511,7 +2914,7 @@ fn subtract_global_feedback(
         .map(|(input, output)| {
             Ok(DenseHermitianMatrix::from_upper_triangle(
                 input.dimension(),
-                Axis::GlobalBasis,
+                input.axis(),
                 |row, column| input.at(row, column) - output.at(row, column),
             )?)
         })
@@ -2688,6 +3091,132 @@ fn commutator_diis_error(
     }
 }
 
+fn second_variation_commutator_diis_error(
+    bands: &CheckpointBandSolution,
+    fixed_hamiltonians: &[DenseHermitianMatrix],
+    mixings: &[SecondVariationMixing],
+    occupations: &[Vec<f64>],
+    feedback: &[DenseHermitianMatrix],
+    level_shift: Option<Hartree>,
+) -> Result<Vec<Complex64>, GammaValenceHfError> {
+    let count = bands.points().len();
+    if fixed_hamiltonians.len() != count
+        || mixings.len() != count
+        || occupations.len() != count
+        || feedback.len() != count
+    {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: count,
+            actual: fixed_hamiltonians
+                .len()
+                .min(mixings.len())
+                .min(occupations.len())
+                .min(feedback.len()),
+        });
+    }
+    let energies = second_variation_energies(bands)?;
+    let mut error = Vec::new();
+    for k in 0..count {
+        let dimension = mixings[k].dimension();
+        if fixed_hamiltonians[k].axis() != Axis::Band
+            || feedback[k].axis() != Axis::Band
+            || fixed_hamiltonians[k].dimension() != dimension
+            || feedback[k].dimension() != dimension
+            || occupations[k].len() != dimension
+            || energies[k].len() != dimension
+        {
+            return Err(GammaValenceHfError::ExchangeKIndex {
+                expected: dimension,
+                actual: fixed_hamiltonians[k]
+                    .dimension()
+                    .min(feedback[k].dimension())
+                    .min(occupations[k].len())
+                    .min(energies[k].len()),
+            });
+        }
+        let fock =
+            DenseHermitianMatrix::from_upper_triangle(dimension, Axis::Band, |row, column| {
+                fixed_hamiltonians[k].at(row, column) + feedback[k].at(row, column)
+            })?;
+        let mixing = second_variation_mixing_tensor(&mixings[k])?;
+        let conjugate = mixing.conjugate();
+        let weight = bands.points()[k].weight().sqrt();
+        if let Some(level_shift) = level_shift {
+            let projected_fock = einsum("ia,ij,jb->ab", &[&conjugate, fock.as_tensor(), &mixing])?
+                .to_host_row_major();
+            let mut preconditioned = Vec::with_capacity(dimension * dimension);
+            for row in 0..dimension {
+                for column in 0..dimension {
+                    let occupation_difference = occupations[k][row] - occupations[k][column];
+                    if occupation_difference == 0.0 {
+                        preconditioned.push(Complex64::default());
+                        continue;
+                    }
+                    let denominator = (energies[k][row].get() - energies[k][column].get()).abs()
+                        + level_shift.get();
+                    if denominator == 0.0 {
+                        return Err(GammaValenceHfError::FockMixingAlgebra);
+                    }
+                    preconditioned.push(
+                        occupation_difference * projected_fock[row * dimension + column]
+                            / denominator,
+                    );
+                }
+            }
+            let preconditioned = ComplexTensor::from_host_row_major(
+                &[dimension, dimension],
+                &[Axis::Band, Axis::Band],
+                preconditioned,
+            )?;
+            error.extend(
+                einsum("ia,ab,jb->ij", &[&mixing, &preconditioned, &conjugate])?
+                    .to_host_row_major()
+                    .into_iter()
+                    .map(|value| weight * value),
+            );
+        } else {
+            let occupation_tensor = ComplexTensor::from_host_row_major(
+                &[dimension],
+                &[Axis::Band],
+                occupations[k]
+                    .iter()
+                    .map(|&value| Complex64::new(value, 0.0))
+                    .collect(),
+            )?;
+            let density = einsum("ia,a,ja->ij", &[&mixing, &occupation_tensor, &conjugate])?;
+            let fd = einsum("ij,jk->ik", &[fock.as_tensor(), &density])?;
+            let df = einsum("ij,jk->ik", &[&density, fock.as_tensor()])?;
+            error.extend(
+                fd.sub(&df)?
+                    .to_host_row_major()
+                    .into_iter()
+                    .map(|value| weight * value),
+            );
+        }
+    }
+    if error
+        .iter()
+        .all(|value| value.re.is_finite() && value.im.is_finite())
+    {
+        Ok(error)
+    } else {
+        Err(GammaValenceHfError::FockMixingAlgebra)
+    }
+}
+
+fn second_variation_mixing_tensor(
+    mixing: &SecondVariationMixing,
+) -> Result<ComplexTensor, TensorError> {
+    let dimension = mixing.dimension();
+    ComplexTensor::from_host_row_major(
+        &[dimension, dimension],
+        &[Axis::Band, Axis::Band],
+        (0..dimension)
+            .flat_map(|row| (0..dimension).map(move |column| mixing.at(row, column)))
+            .collect(),
+    )
+}
+
 fn require_feedback_layout(
     left: &[DenseHermitianMatrix],
     right: &[DenseHermitianMatrix],
@@ -2699,15 +3228,11 @@ fn require_feedback_layout(
         });
     }
     for (left, right) in left.iter().zip(right) {
-        if left.axis() != Axis::GlobalBasis || right.axis() != Axis::GlobalBasis {
+        if left.axis() != right.axis() {
             return Err(GammaValenceHfError::Tensor(TensorError::Axis {
                 index: 0,
-                expected: Axis::GlobalBasis,
-                actual: if left.axis() != Axis::GlobalBasis {
-                    left.axis()
-                } else {
-                    right.axis()
-                },
+                expected: left.axis(),
+                actual: right.axis(),
             }));
         }
         if left.dimension() != right.dimension() {
@@ -2767,9 +3292,10 @@ fn combine_feedback_records(
     let mut mixed = Vec::with_capacity(k_count);
     for k in 0..k_count {
         let dimension = history[0].candidate[k].dimension();
+        let axis = history[0].candidate[k].axis();
         mixed.push(DenseHermitianMatrix::from_upper_triangle(
             dimension,
-            Axis::GlobalBasis,
+            axis,
             |row, column| {
                 history
                     .iter()
@@ -2854,15 +3380,11 @@ fn global_feedback_difference(
     }
     let mut maximum = 0.0_f64;
     for (left, right) in left.iter().zip(right) {
-        if left.axis() != Axis::GlobalBasis || right.axis() != Axis::GlobalBasis {
+        if left.axis() != right.axis() {
             return Err(GammaValenceHfError::Tensor(TensorError::Axis {
                 index: 0,
-                expected: Axis::GlobalBasis,
-                actual: if left.axis() != Axis::GlobalBasis {
-                    left.axis()
-                } else {
-                    right.axis()
-                },
+                expected: left.axis(),
+                actual: right.axis(),
             }));
         }
         if left.dimension() != right.dimension() {
@@ -3185,6 +3707,90 @@ fn kh_soc_energy_diagnostic(
         - electrostatic.electron_hartree.get()
         + electrostatic.nuclear_nuclear.get()
         - exchange_energy
+        + core_core_exchange
+        + occupation.correction.get();
+    Ok(KhSocEnergyDiagnostic {
+        total: Hartree(direct),
+        exchange_identity_residual,
+        eigenvalue_identity_residual,
+        total_identity_residual: (direct - eigenvalue).abs(),
+        core_valence_exchange: Hartree(core_trace),
+    })
+}
+
+fn kh_soc_spinor_energy_diagnostic(
+    bands: &CheckpointBandSolution,
+    mixings: &[SecondVariationMixing],
+    occupation: &OccupationSolution,
+    exchange: &IsdfExchangeResult,
+    one_body_with_core: &[DenseHermitianMatrix],
+    resolved_core_feedback: &[DenseHermitianMatrix],
+    electrostatic: &muffintin_dft::RegionalElectrostaticResult,
+    core: FrozenCoreEnergyTerms,
+) -> Result<KhSocEnergyDiagnostic, GammaValenceHfError> {
+    let rows = second_variation_occupation_rows(&occupation.values, bands)?;
+    let count = bands.points().len();
+    if mixings.len() != count
+        || exchange.band_matrices.len() != count
+        || one_body_with_core.len() != count
+        || resolved_core_feedback.len() != count
+    {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: count,
+            actual: mixings
+                .len()
+                .min(exchange.band_matrices.len())
+                .min(one_body_with_core.len())
+                .min(resolved_core_feedback.len()),
+        });
+    }
+    let mut one_body_trace = 0.0;
+    let mut core_trace = 0.0;
+    let mut exchange_trace = 0.0;
+    for k in 0..count {
+        let mixing = second_variation_mixing_tensor(&mixings[k])?;
+        let conjugate = mixing.conjugate();
+        let local_soc = DenseHermitianMatrix::from_upper_triangle(
+            one_body_with_core[k].dimension(),
+            Axis::Band,
+            |row, column| {
+                one_body_with_core[k].at(row, column) - resolved_core_feedback[k].at(row, column)
+            },
+        )?;
+        let projected_local = DenseHermitianMatrix::from_tensor(einsum(
+            "ia,ij,jb->ab",
+            &[&conjugate, local_soc.as_tensor(), &mixing],
+        )?)?;
+        let projected_core = DenseHermitianMatrix::from_tensor(einsum(
+            "ia,ij,jb->ab",
+            &[&conjugate, resolved_core_feedback[k].as_tensor(), &mixing],
+        )?)?;
+        for (band, &value) in rows[k].iter().enumerate() {
+            let weight = bands.points()[k].weight();
+            one_body_trace += weight * value * projected_local.at(band, band).re;
+            core_trace += weight * value * projected_core.at(band, band).re;
+            exchange_trace += weight
+                * value
+                * exchange.band_matrices[k]
+                    .element(band, band)
+                    .expect("validated second-variation exchange band index")
+                    .re;
+        }
+    }
+    let exchange_identity_residual = (exchange.exchange_energy.get() - 0.5 * exchange_trace).abs();
+    let eigenvalue_identity_residual =
+        (occupation.band_energy.get() - one_body_trace - core_trace - exchange_trace).abs();
+    let core_core_exchange = 0.5 * core.cc_trace.get();
+    let direct = one_body_trace + core.h0.get() - electrostatic.electron_hartree.get()
+        + electrostatic.nuclear_nuclear.get()
+        + exchange.exchange_energy.get()
+        + core_trace
+        + core_core_exchange
+        + occupation.correction.get();
+    let eigenvalue = occupation.band_energy.get() + core.h0.get()
+        - electrostatic.electron_hartree.get()
+        + electrostatic.nuclear_nuclear.get()
+        - exchange.exchange_energy.get()
         + core_core_exchange
         + occupation.correction.get();
     Ok(KhSocEnergyDiagnostic {

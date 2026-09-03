@@ -56,9 +56,9 @@ pub use core_station::{
 };
 pub use density::{
     CollinearKPoint, DensityError, FullSpinorDensitySiteBasis, FullSpinorKPoint, ScalarSiteBasis,
-    add_core_density, core_shell_density, correct_electron_count, electron_count,
-    physical_site_band_projections, synthesize_collinear_valence_density,
-    synthesize_full_spinor_valence_density,
+    SecondVariationKPoint, add_core_density, core_shell_density, correct_electron_count,
+    electron_count, physical_site_band_projections, synthesize_collinear_valence_density,
+    synthesize_full_spinor_valence_density, synthesize_second_variation_valence_density,
 };
 pub use energy::{
     EnergyError, OccupationEnergy, ScfEnergy, TotalEnergyError, TotalEnergyEvaluation,
@@ -80,9 +80,10 @@ pub use linearization::{
 };
 pub use material_kernel::{
     CheckpointBandSolution, CheckpointKPoint, CheckpointKPointSolution, CheckpointOneParticle,
-    CheckpointSecondVariationResult, CheckpointSite, CheckpointSpin, InitialDensityComponents,
-    MaterialKernel, MaterialKernelError, RadialRoute, SpexBoundSpinorChannel,
-    SpexSpinorMaterialBinding, g_vector, production_density_layout, regular_k_points,
+    CheckpointSecondVariationFrame, CheckpointSecondVariationResult, CheckpointSite,
+    CheckpointSpin, InitialDensityComponents, MaterialKernel, MaterialKernelError, RadialRoute,
+    SpexBoundSpinorChannel, SpexSpinorMaterialBinding, g_vector, production_density_layout,
+    regular_k_points,
 };
 pub use mixing::{DensityMixer, MixAlgebraQuantity, MixRecord, MixStatus, MixStep, MixingError};
 pub use muffintin_sphere::RadialEquation;

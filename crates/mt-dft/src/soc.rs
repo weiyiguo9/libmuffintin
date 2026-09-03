@@ -143,6 +143,7 @@ pub fn solve_soc_second_variation(
     first_variation: &FirstVariationSubspace,
     site_blocks: &[SiteSpinOrbitBlock],
     site_feedback: &[DenseHermitianMatrix],
+    subspace_feedback: Option<&DenseHermitianMatrix>,
 ) -> Result<SecondVariationResult, SecondVariationError> {
     if route != FirstVariationRoute::NonmagneticScalarKoellingHarmon {
         return Err(SecondVariationError::UnsupportedRoute(route));
@@ -183,6 +184,22 @@ pub fn solve_soc_second_variation(
                 &coefficients,
             )?);
         }
+    }
+    if let Some(feedback) = subspace_feedback {
+        if feedback.dimension() != 2 * first_variation.eigenvalues.len() {
+            return Err(SecondVariationError::SubspaceFeedbackDimension {
+                expected: 2 * first_variation.eigenvalues.len(),
+                actual: feedback.dimension(),
+            });
+        }
+        if feedback.axis() != muffintin_tensor::Axis::Band {
+            return Err(SecondVariationError::Tensor(TensorError::Axis {
+                index: 0,
+                expected: muffintin_tensor::Axis::Band,
+                actual: feedback.axis(),
+            }));
+        }
+        site_contributions.push(feedback.clone());
     }
     let subspace =
         solve_second_variation_subspace(&first_variation.eigenvalues, &site_contributions)?;
@@ -264,6 +281,8 @@ pub enum SecondVariationError {
     SiteCount { expected: usize, actual: usize },
     #[error("received {actual} site feedback blocks, expected zero or {expected}")]
     SiteFeedbackCount { expected: usize, actual: usize },
+    #[error("second-variation feedback has dimension {actual}, expected {expected}")]
+    SubspaceFeedbackDimension { expected: usize, actual: usize },
     #[error(transparent)]
     Operator(#[from] OperatorError),
     #[error(transparent)]
@@ -360,7 +379,7 @@ mod tests {
             FirstVariationRoute::SpinorFirstVariation,
         ] {
             assert_eq!(
-                solve_soc_second_variation(route, &compiled, &first, &[], &[]).unwrap_err(),
+                solve_soc_second_variation(route, &compiled, &first, &[], &[], None).unwrap_err(),
                 SecondVariationError::UnsupportedRoute(route)
             );
         }

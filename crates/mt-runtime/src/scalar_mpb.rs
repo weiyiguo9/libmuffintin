@@ -54,6 +54,7 @@ pub(crate) struct ScalarMpbBasis {
     product_l_max: u32,
     product_g_max: InverseBohr,
     overlap_tolerance: f64,
+    overlap_spin_factor: f64,
     mt_coordinate_tensors: HashMap<(u8, usize), Vec<ComplexTensor>>,
     interstitial_coordinate_tensors: HashMap<(u8, usize), ComplexTensor>,
 }
@@ -197,20 +198,33 @@ pub(crate) fn compile_scalar_mpb_basis(
     input: &ScalarProductInput,
     spec: &ScalarMpbSpec,
 ) -> Result<ScalarMpbBasis, ScalarMpbError> {
-    require_compatible_layout(input)?;
-    let (raw, _) = spex_mixed_product_basis(
-        &input.source,
+    compile_mpb_basis(
+        input,
+        spec.lattice,
         spec.product_l_max,
         spec.product_g_max,
-        &spec.lattice,
-    )?;
+        spec.overlap_tolerance,
+        SCALAR_MPB_NSPIN,
+    )
+}
+
+fn compile_mpb_basis(
+    input: &ScalarProductInput,
+    lattice: ReciprocalLattice,
+    product_l_max: u32,
+    product_g_max: InverseBohr,
+    overlap_tolerance: f64,
+    overlap_spin_factor: f64,
+) -> Result<ScalarMpbBasis, ScalarMpbError> {
+    require_compatible_layout(input)?;
+    let (raw, _) = spex_mixed_product_basis(&input.source, product_l_max, product_g_max, &lattice)?;
     let auxiliary = apply_overlap_cutoff(
         &raw,
         &input.source,
-        spec.overlap_tolerance,
-        SCALAR_MPB_NSPIN,
-        &spec.lattice,
-        spec.product_g_max,
+        overlap_tolerance,
+        overlap_spin_factor,
+        &lattice,
+        product_g_max,
     )?;
     let context = ScalarVertexContext::new(&input.source, &raw, &auxiliary)?;
     let interstitial_table = context.interstitial_table()?;
@@ -231,9 +245,10 @@ pub(crate) fn compile_scalar_mpb_basis(
             .iter()
             .map(|channel| (channel.spin, channel.bases.clone()))
             .collect(),
-        product_l_max: spec.product_l_max,
-        product_g_max: spec.product_g_max,
-        overlap_tolerance: spec.overlap_tolerance,
+        product_l_max,
+        product_g_max,
+        overlap_tolerance,
+        overlap_spin_factor,
         mt_coordinate_tensors,
         interstitial_coordinate_tensors,
     })
@@ -264,6 +279,7 @@ pub(crate) fn build_scalar_mpb_from_basis(
         || basis.product_l_max != spec.product_l_max
         || basis.product_g_max != spec.product_g_max
         || basis.overlap_tolerance != spec.overlap_tolerance
+        || basis.overlap_spin_factor != SCALAR_MPB_NSPIN
         || spec.lattice != input.reciprocal
     {
         return Err(ScalarMpbError::IncompatibleBasisContext);
@@ -303,6 +319,29 @@ pub fn build_second_variation_mpb(
     input: &ScalarProductInput,
     spec: &SecondVariationMpbSpec,
 ) -> Result<SecondVariationMpbResult, ScalarMpbError> {
+    let basis = compile_second_variation_mpb_basis(input, spec)?;
+    build_second_variation_mpb_from_basis(input, spec, &basis)
+}
+
+pub(crate) fn compile_second_variation_mpb_basis(
+    input: &ScalarProductInput,
+    spec: &SecondVariationMpbSpec,
+) -> Result<ScalarMpbBasis, ScalarMpbError> {
+    compile_mpb_basis(
+        input,
+        spec.lattice,
+        spec.product_l_max,
+        spec.product_g_max,
+        spec.overlap_tolerance,
+        SECOND_VARIATION_MPB_NSPIN,
+    )
+}
+
+pub(crate) fn build_second_variation_mpb_from_basis(
+    input: &ScalarProductInput,
+    spec: &SecondVariationMpbSpec,
+    basis: &ScalarMpbBasis,
+) -> Result<SecondVariationMpbResult, ScalarMpbError> {
     if !matches!(
         input.orbitals.relativity,
         ScfRelativity::SocSecondVariation { .. }
@@ -326,20 +365,7 @@ pub fn build_second_variation_mpb(
             )?;
         }
     }
-    let (raw, _) = spex_mixed_product_basis(
-        &input.source,
-        spec.product_l_max,
-        spec.product_g_max,
-        &spec.lattice,
-    )?;
-    let auxiliary = apply_overlap_cutoff(
-        &raw,
-        &input.source,
-        spec.overlap_tolerance,
-        SECOND_VARIATION_MPB_NSPIN,
-        &spec.lattice,
-        spec.product_g_max,
-    )?;
+    require_mpb_basis_context(input, spec, basis, SECOND_VARIATION_MPB_NSPIN)?;
     let scalar_spec = ScalarMpbSpec {
         lattice: spec.lattice,
         product_l_max: spec.product_l_max,
@@ -358,27 +384,21 @@ pub fn build_second_variation_mpb(
             })
             .collect(),
     };
-    let context = ScalarVertexContext::new(&input.source, &raw, &auxiliary)?;
-    let interstitial_table = context.interstitial_table()?;
-    let mt_coordinate_tensors =
-        compile_mt_coordinate_tensors(input, &raw, context.muffin_tin_table())?;
-    let interstitial_coordinate_tensors =
-        compile_interstitial_coordinate_tensors(input, &auxiliary, &interstitial_table)?;
     let muffin_tin_vertices = contract_muffin_tin_selections(
         input,
         &scalar_spec,
-        auxiliary.dimension(),
-        &mt_coordinate_tensors,
+        basis.auxiliary.dimension(),
+        &basis.mt_coordinate_tensors,
     )?;
     let interstitial_vertices = contract_interstitial_selections(
         input,
         &scalar_spec,
-        &auxiliary,
-        &interstitial_coordinate_tensors,
+        &basis.auxiliary,
+        &basis.interstitial_coordinate_tensors,
     )?;
     let components = assemble_scalar_vertices(
         input,
-        &auxiliary,
+        &basis.auxiliary,
         &scalar_spec,
         &muffin_tin_vertices,
         &interstitial_vertices,
@@ -409,19 +429,46 @@ pub fn build_second_variation_mpb(
                 ),
                 left_band: selection.left_band,
                 right_band: selection.right_band,
-                vertex: PairVertex::from_auxiliary(&auxiliary, pair, coefficients)
+                vertex: PairVertex::from_auxiliary(&basis.auxiliary, pair, coefficients)
                     .map_err(MpbError::from)?,
             })
         })
         .collect::<Result<Vec<_>, ScalarMpbError>>()?;
     Ok(SecondVariationMpbResult {
-        raw,
-        auxiliary,
+        raw: basis.raw.clone(),
+        auxiliary: basis.auxiliary.clone(),
         reciprocal: input.reciprocal,
         pair_columns: input.pair_columns,
         vertices,
         frozen_input: input.clone(),
     })
+}
+
+fn require_mpb_basis_context(
+    input: &ScalarProductInput,
+    spec: &SecondVariationMpbSpec,
+    basis: &ScalarMpbBasis,
+    overlap_spin_factor: f64,
+) -> Result<(), ScalarMpbError> {
+    if basis.source != input.source
+        || basis.reciprocal != input.reciprocal
+        || basis.pair_columns != input.pair_columns
+        || basis.k_minus_q != input.k_minus_q
+        || basis.channel_bases.len() != input.orbitals.channels.len()
+        || !basis
+            .channel_bases
+            .iter()
+            .zip(&input.orbitals.channels)
+            .all(|((spin, bases), channel)| *spin == channel.spin && bases == &channel.bases)
+        || basis.product_l_max != spec.product_l_max
+        || basis.product_g_max != spec.product_g_max
+        || basis.overlap_tolerance != spec.overlap_tolerance
+        || basis.overlap_spin_factor != overlap_spin_factor
+        || spec.lattice != input.reciprocal
+    {
+        return Err(ScalarMpbError::IncompatibleBasisContext);
+    }
+    Ok(())
 }
 
 fn require_compatible_layout(input: &ScalarProductInput) -> Result<(), ScalarMpbError> {

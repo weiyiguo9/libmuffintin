@@ -38,6 +38,16 @@ pub struct CollinearKPoint<'a> {
     pub occupations: Collinear<&'a [f64]>,
 }
 
+/// One SOC second-variation solution represented by Pauli components on the
+/// same scalar LAPW basis.
+#[derive(Clone, Debug)]
+pub struct SecondVariationKPoint<'a> {
+    pub weight: f64,
+    pub compiled: &'a CompiledBasis,
+    pub solutions: Collinear<&'a GeneralizedEigensolution>,
+    pub occupations: &'a [f64],
+}
+
 /// Radial orbitals in exactly the same order as one compiled site projection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarSiteBasis {
@@ -404,6 +414,144 @@ pub fn synthesize_collinear_valence_density(
         )?),
     );
     regional_density_from_collinear(geometry, muffin_tins, interstitial)
+}
+
+/// Synthesize the complete Pauli density of SOC second-variation orbitals.
+///
+/// The two scalar solutions are the up/down components of the same spinor
+/// bands and therefore share one occupation vector. Cross-component density
+/// matrices generate the transverse magnetization instead of being discarded
+/// as independent collinear channels.
+pub fn synthesize_second_variation_valence_density(
+    geometry: InterstitialGeometry,
+    layout: FourierLayout,
+    sites: &[ScalarSiteBasis],
+    k_points: &[SecondVariationKPoint<'_>],
+) -> Result<RegionalDensity, DensityError> {
+    let validation = k_points
+        .iter()
+        .map(|point| CollinearKPoint {
+            weight: point.weight,
+            compiled: point.compiled,
+            solutions: point.solutions.clone(),
+            occupations: Collinear::new(point.occupations, point.occupations),
+        })
+        .collect::<Vec<_>>();
+    validate_k_points(sites, &validation)?;
+    if layout.index([0, 0, 0]).is_none() {
+        return Err(DensityError::MissingZeroVector);
+    }
+    let contractions = sites
+        .iter()
+        .map(ScalarDensityContraction::compile)
+        .collect::<Vec<_>>();
+    let mut muffin_tins: [Vec<BTreeMap<Lm, Vec<Complex64>>>; 4] =
+        std::array::from_fn(|_| site_accumulators(sites));
+    let mut interstitial: [Vec<Complex64>; 4] =
+        std::array::from_fn(|_| vec![Complex64::default(); layout.len()]);
+    let inverse_volume = 1.0 / geometry.cell_volume().get();
+    let mut expected_electron_count = 0.0;
+
+    for point in k_points {
+        expected_electron_count += point.weight * point.occupations.iter().sum::<f64>();
+        let state_weights = ComplexTensor::from_host_row_major(
+            &[point.occupations.len()],
+            &[Axis::Band],
+            point
+                .occupations
+                .iter()
+                .map(|&occupation| Complex64::new(point.weight * occupation, 0.0))
+                .collect(),
+        )?;
+        for (site, contraction) in contractions.iter().enumerate() {
+            let projection = CompiledSiteProjection::scalar(point.compiled, site)?;
+            let up = projection.project_eigenvectors(&point.solutions.up.eigenvectors)?;
+            let down = projection.project_eigenvectors(&point.solutions.down.eigenvectors)?;
+            let components =
+                pauli_density_matrices(up.as_tensor(), down.as_tensor(), &state_weights)?;
+            for component in 0..4 {
+                let density = synthesize_scalar_site_density(contraction, &components[component]);
+                merge_sphere_accumulator(&mut muffin_tins[component][site], &density);
+            }
+        }
+
+        let plane_wave_count = point.compiled.plane_waves.len();
+        if plane_wave_count != 0 {
+            let up = select_plane_wave_bands(
+                &point.solutions.up.eigenvectors,
+                plane_wave_count,
+                point.occupations.len(),
+            )?;
+            let down = select_plane_wave_bands(
+                &point.solutions.down.eigenvectors,
+                plane_wave_count,
+                point.occupations.len(),
+            )?;
+            let components = pauli_density_matrices(&up, &down, &state_weights)?;
+            for (component, density) in components.iter().enumerate() {
+                accumulate_scalar_interstitial_matrix(
+                    &point.compiled.plane_waves,
+                    &layout,
+                    &density.to_host_row_major(),
+                    &mut interstitial[component],
+                    inverse_volume,
+                )?;
+            }
+        }
+    }
+
+    let muffin_tins = muffin_tins
+        .into_iter()
+        .map(|accumulators| finish_muffin_tins(sites, accumulators))
+        .collect::<Result<Vec<_>, _>>()?;
+    for coefficients in &mut interstitial {
+        enforce_fourier_reality(&layout, coefficients);
+    }
+    let interstitial = interstitial
+        .into_iter()
+        .map(|coefficients| {
+            Ok(InterstitialField::from_fourier_field(
+                muffintin_core::HermitianFourierField::new(layout.clone(), coefficients)?,
+            ))
+        })
+        .collect::<Result<Vec<_>, DensityError>>()?;
+    let mut muffin_tins = muffin_tins.into_iter();
+    let mut interstitial = interstitial.into_iter();
+    let charge = RegionalScalarField::new(
+        geometry.clone(),
+        muffin_tins
+            .next()
+            .expect("four components were constructed"),
+        interstitial
+            .next()
+            .expect("four components were constructed"),
+    )?;
+    let mut magnetization = Vec::with_capacity(3);
+    for _ in 0..3 {
+        magnetization.push(RegionalScalarField::new(
+            geometry.clone(),
+            muffin_tins
+                .next()
+                .expect("four components were constructed"),
+            interstitial
+                .next()
+                .expect("four components were constructed"),
+        )?);
+    }
+    let magnetization = magnetization
+        .try_into()
+        .expect("exactly three spin components were constructed");
+    let result = RegionalDensity::new(charge, magnetization)?;
+    let actual = electron_count(&result)?;
+    let tolerance = SPINOR_COUNT_TOLERANCE * expected_electron_count.abs().max(1.0);
+    if (actual - expected_electron_count).abs() > tolerance {
+        return Err(DensityError::SpinorChargeMismatch {
+            expected: expected_electron_count,
+            actual,
+            tolerance,
+        });
+    }
+    Ok(result)
 }
 
 /// Synthesize charge and Cartesian spin density from occupied full-spinor states.
@@ -1089,6 +1237,70 @@ fn accumulate_spin(
                     interstitial[position] +=
                         inverse_volume * density_matrix[left * plane_waves.len() + right];
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn pauli_density_matrices(
+    up: &ComplexTensor,
+    down: &ComplexTensor,
+    state_weights: &ComplexTensor,
+) -> Result<[ComplexTensor; 4], DensityError> {
+    if up.shape() != down.shape() || up.axes() != down.axes() || up.shape().len() != 2 {
+        return Err(DensityError::Tensor(TensorError::Shape {
+            expected: up.shape(),
+            actual: down.shape(),
+        }));
+    }
+    let weighted_up = einsum("ib,b->ib", &[up, state_weights])?;
+    let weighted_down = einsum("ib,b->ib", &[down, state_weights])?;
+    let uu = einsum("ib,jb->ij", &[&up.conjugate(), &weighted_up])?;
+    let ud = einsum("ib,jb->ij", &[&up.conjugate(), &weighted_down])?;
+    let du = einsum("ib,jb->ij", &[&down.conjugate(), &weighted_up])?;
+    let dd = einsum("ib,jb->ij", &[&down.conjugate(), &weighted_down])?;
+    let uu = uu.to_host_row_major();
+    let ud = ud.to_host_row_major();
+    let du = du.to_host_row_major();
+    let dd = dd.to_host_row_major();
+    let shape = up.shape()[0];
+    let axes = [up.axes()[0], up.axes()[0]];
+    let build = |component: usize| {
+        let values = (0..shape * shape)
+            .map(|index| match component {
+                0 => uu[index] + dd[index],
+                1 => ud[index] + du[index],
+                2 => Complex64::new(0.0, -1.0) * ud[index] + Complex64::new(0.0, 1.0) * du[index],
+                3 => uu[index] - dd[index],
+                _ => unreachable!(),
+            })
+            .collect();
+        ComplexTensor::from_host_row_major(&[shape, shape], &axes, values)
+    };
+    Ok([build(0)?, build(1)?, build(2)?, build(3)?])
+}
+
+fn accumulate_scalar_interstitial_matrix(
+    plane_waves: &[muffintin_envelope::PlaneWave],
+    layout: &FourierLayout,
+    density_matrix: &[Complex64],
+    interstitial: &mut [Complex64],
+    inverse_volume: f64,
+) -> Result<(), DensityError> {
+    for (left, left_wave) in plane_waves.iter().enumerate() {
+        for (right, right_wave) in plane_waves.iter().enumerate() {
+            let difference = [
+                right_wave.g.index[0].checked_sub(left_wave.g.index[0]),
+                right_wave.g.index[1].checked_sub(left_wave.g.index[1]),
+                right_wave.g.index[2].checked_sub(left_wave.g.index[2]),
+            ];
+            let [Some(g0), Some(g1), Some(g2)] = difference else {
+                return Err(DensityError::ReciprocalDifferenceOverflow);
+            };
+            if let Some(position) = layout.index([g0, g1, g2]) {
+                interstitial[position] +=
+                    inverse_volume * density_matrix[left * plane_waves.len() + right];
             }
         }
     }
