@@ -147,6 +147,7 @@ impl CheckpointPhysics {
             &basis,
             &k_fractional,
             config.relativity,
+            &[],
         )?;
         emit_scalar_product_input(
             self,

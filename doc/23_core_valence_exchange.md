@@ -541,6 +541,38 @@ acceptance. Thus reported virtual energies do not contain the artificial
 shift. This control is distinct from `QuasiNewtonDiis::level_shift`, which
 regularizes only the error-vector energy denominator.
 
+Frozen KH+SOC core orthogonality uses a boundary-preserving constrained
+LAPW representation. One matched KH local orbital is appended internally for
+each core radial shell in each represented angular channel. Let $B$ contain
+the core overlaps with the original radial columns, and $D$ the overlaps with
+these additional cancellation LOs. Both use the same MT $P_cP_v+Q_cQ_v$
+contraction as static core exchange. The active embedding is
+
+```math
+T = \begin{pmatrix} I \\ -D^{-1}B \end{pmatrix},\qquad
+H_{\mathrm{act}} = T^\dagger H_{\mathrm{aug}} T,\qquad
+S_{\mathrm{act}} = T^\dagger S_{\mathrm{aug}} T.
+```
+
+The additional LO amplitudes are constrained coordinates, not additional
+active orbitals. Their vanishing value and slope preserve the APW boundary
+conditions. The driver retains the expanded physical coefficients $C=TZ$ for
+every density, SOC, VV vertex, and core-exchange contraction; it does not
+project only the eigensolver while using unprojected orbitals elsewhere.
+All inner scalar solves preserve the same embedding. Scalar CDIIS restricts
+its commutator to that allowed space, excluding forbidden core directions,
+and scalar fresh-feedback convergence is measured on the current occupied
+orbital block rather than on individual nonorthogonal global-basis entries.
+The scalar density gate also uses the fresh unmixed Fock map.
+
+This preserves the requested active dimension but increases the internal
+radial/MPB workspace. It does not make core orbitals part of the VV/THC
+active Hamiltonian. The constraint is MT-only under the existing scalar core
+model, not exact full-space four-component orthogonality; core spill and MT
+radius convergence remain physical acceptance checks. Core sidecars are
+explicit arguments of `MaterialKernel::solve_points`; ordinary unconstrained
+DFT callers pass an empty slice.
+
 The current Kr production-size acceptance is blocked by core-like active
 occupations, not established by successful inner-loop closure. A diagnostic
 at commit `2ac2e01` used an 8 bohr box, orbital/product cutoffs 2 inverse bohr,

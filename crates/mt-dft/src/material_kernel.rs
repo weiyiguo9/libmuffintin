@@ -401,6 +401,7 @@ impl CheckpointBandSolution {
         let (points, states) = (&mut updated.points, &mut updated.states);
         for (point_index, (point, feedback)) in points.iter_mut().zip(feedback).enumerate() {
             let CheckpointKPointSolution::Collinear {
+                bases,
                 eigenproblems,
                 solutions,
                 up_occupations,
@@ -413,7 +414,8 @@ impl CheckpointBandSolution {
             if up_occupations == down_occupations {
                 return Err(MaterialKernelError::FeedbackRequiresScalar { point: point_index });
             }
-            let solve = |problem: &LapwEigenproblem,
+            let solve = |basis: &ScalarIterationBasis,
+                         problem: &LapwEigenproblem,
                          feedback: &DenseHermitianMatrix|
              -> Result<GeneralizedEigensolution, MaterialKernelError> {
                 if feedback.axis() != Axis::GlobalBasis {
@@ -436,14 +438,20 @@ impl CheckpointBandSolution {
                     Axis::GlobalBasis,
                     |row, column| problem.hamiltonian.at(row, column) + feedback.at(row, column),
                 )?;
-                Ok(solve_generalized_hermitian(
-                    &fock,
-                    &problem.overlap,
-                    OVERLAP_THRESHOLD,
-                )?)
+                Ok(match &basis.core_orthogonalization {
+                    Some(core) => muffintin_operators::solve_generalized_hermitian_embedded(
+                        &fock,
+                        &problem.overlap,
+                        &core.embedding,
+                        OVERLAP_THRESHOLD,
+                    )?,
+                    None => {
+                        solve_generalized_hermitian(&fock, &problem.overlap, OVERLAP_THRESHOLD)?
+                    }
+                })
             };
-            let up = solve(&eigenproblems.up, &feedback.up)?;
-            let down = solve(&eigenproblems.down, &feedback.down)?;
+            let up = solve(&bases.up, &eigenproblems.up, &feedback.up)?;
+            let down = solve(&bases.down, &eigenproblems.down, &feedback.down)?;
             for (range, solved) in [
                 (up_occupations.clone(), &up),
                 (down_occupations.clone(), &down),
@@ -1076,12 +1084,20 @@ impl MaterialKernel {
         basis: &ScfBasis,
         points: &[[f64; 3]],
         relativity: ScfRelativity,
+        core_orthogonal: &[CoreShellOrbitals],
     ) -> Result<CheckpointBandSolution, MaterialKernelError> {
         if points.is_empty() {
             return Err(MaterialKernelError::EmptyKPointSet);
         }
         let weights = vec![1.0 / points.len() as f64; points.len()];
-        self.solve_points_with_weights(potential, basis, points, &weights, relativity)
+        self.solve_points_with_weights(
+            potential,
+            basis,
+            points,
+            &weights,
+            relativity,
+            core_orthogonal,
+        )
     }
 
     /// Prepare a fixed doubled scalar-band frame for repeated SOC Fock solves.
@@ -1294,6 +1310,7 @@ impl MaterialKernel {
         points: &[[f64; 3]],
         weights: &[f64],
         relativity: ScfRelativity,
+        core_orthogonal: &[CoreShellOrbitals],
     ) -> Result<CheckpointBandSolution, MaterialKernelError> {
         if points.is_empty() {
             return Err(MaterialKernelError::EmptyKPointSet);
@@ -1307,6 +1324,9 @@ impl MaterialKernel {
             return Err(MaterialKernelError::InvalidKPointWeights);
         }
         if relativity == ScfRelativity::SpinorFirstVariation {
+            if !core_orthogonal.is_empty() {
+                return Err(MaterialKernelError::InconsistentRelativityRoute);
+            }
             return self.solve_spinor_points(potential, basis, points, weights);
         }
         self.require_collinear_route(potential)?;
@@ -1317,11 +1337,28 @@ impl MaterialKernel {
 
         for (&k, &weight) in points.iter().zip(weights) {
             let envelope = self.plane_wave_envelope(k, basis.plane_wave_cutoff)?;
-            let bases = build_collinear_scalar_iteration_bases(
-                &envelope,
-                &self.geometry,
-                Collinear::new(&site_inputs.up, &site_inputs.down),
-            )?;
+            let bases = if core_orthogonal.is_empty() {
+                build_collinear_scalar_iteration_bases(
+                    &envelope,
+                    &self.geometry,
+                    Collinear::new(&site_inputs.up, &site_inputs.down),
+                )?
+            } else {
+                Collinear::new(
+                    crate::build_core_orthogonal_scalar_iteration_basis(
+                        &envelope,
+                        &self.geometry,
+                        &site_inputs.up,
+                        core_orthogonal,
+                    )?,
+                    crate::build_core_orthogonal_scalar_iteration_basis(
+                        &envelope,
+                        &self.geometry,
+                        &site_inputs.down,
+                        core_orthogonal,
+                    )?,
+                )
+            };
             let scalar = crate::solve_collinear_scalar_k_point(
                 Collinear::new(&bases.up, &bases.down),
                 &self.geometry,
@@ -2339,6 +2376,7 @@ impl ScfPhysics for MaterialKernel {
                 &one_particle.basis,
                 &regular_k_points(k_mesh)?,
                 relativity,
+                &[],
             );
         };
         if relativity != ScfRelativity::Scalar {
@@ -2362,6 +2400,7 @@ impl ScfPhysics for MaterialKernel {
             &points,
             &weights,
             relativity,
+            &[],
         )?;
         bands.reduction = Some(reduction);
         bands.symmetry_transforms = transforms;
@@ -2473,8 +2512,13 @@ impl ScfPhysics for MaterialKernel {
             .iter()
             .map(|point| point.k)
             .collect::<Vec<_>>();
-        let solved =
-            self.solve_points(&state.potential, &state.basis, &points, state.relativity)?;
+        let solved = self.solve_points(
+            &state.potential,
+            &state.basis,
+            &points,
+            state.relativity,
+            &[],
+        )?;
         solved
             .points
             .into_iter()
@@ -2503,6 +2547,7 @@ impl ScfPhysics for MaterialKernel {
             &state.basis,
             &regular_k_points(request.k_mesh)?,
             state.relativity,
+            &[],
         )?;
         let band_count = solved
             .points
@@ -3044,6 +3089,8 @@ pub enum MaterialKernelError {
     Regional(#[from] crate::RegionalError),
     #[error(transparent)]
     Scalar(#[from] ScalarBuilderError),
+    #[error(transparent)]
+    CoreOrthogonalization(#[from] crate::ScalarCoreOrthogonalizationError),
     #[error(transparent)]
     SpinorBuilder(#[from] SpinorBuilderError),
     #[error(transparent)]

@@ -717,6 +717,7 @@ fn scalar_route_rejects_a_transverse_potential() {
             &config(ScfRelativity::Scalar).basis,
             &[[0.0; 3]],
             ScfRelativity::Scalar,
+            &[],
         ),
         Err(MaterialKernelError::TransversePotentialUnsupported { .. })
     ));

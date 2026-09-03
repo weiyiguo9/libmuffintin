@@ -205,6 +205,8 @@ pub struct KhSocValenceHfIterationDiagnostic {
     pub scalar_exchange_rebuilds: usize,
     pub spinor_exchange_rebuilds: usize,
     pub scalar_fock_fixed_point_residual: f64,
+    /// Fresh feedback in the current scalar orbital frame, retaining matrix
+    /// elements with at least one occupied endpoint.
     pub scalar_fock_feedback_residual: Hartree,
     pub spinor_fock_commutator_residual: Hartree,
     pub spinor_active_feedback_residual: Hartree,
@@ -625,6 +627,7 @@ pub fn run_valence_hf(
             spec.config.electron_count,
             density.charge().interstitial().layout(),
             ScfRelativity::SpinorFirstVariation,
+            &[],
         )?;
 
         let fixed = solve_fixed_potential(
@@ -800,6 +803,7 @@ fn run_kh_soc_valence_hf_inner(
             electrostatic.potential.clone(),
             [zero.clone(), zero.clone(), zero],
         )?;
+        let core_sidecars = frozen_core.as_deref().unwrap_or(&[]);
         let (bands, _) = solve_h0_bands(
             physics,
             &spec.config,
@@ -808,8 +812,8 @@ fn run_kh_soc_valence_hf_inner(
             valence_electrons,
             total_density.charge().interstitial().layout(),
             ScfRelativity::Scalar,
+            core_sidecars,
         )?;
-        let core_sidecars = frozen_core.as_deref().unwrap_or(&[]);
         let fixed = solve_scalar_fixed_potential(
             physics,
             spec,
@@ -1086,6 +1090,7 @@ pub fn run_relaxed_core_hf(
             valence_electrons,
             total_density.charge().interstitial().layout(),
             ScfRelativity::SpinorFirstVariation,
+            &[],
         )?;
 
         let bootstrap = physics.kernel.bootstrap_hf_core(
@@ -1357,6 +1362,7 @@ fn solve_h0_bands(
     electron_count: f64,
     density_layout: &FourierLayout,
     relativity: ScfRelativity,
+    core_orthogonal: &[CoreShellOrbitals],
 ) -> Result<(CheckpointBandSolution, OccupationSolution), GammaValenceHfError> {
     let mut one_particle = physics
         .kernel
@@ -1366,6 +1372,7 @@ fn solve_h0_bands(
         one_particle.basis(),
         k_fractional,
         relativity,
+        core_orthogonal,
     )?;
     let mut occupation = solve_occupations(bands.states(), electron_count, config.occupations)?;
     for pass in 1..=SPECTRAL_REFINEMENT_PASSES {
@@ -1389,6 +1396,7 @@ fn solve_h0_bands(
             one_particle.basis(),
             k_fractional,
             relativity,
+            core_orthogonal,
         )?;
         occupation = solve_occupations(bands.states(), electron_count, config.occupations)?;
     }
@@ -1859,7 +1867,6 @@ fn solve_scalar_fixed_potential(
     let mut previous_global_feedback: Option<Collinear<Vec<DenseHermitianMatrix>>> = None;
     let mut up_mixer = FeedbackMixer::new(spec.scalar_fock_mixing);
     let mut down_mixer = FeedbackMixer::new(spec.scalar_fock_mixing);
-    let mut current_density = None;
     let mut exchange_cache = None;
     let core_feedback = physics
         .kernel
@@ -1884,7 +1891,14 @@ fn solve_scalar_fixed_potential(
             add_scalar_core_feedback(valence_global_feedback, &core_feedback)?;
         let feedback_residual = previous_global_feedback
             .as_ref()
-            .map(|previous| scalar_feedback_difference(previous, &fresh_global_feedback))
+            .map(|previous| {
+                scalar_active_feedback_difference(
+                    &bands,
+                    &occupation_rows,
+                    previous,
+                    &fresh_global_feedback,
+                )
+            })
             .transpose()?
             .unwrap_or(f64::INFINITY);
         last_feedback_residual = feedback_residual;
@@ -1918,26 +1932,25 @@ fn solve_scalar_fixed_potential(
             None => fresh_global_feedback.clone(),
         };
         let solved = bands.solve_scalar_global_feedback(
-            &global_feedback
+            &fresh_global_feedback
                 .up
                 .iter()
                 .cloned()
-                .zip(global_feedback.down.iter().cloned())
+                .zip(fresh_global_feedback.down.iter().cloned())
                 .map(|(up, down)| Collinear::new(up, down))
                 .collect::<Vec<_>>(),
         )?;
         let solved_occupation =
             solve_occupations(solved.states(), valence_electrons, spec.config.occupations)?;
-        let (residual, solved_density) = fixed_point_density_residual(
+        let (residual, _) = fixed_point_density_residual(
             physics,
             &bands,
             &occupation.values,
-            current_density.take(),
+            None,
             &solved,
             &solved_occupation.values,
         )?;
         last_residual = residual;
-        current_density = Some(solved_density);
         if last_residual <= spec.fock_density_tolerance
             && feedback_residual <= spec.fock_feedback_tolerance.get()
         {
@@ -1952,7 +1965,15 @@ fn solve_scalar_fixed_potential(
                 feedback_residual,
             });
         }
-        bands = solved;
+        bands = bands.solve_scalar_global_feedback(
+            &global_feedback
+                .up
+                .iter()
+                .cloned()
+                .zip(global_feedback.down.iter().cloned())
+                .map(|(up, down)| Collinear::new(up, down))
+                .collect::<Vec<_>>(),
+        )?;
         previous_global_feedback = Some(global_feedback);
     }
     Err(GammaValenceHfError::FockNotConverged {
@@ -2625,12 +2646,43 @@ fn add_scalar_core_feedback(
     Ok(Collinear::new(add(valence.up, 0)?, add(valence.down, 1)?))
 }
 
-fn scalar_feedback_difference(
+fn scalar_active_feedback_difference(
+    bands: &CheckpointBandSolution,
+    occupations: &[Collinear<Vec<f64>>],
     left: &Collinear<Vec<DenseHermitianMatrix>>,
     right: &Collinear<Vec<DenseHermitianMatrix>>,
 ) -> Result<f64, GammaValenceHfError> {
-    Ok(global_feedback_difference(&left.up, &right.up)?
-        .max(global_feedback_difference(&left.down, &right.down)?))
+    let mut maximum = 0.0_f64;
+    for (k, point) in bands.points().iter().enumerate() {
+        let CheckpointKPointSolution::Collinear { solutions, .. } = &point.solution else {
+            return Err(GammaValenceHfError::SpinorFirstVariation);
+        };
+        for (solution, occupations, previous, fresh) in [
+            (&solutions.up, &occupations[k].up, &left.up[k], &right.up[k]),
+            (
+                &solutions.down,
+                &occupations[k].down,
+                &left.down[k],
+                &right.down[k],
+            ),
+        ] {
+            let difference = DenseHermitianMatrix::from_upper_triangle(
+                fresh.dimension(),
+                Axis::GlobalBasis,
+                |row, column| fresh.at(row, column) - previous.at(row, column),
+            )?;
+            let projected = project_scalar_global_matrix(solution, &difference, occupations.len())?;
+            for row in 0..occupations.len() {
+                for column in 0..occupations.len() {
+                    maximum = maximum.max(
+                        occupations[row].max(occupations[column])
+                            * projected.at(row, column).norm(),
+                    );
+                }
+            }
+        }
+    }
+    Ok(maximum)
 }
 
 fn solve_fixed_potential(
@@ -3211,7 +3263,13 @@ fn commutator_diis_error(
             |row, column| eigenproblem.hamiltonian.at(row, column) + feedback.at(row, column),
         )?;
         let weight = point.weight().sqrt();
-        if let Some(level_shift) = level_shift {
+        let core_constrained = match &point.solution {
+            CheckpointKPointSolution::Collinear { bases, .. } => {
+                bases.up.core_orthogonalization.is_some()
+            }
+            _ => false,
+        };
+        if level_shift.is_some() || core_constrained {
             let projected_fock = einsum(
                 "ia,ij,jb->ab",
                 &[
@@ -3229,10 +3287,10 @@ fn commutator_diis_error(
                         preconditioned.push(Complex64::default());
                         continue;
                     }
-                    let denominator = (solution.eigenvalues[row].get()
-                        - solution.eigenvalues[column].get())
-                    .abs()
-                        + level_shift.get();
+                    let denominator = level_shift.map_or(1.0, |shift| {
+                        (solution.eigenvalues[row].get() - solution.eigenvalues[column].get()).abs()
+                            + shift.get()
+                    });
                     if denominator == 0.0 {
                         return Err(GammaValenceHfError::FockMixingAlgebra);
                     }

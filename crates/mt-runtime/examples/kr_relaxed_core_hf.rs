@@ -747,6 +747,7 @@ struct KhSocResultFile {
     core_h0_trace_hartree: f64,
     orbital_energies_and_occupations: Vec<KhSocOrbitalRecord>,
     core_shells: Vec<CoreShellRecord>,
+    scalar_core_orthogonalization: Vec<CoreOrthogonalizationRecord>,
     electron_counts: ElectronCounts,
     fock_fixed_point_residual: f64,
     fock_feedback_residual_hartree: f64,
@@ -760,6 +761,16 @@ struct KhSocResultFile {
     k_fractional: Vec<[f64; 3]>,
     q_fractional: Vec<[f64; 3]>,
     k_weights: Vec<f64>,
+}
+
+#[derive(Serialize)]
+struct CoreOrthogonalizationRecord {
+    k_index: usize,
+    expanded_basis_dimension: usize,
+    active_basis_dimension: usize,
+    retained_scalar_bands: usize,
+    constraint_count: usize,
+    maximum_radial_overlap_residual: f64,
 }
 
 #[derive(Serialize)]
@@ -1610,6 +1621,25 @@ fn kh_soc_iteration_record(item: &KhSocValenceHfIterationDiagnostic) -> KhSocIte
 }
 
 fn kh_soc_result_record(result: &KhSocValenceHfResult) -> Result<KhSocResultFile, Box<dyn Error>> {
+    let mut core_spaces = Vec::new();
+    for (k, point) in result.scalar_bands.points().iter().enumerate() {
+        let CheckpointKPointSolution::Collinear {
+            bases, solutions, ..
+        } = &point.solution
+        else {
+            return Err(invalid_input("KH+SOC source must use scalar eigenvectors"));
+        };
+        if let Some(core) = &bases.up.core_orthogonalization {
+            core_spaces.push(CoreOrthogonalizationRecord {
+                k_index: k,
+                expanded_basis_dimension: core.embedding.shape()[0],
+                active_basis_dimension: core.embedding.shape()[1],
+                retained_scalar_bands: solutions.up.eigenvalues.len(),
+                constraint_count: core.constraint_count,
+                maximum_radial_overlap_residual: core.maximum_radial_overlap_residual,
+            });
+        }
+    }
     let homo = result
         .orbital_energies
         .iter()
@@ -1692,6 +1722,7 @@ fn kh_soc_result_record(result: &KhSocValenceHfResult) -> Result<KhSocResultFile
         core_h0_trace_hartree: result.core_h0_trace.get(),
         orbital_energies_and_occupations: orbitals,
         core_shells: core_shell_records(&result.core_orbitals),
+        scalar_core_orthogonalization: core_spaces,
         electron_counts: ElectronCounts {
             valence: electron_count(&result.valence_density)?,
             core: electron_count(&result.core_density)?,

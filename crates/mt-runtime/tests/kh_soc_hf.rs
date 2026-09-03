@@ -160,6 +160,18 @@ fn frozen_core_enters_scalar_fock_soc_and_total_density_without_expanding_vv() {
     let result = run_gamma_kh_soc_valence_hf(&mut physics, &spec, |_| Ok(())).unwrap();
 
     assert_eq!(result.core_orbitals.len(), 1);
+    let muffintin_dft::CheckpointKPointSolution::Collinear { bases, .. } =
+        &result.scalar_bands.points()[0].solution
+    else {
+        unreachable!()
+    };
+    let core_space = bases.up.core_orthogonalization.as_ref().unwrap();
+    assert_eq!(core_space.constraint_count, 1);
+    assert_eq!(
+        core_space.embedding.shape()[0] - core_space.embedding.shape()[1],
+        1
+    );
+    assert!(core_space.maximum_radial_overlap_residual < 1.0e-12);
     assert!((electron_count(&result.valence_density).unwrap() - 2.0).abs() < 1.0e-8);
     assert!((electron_count(&result.core_density).unwrap() - 2.0).abs() < 1.0e-8);
     assert!((electron_count(&result.total_density).unwrap() - 4.0).abs() < 1.0e-8);

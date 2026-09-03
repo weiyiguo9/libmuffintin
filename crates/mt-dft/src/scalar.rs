@@ -86,6 +86,8 @@ pub struct ScalarIterationBasis {
     pub radial_sites: Vec<ScalarRadialSite>,
     pub density_sites: Vec<crate::ScalarSiteBasis>,
     pub site_blocks: Vec<SiteOperatorBlocks>,
+    /// Internal cancellation LOs do not become independent active orbitals.
+    pub core_orthogonalization: Option<crate::ScalarCoreOrthogonalization>,
 }
 
 /// Assembled and solved scalar first-variation k point.
@@ -136,6 +138,7 @@ pub fn build_scalar_iteration_basis(
         radial_sites: built.iter().map(|site| site.radials.clone()).collect(),
         density_sites: built.iter().map(|site| site.density.clone()).collect(),
         site_blocks: built.into_iter().map(|site| site.block).collect(),
+        core_orthogonalization: None,
     })
 }
 
@@ -164,11 +167,19 @@ pub fn solve_scalar_k_point(
         interstitial_potential,
         &basis.site_blocks,
     )?;
-    let solution = solve_generalized_hermitian(
-        &eigenproblem.hamiltonian,
-        &eigenproblem.overlap,
-        relative_overlap_threshold,
-    )?;
+    let solution = match &basis.core_orthogonalization {
+        Some(core) => muffintin_operators::solve_generalized_hermitian_embedded(
+            &eigenproblem.hamiltonian,
+            &eigenproblem.overlap,
+            &core.embedding,
+            relative_overlap_threshold,
+        )?,
+        None => solve_generalized_hermitian(
+            &eigenproblem.hamiltonian,
+            &eigenproblem.overlap,
+            relative_overlap_threshold,
+        )?,
+    };
     Ok(SolvedScalarKPoint {
         eigenproblem,
         solution,

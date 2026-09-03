@@ -217,6 +217,7 @@ impl CheckpointPhysics {
             &basis,
             &k_fractional,
             ScfRelativity::SpinorFirstVariation,
+            &[],
         )?;
         self.spinor_product_input_from_bands(&bands, &k_fractional, q_fractional)
     }

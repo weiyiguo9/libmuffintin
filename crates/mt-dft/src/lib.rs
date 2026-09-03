@@ -18,6 +18,7 @@ mod occupations;
 mod radial_sampling;
 mod regional;
 mod scalar;
+mod scalar_core_orthogonal;
 mod scf;
 mod soc;
 mod spinor;
@@ -101,6 +102,10 @@ pub use scalar::{
     ScalarLocalOrbitalRequest, ScalarRadialSite, ScalarSiteInput, SolvedScalarKPoint,
     build_collinear_scalar_iteration_bases, build_scalar_iteration_basis,
     solve_collinear_scalar_k_point, solve_scalar_k_point, solve_scalar_second_variation,
+};
+pub use scalar_core_orthogonal::{
+    ScalarCoreOrthogonalization, ScalarCoreOrthogonalizationError,
+    build_core_orthogonal_scalar_iteration_basis,
 };
 pub use scf::{
     BandPathPoint, BandPathPointResult, BandPathRequest, BandPathResult, ChannelKappaError,
