@@ -7,8 +7,8 @@ use muffintin_envelope::Provenance;
 use muffintin_envelope::site_translation_phase;
 use muffintin_operators::solve_real_symmetric;
 use muffintin_prodbasis::mpb::{
-    DEFAULT_TOLERANCE, PairVertexAccumulator, apply_overlap_cutoff, auxiliary_interstitial_support,
-    pair_vertex, spex_mixed_product_basis,
+    DEFAULT_TOLERANCE, PairVertexAccumulator, ScalarVertexContext, apply_overlap_cutoff,
+    auxiliary_interstitial_support, pair_vertex, spex_mixed_product_basis,
 };
 use muffintin_prodbasis::{
     AuxiliaryIrError, AuxiliaryPartition, AuxiliaryRegion, AuxiliarySource, CompiledAuxiliaryBasis,
@@ -616,6 +616,44 @@ fn muffin_tin_pair_vertex_carries_site_phase() {
     );
     let ratio = phased.coefficients()[index] / vertex.coefficients()[index];
     assert!((ratio - expected_phase).norm() < 1.0e-10);
+}
+
+#[test]
+fn compiled_scalar_muffin_tin_pair_matches_direct_vertex() {
+    let source = source_vv_cv(false, true);
+    let lattice = cubic_lattice();
+    let (raw, auxiliary) =
+        spex_mixed_product_basis(&source, 2, InverseBohr(0.6), &lattice).unwrap();
+    let spec = MtPairSpec {
+        left: radial_id(ProductOrbitalKind::Valence, 1, 0),
+        left_m: -1,
+        right: radial_id(ProductOrbitalKind::Valence, 1, 0),
+        right_m: 1,
+    };
+    let direct = pair_vertex(
+        &source,
+        &raw,
+        &auxiliary,
+        PairVertexSpec {
+            muffin_tin: Some(spec),
+            interstitial: None,
+        },
+    )
+    .unwrap();
+    let context = ScalarVertexContext::new(&source, &raw, &auxiliary).unwrap();
+    let mut table = context.muffin_tin_table();
+    let compiled = table.compile_pair(&source, spec).unwrap();
+    assert!(!compiled.is_empty());
+    let mut accumulator = context.accumulator(OrbitalPair::Bloch {
+        k_index: 0,
+        left: 2,
+        right: 3,
+    });
+    accumulator
+        .add_compiled_muffin_tin(&compiled, Complex64::new(1.0, 0.0))
+        .unwrap();
+    let batched = accumulator.finish().unwrap();
+    assert_eq!(batched.coefficients(), direct.coefficients());
 }
 
 #[test]

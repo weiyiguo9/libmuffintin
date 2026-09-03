@@ -31,7 +31,10 @@ pub use dirac_vertices::{
     require_matching_dirac_context,
 };
 pub use interstitial::{InterstitialThetaTable, auxiliary_interstitial_support};
-pub use vertices::{PairVertexAccumulator, pair_vertex};
+pub use vertices::{
+    PairVertexAccumulator, ScalarMtCompiledPair, ScalarMtPairTable, ScalarVertexContext,
+    pair_vertex,
+};
 
 use crate::{
     AuxiliaryIrError, DiracChargeSector, DiracProductError, DiracRadialId, ProductRadialId,
@@ -92,6 +95,8 @@ pub enum MpbError {
     InterstitialThetaContext,
     #[error("precompiled Dirac muffin-tin pair does not match the auxiliary basis")]
     CompiledDiracMtContext,
+    #[error("precompiled scalar muffin-tin pair does not match the auxiliary basis")]
+    CompiledScalarMtContext,
     #[error("requested muffin-tin pair is absent from the raw product space")]
     UnknownMtPair {
         left: ProductRadialId,
