@@ -2,14 +2,15 @@
 
 use muffintin_core::{FourierLayout, Hartree, InverseBohr};
 use muffintin_coulomb::{
-    CoulombOperator, CoulombRequest, HartreeError, WeinertHartreeSpec, assemble_coulomb,
+    CoreCoreFockError, CoreCoreFockShell, CoulombOperator, CoulombRequest, HartreeError,
+    WeinertHartreeSpec, assemble_coulomb, core_core_fock_actions,
 };
 use muffintin_dft::{
     BandState, CheckpointBandSolution, CheckpointKPointSolution, CoreDensityError,
     CoreFixedPotentialResult, CoreFixedPotentialSpec, CoreLocalOneBodyError, CoreLocalOneBodyTrace,
-    CoreShellOrbitals, DensityError, DensityMixer, ElectrostaticSpec, MaterialKernelError,
-    MixingError, OccupationError, RegionalDensity, RegionalElectrostaticError, RegionalError,
-    RegionalPotential, ScfConfig, ScfConfigError, ScfKReduction, ScfLoop, ScfMixing,
+    CoreShellOccupations, CoreShellOrbitals, DensityError, DensityMixer, ElectrostaticSpec,
+    MaterialKernelError, MixingError, OccupationError, RegionalDensity, RegionalElectrostaticError,
+    RegionalError, RegionalPotential, ScfConfig, ScfConfigError, ScfKReduction, ScfLoop, ScfMixing,
     ScfOccupations, ScfPhysics, ScfRelativity, build_regional_core_contribution_from_sidecar,
     core_local_one_body_trace, electron_count, evaluate_regional_electrostatics,
 };
@@ -45,7 +46,7 @@ use crate::{
 };
 
 const SPECTRAL_REFINEMENT_PASSES: usize = 16;
-const IDENTITY_TOLERANCE: f64 = 1.0e-8;
+const IDENTITY_TOLERANCE: f64 = 2.0e-8;
 const ELECTRON_COUNT_TOLERANCE: f64 = 1.0e-8;
 
 /// Mixing algorithm for the fixed-potential global exchange feedback.
@@ -166,6 +167,14 @@ pub struct KhSocValenceHfSpec {
     pub fock_feedback_tolerance: Hartree,
     /// Scalar KH currently accepts linear or Pulay–Anderson feedback mixing.
     pub fock_mixing: FockMixing,
+    pub core_treatment: KhSocCoreTreatment,
+}
+
+/// Treatment of core states in the scalar KH plus SOC HF route.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum KhSocCoreTreatment {
+    ValenceOnly,
+    Frozen,
 }
 
 /// One outer scalar-KH HF iteration preceding SOC second variation.
@@ -177,6 +186,7 @@ pub struct KhSocValenceHfIterationDiagnostic {
     pub exchange_energy: Hartree,
     pub fock_fixed_point_residual: f64,
     pub fock_feedback_residual: Hartree,
+    pub valence_density_rms: f64,
     pub regional_density_rms: f64,
     pub total_energy: Hartree,
     pub energy_change: Option<Hartree>,
@@ -185,7 +195,9 @@ pub struct KhSocValenceHfIterationDiagnostic {
 /// Converged scalar KH HF state and its one-shot SOC second variation.
 #[derive(Clone, Debug)]
 pub struct KhSocValenceHfResult {
-    pub density: RegionalDensity,
+    pub valence_density: RegionalDensity,
+    pub core_density: RegionalDensity,
+    pub total_density: RegionalDensity,
     pub potential: RegionalPotential,
     pub scalar_bands: CheckpointBandSolution,
     pub bands: CheckpointBandSolution,
@@ -193,9 +205,14 @@ pub struct KhSocValenceHfResult {
     pub orbital_energies: Vec<Vec<Hartree>>,
     pub scalar_exchange: Collinear<IsdfExchangeResult>,
     pub second_variation_exchange: IsdfExchangeResult,
+    pub core_orbitals: Vec<CoreShellOrbitals>,
+    pub core_h0_trace: Hartree,
+    pub core_core_exchange: Hartree,
+    pub core_valence_exchange: Hartree,
     pub total_energy: Hartree,
     pub fock_fixed_point_residual: f64,
     pub fock_feedback_residual: Hartree,
+    pub valence_density_rms: f64,
     pub regional_density_rms: f64,
     pub second_variation_density_rms: f64,
     pub exchange_energy_change: Hartree,
@@ -212,6 +229,8 @@ pub enum KhSocValenceHfError {
     Relativity,
     #[error("KH+SOC valence HF currently requires linear or Pulay–Anderson Fock mixing")]
     FockMixing,
+    #[error("KH+SOC core treatment is inconsistent with the configured occupied core states")]
+    CoreTreatment,
     #[error(transparent)]
     Hf(#[from] GammaValenceHfError),
 }
@@ -477,6 +496,10 @@ pub enum GammaValenceHfError {
     #[error(transparent)]
     Mixing(#[from] MixingError),
     #[error(transparent)]
+    CoreOneBody(#[from] CoreLocalOneBodyError),
+    #[error(transparent)]
+    CoreCore(#[from] CoreCoreFockError),
+    #[error(transparent)]
     Mpb(#[from] SpinorMpbError),
     #[error(transparent)]
     ScalarMpb(#[from] crate::ScalarMpbError),
@@ -679,30 +702,46 @@ pub fn run_kh_soc_valence_hf(
     ) {
         return Err(KhSocValenceHfError::FockMixing);
     }
-    validate_kh_soc_spec(spec)?;
-    Ok(run_kh_soc_valence_hf_inner(physics, spec, window)?)
+    let valence_electrons = validate_kh_soc_spec(spec)?;
+    Ok(run_kh_soc_valence_hf_inner(
+        physics,
+        spec,
+        window,
+        valence_electrons,
+    )?)
 }
 
 fn run_kh_soc_valence_hf_inner(
     physics: &mut CheckpointPhysics,
     spec: &KhSocValenceHfSpec,
     window: muffintin_dft::FirstVariationWindow,
+    valence_electrons: f64,
 ) -> Result<KhSocValenceHfResult, GammaValenceHfError> {
     let _ = ScfLoop::new(spec.config.clone(), None)?;
     let k_fractional = muffintin_dft::regular_k_points(spec.config.k_mesh)?;
     let q_fractional = canonical_q_points(&k_fractional).map_err(q_topology_error)?;
     let mut mixer = density_mixer(spec.config.mixing)?;
-    let mut density = <muffintin_dft::MaterialKernel as ScfPhysics>::initial_density(
-        &mut physics.kernel,
-        &spec.config,
-    )?;
+    let initial = physics.kernel.initial_density_components(&spec.config)?;
+    let mut valence_density = initial.valence;
+    let mut core_density = initial.core;
+    let mut total_density = initial.total;
+    let frozen_core = if spec.core_treatment == KhSocCoreTreatment::Frozen {
+        let core = physics
+            .kernel
+            .frozen_checkpoint_core(&total_density, &spec.config)?;
+        core_density = core.density;
+        total_density = sum_kh_density(&valence_density, &core_density)?;
+        Some(core.orbitals)
+    } else {
+        None
+    };
     let mut previous_total = None;
     let mut diagnostics = Vec::with_capacity(spec.config.convergence.max_iterations);
     let mut total_exchange_rebuilds = 0;
 
     for outer_iteration in 1..=spec.config.convergence.max_iterations {
         let electrostatic = evaluate_regional_electrostatics(
-            density.charge(),
+            total_density.charge(),
             &ElectrostaticSpec::new(
                 WeinertHartreeSpec::electronic(4)?,
                 physics.nuclear_charges().to_vec(),
@@ -718,32 +757,45 @@ fn run_kh_soc_valence_hf_inner(
             &spec.config,
             &potential,
             &k_fractional,
-            spec.config.electron_count,
-            density.charge().interstitial().layout(),
+            valence_electrons,
+            total_density.charge().interstitial().layout(),
             ScfRelativity::Scalar,
         )?;
+        let core_sidecars = frozen_core.as_deref().unwrap_or(&[]);
         let fixed = solve_scalar_fixed_potential(
             physics,
             spec,
             bands,
+            valence_electrons,
             outer_iteration,
             &k_fractional,
             &q_fractional,
+            core_sidecars,
         )?;
         total_exchange_rebuilds += fixed.exchange_rebuilds;
-        let output_density = physics
+        let valence_output = physics
             .kernel
             .synthesize_bands(&fixed.bands, &fixed.occupation.values)?;
-        let density_rms = density.difference_rms(&output_density)?;
-        let energy = scalar_energy_diagnostic(
+        let total_output = sum_kh_density(&valence_output, &core_density)?;
+        let valence_density_rms = valence_density.difference_rms(&valence_output)?;
+        let density_rms = total_density.difference_rms(&total_output)?;
+        let core_terms = frozen_core_energy_terms(core_sidecars)?;
+        let energy = kh_soc_energy_diagnostic(
             &fixed.bands,
             &fixed.occupation,
             &fixed.exchange,
+            &fixed.core_feedback,
             &electrostatic,
+            core_terms,
         )?;
         require_gate(
-            "scalar density electron count",
-            (electron_count(&output_density)? - spec.config.electron_count).abs(),
+            "scalar valence electron count",
+            (electron_count(&valence_output)? - valence_electrons).abs(),
+            ELECTRON_COUNT_TOLERANCE,
+        )?;
+        require_gate(
+            "scalar total electron count",
+            (electron_count(&total_output)? - spec.config.electron_count).abs(),
             ELECTRON_COUNT_TOLERANCE,
         )?;
         require_gate(
@@ -772,6 +824,7 @@ fn run_kh_soc_valence_hf_inner(
             ),
             fock_fixed_point_residual: fixed.fixed_point_residual,
             fock_feedback_residual: Hartree(fixed.feedback_residual),
+            valence_density_rms,
             regional_density_rms: density_rms,
             total_energy: energy.total,
             energy_change,
@@ -781,20 +834,21 @@ fn run_kh_soc_valence_hf_inner(
             && density_rms <= spec.config.convergence.density_tolerance
             && fixed.fixed_point_residual <= spec.fock_density_tolerance;
         if converged {
-            let bands =
-                physics
-                    .kernel
-                    .apply_soc_second_variation(&potential, &fixed.bands, window, &[])?;
-            let occupation = solve_occupations(
-                bands.states(),
-                spec.config.electron_count,
-                spec.config.occupations,
+            let bands = physics.kernel.apply_soc_second_variation(
+                &potential,
+                &fixed.bands,
+                window,
+                core_sidecars,
             )?;
-            let second_variation_density = physics
+            let occupation =
+                solve_occupations(bands.states(), valence_electrons, spec.config.occupations)?;
+            let second_variation_valence_density = physics
                 .kernel
                 .synthesize_bands(&bands, &occupation.values)?;
             let second_variation_density_rms =
-                output_density.difference_rms(&second_variation_density)?;
+                valence_output.difference_rms(&second_variation_valence_density)?;
+            let second_variation_total_density =
+                sum_kh_density(&second_variation_valence_density, &core_density)?;
             let occupations = second_variation_occupation_rows(&occupation.values, &bands)?;
             let second_variation_exchange = rebuild_second_variation_exchange(
                 physics,
@@ -812,7 +866,9 @@ fn run_kh_soc_valence_hf_inner(
             );
             let k_weights = scalar_k_weights(&fixed.bands)?;
             return Ok(KhSocValenceHfResult {
-                density: second_variation_density,
+                valence_density: second_variation_valence_density,
+                core_density,
+                total_density: second_variation_total_density,
                 potential,
                 scalar_bands: fixed.bands,
                 orbital_energies: second_variation_energies(&bands)?,
@@ -820,9 +876,14 @@ fn run_kh_soc_valence_hf_inner(
                 occupations,
                 scalar_exchange: fixed.exchange,
                 second_variation_exchange,
+                core_orbitals: core_sidecars.to_vec(),
+                core_h0_trace: core_terms.h0,
+                core_core_exchange: Hartree(0.5 * core_terms.cc_trace.get()),
+                core_valence_exchange: energy.core_valence_exchange,
                 total_energy: energy.total,
                 fock_fixed_point_residual: fixed.fixed_point_residual,
                 fock_feedback_residual: Hartree(fixed.feedback_residual),
+                valence_density_rms,
                 regional_density_rms: density_rms,
                 second_variation_density_rms,
                 exchange_energy_change,
@@ -834,7 +895,9 @@ fn run_kh_soc_valence_hf_inner(
             });
         }
         previous_total = Some(energy.total);
-        density = mixer.mix(&density, &output_density)?.density;
+        let mixed_total = mixer.mix(&total_density, &total_output)?.density;
+        valence_density = mixed_total.difference(&core_density)?;
+        total_density = mixed_total;
     }
     let last = diagnostics
         .last()
@@ -1653,6 +1716,7 @@ struct ScalarFixedPotentialResult {
     bands: CheckpointBandSolution,
     occupation: OccupationSolution,
     exchange: Collinear<IsdfExchangeResult>,
+    core_feedback: Vec<Collinear<DenseHermitianMatrix>>,
     fock_iterations: usize,
     exchange_rebuilds: usize,
     fixed_point_residual: f64,
@@ -1664,9 +1728,11 @@ fn solve_scalar_fixed_potential(
     physics: &CheckpointPhysics,
     spec: &KhSocValenceHfSpec,
     mut bands: CheckpointBandSolution,
+    valence_electrons: f64,
     outer_iteration: usize,
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
+    core_sidecars: &[CoreShellOrbitals],
 ) -> Result<ScalarFixedPotentialResult, GammaValenceHfError> {
     let mut rebuilds = 0;
     let mut last_residual = f64::INFINITY;
@@ -1675,12 +1741,12 @@ fn solve_scalar_fixed_potential(
     let mut up_mixer = FeedbackMixer::new(spec.fock_mixing);
     let mut down_mixer = FeedbackMixer::new(spec.fock_mixing);
     let mut current_density = None;
+    let core_feedback = physics
+        .kernel
+        .scalar_static_core_exchange_feedback(&bands, core_sidecars)?;
     for fock_iteration in 1..=spec.max_fock_iterations {
-        let occupation = solve_occupations(
-            bands.states(),
-            spec.config.electron_count,
-            spec.config.occupations,
-        )?;
+        let occupation =
+            solve_occupations(bands.states(), valence_electrons, spec.config.occupations)?;
         let occupation_rows = scalar_occupation_rows(&occupation.values, &bands)?;
         let rebuilt = rebuild_scalar_exchange(
             physics,
@@ -1692,7 +1758,9 @@ fn solve_scalar_fixed_potential(
         )?;
         rebuilds += 1;
         let fresh_band_feedback = scalar_exchange_feedback(&rebuilt)?;
-        let fresh_global_feedback = lift_scalar_global_feedback(&bands, &fresh_band_feedback)?;
+        let valence_global_feedback = lift_scalar_global_feedback(&bands, &fresh_band_feedback)?;
+        let fresh_global_feedback =
+            add_scalar_core_feedback(valence_global_feedback, &core_feedback)?;
         let feedback_residual = previous_global_feedback
             .as_ref()
             .map(|previous| scalar_feedback_difference(previous, &fresh_global_feedback))
@@ -1735,11 +1803,8 @@ fn solve_scalar_fixed_potential(
                 .map(|(up, down)| Collinear::new(up, down))
                 .collect::<Vec<_>>(),
         )?;
-        let solved_occupation = solve_occupations(
-            solved.states(),
-            spec.config.electron_count,
-            spec.config.occupations,
-        )?;
+        let solved_occupation =
+            solve_occupations(solved.states(), valence_electrons, spec.config.occupations)?;
         let (residual, solved_density) = fixed_point_density_residual(
             physics,
             &bands,
@@ -1757,6 +1822,7 @@ fn solve_scalar_fixed_potential(
                 bands,
                 occupation,
                 exchange: rebuilt,
+                core_feedback,
                 fock_iterations: fock_iteration,
                 exchange_rebuilds: rebuilds,
                 fixed_point_residual: last_residual,
@@ -1959,6 +2025,37 @@ fn lift_scalar_global_feedback(
         )?);
     }
     Ok(Collinear::new(up, down))
+}
+
+fn add_scalar_core_feedback(
+    valence: Collinear<Vec<DenseHermitianMatrix>>,
+    core: &[Collinear<DenseHermitianMatrix>],
+) -> Result<Collinear<Vec<DenseHermitianMatrix>>, GammaValenceHfError> {
+    if valence.up.len() != core.len() || valence.down.len() != core.len() {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: valence.up.len(),
+            actual: core.len(),
+        });
+    }
+    let add = |valence: Vec<DenseHermitianMatrix>, spin: usize| {
+        valence
+            .into_iter()
+            .zip(core)
+            .map(|(valence, core)| {
+                let core = if spin == 0 { &core.up } else { &core.down };
+                require_feedback_layout(
+                    std::slice::from_ref(&valence),
+                    std::slice::from_ref(core),
+                )?;
+                Ok(DenseHermitianMatrix::from_upper_triangle(
+                    valence.dimension(),
+                    Axis::GlobalBasis,
+                    |row, column| valence.at(row, column) + core.at(row, column),
+                )?)
+            })
+            .collect::<Result<Vec<_>, GammaValenceHfError>>()
+    };
+    Ok(Collinear::new(add(valence.up, 0)?, add(valence.down, 1)?))
 }
 
 fn scalar_feedback_difference(
@@ -2893,15 +2990,32 @@ fn energy_diagnostic(
     })
 }
 
-fn scalar_energy_diagnostic(
+#[derive(Clone, Copy)]
+struct FrozenCoreEnergyTerms {
+    h0: Hartree,
+    cc_trace: Hartree,
+}
+
+struct KhSocEnergyDiagnostic {
+    total: Hartree,
+    exchange_identity_residual: f64,
+    eigenvalue_identity_residual: f64,
+    total_identity_residual: f64,
+    core_valence_exchange: Hartree,
+}
+
+fn kh_soc_energy_diagnostic(
     bands: &CheckpointBandSolution,
     occupation: &OccupationSolution,
     exchange: &Collinear<IsdfExchangeResult>,
+    core_feedback: &[Collinear<DenseHermitianMatrix>],
     electrostatic: &muffintin_dft::RegionalElectrostaticResult,
-) -> Result<EnergyDiagnostic, GammaValenceHfError> {
+    core: FrozenCoreEnergyTerms,
+) -> Result<KhSocEnergyDiagnostic, GammaValenceHfError> {
     let rows = scalar_occupation_rows(&occupation.values, bands)?;
     if exchange.up.band_matrices.len() != bands.points().len()
         || exchange.down.band_matrices.len() != bands.points().len()
+        || core_feedback.len() != bands.points().len()
     {
         return Err(GammaValenceHfError::ExchangeKIndex {
             expected: bands.points().len(),
@@ -2914,6 +3028,7 @@ fn scalar_energy_diagnostic(
     }
     let mut h0_expectation = 0.0;
     let mut exchange_trace = 0.0;
+    let mut core_trace = 0.0;
     for (k, point) in bands.points().iter().enumerate() {
         let CheckpointKPointSolution::Collinear {
             eigenproblems,
@@ -2928,12 +3043,13 @@ fn scalar_energy_diagnostic(
         if up_occupations == down_occupations {
             return Err(GammaValenceHfError::SpinorFirstVariation);
         }
-        for (problem, solution, values, matrix, range) in [
+        for (problem, solution, values, matrix, core_matrix, range) in [
             (
                 &eigenproblems.up,
                 &solutions.up,
                 &rows[k].up,
                 &exchange.up.band_matrices[k],
+                &core_feedback[k].up,
                 up_occupations,
             ),
             (
@@ -2941,6 +3057,7 @@ fn scalar_energy_diagnostic(
                 &solutions.down,
                 &rows[k].down,
                 &exchange.down.band_matrices[k],
+                &core_feedback[k].down,
                 down_occupations,
             ),
         ] {
@@ -2953,6 +3070,14 @@ fn scalar_energy_diagnostic(
                     solution.eigenvectors.as_tensor(),
                 ],
             )?)?;
+            let projected_core = DenseHermitianMatrix::from_tensor(einsum(
+                "ia,ij,jb->ab",
+                &[
+                    &conjugate,
+                    core_matrix.as_tensor(),
+                    solution.eigenvectors.as_tensor(),
+                ],
+            )?)?;
             for (band, &value) in values.iter().enumerate() {
                 let weight = bands.states()[range.start + band].k_weight;
                 h0_expectation += weight * value * projected_h0.at(band, band).re;
@@ -2962,26 +3087,33 @@ fn scalar_energy_diagnostic(
                         .element(band, band)
                         .expect("validated scalar exchange band index")
                         .re;
+                core_trace += weight * value * projected_core.at(band, band).re;
             }
         }
     }
     let exchange_energy = exchange.up.exchange_energy.get() + exchange.down.exchange_energy.get();
     let exchange_identity_residual = (exchange_energy - 0.5 * exchange_trace).abs();
     let eigenvalue_identity_residual =
-        (occupation.band_energy.get() - h0_expectation - exchange_trace).abs();
-    let direct = h0_expectation - electrostatic.electron_hartree.get()
+        (occupation.band_energy.get() - h0_expectation - exchange_trace - core_trace).abs();
+    let core_core_exchange = 0.5 * core.cc_trace.get();
+    let direct = h0_expectation + core.h0.get() - electrostatic.electron_hartree.get()
         + electrostatic.nuclear_nuclear.get()
         + exchange_energy
+        + core_trace
+        + core_core_exchange
         + occupation.correction.get();
-    let eigenvalue = occupation.band_energy.get() - electrostatic.electron_hartree.get()
+    let eigenvalue = occupation.band_energy.get() + core.h0.get()
+        - electrostatic.electron_hartree.get()
         + electrostatic.nuclear_nuclear.get()
         - exchange_energy
+        + core_core_exchange
         + occupation.correction.get();
-    Ok(EnergyDiagnostic {
+    Ok(KhSocEnergyDiagnostic {
         total: Hartree(direct),
         exchange_identity_residual,
         eigenvalue_identity_residual,
         total_identity_residual: (direct - eigenvalue).abs(),
+        core_valence_exchange: Hartree(core_trace),
     })
 }
 
@@ -3038,6 +3170,65 @@ fn relaxed_energy_diagnostic(
         total,
         valence_eigenvalue_identity_residual,
     })
+}
+
+fn frozen_core_energy_terms(
+    sidecars: &[CoreShellOrbitals],
+) -> Result<FrozenCoreEnergyTerms, GammaValenceHfError> {
+    let h0 = Hartree(
+        sidecars
+            .iter()
+            .map(core_local_one_body_trace)
+            .collect::<Result<Vec<_>, _>>()?
+            .iter()
+            .map(|trace| trace.total.get())
+            .sum(),
+    );
+    let mut cc_trace = 0.0;
+    for sidecar in sidecars {
+        let shells = sidecar
+            .shells
+            .iter()
+            .map(|shell| {
+                let CoreShellOccupations::MuResolved(occupations) = &shell.occupations else {
+                    return Err(GammaValenceHfError::CoreStates);
+                };
+                let Some(&(_, occupation)) = occupations.first() else {
+                    return Err(GammaValenceHfError::CoreStates);
+                };
+                if occupations
+                    .iter()
+                    .any(|(_, value)| value.to_bits() != occupation.to_bits())
+                {
+                    return Err(GammaValenceHfError::CoreStates);
+                }
+                Ok(CoreCoreFockShell {
+                    kappa: shell.state.kappa,
+                    p: &shell.p,
+                    q: &shell.q,
+                    normalization: shell.norm_total,
+                    occupation_per_mu: occupation,
+                })
+            })
+            .collect::<Result<Vec<_>, GammaValenceHfError>>()?;
+        cc_trace += core_core_fock_actions(&sidecar.extended_mesh, &shells)?
+            .trace
+            .total
+            .get();
+    }
+    Ok(FrozenCoreEnergyTerms {
+        h0,
+        cc_trace: Hartree(cc_trace),
+    })
+}
+
+fn sum_kh_density(
+    valence: &RegionalDensity,
+    core: &RegionalDensity,
+) -> Result<RegionalDensity, GammaValenceHfError> {
+    let mut total = valence.clone();
+    total.add_scaled(1.0, core)?;
+    Ok(total)
 }
 
 fn synthesize_core_density(
@@ -3280,18 +3471,27 @@ fn validate_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfError> {
     Ok(())
 }
 
-fn validate_kh_soc_spec(spec: &KhSocValenceHfSpec) -> Result<(), KhSocValenceHfError> {
+fn validate_kh_soc_spec(spec: &KhSocValenceHfSpec) -> Result<f64, KhSocValenceHfError> {
     if spec.config.k_mesh.reduction != ScfKReduction::Full {
         return Err(KhSocValenceHfError::Hf(
             GammaValenceHfError::SymmetryReduction,
         ));
     }
-    if spec
+    let core_electrons: f64 = spec
         .config
         .core_sites
         .iter()
-        .any(|site| !site.states.is_empty())
+        .flat_map(|site| &site.states)
+        .map(|state| state.occupation)
+        .sum();
+    let core_configured = core_electrons > 0.0;
+    if (core_configured && spec.core_treatment != KhSocCoreTreatment::Frozen)
+        || (!core_configured && spec.core_treatment != KhSocCoreTreatment::ValenceOnly)
     {
+        return Err(KhSocValenceHfError::CoreTreatment);
+    }
+    let valence_electrons = spec.config.electron_count - core_electrons;
+    if !valence_electrons.is_finite() || valence_electrons <= 0.0 {
         return Err(KhSocValenceHfError::Hf(GammaValenceHfError::CoreStates));
     }
     if spec.max_fock_iterations < 2 {
@@ -3309,7 +3509,7 @@ fn validate_kh_soc_spec(spec: &KhSocValenceHfSpec) -> Result<(), KhSocValenceHfE
     if !valid_fock_mixing(spec.fock_mixing) {
         return Err(KhSocValenceHfError::Hf(GammaValenceHfError::FockMixing));
     }
-    Ok(())
+    Ok(valence_electrons)
 }
 
 fn validate_gamma_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfError> {

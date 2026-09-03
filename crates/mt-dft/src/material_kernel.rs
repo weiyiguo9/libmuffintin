@@ -727,6 +727,23 @@ impl MaterialKernel {
         })
     }
 
+    /// Solve the configured core once in the immutable checkpoint potential.
+    pub fn frozen_checkpoint_core(
+        &self,
+        template: &RegionalDensity,
+        config: &ScfConfig,
+    ) -> Result<RegionalCoreResult, MaterialKernelError> {
+        let meshes = self.channel_meshes(&config.basis)?;
+        let extended = build_extended_checkpoint_core_potentials(
+            &self.frozen_potential,
+            &self.geometry,
+            &self.nuclear_charges,
+            &meshes,
+            CorePotentialContinuationSpec::default(),
+        )?;
+        self.solve_initial_core(template, config, &extended)
+    }
+
     /// Bootstrap requested core sidecars in a no-XC nuclear-plus-Hartree field.
     pub fn bootstrap_hf_core(
         &self,
@@ -1968,7 +1985,19 @@ impl MaterialKernel {
         config: &ScfConfig,
         extended: &[crate::BuiltExtendedCorePotential],
     ) -> Result<RegionalDensity, MaterialKernelError> {
-        let mut core = template.zero_like();
+        Ok(self.solve_initial_core(template, config, extended)?.density)
+    }
+
+    fn solve_initial_core(
+        &self,
+        template: &RegionalDensity,
+        config: &ScfConfig,
+        extended: &[crate::BuiltExtendedCorePotential],
+    ) -> Result<RegionalCoreResult, MaterialKernelError> {
+        let mut density = template.zero_like();
+        let mut eigenvalue_sum = Hartree(0.0);
+        let mut sites = Vec::new();
+        let mut orbitals = Vec::new();
         for site in config
             .core_sites
             .iter()
@@ -1986,9 +2015,17 @@ impl MaterialKernel {
                 &request,
                 &extended[site_index].potential,
             )?;
-            core.add_scaled(1.0, &contribution.contribution.contribution.density)?;
+            density.add_scaled(1.0, &contribution.contribution.contribution.density)?;
+            eigenvalue_sum += contribution.contribution.contribution.eigenvalue_sum;
+            sites.push(contribution.contribution);
+            orbitals.push(contribution.orbitals);
         }
-        Ok(core)
+        Ok(RegionalCoreResult {
+            density,
+            eigenvalue_sum,
+            sites,
+            orbitals,
+        })
     }
 
     fn core_site_request(
