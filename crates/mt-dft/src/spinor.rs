@@ -239,6 +239,19 @@ fn build_site_block(
     )?;
     let mut overlap = vec![Complex64::new(0.0, 0.0); dimension * dimension];
     let mut hamiltonian = overlap.clone();
+    let magnetic_channels = site
+        .potential
+        .magnetic()
+        .iter()
+        .enumerate()
+        .map(|(axis, field)| {
+            let channels = field
+                .channels()
+                .filter(|(_, values)| values.iter().any(|value| *value != Complex64::default()))
+                .collect::<Vec<_>>();
+            (axis, field.convention(), channels)
+        })
+        .collect::<Vec<_>>();
     for left in 0..dimension {
         for right in left..dimension {
             let overlap_value = spinor_matrix_element(
@@ -254,13 +267,14 @@ fn build_site_block(
                 &site.orbitals[right],
             )?;
             let mut magnetic = Complex64::new(0.0, 0.0);
-            for (axis, field) in site.potential.magnetic().iter().enumerate() {
+            for (axis, convention, channels) in &magnetic_channels {
                 magnetic += pauli_field_matrix_element(
                     &site.mesh,
                     &site.orbitals[left],
-                    field,
+                    *convention,
+                    channels,
                     &site.orbitals[right],
-                    axis,
+                    *axis,
                 )?;
             }
             set_hermitian(&mut overlap, dimension, left, right, overlap_value);
@@ -307,28 +321,27 @@ fn coordinate_channels(
 fn pauli_field_matrix_element(
     mesh: &ExponentialMesh,
     left: &SpinorSphereOrbital,
-    field: &SphereField,
+    convention: HarmonicConvention,
+    channels: &[(Lm, &[Complex64])],
     right: &SpinorSphereOrbital,
     axis: usize,
 ) -> Result<Complex64, SpinorFirstVariationError> {
     let mut result = Complex64::new(0.0, 0.0);
-    for (channel, values) in field.channels() {
-        let pp_angular = pauli_angular(
-            field.convention(),
-            left.channel(),
-            channel,
-            right.channel(),
-            axis,
-        );
+    for &(channel, values) in channels {
+        let pp_angular = pauli_angular(convention, left.channel(), channel, right.channel(), axis);
         let qq_angular = pauli_angular(
-            field.convention(),
+            convention,
             left.channel().opposite_kappa(),
             channel,
             right.channel().opposite_kappa(),
             axis,
         );
-        result += pp_angular * integrate_component(mesh, left.p(), values, right.p())?
-            + qq_angular * integrate_component(mesh, left.q(), values, right.q())?;
+        if pp_angular != Complex64::default() {
+            result += pp_angular * integrate_component(mesh, left.p(), values, right.p())?;
+        }
+        if qq_angular != Complex64::default() {
+            result += qq_angular * integrate_component(mesh, left.q(), values, right.q())?;
+        }
     }
     Ok(result)
 }

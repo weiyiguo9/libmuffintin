@@ -755,6 +755,16 @@ feedback constraint paths, not self-consistent HF or agreement with GTO.
 `SpinorLocalOrbitalRequest` is now `Clone`, not `Copy`, because `BoundCore`
 owns the homogeneous core samples.
 
+SRA site assembly compiles the exactly nonzero magnetic harmonic channels once
+per site and skips radial contractions whose angular coefficient is exactly
+zero. No numerical screening threshold is introduced. A one-second sample of
+the Kr diagnostic found 80 of 82 main-thread samples in magnetic-field matrix
+elements despite a zero magnetic field. After this change the complete
+two-frame diagnostic took 9.29 seconds on the local single-thread run and its
+printed energies, angular norms, core overlaps, and feedback check were
+byte-identical to the pre-optimization output. No controlled full-HF speedup
+factor is inferred from this local construction diagnostic.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
