@@ -6,7 +6,8 @@ use crate::{
 };
 use muffintin_core::{InterstitialGeometry, Lm, MeshError};
 use muffintin_envelope::PlaneWaveEnvelope;
-use muffintin_tensor::{Axis, ComplexTensor, TensorError};
+use muffintin_sphere::{MatrixElementError, SphereFieldError, matrix_element};
+use muffintin_tensor::{Axis, ComplexTensor, DenseHermitianMatrix, TensorError};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -31,21 +32,28 @@ pub enum ScalarCoreOrthogonalizationError {
     #[error(transparent)]
     Mesh(#[from] MeshError),
     #[error(transparent)]
+    Field(#[from] SphereFieldError),
+    #[error(transparent)]
+    MatrixElement(#[from] MatrixElementError),
+    #[error(transparent)]
     Tensor(#[from] TensorError),
 }
 
 /// Add one matched KH LO per core radial shell, then eliminate exactly those
 /// added coordinates by imposing all MT `P_c P_v + Q_c Q_v` overlaps to zero.
 /// The original plane-wave and valence-LO coordinates remain the active space.
+/// Radials use `reference_sites`; the complete physical potential difference
+/// from `physical_sites` is added to the local Hamiltonian, including its monopole.
 pub fn build_core_orthogonal_scalar_iteration_basis(
     envelope: &PlaneWaveEnvelope,
     geometry: &InterstitialGeometry,
-    sites: &[ScalarSiteInput],
+    reference_sites: &[ScalarSiteInput],
+    physical_sites: &[ScalarSiteInput],
     cores: &[CoreShellOrbitals],
 ) -> Result<ScalarIterationBasis, ScalarCoreOrthogonalizationError> {
-    let mut augmented = sites.to_vec();
-    let mut by_site = vec![None; sites.len()];
-    let old_counts = sites
+    let mut augmented = reference_sites.to_vec();
+    let mut by_site = vec![None; reference_sites.len()];
+    let old_counts = reference_sites
         .iter()
         .map(|site| {
             (0..site.linearization_energies.len())
@@ -82,6 +90,30 @@ pub fn build_core_orthogonal_scalar_iteration_basis(
         }
     }
     let mut basis = build_scalar_iteration_basis(envelope, geometry, &augmented)?;
+    for site in 0..reference_sites.len() {
+        let delta = physical_sites[site]
+            .potential
+            .difference(&reference_sites[site].potential)?;
+        let density = &basis.density_sites[site];
+        let dimension = density.orbitals.len();
+        let mut correction = vec![Complex64::default(); dimension * dimension];
+        for row in 0..dimension {
+            for column in row..dimension {
+                correction[row * dimension + column] = matrix_element(
+                    &density.mesh,
+                    &density.orbitals[row],
+                    &delta,
+                    &density.orbitals[column],
+                )?;
+            }
+        }
+        let reference = &basis.site_blocks[site].hamiltonian;
+        basis.site_blocks[site].hamiltonian = DenseHermitianMatrix::from_upper_triangle(
+            dimension,
+            Axis::SiteCoordinate,
+            |row, column| reference.at(row, column) + correction[row * dimension + column],
+        )?;
+    }
     let expanded = basis.compiled.layout.dimension();
     let plane_waves = basis.compiled.layout.plane_wave_count();
     let mut original_indices = (0..plane_waves).collect::<Vec<_>>();

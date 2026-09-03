@@ -1331,6 +1331,11 @@ impl MaterialKernel {
         }
         self.require_collinear_route(potential)?;
         let site_inputs = self.scalar_site_inputs(potential, basis)?;
+        let radial_reference = if core_orthogonal.is_empty() {
+            None
+        } else {
+            Some(self.scalar_site_inputs(&self.frozen_potential, basis)?)
+        };
         let interstitial = collinear_interstitial_potential(potential)?;
         let mut solved_points = Vec::with_capacity(points.len());
         let mut states = Vec::new();
@@ -1348,12 +1353,14 @@ impl MaterialKernel {
                     crate::build_core_orthogonal_scalar_iteration_basis(
                         &envelope,
                         &self.geometry,
+                        &radial_reference.as_ref().unwrap().up,
                         &site_inputs.up,
                         core_orthogonal,
                     )?,
                     crate::build_core_orthogonal_scalar_iteration_basis(
                         &envelope,
                         &self.geometry,
+                        &radial_reference.as_ref().unwrap().down,
                         &site_inputs.down,
                         core_orthogonal,
                     )?,

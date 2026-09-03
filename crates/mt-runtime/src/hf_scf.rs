@@ -1366,11 +1366,16 @@ fn solve_h0_bands(
     relativity: ScfRelativity,
     core_orthogonal: &[CoreShellOrbitals],
 ) -> Result<(CheckpointBandSolution, OccupationSolution), GammaValenceHfError> {
+    let radial_reference = if core_orthogonal.is_empty() {
+        potential
+    } else {
+        physics.kernel.frozen_potential()
+    };
     let mut one_particle = physics
         .kernel
-        .materialize_checkpoint_one_particle(potential, &config.basis)?;
+        .materialize_checkpoint_one_particle(radial_reference, &config.basis)?;
     let mut bands = physics.kernel.solve_points(
-        one_particle.potential(),
+        potential,
         one_particle.basis(),
         k_fractional,
         relativity,
@@ -1394,7 +1399,7 @@ fn solve_h0_bands(
         }
         one_particle = refined;
         bands = physics.kernel.solve_points(
-            one_particle.potential(),
+            potential,
             one_particle.basis(),
             k_fractional,
             relativity,

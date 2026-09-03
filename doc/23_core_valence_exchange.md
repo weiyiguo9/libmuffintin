@@ -542,7 +542,12 @@ shift. This control is distinct from `QuasiNewtonDiis::level_shift`, which
 regularizes only the error-vector energy denominator.
 
 Frozen KH+SOC core orthogonality uses a boundary-preserving constrained
-LAPW representation. One matched KH local orbital is appended internally for
+LAPW representation. The scalar radial generators and cancellation LOs use
+the same frozen checkpoint potential as the frozen core. The complete
+current-minus-reference potential, including its spherical component, is
+added to the reference site Hamiltonian; the interstitial Hamiltonian uses
+the current physical potential. Thus the radial reference is frozen, not the
+HF Hamiltonian or Hartree density. One matched KH local orbital is appended internally for
 each core radial shell in each represented angular channel. Let $B$ contain
 the core overlaps with the original radial columns, and $D$ the overlaps with
 these additional cancellation LOs. Both use the same MT $P_cP_v+Q_cQ_v$
