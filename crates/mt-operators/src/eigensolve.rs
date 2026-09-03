@@ -84,7 +84,10 @@ pub fn solve_generalized_hermitian(
     if n == 0 {
         return Err(OperatorError::EmptyOverlapSubspace);
     }
-    let s_matrix = Mat::from_fn(n, n, |row, column| overlap.at(row, column));
+    let s_matrix = {
+        let values = overlap.to_host_row_major();
+        Mat::from_fn(n, n, |row, column| values[row * n + column])
+    };
     let s_eigen = s_matrix
         .self_adjoint_eigen(Side::Lower)
         .map_err(|_| OperatorError::Eigensolver)?;
@@ -135,11 +138,10 @@ pub fn solve_generalized_hermitian(
     let reduced = DenseHermitianMatrix::from_upper_triangle(r, Axis::Reduced, |row, column| {
         0.5 * (contraction[row * r + column] + contraction[column * r + row].conj())
     })?;
-    let reduced_matrix = Mat::from_fn(r, r, |row, column| {
-        reduced
-            .get(row, column)
-            .expect("reduced Hermitian block is square")
-    });
+    let reduced_matrix = {
+        let values = reduced.to_host_row_major();
+        Mat::from_fn(r, r, |row, column| values[row * r + column])
+    };
     let reduced_eigen = reduced_matrix
         .self_adjoint_eigen(Side::Lower)
         .map_err(|_| OperatorError::Eigensolver)?;
@@ -240,7 +242,10 @@ pub fn solve_generalized_hermitian_embedded(
     // localized core coordinates. Thin QR changes coordinates, not the allowed
     // space or its dimension, before the physical overlap filter is applied.
     let rows = embedding.shape()[0];
-    let qr = faer::Mat::from_fn(rows, dimension, |i, j| embedding.at(&[i, j])).qr();
+    let qr = {
+        let values = embedding.to_host_row_major();
+        faer::Mat::from_fn(rows, dimension, |i, j| values[i * dimension + j]).qr()
+    };
     let q = qr.compute_thin_Q();
     let embedding = ComplexTensor::from_host_row_major(
         &[rows, dimension],

@@ -427,8 +427,8 @@ impl DenseHermitianMatrix {
                 column: tensor.axes[1],
             });
         }
-        validate_hermitian(&tensor)?;
         let mut values = tensor.to_host_row_major();
+        validate_hermitian(shape[0], &values)?;
         hermitize(shape[0], &mut values);
         let tensor = ComplexTensor::from_host_row_major(&shape, tensor.axes(), values)?;
         Ok(Self { tensor })
@@ -643,12 +643,11 @@ fn unravel(mut flat: usize, shape: &[usize], layout: MemoryLayout) -> Vec<usize>
     indices
 }
 
-fn validate_hermitian(tensor: &ComplexTensor) -> Result<(), TensorError> {
-    let n = tensor.shape()[0];
+fn validate_hermitian(n: usize, values: &[Complex64]) -> Result<(), TensorError> {
     let mut scale = 1.0_f64;
     for row in 0..n {
         for column in 0..n {
-            let value = tensor.get(&[row, column])?;
+            let value = values[row * n + column];
             if !value.re.is_finite() || !value.im.is_finite() {
                 return Err(TensorError::NonFinite {
                     indices: vec![row, column],
@@ -660,8 +659,8 @@ fn validate_hermitian(tensor: &ComplexTensor) -> Result<(), TensorError> {
     let tolerance = 128.0 * f64::EPSILON * scale;
     for row in 0..n {
         for column in 0..n {
-            let value = tensor.get(&[row, column])?;
-            let partner = tensor.get(&[column, row])?;
+            let value = values[row * n + column];
+            let partner = values[column * n + row];
             if (value - partner.conj()).norm() > tolerance {
                 return Err(TensorError::NonHermitian { row, column });
             }
