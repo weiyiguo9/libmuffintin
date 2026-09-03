@@ -701,12 +701,6 @@ pub fn run_kh_soc_valence_hf(
     let ScfRelativity::SocSecondVariation { window } = spec.config.relativity else {
         return Err(KhSocValenceHfError::Relativity);
     };
-    if !matches!(
-        spec.fock_mixing,
-        FockMixing::Linear { .. } | FockMixing::PulayAnderson { .. }
-    ) {
-        return Err(KhSocValenceHfError::FockMixing);
-    }
     let valence_electrons = validate_kh_soc_spec(spec)?;
     Ok(run_kh_soc_valence_hf_inner(
         physics,
@@ -1794,14 +1788,16 @@ fn solve_scalar_fixed_potential(
                     .map(|row| row.down.clone())
                     .collect::<Vec<_>>();
                 Collinear::new(
-                    up_mixer.mix(
+                    up_mixer.mix_scalar(
                         &bands,
+                        0,
                         &up_occupations,
                         &previous.up,
                         &fresh_global_feedback.up,
                     )?,
-                    down_mixer.mix(
+                    down_mixer.mix_scalar(
                         &bands,
+                        1,
                         &down_occupations,
                         &previous.down,
                         &fresh_global_feedback.down,
@@ -2386,6 +2382,34 @@ impl FeedbackMixer {
         input: &[DenseHermitianMatrix],
         output: &[DenseHermitianMatrix],
     ) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+        self.mix_channel(bands, occupations, input, output, FeedbackChannel::Spinor)
+    }
+
+    fn mix_scalar(
+        &mut self,
+        bands: &CheckpointBandSolution,
+        spin: u8,
+        occupations: &[Vec<f64>],
+        input: &[DenseHermitianMatrix],
+        output: &[DenseHermitianMatrix],
+    ) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+        self.mix_channel(
+            bands,
+            occupations,
+            input,
+            output,
+            FeedbackChannel::Scalar(spin),
+        )
+    }
+
+    fn mix_channel(
+        &mut self,
+        bands: &CheckpointBandSolution,
+        occupations: &[Vec<f64>],
+        input: &[DenseHermitianMatrix],
+        output: &[DenseHermitianMatrix],
+        channel: FeedbackChannel,
+    ) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
         let (candidate, error) = match self.mixing {
             FockMixing::Linear { alpha } => {
                 return mix_global_feedback(input, output, alpha);
@@ -2396,11 +2420,11 @@ impl FeedbackMixer {
             ),
             FockMixing::CommutatorDiis { .. } => (
                 output.to_vec(),
-                commutator_diis_error(bands, occupations, output, None)?,
+                commutator_diis_error(bands, occupations, output, None, channel)?,
             ),
             FockMixing::QuasiNewtonDiis { level_shift, .. } => (
                 output.to_vec(),
-                commutator_diis_error(bands, occupations, output, Some(level_shift))?,
+                commutator_diis_error(bands, occupations, output, Some(level_shift), channel)?,
             ),
         };
         let max_history = self
@@ -2425,6 +2449,12 @@ impl FeedbackMixer {
         };
         combine_feedback_records(&self.history, &coefficients)
     }
+}
+
+#[derive(Clone, Copy)]
+enum FeedbackChannel {
+    Spinor,
+    Scalar(u8),
 }
 
 fn mix_global_feedback(
@@ -2500,6 +2530,7 @@ fn commutator_diis_error(
     occupations: &[Vec<f64>],
     feedback: &[DenseHermitianMatrix],
     level_shift: Option<Hartree>,
+    channel: FeedbackChannel,
 ) -> Result<Vec<Complex64>, GammaValenceHfError> {
     if bands.points().len() != occupations.len() || bands.points().len() != feedback.len() {
         return Err(GammaValenceHfError::ExchangeKIndex {
@@ -2509,13 +2540,32 @@ fn commutator_diis_error(
     }
     let mut error = Vec::new();
     for ((point, occupations), feedback) in bands.points().iter().zip(occupations).zip(feedback) {
-        let CheckpointKPointSolution::Spinor {
-            eigenproblem,
-            solution,
-            ..
-        } = &point.solution
-        else {
-            return Err(GammaValenceHfError::SpinorFirstVariation);
+        let (eigenproblem, solution) = match (channel, &point.solution) {
+            (
+                FeedbackChannel::Spinor,
+                CheckpointKPointSolution::Spinor {
+                    eigenproblem,
+                    solution,
+                    ..
+                },
+            ) => (eigenproblem, solution),
+            (
+                FeedbackChannel::Scalar(0),
+                CheckpointKPointSolution::Collinear {
+                    eigenproblems,
+                    solutions,
+                    ..
+                },
+            ) => (&eigenproblems.up, &solutions.up),
+            (
+                FeedbackChannel::Scalar(1),
+                CheckpointKPointSolution::Collinear {
+                    eigenproblems,
+                    solutions,
+                    ..
+                },
+            ) => (&eigenproblems.down, &solutions.down),
+            _ => return Err(GammaValenceHfError::SpinorFirstVariation),
         };
         let basis_count = solution.eigenvectors.rows();
         let band_count = solution.eigenvectors.columns();

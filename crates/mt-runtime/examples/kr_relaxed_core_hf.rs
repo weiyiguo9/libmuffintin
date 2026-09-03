@@ -379,16 +379,14 @@ impl Cli {
             )
             | (
                 RelativitySelection::KhSoc,
-                FockMixerSelection::Linear | FockMixerSelection::Pulay,
+                FockMixerSelection::Linear
+                | FockMixerSelection::Pulay
+                | FockMixerSelection::Cdiis
+                | FockMixerSelection::QuasiNewtonCdiis,
             ) => {}
             (RelativitySelection::SpinorFirst, _) => {
                 return Err(invalid_input(
                     "spinor-first requires --fock-mixing cdiis or quasi-newton-cdiis",
-                ));
-            }
-            (RelativitySelection::KhSoc, _) => {
-                return Err(invalid_input(
-                    "kh-soc requires --fock-mixing linear or pulay",
                 ));
             }
         }
