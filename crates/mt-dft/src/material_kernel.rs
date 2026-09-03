@@ -586,6 +586,7 @@ pub struct CheckpointSecondVariationResult {
 #[derive(Clone, Debug)]
 pub struct CheckpointSecondVariationFrame {
     scalar: CheckpointBandSolution,
+    reference_potential: RegionalPotential,
     first_variations: Vec<FirstVariationSubspace>,
     site_blocks: Vec<Vec<SiteSpinOrbitBlock>>,
     site_feedback: Vec<Vec<DenseHermitianMatrix>>,
@@ -594,6 +595,102 @@ pub struct CheckpointSecondVariationFrame {
 }
 
 impl CheckpointSecondVariationFrame {
+    /// Project the change in scalar local potential and its KH spin-orbit
+    /// operator into this unchanged doubled scalar-band frame.
+    ///
+    /// Radial generators, the active space, and frozen-core exchange stay fixed;
+    /// this feedback contains neither kinetic energy nor valence exchange.
+    pub fn local_potential_feedback(
+        &self,
+        potential: &RegionalPotential,
+    ) -> Result<Vec<DenseHermitianMatrix>, MaterialKernelError> {
+        let delta = potential.difference(&self.reference_potential)?;
+        let interstitial = delta.to_lapw_interstitial()?.v0;
+        self.scalar
+            .points
+            .iter()
+            .enumerate()
+            .map(|(point_index, point)| {
+                let CheckpointKPointSolution::Collinear { bases, .. } = &point.solution else {
+                    return Err(MaterialKernelError::SecondVariationRequiresScalarBands {
+                        point: point_index,
+                    });
+                };
+                let basis = &bases.up;
+                let first = &self.first_variations[point_index];
+                let mut site_potentials = Vec::with_capacity(basis.density_sites.len());
+                for (site, field) in basis.density_sites.iter().zip(delta.scalar().muffin_tins()) {
+                    let n = site.orbitals.len();
+                    let mut values = vec![Complex64::default(); n * n];
+                    for row in 0..n {
+                        for column in row..n {
+                            values[row * n + column] = muffintin_sphere::matrix_element(
+                                &site.mesh,
+                                &site.orbitals[row],
+                                field.field(),
+                                &site.orbitals[column],
+                            )?;
+                        }
+                    }
+                    site_potentials.push(DenseHermitianMatrix::from_upper_triangle(
+                        n,
+                        Axis::SiteCoordinate,
+                        |row, column| values[row * n + column],
+                    )?);
+                }
+                let mt = assemble_scalar_site_operator(&basis.compiled, &site_potentials)?;
+                let waves = &basis.compiled.plane_waves;
+                let local = DenseHermitianMatrix::from_upper_triangle(
+                    mt.dimension(),
+                    Axis::GlobalBasis,
+                    |row, column| {
+                        let ir = if row < waves.len() && column < waves.len() {
+                            interstitial.coefficient(std::array::from_fn(|axis| {
+                                waves[row].g.index[axis] - waves[column].g.index[axis]
+                            }))
+                        } else {
+                            Complex64::default()
+                        };
+                        mt.at(row, column) + ir
+                    },
+                )?;
+                let projected =
+                    muffintin_tensor::hermitian_congruence(first.eigenvectors.as_tensor(), &local)?;
+                let bands = projected.dimension();
+                let n = 2 * bands;
+                let mut soc_change = vec![Complex64::default(); n * n];
+                let updated_soc = second_variation_blocks_from_potential(basis, potential)?;
+                for (site, block) in updated_soc.iter().enumerate() {
+                    let projection = CompiledSiteProjection::scalar(&basis.compiled, site)?;
+                    let coefficients = projection.project_eigenvectors(&first.eigenvectors)?;
+                    let updated = project_site_soc_to_subspace(block, &coefficients)?;
+                    let reference = project_site_soc_to_subspace(
+                        &self.site_blocks[point_index][site],
+                        &coefficients,
+                    )?;
+                    for row in 0..n {
+                        for column in row..n {
+                            soc_change[row * n + column] +=
+                                updated.at(row, column) - reference.at(row, column);
+                        }
+                    }
+                }
+                Ok(DenseHermitianMatrix::from_upper_triangle(
+                    n,
+                    Axis::Band,
+                    |row, column| {
+                        let scalar = if row / bands == column / bands {
+                            projected.at(row % bands, column % bands)
+                        } else {
+                            Complex64::default()
+                        };
+                        scalar + soc_change[row * n + column]
+                    },
+                )?)
+            })
+            .collect()
+    }
+
     /// Scalar-Fock plus SOC plus resolved frozen-core exchange in the fixed
     /// doubled source-band frame, before valence-exchange replacement.
     pub fn fixed_hamiltonians(&self) -> &[DenseHermitianMatrix] {
@@ -1230,6 +1327,7 @@ impl MaterialKernel {
         }
         Ok(CheckpointSecondVariationFrame {
             scalar: scalar.clone(),
+            reference_potential: potential.clone(),
             first_variations,
             site_blocks,
             site_feedback,
@@ -3171,6 +3269,8 @@ pub enum MaterialKernelError {
     SecondVariation(#[from] SecondVariationError),
     #[error(transparent)]
     SpinOrbitRadial(#[from] SpinOrbitRadialError),
+    #[error(transparent)]
+    MatrixElement(#[from] muffintin_sphere::MatrixElementError),
     #[error(transparent)]
     SocOperator(#[from] SocOperatorError),
     #[error(transparent)]

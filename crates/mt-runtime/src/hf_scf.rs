@@ -57,7 +57,7 @@ const SPECTRAL_REFINEMENT_PASSES: usize = 16;
 const IDENTITY_TOLERANCE: f64 = 2.0e-8;
 const ELECTRON_COUNT_TOLERANCE: f64 = 1.0e-8;
 
-/// Mixing algorithm for the fixed-potential global exchange feedback.
+/// Mixing algorithm for Hermitian feedback in a fixed orbital coordinate frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FockMixing {
     Linear {
@@ -169,6 +169,7 @@ pub type ValenceHfResult = GammaValenceHfResult;
 #[derive(Clone, Debug, PartialEq)]
 pub struct KhSocValenceHfSpec {
     pub config: ScfConfig,
+    pub hartree_update: KhSocHartreeUpdate,
     pub product_l_max: u32,
     pub product_g_max: InverseBohr,
     pub overlap_tolerance: f64,
@@ -194,6 +195,15 @@ pub struct KhSocValenceHfSpec {
 pub enum KhSocCoreTreatment {
     ValenceOnly,
     Frozen,
+}
+
+/// Whether Hartree follows outer density mixing or the spinor Fock iterate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum KhSocHartreeUpdate {
+    OuterDensity,
+    /// Rebuild Hartree and exchange from the same spinor density matrix.
+    /// Outer steps update the scalar source subspace without density mixing.
+    CoupledFock,
 }
 
 /// One outer KH+SOC Hartree-density iteration.
@@ -890,7 +900,7 @@ fn run_kh_soc_valence_hf_inner(
             window,
             core_sidecars,
         )?;
-        let spinor = solve_second_variation_fixed_potential(
+        let spinor = solve_second_variation_hf(
             physics,
             spec,
             &frame,
@@ -899,6 +909,9 @@ fn run_kh_soc_valence_hf_inner(
             outer_iteration,
             &k_fractional,
             &q_fractional,
+            &potential,
+            &electrostatic,
+            &core_density,
         )?;
         total_exchange_rebuilds += fixed.exchange_rebuilds + spinor.exchange_rebuilds;
         let valence_output = physics
@@ -911,17 +924,19 @@ fn run_kh_soc_valence_hf_inner(
             .residual_rms_by_region()?;
         let density_rms = density_by_region.total_rms;
         let second_variation_density_rms = scalar_valence_output.difference_rms(&valence_output)?;
-        let scalar_feedback = scalar_feedback_in_second_variation_frame(&fixed.bands, &frame)?;
-        let one_body_with_core =
-            subtract_global_feedback(frame.fixed_hamiltonians(), &scalar_feedback)?;
+        let core_terms = if spec.hartree_update == KhSocHartreeUpdate::CoupledFock {
+            frozen_core_energy_terms(physics, core_sidecars, &spinor.electrostatic)?
+        } else {
+            core_terms
+        };
         let energy = kh_soc_spinor_energy_diagnostic(
             &spinor.bands,
             &spinor.mixings,
             &spinor.occupation,
             &spinor.exchange,
-            &one_body_with_core,
+            &spinor.one_body_with_core,
             frame.resolved_core_feedback(),
-            &electrostatic,
+            &spinor.electrostatic,
             core_terms,
         )?;
         require_gate(
@@ -990,7 +1005,7 @@ fn run_kh_soc_valence_hf_inner(
                 valence_density: valence_output,
                 core_density,
                 total_density: total_output,
-                potential,
+                potential: spinor.potential,
                 scalar_bands: fixed.bands,
                 orbital_energies: second_variation_energies(&spinor.bands)?,
                 bands: spinor.bands,
@@ -1021,9 +1036,17 @@ fn run_kh_soc_valence_hf_inner(
             });
         }
         previous_total = Some(energy.total);
-        let mixed_total = mixer.mix(&total_density, &total_output)?.density;
-        valence_density = mixed_total.difference(&core_density)?;
-        total_density = mixed_total;
+        match spec.hartree_update {
+            KhSocHartreeUpdate::OuterDensity => {
+                let mixed_total = mixer.mix(&total_density, &total_output)?.density;
+                valence_density = mixed_total.difference(&core_density)?;
+                total_density = mixed_total;
+            }
+            KhSocHartreeUpdate::CoupledFock => {
+                valence_density = valence_output;
+                total_density = total_output;
+            }
+        }
         if scalar_guess.is_some() {
             scalar_guess = Some(fixed.bands);
         }
@@ -1870,7 +1893,10 @@ struct ScalarFixedPotentialResult {
     feedback_residual: f64,
 }
 
-struct SecondVariationFixedPotentialResult {
+struct SecondVariationHfResult {
+    potential: RegionalPotential,
+    electrostatic: muffintin_dft::RegionalElectrostaticResult,
+    one_body_with_core: Vec<DenseHermitianMatrix>,
     bands: CheckpointBandSolution,
     mixings: Vec<SecondVariationMixing>,
     occupation: OccupationSolution,
@@ -2029,7 +2055,7 @@ fn solve_scalar_fixed_potential(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn solve_second_variation_fixed_potential(
+fn solve_second_variation_hf(
     physics: &CheckpointPhysics,
     spec: &KhSocValenceHfSpec,
     frame: &CheckpointSecondVariationFrame,
@@ -2038,7 +2064,10 @@ fn solve_second_variation_fixed_potential(
     outer_iteration: usize,
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
-) -> Result<SecondVariationFixedPotentialResult, GammaValenceHfError> {
+    initial_potential: &RegionalPotential,
+    initial_electrostatic: &muffintin_dft::RegionalElectrostaticResult,
+    core_density: &RegionalDensity,
+) -> Result<SecondVariationHfResult, GammaValenceHfError> {
     let scalar_feedback = scalar_feedback_in_second_variation_frame(&scalar.bands, frame)?;
     let scalar_core_feedback = scalar_core_feedback_in_second_variation_frame(
         &scalar.bands,
@@ -2066,6 +2095,34 @@ fn solve_second_variation_fixed_potential(
             spec.config.occupations,
         )?;
         let occupation_rows = second_variation_occupation_rows(&occupation.values, &current.bands)?;
+        let (potential, electrostatic, local_feedback) = match spec.hartree_update {
+            KhSocHartreeUpdate::OuterDensity => (
+                initial_potential.clone(),
+                initial_electrostatic.clone(),
+                scale_feedback(&fixed_hamiltonians, 0.0)?,
+            ),
+            KhSocHartreeUpdate::CoupledFock => {
+                let density = physics
+                    .kernel
+                    .synthesize_second_variation_bands(&current.bands, &occupation.values)?;
+                let total = sum_kh_density(&density, core_density)?;
+                let electrostatic = evaluate_regional_electrostatics(
+                    total.charge(),
+                    &ElectrostaticSpec::new(
+                        WeinertHartreeSpec::electronic(4)?,
+                        physics.nuclear_charges().to_vec(),
+                    )?,
+                )?;
+                let zero = electrostatic.potential.zero_like();
+                let potential = RegionalPotential::new(
+                    electrostatic.potential.clone(),
+                    [zero.clone(), zero.clone(), zero],
+                )?;
+                let feedback = frame.local_potential_feedback(&potential)?;
+                current_density = Some(density);
+                (potential, electrostatic, feedback)
+            }
+        };
         let exchange = rebuild_second_variation_exchange(
             physics,
             spec,
@@ -2076,7 +2133,9 @@ fn solve_second_variation_fixed_potential(
             &mut exchange_cache,
         )?;
         let band_feedback = exchange_feedback(&exchange)?;
-        let fresh_feedback = lift_second_variation_feedback(&current.mixings, &band_feedback)?;
+        let exchange_feedback = lift_second_variation_feedback(&current.mixings, &band_feedback)?;
+        let fresh_feedback =
+            subtract_global_feedback(&exchange_feedback, &scale_feedback(&local_feedback, -1.0)?)?;
         let commutator_residual = maximum_complex_element(&second_variation_commutator_diis_error(
             &current.bands,
             &fixed_hamiltonians,
@@ -2147,7 +2206,13 @@ fn solve_second_variation_fixed_potential(
                 previous_feedback = Some(fresh_feedback);
                 continue;
             }
-            return Ok(SecondVariationFixedPotentialResult {
+            return Ok(SecondVariationHfResult {
+                potential,
+                electrostatic,
+                one_body_with_core: subtract_global_feedback(
+                    &fixed_hamiltonians,
+                    &scale_feedback(&local_feedback, -1.0)?,
+                )?,
                 bands: current.bands,
                 mixings: current.mixings,
                 occupation,

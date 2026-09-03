@@ -9,9 +9,9 @@ use std::process::Command;
 
 use muffintin::{
     AtomicStartRequest, CheckpointPhysics, FockMixing, GammaExchangeTreatment, KhSocCoreTreatment,
-    KhSocValenceHfIterationDiagnostic, KhSocValenceHfResult, KhSocValenceHfSpec,
-    RegionalFieldLayout, RelaxedCoreHfIterationDiagnostic, RelaxedCoreHfResult, RelaxedCoreHfSpec,
-    Structure, checkpoint_v2_from_regional_state, materialize_atomic_start,
+    KhSocHartreeUpdate, KhSocValenceHfIterationDiagnostic, KhSocValenceHfResult,
+    KhSocValenceHfSpec, RegionalFieldLayout, RelaxedCoreHfIterationDiagnostic, RelaxedCoreHfResult,
+    RelaxedCoreHfSpec, Structure, checkpoint_v2_from_regional_state, materialize_atomic_start,
     run_gamma_kh_soc_valence_hf, run_gamma_relaxed_core_hf,
 };
 use muffintin_core::{
@@ -236,6 +236,7 @@ struct Cli {
     out: PathBuf,
     relativity: RelativitySelection,
     soc_bands: usize,
+    kh_hartree_update: KhSocHartreeUpdate,
     box_size: f64,
     orbital_g: f64,
     field_g: f64,
@@ -278,6 +279,7 @@ impl Default for Cli {
             out: PathBuf::from("kr-relaxed-core-hf-p0"),
             relativity: RelativitySelection::SpinorFirst,
             soc_bands: 7,
+            kh_hartree_update: KhSocHartreeUpdate::OuterDensity,
             box_size: 8.0,
             orbital_g: 1.0,
             field_g: 4.5,
@@ -328,6 +330,15 @@ impl Cli {
                 "--out" => cli.out = PathBuf::from(value),
                 "--relativity" => cli.relativity = RelativitySelection::parse(&value)?,
                 "--soc-bands" => cli.soc_bands = parse_value(&name, &value)?,
+                "--kh-hartree-update" => {
+                    cli.kh_hartree_update = match value.as_str() {
+                        "outer-density" => KhSocHartreeUpdate::OuterDensity,
+                        "coupled-fock" => KhSocHartreeUpdate::CoupledFock,
+                        _ => {
+                            return Err(invalid_input(format!("unknown KH Hartree update {value}")));
+                        }
+                    };
+                }
                 "--box" => cli.box_size = parse_value(&name, &value)?,
                 "--orbital-g" => cli.orbital_g = parse_value(&name, &value)?,
                 "--field-g" => cli.field_g = parse_value(&name, &value)?,
@@ -564,6 +575,7 @@ struct ParameterManifest {
     gamma_exchange: &'static str,
     relativity: &'static str,
     soc_first_variation_bands: Option<usize>,
+    kh_hartree_update: Option<&'static str>,
     core_treatment: &'static str,
     exchange_correlation: &'static str,
     outer_mixing_algorithm: &'static str,
@@ -1098,7 +1110,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                 RelativitySelection::KhSoc => "frozen-checkpoint",
             },
             exchange_correlation: "LDA-PW92 local-spin-frame",
-            outer_mixing_algorithm: cli.outer_mixing.as_str(),
+            kh_hartree_update: (cli.relativity == RelativitySelection::KhSoc).then_some(match cli
+                .kh_hartree_update
+            {
+                KhSocHartreeUpdate::OuterDensity => "outer-density",
+                KhSocHartreeUpdate::CoupledFock => "coupled-fock",
+            }),
+            outer_mixing_algorithm: if cli.relativity == RelativitySelection::KhSoc
+                && cli.kh_hartree_update == KhSocHartreeUpdate::CoupledFock
+            {
+                "none"
+            } else {
+                cli.outer_mixing.as_str()
+            },
             outer_mixing_alpha: cli.outer_mixing_alpha,
             outer_mixing_history: match cli.outer_mixing {
                 OuterMixerSelection::Linear => None,
@@ -1267,6 +1291,7 @@ fn run_kh_soc_example(
 ) -> Result<(), Box<dyn Error>> {
     let spec = KhSocValenceHfSpec {
         config,
+        hartree_update: cli.kh_hartree_update,
         product_l_max: cli.product_l_max,
         product_g_max: InverseBohr(cli.product_g),
         overlap_tolerance: DEFAULT_TOLERANCE,

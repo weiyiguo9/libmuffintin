@@ -511,6 +511,33 @@ orbital energies cannot remain tied to an older extrapolated Fock operator;
 pure virtual–virtual changes are still excluded. The converged spinor density
 and spinor HF energy,
 not the scalar source result, define the outer density and energy fixed point.
+
+`KhSocHartreeUpdate` selects the self-consistency mapping explicitly. With
+`OuterDensity`, the Hartree potential stays fixed during the exchange loop and
+the outer regional-density mixer updates it. With `CoupledFock`, each spinor
+iterate supplies both its Hartree density and exchange density matrix. The
+local-potential difference and the corresponding change in the KH SOC operator
+are projected into the unchanged doubled scalar-band frame and combined with
+exchange before CDIIS. In that frame the physical operator is
+
+```math
+F[D] = H_{\mathrm{ref}} + \Delta V_H[D]
+       + \Delta H_{\mathrm{SOC}}[D] + K_c + K_v[D].
+```
+
+Core orbitals, radial generators, and the scalar source window stay fixed
+within this loop. Its convergence uses the fresh unshifted full-Fock
+commutator and density fixed-point residual. The energy uses the same iterate's
+Hartree field, including the frozen-core expectation in that current field.
+Outer steps then update the scalar source subspace using the unmixed converged
+spinor density; they do not apply another density Pulay step. A truncated
+source window still requires a window-convergence study; this option does not
+make a finite second-variation window equivalent to the complete Pauli space.
+The molecular harness selects this mapping with
+`--kh-hartree-update coupled-fock`; `outer-density` remains the explicit
+nested comparison route. `KhSocValenceHfSpec` callers must supply
+`hartree_update`.
+
 Diagnostics retain separate scalar and spinor iteration/rebuild counts, the
 commutator residual, the feedback change, and the scalar-to-spinor density
 change. The outer density residual is also decomposed into muffin-tin and

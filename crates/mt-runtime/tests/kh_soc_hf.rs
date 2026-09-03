@@ -1,8 +1,8 @@
 //! Self-consistent Pauli-spinor KH+SOC Hartree–Fock regression.
 
 use muffintin::{
-    CheckpointPhysics, FockMixing, GammaExchangeTreatment, KhSocCoreTreatment, KhSocValenceHfSpec,
-    run_gamma_kh_soc_valence_hf,
+    CheckpointPhysics, FockMixing, GammaExchangeTreatment, KhSocCoreTreatment, KhSocHartreeUpdate,
+    KhSocValenceHfSpec, run_gamma_kh_soc_valence_hf,
 };
 use muffintin_core::{Hartree, InverseBohr};
 use muffintin_dft::{
@@ -54,6 +54,7 @@ fn gamma_scalar_hf_then_soc_preserves_closed_shell_density_and_exchange() {
         },
         spinor_virtual_level_shift: Hartree(0.0),
         core_treatment: KhSocCoreTreatment::ValenceOnly,
+        hartree_update: KhSocHartreeUpdate::OuterDensity,
     };
 
     let mut observed = Vec::new();
@@ -155,6 +156,7 @@ fn frozen_core_enters_scalar_fock_soc_and_total_density_without_expanding_vv() {
         },
         spinor_virtual_level_shift: Hartree(0.2),
         core_treatment: KhSocCoreTreatment::Frozen,
+        hartree_update: KhSocHartreeUpdate::CoupledFock,
     };
 
     let result = run_gamma_kh_soc_valence_hf(&mut physics, &spec, |_| Ok(())).unwrap();
