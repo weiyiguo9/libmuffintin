@@ -13,6 +13,7 @@ use muffintin_coulomb::{
 };
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
 use num_complex::Complex64;
+use std::collections::{HashMap, hash_map::Entry};
 use std::f64::consts::PI;
 use thiserror::Error;
 
@@ -297,11 +298,18 @@ fn mask_fourier_coefficients(
     }
     let reciprocal = layout.reciprocal();
     let mut masked = Vec::with_capacity(layout.len());
+    let mut step_coefficients = HashMap::new();
     for target in layout.vectors() {
         let mut value = Complex64::default();
         for (source, &coefficient) in layout.vectors().iter().zip(raw_coefficients) {
             let difference = reciprocal_difference(target.index, source.index)?;
-            value += geometry.coefficient(reciprocal.cartesian(difference))? * coefficient;
+            let theta = match step_coefficients.entry(difference) {
+                Entry::Occupied(entry) => *entry.get(),
+                Entry::Vacant(entry) => {
+                    *entry.insert(geometry.coefficient(reciprocal.cartesian(difference))?)
+                }
+            };
+            value += theta * coefficient;
         }
         masked.push(value);
     }
@@ -357,6 +365,7 @@ fn density_potential_integral(
         .coefficients()
         .map(|value| value.as_complex())
         .collect::<Vec<_>>();
+    let mut step_coefficients = HashMap::new();
     for (left, &rho) in density.interstitial().iter() {
         for (right, &potential) in density
             .interstitial()
@@ -366,9 +375,14 @@ fn density_potential_integral(
             .zip(&potential_coefficients)
         {
             let difference = reciprocal_difference(left.index, right.index)?;
-            let theta = density
-                .geometry()
-                .coefficient(reciprocal.cartesian(difference))?;
+            let theta = match step_coefficients.entry(difference) {
+                Entry::Occupied(entry) => *entry.get(),
+                Entry::Vacant(entry) => *entry.insert(
+                    density
+                        .geometry()
+                        .coefficient(reciprocal.cartesian(difference))?,
+                ),
+            };
             let term = volume * rho.conj() * theta * potential;
             total += term;
             scale += term.norm();

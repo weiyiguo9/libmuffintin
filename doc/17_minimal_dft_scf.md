@@ -204,6 +204,13 @@ orbitals. The common regional energy functional keeps the same gauge.
 
 The energy adapter evaluates $C=\int n(V_H+V_{\mathrm{nuc}})$, $M=E_{en}+2E_{II}$, $E_H=\tfrac12\int nV_H$, $E_{en}=\int nV_{\mathrm{nuc}}$, and $E_{II}$ in one common gauge. Discrete muffin-tin and Fourier boundary values are matched using the actual Poisson mesh endpoint, not a second independently rounded multipole quadrature.
 
+The interstitial energy contractions and operator-facing potential masking
+reuse the analytic step-function coefficient for each exact integer
+reciprocal difference. This avoids repeating sphere Bessel transforms and
+site phases for every pair of field coefficients. Only distinct differences
+are stored, not a dense field-overlap matrix; the contraction order,
+normalization, and reality checks are unchanged.
+
 ## 6. LDA/PW92, PBE, and noncollinear XC
 
 The implemented local-density choice follows the `xlda + cpw92` formulas, and the gradient choice follows `xpbe + cpbe` (`src/iterate.f:261-326`, `src/xcfunc.f:105-141,564-783`). The collinear point kernel accepts both spin densities, gradients, and Hessians. PBE includes the density gradient, Laplacian, and gradient–Hessian contraction required by the divergence term in the functional derivative.
