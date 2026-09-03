@@ -127,10 +127,14 @@ pub fn solve_generalized_hermitian(
     let x = einsum("ik,k->ik", &[&u_keep, &scales])?;
 
     let x_conj = x.conjugate();
-    let reduced = projected_hermitian(
-        einsum("ir,ij,js->rs", &[&x_conj, hamiltonian.as_tensor(), &x])?,
-        "overlap-orthogonalized Hamiltonian",
-    )?;
+    let contraction =
+        einsum("ir,ij,js->rs", &[&x_conj, hamiltonian.as_tensor(), &x])?.to_host_row_major();
+    // H is already validated self-adjoint. Form its congruence as a Hermitian
+    // matrix, rather than interpreting independently rounded mirror entries
+    // after overlap whitening as a new non-Hermitian input operator.
+    let reduced = DenseHermitianMatrix::from_upper_triangle(r, Axis::Reduced, |row, column| {
+        0.5 * (contraction[row * r + column] + contraction[column * r + row].conj())
+    })?;
     let reduced_matrix = Mat::from_fn(r, r, |row, column| {
         reduced
             .get(row, column)
