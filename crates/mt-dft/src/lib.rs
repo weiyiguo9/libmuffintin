@@ -80,9 +80,9 @@ pub use linearization::{
 };
 pub use material_kernel::{
     CheckpointBandSolution, CheckpointKPoint, CheckpointKPointSolution, CheckpointOneParticle,
-    CheckpointSite, CheckpointSpin, InitialDensityComponents, MaterialKernel, MaterialKernelError,
-    RadialRoute, SpexBoundSpinorChannel, SpexSpinorMaterialBinding, g_vector,
-    production_density_layout, regular_k_points,
+    CheckpointSecondVariationResult, CheckpointSite, CheckpointSpin, InitialDensityComponents,
+    MaterialKernel, MaterialKernelError, RadialRoute, SpexBoundSpinorChannel,
+    SpexSpinorMaterialBinding, g_vector, production_density_layout, regular_k_points,
 };
 pub use mixing::{DensityMixer, MixAlgebraQuantity, MixRecord, MixStatus, MixStep, MixingError};
 pub use muffintin_sphere::RadialEquation;

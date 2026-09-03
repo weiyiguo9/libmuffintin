@@ -52,6 +52,8 @@ fn gamma_scalar_hf_then_soc_preserves_closed_shell_density_and_exchange() {
     assert_eq!(result.occupations.len(), 1);
     assert_eq!(result.orbital_energies.len(), 1);
     assert_eq!(result.orbital_energies[0].len(), 2);
+    assert_eq!(result.second_variation_diagnostics.len(), 1);
+    assert_eq!(result.second_variation_diagnostics[0].len(), 2);
     assert!(
         (result.orbital_energies[0][0].get() - result.orbital_energies[0][1].get()).abs()
             <= 1.0e-10

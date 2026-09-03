@@ -205,6 +205,7 @@ pub struct KhSocValenceHfResult {
     pub orbital_energies: Vec<Vec<Hartree>>,
     pub scalar_exchange: Collinear<IsdfExchangeResult>,
     pub second_variation_exchange: IsdfExchangeResult,
+    pub second_variation_diagnostics: Vec<Vec<muffintin_dft::SecondVariationBandDiagnostic>>,
     pub core_orbitals: Vec<CoreShellOrbitals>,
     pub core_h0_trace: Hartree,
     pub core_core_exchange: Hartree,
@@ -834,12 +835,13 @@ fn run_kh_soc_valence_hf_inner(
             && density_rms <= spec.config.convergence.density_tolerance
             && fixed.fixed_point_residual <= spec.fock_density_tolerance;
         if converged {
-            let bands = physics.kernel.apply_soc_second_variation(
+            let second_variation = physics.kernel.apply_soc_second_variation(
                 &potential,
                 &fixed.bands,
                 window,
                 core_sidecars,
             )?;
+            let bands = second_variation.bands;
             let occupation =
                 solve_occupations(bands.states(), valence_electrons, spec.config.occupations)?;
             let second_variation_valence_density = physics
@@ -876,6 +878,7 @@ fn run_kh_soc_valence_hf_inner(
                 occupations,
                 scalar_exchange: fixed.exchange,
                 second_variation_exchange,
+                second_variation_diagnostics: second_variation.diagnostics,
                 core_orbitals: core_sidecars.to_vec(),
                 core_h0_trace: core_terms.h0,
                 core_core_exchange: Hartree(0.5 * core_terms.cc_trace.get()),

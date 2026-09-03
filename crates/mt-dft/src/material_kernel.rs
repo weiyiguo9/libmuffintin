@@ -18,8 +18,8 @@ use crate::{
     ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfCoreSite, ScfEnergyContext,
     ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfKReduction, ScfKSamplingProvenance,
     ScfOccupations, ScfPhysics, ScfPotentialBuild, ScfPotentialBuildError, ScfRelativity,
-    ScfResolvedChannelEnergy, ScfState, SecondVariationError, SpinorBuilderError,
-    SpinorFirstVariationError, SpinorIterationBasis, SpinorLinearizationEnergy,
+    ScfResolvedChannelEnergy, ScfState, SecondVariationBandDiagnostic, SecondVariationError,
+    SpinorBuilderError, SpinorFirstVariationError, SpinorIterationBasis, SpinorLinearizationEnergy,
     SpinorLocalOrbitalRequest, SpinorSiteInput, StaticCoreSiteExchangeError, TetrahedronError,
     build_collinear_scalar_iteration_bases, build_extended_checkpoint_core_potentials,
     build_extended_core_potentials, build_extended_electrostatic_core_potentials,
@@ -499,6 +499,13 @@ pub enum CheckpointKPointSolution {
         solution: GeneralizedEigensolution,
         occupations: Range<usize>,
     },
+}
+
+/// SOC second-variation bands plus source-band mixing diagnostics per k point.
+#[derive(Clone, Debug)]
+pub struct CheckpointSecondVariationResult {
+    pub bands: CheckpointBandSolution,
+    pub diagnostics: Vec<Vec<SecondVariationBandDiagnostic>>,
 }
 
 impl MaterialKernel {
@@ -983,7 +990,7 @@ impl MaterialKernel {
         scalar: &CheckpointBandSolution,
         window: FirstVariationWindow,
         core_sidecars: &[CoreShellOrbitals],
-    ) -> Result<CheckpointBandSolution, MaterialKernelError> {
+    ) -> Result<CheckpointSecondVariationResult, MaterialKernelError> {
         self.require_second_variation_route(potential)?;
         if window.start() != 0 {
             return Err(MaterialKernelError::SecondVariationDropsLowerBands {
@@ -992,6 +999,7 @@ impl MaterialKernel {
         }
         let mut points = Vec::with_capacity(scalar.points.len());
         let mut states = Vec::new();
+        let mut diagnostics = Vec::with_capacity(scalar.points.len());
         for (point_index, point) in scalar.points.iter().enumerate() {
             let CheckpointKPointSolution::Collinear {
                 bases,
@@ -1036,6 +1044,7 @@ impl MaterialKernel {
                 &core_feedback,
             )?;
             let split = split_second_variation(&second)?;
+            diagnostics.push(second.diagnostics.clone());
             let start = states.len();
             states.extend(
                 second
@@ -1057,13 +1066,16 @@ impl MaterialKernel {
                 },
             });
         }
-        Ok(CheckpointBandSolution {
-            points,
-            states,
-            reduction: scalar.reduction.clone(),
-            density_layout: scalar.density_layout.clone(),
-            symmetry_transforms: scalar.symmetry_transforms.clone(),
-            spacegroup_number: scalar.spacegroup_number,
+        Ok(CheckpointSecondVariationResult {
+            bands: CheckpointBandSolution {
+                points,
+                states,
+                reduction: scalar.reduction.clone(),
+                density_layout: scalar.density_layout.clone(),
+                symmetry_transforms: scalar.symmetry_transforms.clone(),
+                spacegroup_number: scalar.spacegroup_number,
+            },
+            diagnostics,
         })
     }
 
