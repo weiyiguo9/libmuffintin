@@ -716,6 +716,45 @@ homogeneous core samples in the same reference potential and are not valid
 for sourced relaxed-core HF orbitals. `ScalarLocalOrbitalRequest` is no longer
 `Copy` because this explicit primitive owns radial samples.
 
+The independent SRA first-variation builder now has a homogeneous frozen-core
+path, `build_frozen_core_orthogonal_spinor_iteration_basis`. It reuses stable
+bound Dirac $P,Q$ samples for every represented signed $\kappa$, rather than
+shooting at deep core energies through a valence radial solver. Each appended
+LO is eliminated only against core shells with that same $\kappa$, separately
+for each $\mu$. Orthogonality of both $\Omega_\kappa$ and $\Omega_{-\kappa}$
+then reduces the constraint to the correct radial $PP+QQ$ integral. A closed
+Kr core supplies 28 spinor constraints, not 50 independently duplicated scalar
+constraints. The original SRA plane-wave and valence-LO coordinates remain the
+active space; internal cancellation coordinates do not turn core states into
+VV/THC orbitals.
+
+The homogeneous sidecar's recorded potential defines the radial reference.
+The full current physical potential is still used in the assembled Hamiltonian.
+`MaterialKernel::solve_points` accepts these sidecars for
+`SpinorFirstVariation`; subsequent global Fock-feedback solves preserve the
+same allowed embedding, and CDIIS excludes forbidden core directions. This is
+SRA (four components in MT spheres, two in the interstitial), not FRA and not
+a correction silently applied to the separate KH+SOC Hamiltonian. Its existing
+relaxed-core HF driver is not yet connected to this homogeneous-only builder:
+sourced HF core primitives require their nonlocal source in the Hamiltonian
+action and cannot be substituted here using only their eigenvalues.
+
+The same frozen Kr checkpoint gives the following independent SRA result:
+
+| Fixed-potential SRA diagnostic | Without constraints | With 28 core constraints |
+| --- | ---: | ---: |
+| Raw / active spinor dimension | 212 / 212 | 240 / 212 |
+| Lowest s-like pair energy (Ha) | -1.56256563 | -1.56257047 |
+| Lowest p-like pair energy (Ha) | -0.90043512 | -0.90042197 |
+| Lowest p-like pair MT p norm | 0.732891 | 0.732833 |
+| Maximum summed core overlap weight in the lowest 8 states | $1.552\times10^{-5}$ | $1.710\times10^{-33}$ |
+
+A zero-feedback re-solve retains all 212 allowed states and reproduces their
+energies exactly in this diagnostic. This confirms the first-variation and
+feedback constraint paths, not self-consistent HF or agreement with GTO.
+`SpinorLocalOrbitalRequest` is now `Clone`, not `Copy`, because `BoundCore`
+owns the homogeneous core samples.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its

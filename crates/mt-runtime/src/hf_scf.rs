@@ -3379,7 +3379,9 @@ fn commutator_diis_error(
             CheckpointKPointSolution::Collinear { bases, .. } => {
                 bases.up.core_orthogonalization.is_some()
             }
-            _ => false,
+            CheckpointKPointSolution::Spinor { basis, .. } => {
+                basis.core_orthogonalization.is_some()
+            }
         };
         if level_shift.is_some() || core_constrained {
             let projected_fock = einsum(

@@ -23,6 +23,7 @@ mod scf;
 mod soc;
 mod spinor;
 mod spinor_builder;
+mod spinor_core_orthogonal;
 mod static_core_exchange;
 mod tetrahedron;
 mod xc;
@@ -133,6 +134,10 @@ pub use spinor_builder::{
     BuiltSpinorLocalOrbital, SpinorBuilderError, SpinorIterationBasis, SpinorLinearizationEnergy,
     SpinorLocalOrbitalOrigin, SpinorLocalOrbitalRequest, SpinorRadialSite, SpinorSiteInput,
     build_spinor_iteration_basis, solve_spinor_k_point,
+};
+pub use spinor_core_orthogonal::{
+    SpinorCoreOrthogonalization, SpinorCoreOrthogonalizationError,
+    build_frozen_core_orthogonal_spinor_iteration_basis,
 };
 pub use static_core_exchange::{
     StaticCoreExchangeSiteBlock, StaticCoreSiteExchangeError,

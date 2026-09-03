@@ -394,6 +394,7 @@ impl CheckpointBandSolution {
         let (points, states) = (&mut updated.points, &mut updated.states);
         for (point_index, (point, global_feedback)) in points.iter_mut().zip(feedback).enumerate() {
             let CheckpointKPointSolution::Spinor {
+                basis,
                 eigenproblem,
                 solution,
                 occupations,
@@ -425,8 +426,17 @@ impl CheckpointBandSolution {
                     eigenproblem.hamiltonian.at(row, column) + global_feedback.at(row, column)
                 },
             )?;
-            let solved =
-                solve_generalized_hermitian(&fock, &eigenproblem.overlap, OVERLAP_THRESHOLD)?;
+            let solved = match &basis.core_orthogonalization {
+                Some(core) => muffintin_operators::solve_generalized_hermitian_embedded(
+                    &fock,
+                    &eigenproblem.overlap,
+                    &core.embedding,
+                    OVERLAP_THRESHOLD,
+                )?,
+                None => {
+                    solve_generalized_hermitian(&fock, &eigenproblem.overlap, OVERLAP_THRESHOLD)?
+                }
+            };
             if solved.eigenvalues.len() != occupations.len() {
                 return Err(MaterialKernelError::FeedbackBandCount {
                     point: point_index,
@@ -1483,10 +1493,7 @@ impl MaterialKernel {
             return Err(MaterialKernelError::InvalidKPointWeights);
         }
         if relativity == ScfRelativity::SpinorFirstVariation {
-            if !core_orthogonal.is_empty() {
-                return Err(MaterialKernelError::InconsistentRelativityRoute);
-            }
-            return self.solve_spinor_points(potential, basis, points, weights);
+            return self.solve_spinor_points(potential, basis, points, weights, core_orthogonal);
         }
         self.require_collinear_route(potential)?;
         let site_inputs = self.scalar_site_inputs(potential, basis)?;
@@ -1635,6 +1642,7 @@ impl MaterialKernel {
         basis: &ScfBasis,
         points: &[[f64; 3]],
         weights: &[f64],
+        core_orthogonal: &[CoreShellOrbitals],
     ) -> Result<CheckpointBandSolution, MaterialKernelError> {
         let site_inputs = self.spinor_site_inputs(potential, basis)?;
         let interstitial = potential.to_lapw_interstitial()?;
@@ -1642,8 +1650,16 @@ impl MaterialKernel {
         let mut states = Vec::new();
         for (&k, &weight) in points.iter().zip(weights) {
             let envelope = self.plane_wave_envelope(k, basis.plane_wave_cutoff)?;
-            let spinor_basis =
-                build_spinor_iteration_basis(&envelope, &self.geometry, &site_inputs)?;
+            let spinor_basis = if core_orthogonal.is_empty() {
+                build_spinor_iteration_basis(&envelope, &self.geometry, &site_inputs)?
+            } else {
+                crate::build_frozen_core_orthogonal_spinor_iteration_basis(
+                    &envelope,
+                    &self.geometry,
+                    &site_inputs,
+                    core_orthogonal,
+                )?
+            };
             let solved = solve_spinor_k_point(
                 &spinor_basis,
                 &self.geometry,
@@ -3257,6 +3273,8 @@ pub enum MaterialKernelError {
     Scalar(#[from] ScalarBuilderError),
     #[error(transparent)]
     CoreOrthogonalization(#[from] crate::ScalarCoreOrthogonalizationError),
+    #[error(transparent)]
+    SpinorCoreOrthogonalization(#[from] crate::SpinorCoreOrthogonalizationError),
     #[error(transparent)]
     SpinorBuilder(#[from] SpinorBuilderError),
     #[error(transparent)]

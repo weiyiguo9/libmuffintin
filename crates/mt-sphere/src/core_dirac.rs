@@ -428,9 +428,65 @@ impl ValenceDiracSolution {
             }
         }
 
+        self.match_sra_local_orbital(
+            mesh,
+            raw_at_lo_energy.energy,
+            &raw_at_lo_energy.p,
+            &raw_at_lo_energy.q,
+            raw_at_lo_energy.boundary.sra_large_component(),
+        )
+    }
+
+    /// Match a homogeneous bound core of this same kappa and central potential.
+    /// Reuse its two-sided shooting samples rather than reintegrating a deep
+    /// bound eigenenergy outward. Sourced HF core samples are not homogeneous
+    /// primitives and must not be passed to this method.
+    pub fn sra_bound_core_local_orbital(
+        &self,
+        mesh: &ExponentialMesh,
+        potential: &[f64],
+        energy: Hartree,
+        p: &[f64],
+        q: &[f64],
+    ) -> Result<DiracLocalOrbital, DiracError> {
+        validate_dirac_potential(mesh, potential)?;
+        for actual in [p.len(), q.len(), self.p.len()] {
+            if actual != mesh.len() {
+                return Err(DiracError::ArrayLength {
+                    expected: mesh.len(),
+                    actual,
+                });
+            }
+        }
+        let last = mesh.len() - 1;
+        let radius = mesh.last().get();
+        let (p_prime, _) = dirac_rhs(
+            radius,
+            potential[last],
+            p[last],
+            self.speed_of_light * q[last],
+            f64::from(self.kappa.get()),
+            energy.get(),
+            self.speed_of_light.powi(2),
+        );
+        let boundary = BoundaryData::new(
+            p[last] / radius,
+            (p_prime - p[last] / radius) / radius,
+            radius,
+        );
+        self.match_sra_local_orbital(mesh, energy, p, q, boundary)
+    }
+
+    fn match_sra_local_orbital(
+        &self,
+        mesh: &ExponentialMesh,
+        energy: Hartree,
+        raw_p: &[f64],
+        raw_q: &[f64],
+        raw: BoundaryData,
+    ) -> Result<DiracLocalOrbital, DiracError> {
         let base = self.boundary.sra_large_component();
         let first = self.energy_derivative.boundary.sra_large_component();
-        let raw = raw_at_lo_energy.boundary.sra_large_component();
         let determinant = base.value * first.derivative - first.value * base.derivative;
         let determinant_scale = (base.value.abs() * first.derivative.abs())
             .max(first.value.abs() * base.derivative.abs())
@@ -441,15 +497,13 @@ impl ValenceDiracSolution {
         let a = (-raw.value * first.derivative + first.value * raw.derivative) / determinant;
         let b = (-base.value * raw.derivative + raw.value * base.derivative) / determinant;
 
-        let mut p: Vec<f64> = raw_at_lo_energy
-            .p
+        let mut p: Vec<f64> = raw_p
             .iter()
             .zip(&self.p)
             .zip(&self.energy_derivative.p)
             .map(|((&raw, &base), &first)| raw + a * base + b * first)
             .collect();
-        let mut q: Vec<f64> = raw_at_lo_energy
-            .q
+        let mut q: Vec<f64> = raw_q
             .iter()
             .zip(&self.q)
             .zip(&self.energy_derivative.q)
@@ -474,7 +528,7 @@ impl ValenceDiracSolution {
             normalization_scale * (raw.derivative + a * base.derivative + b * first.derivative);
 
         Ok(DiracLocalOrbital {
-            energy: raw_at_lo_energy.energy,
+            energy,
             kappa: self.kappa,
             p,
             q,
@@ -483,7 +537,7 @@ impl ValenceDiracSolution {
                 b,
                 normalization_scale,
             },
-            boundary: BoundaryData::new(value, derivative, mesh_boundary),
+            boundary: BoundaryData::new(value, derivative, mesh.last().get()),
         })
     }
 

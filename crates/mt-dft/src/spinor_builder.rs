@@ -2,7 +2,7 @@
 
 use crate::{
     FullSpinorDensitySiteBasis, FullSpinorSiteInput, LocalPauliPotential, RelativisticSpinorRoute,
-    SolvedFullSpinorFirstVariation, SpinorFirstVariationError, solve_full_spinor_first_variation,
+    SolvedFullSpinorFirstVariation, SpinorFirstVariationError, build_full_spinor_site_blocks,
 };
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, InterstitialGeometry, Kappa, KappaError};
 use muffintin_envelope::{
@@ -27,16 +27,28 @@ const POTENTIAL_TOLERANCE: f64 = 4096.0 * f64::EPSILON;
 ///
 /// In particular, `kappa=+1` is the relativistic `p1/2` channel and remains
 /// distinct from `kappa=-2` (`p3/2`).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SpinorLocalOrbitalRequest {
-    Lo { kappa: Kappa, energy: Hartree },
-    Hdlo { kappa: Kappa },
+    Lo {
+        kappa: Kappa,
+        energy: Hartree,
+    },
+    Hdlo {
+        kappa: Kappa,
+    },
+    /// Homogeneous bound core samples in the same central reference potential.
+    BoundCore {
+        kappa: Kappa,
+        energy: Hartree,
+        p: Vec<f64>,
+        q: Vec<f64>,
+    },
 }
 
 impl SpinorLocalOrbitalRequest {
-    pub const fn kappa(self) -> Kappa {
+    pub const fn kappa(&self) -> Kappa {
         match self {
-            Self::Lo { kappa, .. } | Self::Hdlo { kappa } => kappa,
+            Self::Lo { kappa, .. } | Self::Hdlo { kappa } | Self::BoundCore { kappa, .. } => *kappa,
         }
     }
 }
@@ -70,6 +82,11 @@ pub struct SpinorSiteInput {
 pub enum SpinorLocalOrbitalOrigin {
     DistinctEnergy(Box<ValenceDiracSolution>),
     Hdlo(DiracSecondEnergyDerivative),
+    BoundCore {
+        energy: Hartree,
+        p: Vec<f64>,
+        q: Vec<f64>,
+    },
 }
 
 /// Matched full-`P/Q` local orbital and its untransformed radial origin.
@@ -99,6 +116,8 @@ pub struct SpinorIterationBasis {
     pub radial_sites: Vec<SpinorRadialSite>,
     pub density_sites: Vec<FullSpinorDensitySiteBasis>,
     pub full_spinor_sites: Vec<FullSpinorSiteInput>,
+    /// Fixed map eliminating internal core-cancellation LO coordinates.
+    pub core_orthogonalization: Option<crate::SpinorCoreOrthogonalization>,
 }
 
 /// Build signed-`kappa` Dirac radials, typed LOs, the compiled SRA spinor
@@ -155,6 +174,7 @@ pub fn build_spinor_iteration_basis(
         radial_sites: built.iter().map(|site| site.radials.clone()).collect(),
         density_sites,
         full_spinor_sites: built.into_iter().map(|site| site.full).collect(),
+        core_orthogonalization: None,
     })
 }
 
@@ -165,15 +185,37 @@ pub fn solve_spinor_k_point(
     interstitial: &InterstitialPauliPotential,
     relative_overlap_threshold: f64,
 ) -> Result<SolvedFullSpinorFirstVariation, SpinorBuilderError> {
-    solve_full_spinor_first_variation(
+    let site_blocks = build_full_spinor_site_blocks(
         RelativisticSpinorRoute::FullFourComponentFirstVariation,
+        &basis.compiled,
+        &basis.full_spinor_sites,
+    )?;
+    let eigenproblem = muffintin_operators::lapw::assemble_sra_spinor_compiled(
         &basis.compiled,
         geometry,
         interstitial,
-        &basis.full_spinor_sites,
-        relative_overlap_threshold,
+        &site_blocks,
     )
-    .map_err(Into::into)
+    .map_err(SpinorFirstVariationError::from)?;
+    let solution = match &basis.core_orthogonalization {
+        Some(core) => muffintin_operators::solve_generalized_hermitian_embedded(
+            &eigenproblem.hamiltonian,
+            &eigenproblem.overlap,
+            &core.embedding,
+            relative_overlap_threshold,
+        ),
+        None => muffintin_operators::lapw::solve_generalized_hermitian(
+            &eigenproblem.hamiltonian,
+            &eigenproblem.overlap,
+            relative_overlap_threshold,
+        ),
+    }
+    .map_err(SpinorFirstVariationError::from)?;
+    Ok(SolvedFullSpinorFirstVariation {
+        site_blocks,
+        eigenproblem,
+        solution,
+    })
 }
 
 #[derive(Clone)]
@@ -254,7 +296,7 @@ fn build_site(site: usize, input: &SpinorSiteInput) -> Result<BuiltSite, SpinorB
         .collect::<Result<Vec<_>, DiracError>>()?;
 
     let mut local_orbitals = vec![Vec::new(); solutions.len()];
-    for &request in &input.local_orbitals {
+    for request in &input.local_orbitals {
         let kappa = request.kappa();
         let shell = solutions
             .binary_search_by_key(&kappa.get(), |solution| solution.kappa.get())
@@ -266,28 +308,43 @@ fn build_site(site: usize, input: &SpinorSiteInput) -> Result<BuiltSite, SpinorB
         let base = &solutions[shell];
         let built = match request {
             SpinorLocalOrbitalRequest::Lo { energy, .. } => {
-                if energy == base.energy {
+                if *energy == base.energy {
                     return Err(SpinorBuilderError::LocalOrbitalEnergyNotDistinct {
                         site,
                         kappa: kappa.get(),
-                        energy,
+                        energy: *energy,
                     });
                 }
                 let raw = solve_valence_dirac(
                     &input.mesh,
                     &input.spherical_potential,
-                    ValenceDiracSpec::new(kappa, energy)?,
+                    ValenceDiracSpec::new(kappa, *energy)?,
                 )?;
                 BuiltSpinorLocalOrbital {
-                    request,
+                    request: request.clone(),
                     orbital: base.sra_local_orbital(&raw, &input.mesh)?,
                     origin: SpinorLocalOrbitalOrigin::DistinctEnergy(Box::new(raw)),
                 }
             }
             SpinorLocalOrbitalRequest::Hdlo { .. } => BuiltSpinorLocalOrbital {
-                request,
+                request: request.clone(),
                 orbital: base.sra_hdlo(&input.mesh)?,
                 origin: SpinorLocalOrbitalOrigin::Hdlo(base.second_energy_derivative.clone()),
+            },
+            SpinorLocalOrbitalRequest::BoundCore { energy, p, q, .. } => BuiltSpinorLocalOrbital {
+                request: request.clone(),
+                orbital: base.sra_bound_core_local_orbital(
+                    &input.mesh,
+                    &input.spherical_potential,
+                    *energy,
+                    p,
+                    q,
+                )?,
+                origin: SpinorLocalOrbitalOrigin::BoundCore {
+                    energy: *energy,
+                    p: p.clone(),
+                    q: q.clone(),
+                },
             },
         };
         local_orbitals[shell].push(built);
@@ -504,6 +561,13 @@ fn radial_shell_matrices(
                 lower_derivative: Some(1),
                 p: second.p.clone(),
                 q: second.q.clone(),
+            },
+            SpinorLocalOrbitalOrigin::BoundCore { energy, p, q } => PrimitiveDiracRadial {
+                energy: *energy,
+                derivative_order: 0,
+                lower_derivative: None,
+                p: p.clone(),
+                q: q.clone(),
             },
         });
     }
