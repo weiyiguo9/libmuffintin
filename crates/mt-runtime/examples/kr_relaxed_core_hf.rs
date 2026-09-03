@@ -37,6 +37,9 @@ use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
 use num_complex::Complex64;
 use serde::Serialize;
 
+#[path = "kr_relaxed_core_hf/frozen_sra.rs"]
+mod frozen_sra;
+
 const KR_Z: u8 = 36;
 const SITE_ID: &str = "Kr-1";
 const RADIAL_FIRST_BOHR: f64 = 1.0e-6;
@@ -81,6 +84,7 @@ enum FockMixerSelection {
 #[serde(rename_all = "kebab-case")]
 enum RelativitySelection {
     SpinorFirst,
+    SpinorFrozen,
     KhSoc,
 }
 
@@ -88,9 +92,10 @@ impl RelativitySelection {
     fn parse(value: &str) -> Result<Self, Box<dyn Error>> {
         match value {
             "spinor-first" => Ok(Self::SpinorFirst),
+            "spinor-frozen" => Ok(Self::SpinorFrozen),
             "kh-soc" => Ok(Self::KhSoc),
             _ => Err(invalid_input(format!(
-                "--relativity must be spinor-first or kh-soc, got {value:?}"
+                "--relativity must be spinor-first, spinor-frozen, or kh-soc, got {value:?}"
             ))),
         }
     }
@@ -99,6 +104,9 @@ impl RelativitySelection {
         match self {
             Self::SpinorFirst => {
                 "spinor-first-variation with fully-relativistic Dirac radial equation"
+            }
+            Self::SpinorFrozen => {
+                "coupled frozen-core SRA first variation (4c MT, 2c interstitial)"
             }
             Self::KhSoc => "self-consistent Pauli-spinor Koelling-Harmon plus SOC HF",
         }
@@ -335,7 +343,9 @@ impl Cli {
                         "outer-density" => KhSocHartreeUpdate::OuterDensity,
                         "coupled-fock" => KhSocHartreeUpdate::CoupledFock,
                         _ => {
-                            return Err(invalid_input(format!("unknown KH Hartree update {value}")));
+                            return Err(invalid_input(format!(
+                                "unknown KH Hartree update {value}"
+                            )));
                         }
                     };
                 }
@@ -478,9 +488,11 @@ impl Cli {
                 "--spinor-virtual-level-shift must be finite and nonnegative",
             ));
         }
-        if self.relativity != RelativitySelection::KhSoc && self.spinor_virtual_level_shift != 0.0 {
+        if self.relativity == RelativitySelection::SpinorFirst
+            && self.spinor_virtual_level_shift != 0.0
+        {
             return Err(invalid_input(
-                "--spinor-virtual-level-shift requires --relativity kh-soc",
+                "--spinor-virtual-level-shift requires --relativity kh-soc or spinor-frozen",
             ));
         }
         if !self.fock_diis_damping.is_finite()
@@ -502,7 +514,7 @@ impl Cli {
                 FockMixerSelection::Cdiis | FockMixerSelection::QuasiNewtonCdiis,
             )
             | (
-                RelativitySelection::KhSoc,
+                RelativitySelection::KhSoc | RelativitySelection::SpinorFrozen,
                 FockMixerSelection::Linear
                 | FockMixerSelection::Pulay
                 | FockMixerSelection::Cdiis
@@ -551,6 +563,8 @@ struct UnitsManifest {
 
 #[derive(Serialize)]
 struct ParameterManifest {
+    coupled_scf_max_iterations: Option<usize>,
+    coupled_scf_density_tolerance: Option<f64>,
     output_directory: String,
     box_bohr: f64,
     muffin_tin_radius_bohr: f64,
@@ -961,7 +975,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 consistency_tolerance: 1.0e-12,
             },
             radial_equation: match cli.relativity {
-                RelativitySelection::SpinorFirst => RadialEquationTag::FullyRelativisticDirac,
+                RelativitySelection::SpinorFirst | RelativitySelection::SpinorFrozen => {
+                    RadialEquationTag::FullyRelativisticDirac
+                }
                 RelativitySelection::KhSoc => RadialEquationTag::ScalarKoellingHarmon,
             },
             linearization: LinearizationV1 {
@@ -1013,7 +1029,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             .outer_mixing
             .build(cli.outer_mixing_alpha, cli.outer_mixing_history),
         relativity: match cli.relativity {
-            RelativitySelection::SpinorFirst => ScfRelativity::SpinorFirstVariation,
+            RelativitySelection::SpinorFirst | RelativitySelection::SpinorFrozen => {
+                ScfRelativity::SpinorFirstVariation
+            }
             RelativitySelection::KhSoc => ScfRelativity::SocSecondVariation {
                 window: FirstVariationWindow::new(0, cli.soc_bands)?,
             },
@@ -1054,7 +1072,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (git_sha, git_dirty) = git_provenance()?;
     let manifest = Manifest {
-        schema_version: 3,
+        schema_version: 4,
         status: "prepared",
         system: SystemManifest {
             element: "Kr",
@@ -1073,6 +1091,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             radial_norm_and_residual: "dimensionless",
         },
         parameters: ParameterManifest {
+            coupled_scf_max_iterations: (cli.relativity == RelativitySelection::SpinorFrozen)
+                .then_some(cli.max_fock_iterations),
+            coupled_scf_density_tolerance: (cli.relativity == RelativitySelection::SpinorFrozen)
+                .then_some(cli.fock_density_tolerance),
             output_directory: cli.out.display().to_string(),
             box_bohr: cli.box_size,
             muffin_tin_radius_bohr: cli.muffin_tin_radius,
@@ -1107,7 +1129,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .then_some(cli.soc_bands),
             core_treatment: match cli.relativity {
                 RelativitySelection::SpinorFirst => "relaxed",
-                RelativitySelection::KhSoc => "frozen-checkpoint",
+                RelativitySelection::KhSoc | RelativitySelection::SpinorFrozen => {
+                    "frozen-checkpoint"
+                }
             },
             exchange_correlation: "LDA-PW92 local-spin-frame",
             kh_hartree_update: (cli.relativity == RelativitySelection::KhSoc).then_some(match cli
@@ -1116,8 +1140,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 KhSocHartreeUpdate::OuterDensity => "outer-density",
                 KhSocHartreeUpdate::CoupledFock => "coupled-fock",
             }),
-            outer_mixing_algorithm: if cli.relativity == RelativitySelection::KhSoc
-                && cli.kh_hartree_update == KhSocHartreeUpdate::CoupledFock
+            outer_mixing_algorithm: if cli.relativity == RelativitySelection::SpinorFrozen
+                || (cli.relativity == RelativitySelection::KhSoc
+                    && cli.kh_hartree_update == KhSocHartreeUpdate::CoupledFock)
             {
                 "none"
             } else {
@@ -1143,9 +1168,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             max_fock_iterations: cli.max_fock_iterations,
             fock_density_tolerance: cli.fock_density_tolerance,
             fock_feedback_tolerance_hartree: cli.fock_feedback_tolerance,
-            fock_commutator_tolerance_hartree: (cli.relativity == RelativitySelection::KhSoc)
+            fock_commutator_tolerance_hartree: (cli.relativity != RelativitySelection::SpinorFirst)
                 .then_some(cli.fock_commutator_tolerance),
-            spinor_virtual_level_shift_hartree: (cli.relativity == RelativitySelection::KhSoc)
+            spinor_virtual_level_shift_hartree: (cli.relativity
+                != RelativitySelection::SpinorFirst)
                 .then_some(cli.spinor_virtual_level_shift),
             scalar_fock_mixing_algorithm: (cli.relativity == RelativitySelection::KhSoc)
                 .then_some(cli.scalar_fock_mixing.as_str()),
@@ -1209,6 +1235,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match cli.relativity {
         RelativitySelection::SpinorFirst => run_spinor_first_example(&cli, &start, config)?,
+        RelativitySelection::SpinorFrozen => frozen_sra::run(&cli, &start, config)?,
         RelativitySelection::KhSoc => run_kh_soc_example(&cli, &start, config)?,
     }
     Ok(())
@@ -1442,11 +1469,12 @@ fn derive_basis_channels(
                 }
             }
             AtomicChannelTreatment::RelativisticLocalOrbital => match relativity {
-                RelativitySelection::SpinorFirst => channels.push(channel(
-                    ScfChannelIdentity::Kappa { n, kappa },
-                    ScfChannelTreatment::Lo,
-                    0,
-                )),
+                RelativitySelection::SpinorFirst | RelativitySelection::SpinorFrozen => channels
+                    .push(channel(
+                        ScfChannelIdentity::Kappa { n, kappa },
+                        ScfChannelTreatment::Lo,
+                        0,
+                    )),
                 RelativitySelection::KhSoc => {
                     if collapsed_local.insert((n, l)) {
                         channels.push(channel(

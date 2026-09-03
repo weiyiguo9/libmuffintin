@@ -765,6 +765,37 @@ printed energies, angular norms, core overlaps, and feedback check were
 byte-identical to the pre-optimization output. No controlled full-HF speedup
 factor is inferred from this local construction diagnostic.
 
+`run_frozen_core_hf` now connects this SRA space to a single coupled HF loop.
+The homogeneous checkpoint core is frozen, and each iteration builds Hartree
+and VV/CV exchange from the same current spinor density. The local potential
+change and exchange are mixed together in the retained raw basis; every solve
+preserves its core-null embedding. The complete allowed-space commutator,
+fresh unmixed and unshifted density-map residual, active feedback change, and
+energy change determine convergence. A virtual-space shift is only an
+iteration aid and is removed before acceptance. No outer density mixer or
+second-variation band window participates.
+
+The scalar reference potential is not left in the HF Hamiltonian: current
+nuclear plus Hartree matrix elements replace it on the fixed radial basis.
+Frozen core one-body expectations use the current electrostatic potential as
+well. VV and core auxiliary spaces and their Coulomb operators are cached;
+the initial CC energy is evaluated with the same requested kernel, not a
+different isolated-atom kernel. Full sector reconstruction, including VC and
+the CV/VC trace identity, is performed at the final snapshot. Initial CC
+evaluation also uses a full sector reconstruction; eliminating that redundant
+VC work is a separate optimization, not a different physical approximation.
+
+The public controls are `FrozenCoreHfSpec`; frozen and relaxed paths share
+`CoreValenceHfError` (renamed from `RelaxedCoreHfError`). The Kr example selects
+this route explicitly with `--relativity spinor-frozen`. For this one-loop
+route, `--fock-max-iterations`, `--fock-density-tolerance`, and
+`--outer-energy-tolerance` supply the iteration limit, density tolerance, and
+energy tolerance, respectively. Outer density-mixing options are not applied.
+Manifest version 4 records the effective coupled-SCF limit and density
+tolerance separately; iteration and final result files label SRA and frozen
+core explicitly. The existing `spinor-first` relaxed-core route and `kh-soc`
+route are not silently switched to this Hamiltonian.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
