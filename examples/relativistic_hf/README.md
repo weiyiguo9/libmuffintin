@@ -129,7 +129,10 @@ The output directory contains:
 - `initial-checkpoint.toml`: the canonical atomic-superposition restart written
   before HF;
 - `iterations.toml`: every completed outer/Fock iteration diagnostic for the
-  selected route;
+  selected route. KH+SOC replaces this file after each completed outer step,
+  including MT/interstitial residuals; on failure it retains the completed
+  history with `status = "failed"` and the error. It is not a convergence or
+  restart certificate;
 - `result.toml`: route-specific total/exchange terms, core/valence diagnostics,
   orbital energies and occupations, and core-shell energies, norms, and spill;
 - `final-checkpoint.toml`: the canonical restart built from the final total

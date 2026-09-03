@@ -684,6 +684,7 @@ struct ResultFile {
 #[derive(Serialize)]
 struct KhSocIterationsFile {
     status: &'static str,
+    failure: Option<String>,
     iterations: Vec<KhSocIterationRecord>,
 }
 
@@ -1249,18 +1250,27 @@ fn run_kh_soc_example(
         core_treatment: KhSocCoreTreatment::Frozen,
     };
     let mut physics = CheckpointPhysics::new(&start.checkpoint)?;
-    let result = run_gamma_kh_soc_valence_hf(&mut physics, &spec)?;
-    write_toml(
-        &cli.out.join("iterations.toml"),
-        &KhSocIterationsFile {
-            status: "configured_convergence_reached",
-            iterations: result
-                .diagnostics
-                .iter()
-                .map(kh_soc_iteration_record)
-                .collect(),
-        },
-    )?;
+    let mut iterations = KhSocIterationsFile {
+        status: "running",
+        failure: None,
+        iterations: Vec::new(),
+    };
+    let iterations_path = cli.out.join("iterations.toml");
+    let pending_path = cli.out.join("iterations.toml.next");
+    let result = run_gamma_kh_soc_valence_hf(&mut physics, &spec, |diagnostics| {
+        iterations.iterations = diagnostics.iter().map(kh_soc_iteration_record).collect();
+        write_toml(&pending_path, &iterations)?;
+        fs::rename(&pending_path, &iterations_path)
+    });
+    iterations.status = if result.is_ok() {
+        "configured_convergence_reached"
+    } else {
+        "failed"
+    };
+    iterations.failure = result.as_ref().err().map(ToString::to_string);
+    write_toml(&pending_path, &iterations)?;
+    fs::rename(&pending_path, &iterations_path)?;
+    let result = result?;
     let result_file = kh_soc_result_record(&result)?;
     write_toml(&cli.out.join("result.toml"), &result_file)?;
 
@@ -1796,8 +1806,8 @@ fn result_record(result: &RelaxedCoreHfResult) -> ResultFile {
     }
 }
 
-fn write_toml(path: &Path, value: &impl Serialize) -> Result<(), Box<dyn Error>> {
-    let mut text = toml::to_string_pretty(value)?;
+fn write_toml(path: &Path, value: &impl Serialize) -> io::Result<()> {
+    let mut text = toml::to_string_pretty(value).map_err(io::Error::other)?;
     text.push('\n');
     fs::write(path, text)?;
     Ok(())

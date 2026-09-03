@@ -55,7 +55,14 @@ fn gamma_scalar_hf_then_soc_preserves_closed_shell_density_and_exchange() {
         core_treatment: KhSocCoreTreatment::ValenceOnly,
     };
 
-    let result = run_gamma_kh_soc_valence_hf(&mut physics, &spec).unwrap();
+    let mut observed = Vec::new();
+    let result = run_gamma_kh_soc_valence_hf(&mut physics, &spec, |diagnostics| {
+        assert_eq!(diagnostics.len(), observed.len() + 1);
+        observed.push(diagnostics.last().unwrap().clone());
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(observed, result.diagnostics);
 
     assert_eq!(result.occupations.len(), 1);
     assert_eq!(result.orbital_energies.len(), 1);
@@ -148,7 +155,7 @@ fn frozen_core_enters_scalar_fock_soc_and_total_density_without_expanding_vv() {
         core_treatment: KhSocCoreTreatment::Frozen,
     };
 
-    let result = run_gamma_kh_soc_valence_hf(&mut physics, &spec).unwrap();
+    let result = run_gamma_kh_soc_valence_hf(&mut physics, &spec, |_| Ok(())).unwrap();
 
     assert_eq!(result.core_orbitals.len(), 1);
     assert!((electron_count(&result.valence_density).unwrap() - 2.0).abs() < 1.0e-8);

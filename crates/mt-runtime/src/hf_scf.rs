@@ -467,6 +467,8 @@ pub enum RelaxedCoreHfError {
 /// Invalid valence-HF controls or a failed bounded HF solve.
 #[derive(Debug, Error)]
 pub enum GammaValenceHfError {
+    #[error("failed to write HF outer-iteration progress: {0}")]
+    IterationOutput(#[from] std::io::Error),
     #[error("Gamma valence HF requires a 1x1x1 full k mesh with zero shift")]
     GammaMesh,
     #[error("valence HF requires an explicit full regular Brillouin-zone mesh")]
@@ -729,11 +731,14 @@ pub fn run_valence_hf(
     })
 }
 
-/// Run scalar Koelling–Harmon HF to convergence, then apply conventional SOC
-/// second variation to that converged nonlocal Fock spectrum.
+/// Run nested scalar-source and self-consistent Pauli-spinor KH+SOC HF.
+///
+/// `on_iteration` receives every completed outer step before convergence testing
+/// or density mixing. Output errors stop the calculation without being hidden.
 pub fn run_kh_soc_valence_hf(
     physics: &mut CheckpointPhysics,
     spec: &KhSocValenceHfSpec,
+    on_iteration: impl FnMut(&[KhSocValenceHfIterationDiagnostic]) -> std::io::Result<()>,
 ) -> Result<KhSocValenceHfResult, KhSocValenceHfError> {
     let ScfRelativity::SocSecondVariation { window } = spec.config.relativity else {
         return Err(KhSocValenceHfError::Relativity);
@@ -744,6 +749,7 @@ pub fn run_kh_soc_valence_hf(
         spec,
         window,
         valence_electrons,
+        on_iteration,
     )?)
 }
 
@@ -752,6 +758,7 @@ fn run_kh_soc_valence_hf_inner(
     spec: &KhSocValenceHfSpec,
     window: muffintin_dft::FirstVariationWindow,
     valence_electrons: f64,
+    mut on_iteration: impl FnMut(&[KhSocValenceHfIterationDiagnostic]) -> std::io::Result<()>,
 ) -> Result<KhSocValenceHfResult, GammaValenceHfError> {
     let _ = ScfLoop::new(spec.config.clone(), None)?;
     let k_fractional = muffintin_dft::regular_k_points(spec.config.k_mesh)?;
@@ -929,6 +936,7 @@ fn run_kh_soc_valence_hf_inner(
             total_energy: energy.total,
             energy_change,
         });
+        on_iteration(&diagnostics)?;
         let converged = energy_change
             .is_some_and(|change| change.get() <= spec.config.convergence.energy_tolerance.get())
             && density_rms <= spec.config.convergence.density_tolerance
@@ -997,6 +1005,7 @@ fn run_kh_soc_valence_hf_inner(
 pub fn run_gamma_kh_soc_valence_hf(
     physics: &mut CheckpointPhysics,
     spec: &KhSocValenceHfSpec,
+    on_iteration: impl FnMut(&[KhSocValenceHfIterationDiagnostic]) -> std::io::Result<()>,
 ) -> Result<KhSocValenceHfResult, KhSocValenceHfError> {
     let mesh = spec.config.k_mesh;
     if mesh.divisions != [1, 1, 1]
@@ -1005,7 +1014,7 @@ pub fn run_gamma_kh_soc_valence_hf(
     {
         return Err(KhSocValenceHfError::Hf(GammaValenceHfError::GammaMesh));
     }
-    run_kh_soc_valence_hf(physics, spec)
+    run_kh_soc_valence_hf(physics, spec, on_iteration)
 }
 
 /// Run the strict molecule-in-box setup through the generic relaxed-core mesh loop.

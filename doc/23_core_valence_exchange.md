@@ -517,6 +517,13 @@ change. The outer density residual is also decomposed into muffin-tin and
 interstitial RMS contributions whose squares sum to the reported total, so a
 molecule-in-box run can distinguish physical sphere relaxation from
 interstitial-vacuum noise before changing its mixing metric.
+Both KH+SOC entry points require an `on_iteration` output callback receiving
+the completed diagnostic history before convergence testing or density mixing;
+callers without an output sink pass `|_| Ok(())`. The molecular harness
+atomically replaces its diagnostic file at each such boundary, preserving
+completed outer steps even if a later inner solve fails. An output failure is
+propagated rather than silently disabling diagnostics. This history does not
+serialize the frozen-core sidecar or Pulay history and is not an exact restart.
 
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
