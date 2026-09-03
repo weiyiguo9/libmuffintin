@@ -93,8 +93,8 @@ pub use occupations::{
 };
 pub use radial_sampling::{ScalarRadialSamples, ScalarRadialSamplingError, sample_scalar_radials};
 pub use regional::{
-    InterstitialField, MuffinTinField, RegionalDensity, RegionalError, RegionalPotential,
-    RegionalScalarField,
+    InterstitialField, MuffinTinField, RegionalDensity, RegionalDensityResidualRms, RegionalError,
+    RegionalPotential, RegionalScalarField,
 };
 pub use scalar::{
     BuiltScalarLocalOrbital, ScalarBuilderError, ScalarIterationBasis, ScalarLocalOrbitalOrigin,

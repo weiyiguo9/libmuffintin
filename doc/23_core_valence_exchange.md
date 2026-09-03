@@ -513,7 +513,10 @@ and spinor HF energy,
 not the scalar source result, define the outer density and energy fixed point.
 Diagnostics retain separate scalar and spinor iteration/rebuild counts, the
 commutator residual, the feedback change, and the scalar-to-spinor density
-change.
+change. The outer density residual is also decomposed into muffin-tin and
+interstitial RMS contributions whose squares sum to the reported total, so a
+molecule-in-box run can distinguish physical sphere relaxation from
+interstitial-vacuum noise before changing its mixing metric.
 
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain

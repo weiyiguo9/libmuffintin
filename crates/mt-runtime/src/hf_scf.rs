@@ -209,6 +209,8 @@ pub struct KhSocValenceHfIterationDiagnostic {
     pub fock_fixed_point_residual: f64,
     pub fock_feedback_residual: Hartree,
     pub valence_density_rms: f64,
+    pub muffin_tin_density_rms: f64,
+    pub interstitial_density_rms: f64,
     pub regional_density_rms: f64,
     pub total_energy: Hartree,
     pub energy_change: Option<Hartree>,
@@ -238,6 +240,8 @@ pub struct KhSocValenceHfResult {
     pub fock_commutator_residual: Hartree,
     pub active_feedback_residual: Hartree,
     pub valence_density_rms: f64,
+    pub muffin_tin_density_rms: f64,
+    pub interstitial_density_rms: f64,
     pub regional_density_rms: f64,
     pub second_variation_density_rms: f64,
     pub exchange_energy_change: Hartree,
@@ -858,7 +862,10 @@ fn run_kh_soc_valence_hf_inner(
             .synthesize_second_variation_bands(&spinor.bands, &spinor.occupation.values)?;
         let total_output = sum_kh_density(&valence_output, &core_density)?;
         let valence_density_rms = valence_density.difference_rms(&valence_output)?;
-        let density_rms = total_density.difference_rms(&total_output)?;
+        let density_by_region = total_density
+            .difference(&total_output)?
+            .residual_rms_by_region()?;
+        let density_rms = density_by_region.total_rms;
         let second_variation_density_rms = scalar_valence_output.difference_rms(&valence_output)?;
         let scalar_feedback = scalar_feedback_in_second_variation_frame(&fixed.bands, &frame)?;
         let one_body_with_core =
@@ -916,6 +923,8 @@ fn run_kh_soc_valence_hf_inner(
             fock_fixed_point_residual: spinor.fixed_point_residual,
             fock_feedback_residual: Hartree(spinor.feedback_residual),
             valence_density_rms,
+            muffin_tin_density_rms: density_by_region.muffin_tin_rms,
+            interstitial_density_rms: density_by_region.interstitial_rms,
             regional_density_rms: density_rms,
             total_energy: energy.total,
             energy_change,
@@ -954,6 +963,8 @@ fn run_kh_soc_valence_hf_inner(
                 fock_commutator_residual: Hartree(spinor.commutator_residual),
                 active_feedback_residual: Hartree(spinor.active_feedback_residual),
                 valence_density_rms,
+                muffin_tin_density_rms: density_by_region.muffin_tin_rms,
+                interstitial_density_rms: density_by_region.interstitial_rms,
                 regional_density_rms: density_rms,
                 second_variation_density_rms,
                 exchange_energy_change,

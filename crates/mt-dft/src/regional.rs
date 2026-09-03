@@ -244,6 +244,23 @@ impl RegionalScalarField {
         real_metric_value(total, absolute_scale)
     }
 
+    fn physical_inner_product_by_region(&self, other: &Self) -> Result<(f64, f64), RegionalError> {
+        self.require_same_layout(other)?;
+        let mut muffin_tin = Complex64::new(0.0, 0.0);
+        let mut muffin_tin_scale = 0.0;
+        for (left, right) in self.muffin_tins.iter().zip(&other.muffin_tins) {
+            let contribution = muffin_tin_inner_product(left, right)?;
+            muffin_tin += contribution;
+            muffin_tin_scale += contribution.norm();
+        }
+        let (interstitial, interstitial_scale) =
+            interstitial_inner_product(&self.geometry, &self.interstitial, &other.interstitial)?;
+        Ok((
+            real_metric_value(muffin_tin, muffin_tin_scale)?,
+            real_metric_value(interstitial, interstitial_scale)?,
+        ))
+    }
+
     /// Root-mean-square magnitude of this component per cell volume.
     pub fn residual_rms(&self) -> Result<f64, RegionalError> {
         let norm_squared = self.physical_inner_product(self)?;
@@ -398,6 +415,15 @@ pub struct RegionalDensity {
     magnetization: [RegionalScalarField; 3],
 }
 
+/// Cell-volume-normalized RMS contributions from the muffin tins and
+/// interstitial region. Their squared values add to `total_rms^2`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RegionalDensityResidualRms {
+    pub muffin_tin_rms: f64,
+    pub interstitial_rms: f64,
+    pub total_rms: f64,
+}
+
 impl RegionalDensity {
     pub fn new(
         charge: RegionalScalarField,
@@ -475,6 +501,36 @@ impl RegionalDensity {
             return Err(RegionalError::NegativeNorm(norm_squared));
         }
         Ok((norm_squared.max(0.0) / self.geometry().cell_volume().get()).sqrt())
+    }
+
+    /// Decompose the physical Pauli-density residual norm by spatial region.
+    pub fn residual_rms_by_region(&self) -> Result<RegionalDensityResidualRms, RegionalError> {
+        let (mut muffin_tin, mut interstitial) =
+            self.charge.physical_inner_product_by_region(&self.charge)?;
+        for component in &self.magnetization {
+            let (component_mt, component_interstitial) =
+                component.physical_inner_product_by_region(component)?;
+            muffin_tin += component_mt;
+            interstitial += component_interstitial;
+        }
+        muffin_tin *= 0.5;
+        interstitial *= 0.5;
+        let scale = muffin_tin.abs().max(interstitial.abs()).max(1.0);
+        let tolerance = REALITY_TOLERANCE * scale;
+        if muffin_tin < -tolerance {
+            return Err(RegionalError::NegativeNorm(muffin_tin));
+        }
+        if interstitial < -tolerance {
+            return Err(RegionalError::NegativeNorm(interstitial));
+        }
+        let inverse_volume = 1.0 / self.geometry().cell_volume().get();
+        let muffin_tin_rms = (muffin_tin.max(0.0) * inverse_volume).sqrt();
+        let interstitial_rms = (interstitial.max(0.0) * inverse_volume).sqrt();
+        Ok(RegionalDensityResidualRms {
+            muffin_tin_rms,
+            interstitial_rms,
+            total_rms: muffin_tin_rms.hypot(interstitial_rms),
+        })
     }
 
     /// RMS of `self - other`, using the same physical metric.
@@ -1107,8 +1163,12 @@ mod tests {
         )
         .unwrap();
         let norm = density.physical_inner_product(&density).unwrap();
+        let regional = density.residual_rms_by_region().unwrap();
         assert!((norm - TAU.powi(3) * 13.0).abs() < 1.0e-11);
         assert!((density.residual_rms().unwrap() - 13.0_f64.sqrt()).abs() < 1.0e-13);
+        assert_eq!(regional.muffin_tin_rms, 0.0);
+        assert!((regional.interstitial_rms - 13.0_f64.sqrt()).abs() < 1.0e-13);
+        assert!((regional.total_rms - density.residual_rms().unwrap()).abs() < 1.0e-13);
         assert_eq!(density.difference_rms(&density).unwrap(), 0.0);
     }
 
