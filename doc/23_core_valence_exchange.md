@@ -504,7 +504,12 @@ matrix element of this weighted commutator to meet their explicit tolerances.
 The change in the complete feedback matrix remains a diagnostic rather than a
 convergence gate because rotations inside an unoccupied near-degenerate
 subspace can change that representation without changing the occupied density
-or satisfying direction. The converged spinor density and spinor HF energy,
+or satisfying direction. A second feedback residual is projected into the
+current spinor orbital frame and retains every matrix element with at least one
+occupied endpoint. This active block is a convergence gate, so occupied
+orbital energies cannot remain tied to an older extrapolated Fock operator;
+pure virtual–virtual changes are still excluded. The converged spinor density
+and spinor HF energy,
 not the scalar source result, define the outer density and energy fixed point.
 Diagnostics retain separate scalar and spinor iteration/rebuild counts, the
 commutator residual, the feedback change, and the scalar-to-spinor density

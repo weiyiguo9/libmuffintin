@@ -69,6 +69,7 @@ fn gamma_scalar_hf_then_soc_preserves_closed_shell_density_and_exchange() {
     assert!(result.fock_fixed_point_residual <= spec.fock_density_tolerance);
     assert!(result.fock_feedback_residual.get().is_finite());
     assert!(result.fock_commutator_residual <= spec.fock_commutator_tolerance);
+    assert!(result.active_feedback_residual <= spec.fock_feedback_tolerance);
     assert!(result.second_variation_density_rms <= 1.0e-10);
     assert!(result.exchange_energy_change.get() <= 1.0e-10);
     assert_eq!(result.k_fractional, vec![[0.0; 3]]);

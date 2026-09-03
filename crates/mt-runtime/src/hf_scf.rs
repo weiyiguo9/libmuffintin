@@ -204,6 +204,7 @@ pub struct KhSocValenceHfIterationDiagnostic {
     pub scalar_fock_fixed_point_residual: f64,
     pub scalar_fock_feedback_residual: Hartree,
     pub spinor_fock_commutator_residual: Hartree,
+    pub spinor_active_feedback_residual: Hartree,
     pub exchange_energy: Hartree,
     pub fock_fixed_point_residual: f64,
     pub fock_feedback_residual: Hartree,
@@ -235,6 +236,7 @@ pub struct KhSocValenceHfResult {
     pub fock_fixed_point_residual: f64,
     pub fock_feedback_residual: Hartree,
     pub fock_commutator_residual: Hartree,
+    pub active_feedback_residual: Hartree,
     pub valence_density_rms: f64,
     pub regional_density_rms: f64,
     pub second_variation_density_rms: f64,
@@ -495,13 +497,14 @@ pub enum GammaValenceHfError {
         feedback_residual: f64,
     },
     #[error(
-        "KH+SOC spinor Fock iteration did not converge after {iterations} iterations at outer step {outer_iteration}: density residual {density_residual}, commutator residual {commutator_residual} Ha, feedback residual {feedback_residual} Ha"
+        "KH+SOC spinor Fock iteration did not converge after {iterations} iterations at outer step {outer_iteration}: density residual {density_residual}, commutator residual {commutator_residual} Ha, active-feedback residual {active_feedback_residual} Ha, full-feedback residual {feedback_residual} Ha"
     )]
     SpinorFockNotConverged {
         outer_iteration: usize,
         iterations: usize,
         density_residual: f64,
         commutator_residual: f64,
+        active_feedback_residual: f64,
         feedback_residual: f64,
     },
     #[error(
@@ -908,6 +911,7 @@ fn run_kh_soc_valence_hf_inner(
             scalar_fock_fixed_point_residual: fixed.fixed_point_residual,
             scalar_fock_feedback_residual: Hartree(fixed.feedback_residual),
             spinor_fock_commutator_residual: Hartree(spinor.commutator_residual),
+            spinor_active_feedback_residual: Hartree(spinor.active_feedback_residual),
             exchange_energy: spinor.exchange.exchange_energy,
             fock_fixed_point_residual: spinor.fixed_point_residual,
             fock_feedback_residual: Hartree(spinor.feedback_residual),
@@ -948,6 +952,7 @@ fn run_kh_soc_valence_hf_inner(
                 fock_fixed_point_residual: spinor.fixed_point_residual,
                 fock_feedback_residual: Hartree(spinor.feedback_residual),
                 fock_commutator_residual: Hartree(spinor.commutator_residual),
+                active_feedback_residual: Hartree(spinor.active_feedback_residual),
                 valence_density_rms,
                 regional_density_rms: density_rms,
                 second_variation_density_rms,
@@ -1799,6 +1804,7 @@ struct SecondVariationFixedPotentialResult {
     fixed_point_residual: f64,
     feedback_residual: f64,
     commutator_residual: f64,
+    active_feedback_residual: f64,
 }
 
 struct ScalarExchangeCache {
@@ -1960,6 +1966,7 @@ fn solve_second_variation_fixed_potential(
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
     let mut last_commutator_residual = f64::INFINITY;
+    let mut last_active_feedback_residual = f64::INFINITY;
 
     for fock_iteration in 1..=spec.max_fock_iterations {
         let occupation = solve_occupations(
@@ -1994,6 +2001,19 @@ fn solve_second_variation_fixed_potential(
             .transpose()?
             .unwrap_or(f64::INFINITY);
         last_feedback_residual = feedback_residual;
+        let active_feedback_residual = previous_feedback
+            .as_ref()
+            .map(|previous| {
+                second_variation_active_feedback_difference(
+                    &current.mixings,
+                    &occupation_rows,
+                    previous,
+                    &fresh_feedback,
+                )
+            })
+            .transpose()?
+            .unwrap_or(f64::INFINITY);
+        last_active_feedback_residual = active_feedback_residual;
         let feedback_change_is_defined = previous_feedback.is_some();
         let mixed_feedback = match &previous_feedback {
             Some(previous) => feedback_mixer.mix_second_variation(
@@ -2026,6 +2046,7 @@ fn solve_second_variation_fixed_potential(
         if feedback_change_is_defined
             && density_residual <= spec.fock_density_tolerance
             && commutator_residual <= spec.fock_commutator_tolerance.get()
+            && active_feedback_residual <= spec.fock_feedback_tolerance.get()
         {
             return Ok(SecondVariationFixedPotentialResult {
                 bands: current.bands,
@@ -2038,6 +2059,7 @@ fn solve_second_variation_fixed_potential(
                 fixed_point_residual: density_residual,
                 feedback_residual,
                 commutator_residual,
+                active_feedback_residual,
             });
         }
         current = solved;
@@ -2048,12 +2070,56 @@ fn solve_second_variation_fixed_potential(
         iterations: spec.max_fock_iterations,
         density_residual: last_residual,
         commutator_residual: last_commutator_residual,
+        active_feedback_residual: last_active_feedback_residual,
         feedback_residual: last_feedback_residual,
     })
 }
 
 fn maximum_complex_element(values: &[Complex64]) -> f64 {
     values.iter().map(|value| value.norm()).fold(0.0, f64::max)
+}
+
+fn second_variation_active_feedback_difference(
+    mixings: &[SecondVariationMixing],
+    occupations: &[Vec<f64>],
+    previous: &[DenseHermitianMatrix],
+    fresh: &[DenseHermitianMatrix],
+) -> Result<f64, GammaValenceHfError> {
+    let count = mixings.len();
+    if occupations.len() != count || previous.len() != count || fresh.len() != count {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: count,
+            actual: occupations.len().min(previous.len()).min(fresh.len()),
+        });
+    }
+    require_feedback_layout(previous, fresh)?;
+    let mut maximum = 0.0_f64;
+    for k in 0..count {
+        let dimension = mixings[k].dimension();
+        if previous[k].dimension() != dimension || occupations[k].len() != dimension {
+            return Err(GammaValenceHfError::ExchangeKIndex {
+                expected: dimension,
+                actual: previous[k].dimension().min(occupations[k].len()),
+            });
+        }
+        let difference =
+            DenseHermitianMatrix::from_upper_triangle(dimension, Axis::Band, |row, column| {
+                fresh[k].at(row, column) - previous[k].at(row, column)
+            })?;
+        let mixing = second_variation_mixing_tensor(&mixings[k])?;
+        let projected = einsum(
+            "ia,ij,jb->ab",
+            &[&mixing.conjugate(), difference.as_tensor(), &mixing],
+        )?
+        .to_host_row_major();
+        for row in 0..dimension {
+            for column in 0..dimension {
+                let active_weight = occupations[k][row].max(occupations[k][column]);
+                maximum = maximum.max(active_weight * projected[row * dimension + column].norm());
+            }
+        }
+    }
+    Ok(maximum)
 }
 
 fn scalar_feedback_in_second_variation_frame(
