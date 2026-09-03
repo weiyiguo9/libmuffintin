@@ -1352,6 +1352,7 @@ fn derive_basis_channels(
     relativity: RelativitySelection,
 ) -> Vec<ScfChannelRecipe> {
     let mut channels = Vec::new();
+    let mut core_channels = BTreeSet::new();
     let mut collapsed_valence = BTreeSet::new();
     let mut collapsed_local = BTreeSet::new();
     for occupied in configuration.occupations() {
@@ -1359,7 +1360,9 @@ fn derive_basis_channels(
         let kappa = i32::from(occupied.orbital.kappa());
         let l = angular_momentum(kappa);
         match occupied.treatment {
-            AtomicChannelTreatment::Core => {}
+            AtomicChannelTreatment::Core => {
+                core_channels.insert((n, l));
+            }
             AtomicChannelTreatment::Valence => {
                 if collapsed_valence.insert((n, l)) {
                     channels.push(channel(
@@ -1392,9 +1395,10 @@ fn derive_basis_channels(
             recipe.treatment == ScfChannelTreatment::Valence && identity_l(recipe.identity) == l
         }) {
             let mut n = l + 1;
-            while channels
-                .iter()
-                .any(|recipe| identity_l(recipe.identity) == l && identity_n(recipe.identity) == n)
+            while core_channels.contains(&(n, l))
+                || channels.iter().any(|recipe| {
+                    identity_l(recipe.identity) == l && identity_n(recipe.identity) == n
+                })
             {
                 n += 1;
             }

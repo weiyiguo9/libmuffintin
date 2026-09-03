@@ -139,6 +139,10 @@ The output directory contains:
   density and potential.
 
 `--hdlo all` adds one derivative-order-2 atomic HDLO request per orbital $l$.
+When completing unoccupied angular channels, the harness skips every shell
+assigned to core: Kr therefore uses a $4d$ valence/HDLO channel, not its
+already occupied $3d$ core shell. Reintroducing that shell as an active basis
+channel can allow the eight valence electrons to occupy core-like states.
 The harness does not assign an AO matching tolerance or a cross-method pass/fail
 acceptance threshold. For the KH plus SOC route, “Fermi shift” is recorded
 explicitly as the finite-system HOMO reference, not as a periodic chemical
