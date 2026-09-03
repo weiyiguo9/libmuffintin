@@ -37,6 +37,7 @@ struct Prepared<'a> {
     structure: crate::structure::StructureConstants,
     sfac: Vec<f64>,
     is_gamma: bool,
+    pw_intersite: Vec<Complex64>,
 }
 
 /// Assemble $V^q$ for a mixed-product auxiliary.
@@ -166,14 +167,16 @@ fn assemble_kind(
         request.lexp(),
     )?;
     let sfac = sfac_table((4 * request.lexp() + 4) as usize)?;
-    let prepared = Prepared {
+    let mut prepared = Prepared {
         request,
         auxiliary,
         support,
         structure,
         sfac,
         is_gamma: is_gamma(auxiliary.q.cartesian),
+        pw_intersite: Vec::new(),
     };
+    prepared.pw_intersite = pw_pw_intersite_matrix(&prepared)?;
     let n = densities.len();
     let mut matrix = vec![Complex64::default(); n * n];
     matrix
@@ -800,7 +803,7 @@ fn pw_pw_element(g1: usize, g2: usize, prepared: &Prepared<'_>) -> Result<Comple
             value += v2;
         }
     }
-    value += pw_pw_intersite(wave1, wave2, prepared)?;
+    value += prepared.pw_intersite[g1 * prepared.support.waves.len() + g2];
     value += pw_pw_intrasite(wave1, wave2, prepared)?;
     if prepared.is_gamma {
         value += pw_pw_gamma_correction(wave1, wave2, prepared)?;
@@ -808,58 +811,61 @@ fn pw_pw_element(g1: usize, g2: usize, prepared: &Prepared<'_>) -> Result<Comple
     Ok(value)
 }
 
-fn pw_pw_intersite(
-    wave1: &AuxiliaryInterstitialWave,
-    wave2: &AuxiliaryInterstitialWave,
-    prepared: &Prepared<'_>,
-) -> Result<Complex64, CoulombError> {
-    let vol = prepared.support.volume;
-    let q1 = wave1.q_plus_g.map(InverseBohr::get);
-    let q2 = wave2.q_plus_g.map(InverseBohr::get);
-    let y1 = complex_spherical_harmonics(prepared.request.lexp(), q1);
-    let y2 = complex_spherical_harmonics(prepared.request.lexp(), q2);
-    let mut csum = Complex64::default();
-    for (ic2, site2) in prepared.support.sites.iter().enumerate() {
-        let cexp2 = plane_wave_phase(wave2.q_plus_g, site2.position);
-        for l2 in 0..=prepared.request.lexp() {
-            let sph2 = spherical_bessel_moment(l2, wave2.q_plus_g_norm.get(), site2.radius.get());
-            for m2 in -(l2 as i32)..=l2 as i32 {
-                // SPEX `idum = 1` inside every L2 (`~775-776`).
-                let idum = parity(l2 as i32 + m2);
-                let lm2 = lm_index(l2, m2)?;
-                let cdum = idum * sph2 * cexp2 * 4.0 * PI * i_pow(l2) * y2[lm2].conj();
-                if cdum.norm() > 0.0 {
-                    for (ic1, site1) in prepared.support.sites.iter().enumerate() {
-                        for l1 in 0..=prepared.request.lexp() {
-                            let sph1 = spherical_bessel_moment(
-                                l1,
-                                wave1.q_plus_g_norm.get(),
-                                site1.radius.get(),
-                            );
-                            for m1 in -(l1 as i32)..=l1 as i32 {
-                                let lm1 = lm_index(l1, m1)?;
-                                let l = l1 + l2;
-                                let m = m1 - m2;
-                                if l > 2 * prepared.request.lexp() || m.unsigned_abs() > l {
-                                    continue;
-                                }
-                                let g = weinert_gmat(l1, m1, l2, m2, &prepared.sfac)?;
-                                let structure = prepared.structure.get(ic1, ic2, l, m)?;
-                                let left = plane_wave_phase(wave1.q_plus_g, site1.position).conj()
-                                    * sph1
-                                    * 4.0
-                                    * PI
-                                    * i_pow(l1).conj()
-                                    * y1[lm1];
-                                csum += left * cdum * g * structure;
-                            }
-                        }
-                    }
-                }
-            }
+/// Intersite PW block as W^dagger T W. W contains site multipole moments;
+/// T contains only the lattice structure constants and angular coupling.
+fn pw_pw_intersite_matrix(prepared: &Prepared<'_>) -> Result<Vec<Complex64>, CoulombError> {
+    let n_pw = prepared.support.waves.len();
+    let channels = prepared
+        .support
+        .sites
+        .iter()
+        .enumerate()
+        .flat_map(|(site, _)| {
+            (0..=prepared.request.lexp())
+                .flat_map(move |l| (-(l as i32)..=l as i32).map(move |m| (site, l, m)))
+        })
+        .collect::<Vec<_>>();
+    let n = channels.len();
+    if n_pw == 0 || n == 0 {
+        return Ok(vec![Complex64::default(); n_pw * n_pw]);
+    }
+    let mut moments = vec![Complex64::default(); n * n_pw];
+    for (g, wave) in prepared.support.waves.iter().enumerate() {
+        let y = complex_spherical_harmonics(
+            prepared.request.lexp(),
+            wave.q_plus_g.map(InverseBohr::get),
+        );
+        for (a, &(site, l, m)) in channels.iter().enumerate() {
+            let site = &prepared.support.sites[site];
+            moments[a * n_pw + g] = 4.0
+                * PI
+                * plane_wave_phase(wave.q_plus_g, site.position)
+                * spherical_bessel_moment(l, wave.q_plus_g_norm.get(), site.radius.get())
+                * i_pow(l)
+                * y[lm_index(l, m)?].conj();
         }
     }
-    Ok(csum / vol)
+    let mut lattice = vec![Complex64::default(); n * n];
+    for (a, &(site1, l1, m1)) in channels.iter().enumerate() {
+        for (b, &(site2, l2, m2)) in channels.iter().enumerate() {
+            // SPEX resets idum for every L2, giving (-1)^(L2+M2).
+            lattice[a * n + b] = parity(l2 as i32 + m2)
+                * weinert_gmat(l1, m1, l2, m2, &prepared.sfac)?
+                * prepared.structure.get(site1, site2, l1 + l2, m1 - m2)?
+                / prepared.support.volume;
+        }
+    }
+    let moments = ComplexTensor::from_host_row_major(
+        &[n, n_pw],
+        &[Axis::SiteCoordinate, Axis::Auxiliary],
+        moments,
+    )?;
+    let lattice = ComplexTensor::from_host_row_major(
+        &[n, n],
+        &[Axis::SiteCoordinate, Axis::SiteCoordinate],
+        lattice,
+    )?;
+    Ok(einsum("ai,ab,bj->ij", &[&moments.conjugate(), &lattice, &moments])?.to_host_row_major())
 }
 
 fn pw_pw_intrasite(

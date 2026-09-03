@@ -382,6 +382,18 @@ kernel still has image tails, so comparison with the isolated integral is
 not a same-kernel equality gate. Empty-sphere PW checks at Gamma and finite
 $q$ agreed with the full reciprocal formula within $3\times10^{-14}$.
 
+### 6.3 Shared intersite PW contraction
+
+The periodic Weinert assembly constructs the intersite plane-wave block
+once as $W^\dagger T W$. Here $W_{aG}$ is the plane wave's spherical
+moment, including its site phase, with $a=(s,l,m)$. The small angular matrix
+$T_{ab}$ contains the structure constants, `weinert_gmat`, cell-volume
+normalization, and the original SPEX sign $(-1)^{l_b+m_b}$. It is independent
+of the plane-wave labels. A single `ai,ab,bj->ij` contraction replaces the
+repeated angular lattice sum for every PW pair. MT terms, the onsite PW
+integral, and the Gamma Taylor corrections are unchanged; the sharp and
+smoothed sphere definitions are not modified by this factorization.
+
 ## 7. Pair vertices
 
 `PairVertex` stores `AuxiliaryLayout`, not a raw count split.
