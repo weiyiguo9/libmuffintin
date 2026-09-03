@@ -444,11 +444,13 @@ E_x
 The caller supplies positive normalized $k$ weights and occupations in
 $[0,1]$. The complete canonical $q$ slice, $k-q$ maps, pair-column layouts,
 vertices, and Coulomb operators are checked before contraction. Molecule-in-box
-Gamma calculations must explicitly select the finite Weinert/SPEX body,
-corresponding to the periodic neutralizing-background convention, or reject
-Gamma. The separated divergent head is never inserted. Cell-size convergence
-and a later isolated/truncated-Coulomb route remain caller-visible physics
-choices.
+Gamma calculations explicitly choose between the finite Weinert/SPEX body and
+`CoulombKernel::SpencerAlaviSphere`. The first is the periodic
+neutralizing-background convention. The second is the finite VASP
+`HFRCUT=-1` kernel over the complete auxiliary Fourier coefficients and carries
+both its automatic radius and reciprocal cutoff. The separated divergent head
+is never inserted. Cell size, and for the truncated route its Fourier cutoff,
+remain caller-visible convergence choices.
 
 ## 3. Implementation
 

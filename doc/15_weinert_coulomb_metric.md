@@ -269,6 +269,41 @@ rank-one head from $\omega$. Friedrich et al. arXiv:0811.2363 names the
 $q\to 0$ spherical-average convention; the implementation follows the
 SPEX source, not a re-derivation of that paper.
 
+### 6.1 Spencer–Alavi spherical truncation
+
+`CoulombRequest::with_spencer_alavi_sphere` is the explicit molecule/insulator
+alternative corresponding to VASP `HFRCUT=-1`. For cell volume $\Omega$ and
+the number $N_k$ of points in the full Brillouin zone, its automatic radius is
+
+```math
+R_c=\left(\frac{3N_k\Omega}{4\pi}\right)^{1/3}.
+```
+
+The reciprocal kernel is
+
+```math
+v_{R_c}(Q)=\frac{4\pi}{Q^2}\left(1-\cos(QR_c)\right),
+\qquad
+v_{R_c}(0)=2\pi R_c^2.
+```
+
+This is a complete alternative Coulomb operator, not a replacement for only
+the Gamma-head element. Every auxiliary function is projected analytically to
+its Fourier coefficients, including radial MT harmonics and the interstitial
+step-function PW coefficients, and the matrix is assembled as
+
+```math
+V_{IJ}^{q,R_c}
+=\sum_G \rho_I(q+G)^*v_{R_c}(|q+G|)\rho_J(q+G).
+```
+
+The request carries an explicit reciprocal cutoff for this sum. It is a
+caller-visible convergence parameter analogous to the finite FFT grid used by
+a PW implementation. A truncated operator has no separated `GammaHead`; it
+records `SpencerAlaviSphere` metadata containing $R_c$, $N_k$, and the Fourier
+cutoff. Empty-sphere PW and isolated $G=0$ mixed MT/interstitial outer-product
+oracles lock the finite limit and the shared-kernel normalization.
+
 ## 7. Pair vertices
 
 `PairVertex` stores `AuxiliaryLayout`, not a raw count split.

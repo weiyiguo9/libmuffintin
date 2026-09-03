@@ -218,9 +218,11 @@ this head coupling vanishes; LAPW core–valence orthogonality is approximate
 because core and valence solve different equations, so the constant-mode
 component of every CV/VC vertex is measured and gated rather than assumed
 zero. The Gamma policy of [18](18_lapw_mpb_thc_integration.md) §2.8 is
-unchanged: explicit `FiniteBody` (molecule-in-box neutralizing-background
-convention, cell-size convergence checked by the caller) or `Reject`. No
-divergent head is inserted, and analytic head integration stays deferred.
+unchanged for the periodic kernel: explicit `FiniteBody`
+(neutralizing-background convention) or `Reject`. A molecule may instead
+select `CoulombKernel::SpencerAlaviSphere`, whose Gamma kernel is finite and
+has no separated head. Cell size and the explicit auxiliary Fourier cutoff are
+then both caller convergence parameters. No divergent head is inserted.
 A converged crystal claim therefore requires a stated $k$ mesh; this contract
 does not call the finite-mesh result a production periodic HF limit.
 
@@ -235,7 +237,7 @@ contraction path:
 ```mermaid
 flowchart TD
     A["hf-scf task"] --> B{"cell kind"}
-    B -->|"molecule-in-box"| C["n_k = 1, Gamma FiniteBody, box-size series"]
+    B -->|"molecule-in-box"| C["n_k = 1, periodic body or Spencer-Alavi sphere"]
     B -->|"crystal"| D["k mesh, canonical q slice"]
     C --> E["outer iteration"]
     D --> E

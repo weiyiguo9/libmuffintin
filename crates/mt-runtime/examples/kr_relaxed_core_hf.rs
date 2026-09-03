@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::error::Error;
+use std::f64::consts::PI;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -104,6 +105,32 @@ enum OuterMixerSelection {
     Pulay,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum ExchangeCoulombSelection {
+    PeriodicFiniteBody,
+    SpencerAlaviSphere,
+}
+
+impl ExchangeCoulombSelection {
+    fn parse(value: &str) -> Result<Self, Box<dyn Error>> {
+        match value {
+            "periodic-finite-body" => Ok(Self::PeriodicFiniteBody),
+            "spencer-alavi-sphere" => Ok(Self::SpencerAlaviSphere),
+            _ => Err(invalid_input(format!(
+                "--exchange-coulomb must be periodic-finite-body or spencer-alavi-sphere, got {value:?}"
+            ))),
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::PeriodicFiniteBody => "periodic-finite-body",
+            Self::SpencerAlaviSphere => "spencer-alavi-sphere",
+        }
+    }
+}
+
 impl OuterMixerSelection {
     fn parse(value: &str) -> Result<Self, Box<dyn Error>> {
         match value {
@@ -196,6 +223,8 @@ struct Cli {
     product_g: f64,
     product_l_max: u32,
     lexp: u32,
+    exchange_coulomb: ExchangeCoulombSelection,
+    fock_fourier_g: f64,
     muffin_tin_radius: f64,
     radial_points: usize,
     hdlo: HdloSelection,
@@ -231,6 +260,8 @@ impl Default for Cli {
             product_g: 1.0,
             product_l_max: 2,
             lexp: 2,
+            exchange_coulomb: ExchangeCoulombSelection::PeriodicFiniteBody,
+            fock_fourier_g: 4.5,
             muffin_tin_radius: 2.0,
             radial_points: 2_401,
             hdlo: HdloSelection::None,
@@ -274,6 +305,10 @@ impl Cli {
                 "--product-g" => cli.product_g = parse_value(&name, &value)?,
                 "--product-lmax" => cli.product_l_max = parse_value(&name, &value)?,
                 "--lexp" => cli.lexp = parse_value(&name, &value)?,
+                "--exchange-coulomb" => {
+                    cli.exchange_coulomb = ExchangeCoulombSelection::parse(&value)?
+                }
+                "--fock-fourier-g" => cli.fock_fourier_g = parse_value(&name, &value)?,
                 "--rmt" => cli.muffin_tin_radius = parse_value(&name, &value)?,
                 "--radial-points" => cli.radial_points = parse_value(&name, &value)?,
                 "--hdlo" => cli.hdlo = HdloSelection::parse(&value)?,
@@ -322,6 +357,7 @@ impl Cli {
             ("--orbital-g", self.orbital_g),
             ("--field-g", self.field_g),
             ("--product-g", self.product_g),
+            ("--fock-fourier-g", self.fock_fourier_g),
             ("--temperature", self.temperature),
             ("--outer-energy-tolerance", self.outer_energy_tolerance),
             ("--outer-density-tolerance", self.outer_density_tolerance),
@@ -452,6 +488,9 @@ struct ParameterManifest {
     product_g_max_bohr_inverse: f64,
     product_l_max: u32,
     weinert_lexp: u32,
+    exchange_coulomb: &'static str,
+    spencer_alavi_radius_bohr: Option<f64>,
+    fock_fourier_g_max_bohr_inverse: Option<f64>,
     hdlo: &'static str,
     temperature_hartree: f64,
     k_mesh_divisions: [usize; 3],
@@ -931,12 +970,22 @@ fn main() -> Result<(), Box<dyn Error>> {
             product_g_max_bohr_inverse: cli.product_g,
             product_l_max: cli.product_l_max,
             weinert_lexp: cli.lexp,
+            exchange_coulomb: cli.exchange_coulomb.as_str(),
+            spencer_alavi_radius_bohr: (cli.exchange_coulomb
+                == ExchangeCoulombSelection::SpencerAlaviSphere)
+                .then_some((3.0 * cli.box_size.powi(3) / (4.0 * PI)).cbrt()),
+            fock_fourier_g_max_bohr_inverse: (cli.exchange_coulomb
+                == ExchangeCoulombSelection::SpencerAlaviSphere)
+                .then_some(cli.fock_fourier_g),
             hdlo: cli.hdlo.as_str(),
             temperature_hartree: cli.temperature,
             k_mesh_divisions: [1, 1, 1],
             k_mesh_shift: [0.0; 3],
             k_mesh_reduction: "full",
-            gamma_exchange: "finite-body",
+            gamma_exchange: match cli.exchange_coulomb {
+                ExchangeCoulombSelection::PeriodicFiniteBody => "finite-body",
+                ExchangeCoulombSelection::SpencerAlaviSphere => "finite-kernel-no-head",
+            },
             relativity: cli.relativity.as_str(),
             soc_first_variation_bands: (cli.relativity == RelativitySelection::KhSoc)
                 .then_some(cli.soc_bands),
@@ -1028,7 +1077,7 @@ fn run_spinor_first_example(
         product_l_max: cli.product_l_max,
         product_g_max: InverseBohr(cli.product_g),
         overlap_tolerance: DEFAULT_TOLERANCE,
-        coulomb: CoulombRequest::cubic(cli.box_size, cli.lexp)?,
+        coulomb: exchange_coulomb_request(cli)?,
         gamma: GammaExchangeTreatment::FiniteBody,
         max_fock_iterations: cli.max_fock_iterations,
         fock_density_tolerance: cli.fock_density_tolerance,
@@ -1096,7 +1145,7 @@ fn run_kh_soc_example(
         product_l_max: cli.product_l_max,
         product_g_max: InverseBohr(cli.product_g),
         overlap_tolerance: DEFAULT_TOLERANCE,
-        coulomb: CoulombRequest::cubic(cli.box_size, cli.lexp)?,
+        coulomb: exchange_coulomb_request(cli)?,
         gamma: GammaExchangeTreatment::FiniteBody,
         max_fock_iterations: cli.max_fock_iterations,
         fock_density_tolerance: cli.fock_density_tolerance,
@@ -1157,6 +1206,16 @@ fn run_kh_soc_example(
         result.exchange_rebuilds
     );
     Ok(())
+}
+
+fn exchange_coulomb_request(cli: &Cli) -> Result<CoulombRequest, Box<dyn Error>> {
+    let request = CoulombRequest::cubic(cli.box_size, cli.lexp)?;
+    match cli.exchange_coulomb {
+        ExchangeCoulombSelection::PeriodicFiniteBody => Ok(request),
+        ExchangeCoulombSelection::SpencerAlaviSphere => {
+            Ok(request.with_spencer_alavi_sphere(1, InverseBohr(cli.fock_fourier_g))?)
+        }
+    }
 }
 
 fn derive_core_partition(
