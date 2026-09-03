@@ -14,14 +14,16 @@ use muffintin::{
     Structure, checkpoint_v2_from_regional_state, materialize_atomic_start,
     run_gamma_kh_soc_valence_hf, run_gamma_relaxed_core_hf,
 };
-use muffintin_core::{AngularGrid, Bohr, ExponentialMesh, Hartree, InverseBohr};
+use muffintin_core::{
+    AngularGrid, Bohr, ExponentialMesh, Hartree, InverseBohr, SpinProjection, lm_count,
+};
 use muffintin_coulomb::CoulombRequest;
 use muffintin_dft::{
-    AtomicChannelTreatment, AtomicNumber, CoreFixedPotentialSpec, CoreShellOccupations,
-    FirstVariationWindow, LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis,
-    ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig,
-    ScfConvergence, ScfCoreSite, ScfCoreState, ScfExchangeCorrelation, ScfKMesh, ScfKReduction,
-    ScfMixing, ScfOccupations, ScfRelativity, XcFunctional, electron_count,
+    AtomicChannelTreatment, AtomicNumber, CheckpointKPointSolution, CoreFixedPotentialSpec,
+    CoreShellOccupations, FirstVariationWindow, LinearizationEnergyGenerator, NoncollinearXcRoute,
+    ScfBasis, ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment,
+    ScfConfig, ScfConvergence, ScfCoreSite, ScfCoreState, ScfExchangeCorrelation, ScfKMesh,
+    ScfKReduction, ScfMixing, ScfOccupations, ScfRelativity, XcFunctional, electron_count,
     fleur_default_atomic_configuration,
 };
 use muffintin_io::{
@@ -30,7 +32,9 @@ use muffintin_io::{
     RadialBasisSpinV2, RadialEquationTag, SiteRadialBasisV2, SiteV2, SphericalChannelConvention,
     checkpoint_file_to_toml,
 };
+use muffintin_operators::CompiledSiteProjection;
 use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
+use num_complex::Complex64;
 use serde::Serialize;
 
 const KR_Z: u8 = 36;
@@ -768,7 +772,17 @@ struct KhSocOrbitalRecord {
     homo_shifted_hartree: f64,
     homo_shifted_ev: f64,
     occupation: f64,
+    /// MT-only overlap using the same scalar P/Q contraction as static core exchange.
+    core_overlap_weights: Vec<CoreOverlapRecord>,
     source_weights: Vec<SourceWeightRecord>,
+}
+
+#[derive(Clone, Serialize)]
+struct CoreOverlapRecord {
+    site_index: usize,
+    principal_quantum_number: u32,
+    kappa: i32,
+    summed_mu_overlap_squared: f64,
 }
 
 #[derive(Serialize)]
@@ -1619,6 +1633,7 @@ fn kh_soc_result_record(result: &KhSocValenceHfResult) -> Result<KhSocResultFile
             )));
         }
         let scalar_energies = scalar_source_energies(result, k)?;
+        let core_overlaps = kh_soc_core_overlap_records(result, k)?;
         for (band, ((energy, occupation), diagnostic)) in energies
             .iter()
             .zip(occupations)
@@ -1660,6 +1675,7 @@ fn kh_soc_result_record(result: &KhSocValenceHfResult) -> Result<KhSocResultFile
                 homo_shifted_hartree: shifted,
                 homo_shifted_ev: Hartree(shifted).to_ev(),
                 occupation: *occupation,
+                core_overlap_weights: core_overlaps[band].clone(),
                 source_weights,
             });
         }
@@ -1694,6 +1710,99 @@ fn kh_soc_result_record(result: &KhSocValenceHfResult) -> Result<KhSocResultFile
         q_fractional: result.q_fractional.clone(),
         k_weights: result.k_weights.clone(),
     })
+}
+
+fn kh_soc_core_overlap_records(
+    result: &KhSocValenceHfResult,
+    k: usize,
+) -> Result<Vec<Vec<CoreOverlapRecord>>, Box<dyn Error>> {
+    let CheckpointKPointSolution::Collinear {
+        bases, solutions, ..
+    } = &result.bands.points()[k].solution
+    else {
+        return Err(invalid_input(
+            "KH+SOC core overlaps require split Pauli eigenvectors",
+        ));
+    };
+    let band_count = solutions.up.eigenvectors.columns();
+    let mut records = vec![Vec::new(); band_count];
+    for sidecar in &result.core_orbitals {
+        let site = sidecar.site_index;
+        let radial_site = &bases.up.radial_sites[site];
+        let mesh = &bases.up.density_sites[site].mesh;
+        let l_max = (radial_site.linearized.len() - 1) as u32;
+        let augmented_count = lm_count(l_max);
+        let local_layout = bases.up.compiled.layout.site_layout(site).unwrap();
+        let projection = CompiledSiteProjection::scalar(&bases.up.compiled, site)?;
+        let up = projection.project_eigenvectors(&solutions.up.eigenvectors)?;
+        let down = projection.project_eigenvectors(&solutions.down.eigenvectors)?;
+        for core in &sidecar.shells {
+            let l = core.state.kappa.large_l();
+            if l > l_max {
+                continue;
+            }
+            let linearized = &radial_site.linearized[l as usize];
+            let locals = &radial_site.local_orbitals[l as usize];
+            let mut radials = vec![
+                (&linearized.solution.p, linearized.solution.q.as_deref()),
+                (
+                    &linearized.energy_derivative.p,
+                    linearized.energy_derivative.q.as_deref(),
+                ),
+            ];
+            radials.extend(
+                locals
+                    .iter()
+                    .map(|local| (&local.orbital.p, local.orbital.q.as_deref())),
+            );
+            let overlaps = radials
+                .iter()
+                .map(|(p, q)| {
+                    let integrand = (0..mesh.len())
+                        .map(|r| {
+                            (core.p[r] * p[r] + core.q[r] * q.map_or(0.0, |q| q[r]))
+                                / core.norm_total.sqrt()
+                        })
+                        .collect::<Vec<_>>();
+                    mesh.integrate(&integrand)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut weights = vec![0.0; band_count];
+            for channel in core.state.kappa.channels() {
+                let mut amplitudes = vec![Complex64::default(); band_count];
+                for term in channel.spinor_harmonic_terms().into_iter().flatten() {
+                    let coefficients = match term.spin {
+                        SpinProjection::Up => &up,
+                        SpinProjection::Down => &down,
+                    };
+                    for (radial, overlap) in overlaps.iter().enumerate() {
+                        let coordinate = if radial < 2 {
+                            2 * term.orbital.index() + radial
+                        } else {
+                            2 * augmented_count
+                                + local_layout.index(l, term.orbital.m, radial - 2).unwrap()
+                        };
+                        for (band, amplitude) in amplitudes.iter_mut().enumerate() {
+                            *amplitude +=
+                                term.coefficient * overlap * coefficients.at(coordinate, band);
+                        }
+                    }
+                }
+                for (weight, amplitude) in weights.iter_mut().zip(amplitudes) {
+                    *weight += amplitude.norm_sqr();
+                }
+            }
+            for (record, weight) in records.iter_mut().zip(weights) {
+                record.push(CoreOverlapRecord {
+                    site_index: site,
+                    principal_quantum_number: core.state.n,
+                    kappa: core.state.kappa.get(),
+                    summed_mu_overlap_squared: weight,
+                });
+            }
+        }
+    }
+    Ok(records)
 }
 
 fn scalar_source_energies(

@@ -92,7 +92,11 @@ cargo run --release -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
 
 The KH plus SOC `result.toml` records raw energies, the explicit HOMO shift,
 HOMO-shifted Hartree/eV energies, adjacent Kramers-pair splittings, occupations,
-and spin-resolved scalar-source-band mixing weights. This is the table intended
+spin-resolved scalar-source-band mixing weights, and per-core-shell MT overlap
+weights summed over the core magnetic channels. The latter use the same
+scalar $P_cP_v+Q_cQ_v$ radial contraction and core angular coefficients as static
+core exchange; they diagnose core-like contamination, not a full-space FRA
+orthogonality certificate. This is the table intended
 for the X2C1e/4c-DC comparison; it does not by itself establish box or basis
 convergence. For closed-shell Kr, the HOMO is the highest state with occupation
 at least 0.5; this excludes finite-temperature occupation tails in the loose P0
