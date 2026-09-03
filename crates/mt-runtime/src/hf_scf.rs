@@ -792,6 +792,28 @@ fn run_kh_soc_valence_hf_inner(
     let mut diagnostics = Vec::with_capacity(spec.config.convergence.max_iterations);
     let mut total_exchange_rebuilds = 0;
 
+    // Frozen-core KH keeps its radial frame fixed. Start in that checkpoint's
+    // orbitals, then carry converged scalar orbitals between Hartree updates.
+    // Only the orbitals are seeded: each outer step retains its new physical H0.
+    let mut scalar_guess = if let Some(cores) = frozen_core.as_deref().filter(|c| !c.is_empty()) {
+        let reference = physics.kernel.frozen_potential().clone();
+        Some(
+            solve_h0_bands(
+                physics,
+                &spec.config,
+                &reference,
+                &k_fractional,
+                valence_electrons,
+                total_density.charge().interstitial().layout(),
+                ScfRelativity::Scalar,
+                cores,
+            )?
+            .0,
+        )
+    } else {
+        None
+    };
+
     for outer_iteration in 1..=spec.config.convergence.max_iterations {
         let electrostatic = evaluate_regional_electrostatics(
             total_density.charge(),
@@ -816,6 +838,10 @@ fn run_kh_soc_valence_hf_inner(
             ScfRelativity::Scalar,
             core_sidecars,
         )?;
+        let bands = match &scalar_guess {
+            Some(guess) => bands.with_scalar_orbital_guess(guess)?,
+            None => bands,
+        };
         let fixed = solve_scalar_fixed_potential(
             physics,
             spec,
@@ -998,6 +1024,9 @@ fn run_kh_soc_valence_hf_inner(
         let mixed_total = mixer.mix(&total_density, &total_output)?.density;
         valence_density = mixed_total.difference(&core_density)?;
         total_density = mixed_total;
+        if scalar_guess.is_some() {
+            scalar_guess = Some(fixed.bands);
+        }
     }
     let last = diagnostics
         .last()

@@ -564,6 +564,15 @@ orthonormal coordinate map spanning exactly the same allowed space. No core
 constraint or active column is discarded in this step; the usual physical
 overlap filtering follows in that space.
 
+The frozen-core scalar HF loop starts from the constrained checkpoint orbitals,
+then reuses the previous outer iteration's scalar HF orbitals. Only the orbital
+guess is transferred: each outer iteration retains its current nuclear plus
+Hartree Hamiltonian and rebuilds exchange before solving. The transfer requires
+identical radial generators, compiled LAPW maps, and core constraints; it does
+not project between changing radial spaces or carry CDIIS history across
+different Hartree potentials. This avoids repeatedly initializing HF from the
+Hartree-only spectrum without retaining checkpoint XC in the physical Fock.
+
 The additional LO amplitudes are constrained coordinates, not additional
 active orbitals. Their vanishing value and slope preserve the APW boundary
 conditions. The driver retains the expanded physical coefficients $C=TZ$ for

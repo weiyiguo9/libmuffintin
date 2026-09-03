@@ -273,6 +273,67 @@ impl CheckpointBandSolution {
         self.density_layout = Some(layout);
     }
 
+    /// Seed scalar orbitals from another Hamiltonian in exactly the same radial
+    /// and constrained LAPW space, retaining this solution's physical H0/S.
+    ///
+    /// The copied eigenpairs are an initial guess, not eigenpairs of the current
+    /// Hamiltonian. The next Fock iteration must rebuild exchange and solve it.
+    pub fn with_scalar_orbital_guess(mut self, guess: &Self) -> Result<Self, MaterialKernelError> {
+        if self.points.len() != guess.points.len() {
+            return Err(MaterialKernelError::ScalarOrbitalGuessPointCount {
+                actual: guess.points.len(),
+                expected: self.points.len(),
+            });
+        }
+        for (point_index, (point, source)) in self.points.iter_mut().zip(&guess.points).enumerate()
+        {
+            let (
+                CheckpointKPointSolution::Collinear {
+                    bases,
+                    solutions,
+                    up_occupations,
+                    down_occupations,
+                    ..
+                },
+                CheckpointKPointSolution::Collinear {
+                    bases: source_bases,
+                    solutions: source_solutions,
+                    up_occupations: source_up,
+                    down_occupations: source_down,
+                    ..
+                },
+            ) = (&mut point.solution, &source.solution)
+            else {
+                return Err(MaterialKernelError::FeedbackRequiresScalar { point: point_index });
+            };
+            let same_space = |target: &ScalarIterationBasis, source: &ScalarIterationBasis| {
+                target.compiled == source.compiled
+                    && target.radial_sites == source.radial_sites
+                    && target.core_orthogonalization == source.core_orthogonalization
+            };
+            if up_occupations == down_occupations
+                || up_occupations != source_up
+                || down_occupations != source_down
+                || point.weight != source.weight
+                || !same_space(&bases.up, &source_bases.up)
+                || !same_space(&bases.down, &source_bases.down)
+            {
+                return Err(MaterialKernelError::ScalarOrbitalGuessSpace { point: point_index });
+            }
+            for (range, solved) in [
+                (up_occupations.clone(), &source_solutions.up),
+                (down_occupations.clone(), &source_solutions.down),
+            ] {
+                for (state, &energy) in self.states[range].iter_mut().zip(&solved.eigenvalues) {
+                    state.energy = energy;
+                }
+            }
+            *solutions = source_solutions.clone();
+            point.energies = source.energies.clone();
+        }
+        Ok(self)
+    }
+
     /// Re-solve the retained spinor subspace with fresh Hermitian band-space
     /// feedback at every k point.
     ///
@@ -3300,6 +3361,12 @@ pub enum MaterialKernelError {
     FeedbackRequiresSpinor { point: usize },
     #[error("band feedback at k-point {point} requires independent scalar KH spin channels")]
     FeedbackRequiresScalar { point: usize },
+    #[error("scalar orbital guess contains {actual} k points, expected {expected}")]
+    ScalarOrbitalGuessPointCount { actual: usize, expected: usize },
+    #[error(
+        "scalar orbital guess at k-point {point} does not share the current radial and constrained LAPW space"
+    )]
+    ScalarOrbitalGuessSpace { point: usize },
     #[error(
         "feedback solve at k-point {point} returned {actual} bands, expected retained count {expected}"
     )]
