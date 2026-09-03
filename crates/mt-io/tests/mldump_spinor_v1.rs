@@ -420,7 +420,7 @@ fn write_spinor_fixture(path: &std::path::Path) -> Result<(), IoError> {
     })?;
     stream.finish_thc()?;
     stream.begin_coulomb(&MldumpCoulombBeginV1 {
-        lexp: 4,
+        lexp: 14,
         interpolation_l_max: 2,
         interpolation_pw_cutoff: 2.0,
     })?;

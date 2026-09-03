@@ -171,6 +171,7 @@ pub struct MldumpThcVertexV1 {
 /// Shared `/coulomb` request attributes for a streaming session.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MldumpCoulombBeginV1 {
+    /// Producer's angular cutoff; interchange does not impose an assembler-specific cap.
     pub lexp: u32,
     pub interpolation_l_max: u32,
     pub interpolation_pw_cutoff: f64,
@@ -197,6 +198,7 @@ pub struct MldumpCoulombGammaRefV1<'a> {
 /// Owned Coulomb section.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MldumpCoulombV1 {
+    /// Producer's angular cutoff; interchange does not impose an assembler-specific cap.
     pub lexp: u32,
     pub interpolation_l_max: u32,
     pub interpolation_pw_cutoff: f64,
@@ -476,7 +478,6 @@ pub(crate) fn begin_mldump_coulomb(
     coulomb: &MldumpCoulombBeginV1,
     representation: &str,
 ) -> Result<(), IoError> {
-    validate_coulomb_begin(coulomb)?;
     let group = reopen_present_group(file, GROUP_COULOMB)?;
     write_str_attr(&group, "representation", representation)?;
     write_i64_attr(&group, "lexp", i64::from(coulomb.lexp))?;
@@ -1174,30 +1175,10 @@ fn validate_one_thc_vertex(
     Ok(())
 }
 
-fn validate_coulomb_begin(coulomb: &MldumpCoulombBeginV1) -> Result<(), IoError> {
-    if coulomb.lexp > 12 {
-        return Err(ValidationError::InvalidValue {
-            path: "coulomb.lexp".to_owned(),
-            expected: "0..=12".to_owned(),
-            actual: coulomb.lexp.to_string(),
-        }
-        .into());
-    }
-    Ok(())
-}
-
 fn validate_coulomb_owned(
     header: &MldumpHeaderV1,
     coulomb: &MldumpCoulombV1,
 ) -> Result<(), IoError> {
-    if coulomb.lexp > 12 {
-        return Err(ValidationError::InvalidValue {
-            path: "coulomb.lexp".to_owned(),
-            expected: "0..=12".to_owned(),
-            actual: coulomb.lexp.to_string(),
-        }
-        .into());
-    }
     require_len(
         "coulomb.q_records",
         header.mesh.q_entries.len(),

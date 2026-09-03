@@ -462,7 +462,7 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
             },
             &thc_qs,
             &MldumpCoulombBeginV1 {
-                lexp: 4,
+                lexp: 14,
                 interpolation_l_max: 2,
                 interpolation_pw_cutoff: 2.0,
             },
@@ -533,7 +533,7 @@ fn mldump_scalar_v1_roundtrip_has_inspectable_hdf5_payload() {
         scalar.thc.q_records[1].layout_provenance,
         scalar.coulomb.q_records[1].layout_provenance
     );
-    assert_eq!(scalar.coulomb.lexp, 4);
+    assert_eq!(scalar.coulomb.lexp, 14);
     assert_eq!(scalar.coulomb.q_records[0].body, body0);
     assert!(scalar.coulomb.q_records[0].gamma.is_some());
     assert!(scalar.coulomb.q_records[1].gamma.is_none());
@@ -1307,7 +1307,7 @@ fn write_complete_scalar(
         },
         &thc_qs,
         &MldumpCoulombBeginV1 {
-            lexp: 4,
+            lexp: 14,
             interpolation_l_max: 2,
             interpolation_pw_cutoff: 2.0,
         },
