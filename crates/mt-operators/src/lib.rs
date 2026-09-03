@@ -82,6 +82,16 @@ pub enum OperatorError {
     IndefiniteOverlap { eigenvalue: f64 },
     #[error("dense self-adjoint eigendecomposition failed")]
     Eigensolver,
+    #[error(
+        "{stage} failed Hermitian validation: maximum anti-Hermitian residual {antihermitian}, maximum element {scale}: {source}"
+    )]
+    Projection {
+        stage: &'static str,
+        antihermitian: f64,
+        scale: f64,
+        #[source]
+        source: TensorError,
+    },
     #[error(transparent)]
     Tensor(#[from] TensorError),
 }

@@ -127,10 +127,10 @@ pub fn solve_generalized_hermitian(
     let x = einsum("ik,k->ik", &[&u_keep, &scales])?;
 
     let x_conj = x.conjugate();
-    let reduced = DenseHermitianMatrix::from_tensor(einsum(
-        "ir,ij,js->rs",
-        &[&x_conj, hamiltonian.as_tensor(), &x],
-    )?)?;
+    let reduced = projected_hermitian(
+        einsum("ir,ij,js->rs", &[&x_conj, hamiltonian.as_tensor(), &x])?,
+        "overlap-orthogonalized Hamiltonian",
+    )?;
     let reduced_matrix = Mat::from_fn(r, r, |row, column| {
         reduced
             .get(row, column)
@@ -247,20 +247,25 @@ pub fn solve_generalized_hermitian_embedded(
             .collect(),
     )?;
     let conjugate = embedding.conjugate();
-    let reduce = |matrix: &DenseHermitianMatrix| -> Result<DenseHermitianMatrix, OperatorError> {
+    let reduce = |matrix: &DenseHermitianMatrix,
+                  stage: &'static str|
+     -> Result<DenseHermitianMatrix, OperatorError> {
         let projected = einsum(
             "ia,ij,jb->ab",
             &[&conjugate, matrix.as_tensor(), &embedding],
         )?;
-        Ok(DenseHermitianMatrix::from_host_row_major(
-            dimension,
-            Axis::GlobalBasis,
-            projected.to_host_row_major(),
-        )?)
+        projected_hermitian(
+            ComplexTensor::from_host_row_major(
+                &[dimension, dimension],
+                &[Axis::GlobalBasis, Axis::GlobalBasis],
+                projected.to_host_row_major(),
+            )?,
+            stage,
+        )
     };
     let mut solved = solve_generalized_hermitian(
-        &reduce(hamiltonian)?,
-        &reduce(overlap)?,
+        &reduce(hamiltonian, "core-allowed Hamiltonian")?,
+        &reduce(overlap, "core-allowed overlap")?,
         relative_overlap_threshold,
     )?;
     let coefficients = ComplexTensor::from_host_row_major(
@@ -271,6 +276,31 @@ pub fn solve_generalized_hermitian_embedded(
     solved.eigenvectors =
         DenseEigenvectors::from_tensor(einsum("ia,ab->ib", &[&embedding, &coefficients])?)?;
     Ok(solved)
+}
+
+fn projected_hermitian(
+    tensor: ComplexTensor,
+    stage: &'static str,
+) -> Result<DenseHermitianMatrix, OperatorError> {
+    DenseHermitianMatrix::from_tensor(tensor.clone()).map_err(|source| {
+        let values = tensor.to_host_row_major();
+        let n = tensor.shape()[0];
+        let mut antihermitian = 0.0_f64;
+        let mut scale = 0.0_f64;
+        for row in 0..n {
+            for column in 0..n {
+                scale = scale.max(values[row * n + column].norm());
+                antihermitian = antihermitian
+                    .max((values[row * n + column] - values[column * n + row].conj()).norm());
+            }
+        }
+        OperatorError::Projection {
+            stage,
+            antihermitian,
+            scale,
+            source,
+        }
+    })
 }
 
 /// Lift a Hermitian band-space feedback operator into the original global
