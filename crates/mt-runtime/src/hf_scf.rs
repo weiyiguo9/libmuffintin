@@ -19,7 +19,9 @@ use muffintin_operators::{
     Collinear, OperatorError, SecondVariationMixing, lift_band_hermitian_feedback,
     solve_generalized_hermitian,
 };
-use muffintin_tensor::{Axis, ComplexTensor, DenseHermitianMatrix, TensorError, einsum};
+use muffintin_tensor::{
+    Axis, ComplexTensor, DenseHermitianMatrix, TensorError, einsum, hermitian_congruence,
+};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -2325,14 +2327,7 @@ fn project_scalar_global_matrix(
             actual: solution.eigenvectors.columns(),
         });
     }
-    let projected = DenseHermitianMatrix::from_tensor(einsum(
-        "ia,ij,jb->ab",
-        &[
-            &solution.eigenvectors.as_tensor().conjugate(),
-            matrix.as_tensor(),
-            solution.eigenvectors.as_tensor(),
-        ],
-    )?)?;
+    let projected = hermitian_congruence(solution.eigenvectors.as_tensor(), matrix)?;
     Ok(DenseHermitianMatrix::from_upper_triangle(
         band_count,
         Axis::Band,
@@ -3940,23 +3935,10 @@ fn kh_soc_energy_diagnostic(
                 down_occupations,
             ),
         ] {
-            let conjugate = solution.eigenvectors.as_tensor().conjugate();
-            let projected_h0 = DenseHermitianMatrix::from_tensor(einsum(
-                "ia,ij,jb->ab",
-                &[
-                    &conjugate,
-                    problem.hamiltonian.as_tensor(),
-                    solution.eigenvectors.as_tensor(),
-                ],
-            )?)?;
-            let projected_core = DenseHermitianMatrix::from_tensor(einsum(
-                "ia,ij,jb->ab",
-                &[
-                    &conjugate,
-                    core_matrix.as_tensor(),
-                    solution.eigenvectors.as_tensor(),
-                ],
-            )?)?;
+            let projected_h0 =
+                hermitian_congruence(solution.eigenvectors.as_tensor(), &problem.hamiltonian)?;
+            let projected_core =
+                hermitian_congruence(solution.eigenvectors.as_tensor(), core_matrix)?;
             for (band, &value) in values.iter().enumerate() {
                 let weight = bands.states()[range.start + band].k_weight;
                 h0_expectation += weight * value * projected_h0.at(band, band).re;

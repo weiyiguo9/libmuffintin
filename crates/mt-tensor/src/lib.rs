@@ -614,7 +614,11 @@ pub fn hermitian_congruence(
             actual: projected.axes()[0],
         });
     }
-    DenseHermitianMatrix::from_tensor(projected)
+    let dimension = projected.shape()[0];
+    let values = projected.to_host_row_major();
+    DenseHermitianMatrix::from_upper_triangle(dimension, basis, |row, column| {
+        0.5 * values[row * dimension + column] + 0.5 * values[column * dimension + row].conj()
+    })
 }
 
 fn unravel(mut flat: usize, shape: &[usize], layout: MemoryLayout) -> Vec<usize> {
