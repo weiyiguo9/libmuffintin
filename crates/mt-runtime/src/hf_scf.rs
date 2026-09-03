@@ -21,8 +21,12 @@ use muffintin_tensor::{Axis, ComplexTensor, DenseHermitianMatrix, TensorError, e
 use num_complex::Complex64;
 use thiserror::Error;
 
+use crate::isdf_exchange::contract_scalar_mpb_exchange_with_operators;
 use crate::q_mesh::{CanonicalQMapError, canonical_q_points};
-use crate::scalar_mpb::{ScalarMpbSelection, ScalarMpbSpec, build_scalar_mpb};
+use crate::scalar_mpb::{
+    ScalarMpbBasis, ScalarMpbSelection, ScalarMpbSpec, build_scalar_mpb_from_basis,
+    compile_scalar_mpb_basis,
+};
 use crate::spinor_exchange_mpb::{
     SpinorExchangeMpbBasis, build_spinor_exchange_feedback_from_basis,
     compile_spinor_exchange_mpb_basis,
@@ -40,7 +44,7 @@ use crate::{
     SecondVariationMpbSpec, SectorOccupations, SpinorCoreInputError, SpinorExchangeMpbError,
     SpinorExchangeMpbResult, SpinorExchangeMpbSpec, SpinorMpbError, SpinorMpbSelection,
     SpinorMpbSpec, SpinorProductInput, build_frozen_core_valence_exchange,
-    build_frozen_site_valence_densities, build_scalar_mpb_exchange, build_second_variation_mpb,
+    build_frozen_site_valence_densities, build_second_variation_mpb,
     build_second_variation_mpb_exchange, build_spinor_exchange_mpb, build_spinor_mpb,
     build_spinor_mpb_exchange, compare_frozen_core_valence, relax_frozen_core_at_fixed_potential,
 };
@@ -1726,6 +1730,11 @@ struct ScalarFixedPotentialResult {
     feedback_residual: f64,
 }
 
+struct ScalarExchangeCache {
+    bases: Vec<ScalarMpbBasis>,
+    operators: Vec<CoulombOperator>,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn solve_scalar_fixed_potential(
     physics: &CheckpointPhysics,
@@ -1744,6 +1753,7 @@ fn solve_scalar_fixed_potential(
     let mut up_mixer = FeedbackMixer::new(spec.fock_mixing);
     let mut down_mixer = FeedbackMixer::new(spec.fock_mixing);
     let mut current_density = None;
+    let mut exchange_cache = None;
     let core_feedback = physics
         .kernel
         .scalar_static_core_exchange_feedback(&bands, core_sidecars)?;
@@ -1758,6 +1768,7 @@ fn solve_scalar_fixed_potential(
             &occupation_rows,
             k_fractional,
             q_fractional,
+            &mut exchange_cache,
         )?;
         rebuilds += 1;
         let fresh_band_feedback = scalar_exchange_feedback(&rebuilt)?;
@@ -1850,6 +1861,7 @@ fn rebuild_scalar_exchange(
     occupations: &[Collinear<Vec<f64>>],
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
+    cache: &mut Option<ScalarExchangeCache>,
 ) -> Result<Collinear<IsdfExchangeResult>, GammaValenceHfError> {
     let inputs = q_fractional
         .iter()
@@ -1875,20 +1887,32 @@ fn rebuild_scalar_exchange(
             })
         })
         .collect::<Vec<_>>();
+    let mpb_spec = ScalarMpbSpec {
+        lattice: first.reciprocal,
+        product_l_max: spec.product_l_max,
+        product_g_max: spec.product_g_max,
+        overlap_tolerance: spec.overlap_tolerance,
+        selections,
+    };
+    if cache.is_none() {
+        let bases = inputs
+            .iter()
+            .map(|input| compile_scalar_mpb_basis(input, &mpb_spec))
+            .collect::<Result<Vec<_>, _>>()?;
+        let operators = bases
+            .iter()
+            .map(|basis| assemble_coulomb(&basis.auxiliary, &spec.coulomb))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(IsdfExchangeError::from)?;
+        *cache = Some(ScalarExchangeCache { bases, operators });
+    }
+    let cache = cache
+        .as_ref()
+        .expect("the scalar fixed-potential exchange cache was just initialized");
     let mpb = inputs
         .iter()
-        .map(|input| {
-            build_scalar_mpb(
-                input,
-                &ScalarMpbSpec {
-                    lattice: input.reciprocal,
-                    product_l_max: spec.product_l_max,
-                    product_g_max: spec.product_g_max,
-                    overlap_tolerance: spec.overlap_tolerance,
-                    selections: selections.clone(),
-                },
-            )
-        })
+        .zip(&cache.bases)
+        .map(|(input, basis)| build_scalar_mpb_from_basis(input, &mpb_spec, basis))
         .collect::<Result<Vec<_>, _>>()?;
     let weights = scalar_k_weights(bands)?;
     let build = |spin: u8| -> Result<IsdfExchangeResult, GammaValenceHfError> {
@@ -1902,11 +1926,11 @@ fn rebuild_scalar_exchange(
                 }
             })
             .collect();
-        Ok(build_scalar_mpb_exchange(
+        Ok(contract_scalar_mpb_exchange_with_operators(
             &inputs,
             &mpb,
             spin,
-            &spec.coulomb,
+            &cache.operators,
             &IsdfExchangeSpec {
                 k_weights: weights.clone(),
                 occupations,

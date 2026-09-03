@@ -308,6 +308,24 @@ pub fn build_scalar_mpb_exchange(
     spec: &IsdfExchangeSpec,
 ) -> Result<IsdfExchangeResult, IsdfExchangeError> {
     let first = require_scalar_q_slice(inputs).map_err(scalar_q_slice_error)?;
+    if request.reciprocal() != &first.reciprocal {
+        return Err(IsdfExchangeError::MpbContext { index: 0 });
+    }
+    let operators = mpb
+        .iter()
+        .map(|result| assemble_coulomb(&result.auxiliary, request))
+        .collect::<Result<Vec<_>, _>>()?;
+    contract_scalar_mpb_exchange_with_operators(inputs, mpb, spin, &operators, spec)
+}
+
+pub(crate) fn contract_scalar_mpb_exchange_with_operators(
+    inputs: &[ScalarProductInput],
+    mpb: &[ScalarMpbResult],
+    spin: u8,
+    operators: &[CoulombOperator],
+    spec: &IsdfExchangeSpec,
+) -> Result<IsdfExchangeResult, IsdfExchangeError> {
+    let first = require_scalar_q_slice(inputs).map_err(scalar_q_slice_error)?;
     if !first
         .orbitals
         .channels
@@ -316,27 +334,28 @@ pub fn build_scalar_mpb_exchange(
     {
         return Err(IsdfExchangeError::ScalarSpin { spin });
     }
-    if mpb.len() != inputs.len() {
+    if mpb.len() != inputs.len() || operators.len() != inputs.len() {
         return Err(IsdfExchangeError::MpbCount {
-            actual: mpb.len(),
+            actual: if mpb.len() != inputs.len() {
+                mpb.len()
+            } else {
+                operators.len()
+            },
             expected: inputs.len(),
         });
-    }
-    if request.reciprocal() != &first.reciprocal {
-        return Err(IsdfExchangeError::MpbContext { index: 0 });
     }
     let expected = first
         .pair_columns
         .n_columns()
         .map_err(|_| IsdfExchangeError::MpbContext { index: 0 })?;
     let mut ordered_vertices = Vec::with_capacity(mpb.len());
-    let mut operators = Vec::with_capacity(mpb.len());
     for (q_index, (input, result)) in inputs.iter().zip(mpb).enumerate() {
         if !result.frozen_input_matches(input)
             || result.reciprocal != input.reciprocal
             || result.pair_columns != input.pair_columns
             || result.auxiliary.q != input.source.q
             || result.auxiliary.partition != input.source.partition
+            || *operators[q_index].layout() != result.auxiliary.layout()
         {
             return Err(IsdfExchangeError::MpbContext { index: q_index });
         }
@@ -385,11 +404,10 @@ pub fn build_scalar_mpb_exchange(
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
-        operators.push(assemble_coulomb(&result.auxiliary, request)?);
     }
     let records = ordered_vertices
         .iter()
-        .zip(&operators)
+        .zip(operators)
         .map(|(vertices, operator)| RectangularExchangeRecord {
             layout: valence_layout(first.pair_columns),
             vertices,
