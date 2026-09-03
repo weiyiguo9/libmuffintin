@@ -11,7 +11,8 @@ use num_complex::Complex64;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EigenpairResidual {
     pub band_index: usize,
-    /// Euclidean norm of `H c - S c epsilon`.
+    /// Euclidean norm of `H c - S c epsilon` in the variational coordinates.
+    /// An embedded solve uses the supplied active coordinates here.
     pub absolute: f64,
     /// Absolute residual divided by `max(||Hc||, |epsilon| ||Sc||)`.
     pub relative: f64,
@@ -25,6 +26,8 @@ pub struct GeneralizedEigensolution {
     /// Column-major eigenvector columns on axes `[GlobalBasis, Band]`.
     pub eigenvectors: DenseEigenvectors,
     pub retained_dimension: usize,
+    /// Overlap directions discarded from the variational input space; an
+    /// explicit embedding's eliminated coordinates are not counted here.
     pub filtered_dimension: usize,
     pub residuals: Vec<EigenpairResidual>,
 }
@@ -197,6 +200,60 @@ pub fn solve_generalized_hermitian(
         filtered_dimension: n - r,
         residuals,
     })
+}
+
+/// Solve in the explicitly allowed space `C = T Z`, retaining the physical
+/// global eigenvectors for density and operator contractions.
+///
+/// `embedding` has axes `[GlobalBasis, Reduced]`. The returned residuals and
+/// filtering counts refer to `T^H H T Z = T^H S T Z epsilon`; forbidden-space
+/// components of the unconstrained residual are Lagrange forces, not errors.
+pub fn solve_generalized_hermitian_embedded(
+    hamiltonian: &DenseHermitianMatrix,
+    overlap: &DenseHermitianMatrix,
+    embedding: &ComplexTensor,
+    relative_overlap_threshold: f64,
+) -> Result<GeneralizedEigensolution, OperatorError> {
+    if embedding.shape().len() != 2 {
+        return Err(TensorError::Rank {
+            expected: 2,
+            actual: embedding.shape().len(),
+        }
+        .into());
+    }
+    for (index, expected) in [Axis::GlobalBasis, Axis::Reduced].into_iter().enumerate() {
+        if embedding.axes()[index] != expected {
+            return Err(TensorError::Axis {
+                index,
+                expected,
+                actual: embedding.axes()[index],
+            }
+            .into());
+        }
+    }
+    let dimension = embedding.shape()[1];
+    let conjugate = embedding.conjugate();
+    let reduce = |matrix: &DenseHermitianMatrix| -> Result<DenseHermitianMatrix, OperatorError> {
+        let projected = einsum("ia,ij,jb->ab", &[&conjugate, matrix.as_tensor(), embedding])?;
+        Ok(DenseHermitianMatrix::from_host_row_major(
+            dimension,
+            Axis::GlobalBasis,
+            projected.to_host_row_major(),
+        )?)
+    };
+    let mut solved = solve_generalized_hermitian(
+        &reduce(hamiltonian)?,
+        &reduce(overlap)?,
+        relative_overlap_threshold,
+    )?;
+    let coefficients = ComplexTensor::from_host_row_major(
+        &[dimension, solved.retained_dimension],
+        &[Axis::Reduced, Axis::Band],
+        solved.eigenvectors.as_tensor().to_host_row_major(),
+    )?;
+    solved.eigenvectors =
+        DenseEigenvectors::from_tensor(einsum("ia,ab->ib", &[embedding, &coefficients])?)?;
+    Ok(solved)
 }
 
 /// Lift a Hermitian band-space feedback operator into the original global

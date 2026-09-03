@@ -19,7 +19,8 @@ pub use assemble::{
 };
 pub use eigensolve::{
     Collinear, EigenpairResidual, GeneralizedEigensolution, RealSymmetricEigensolution,
-    lift_band_hermitian_feedback, solve_generalized_hermitian, solve_real_symmetric,
+    lift_band_hermitian_feedback, solve_generalized_hermitian,
+    solve_generalized_hermitian_embedded, solve_real_symmetric,
 };
 pub use projection::{
     CompiledSiteProjection, SiteOrbitalCoefficients, project_eigenvectors_to_site,
