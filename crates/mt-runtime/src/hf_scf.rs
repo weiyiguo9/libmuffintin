@@ -829,7 +829,7 @@ fn run_kh_soc_valence_hf_inner(
         let scalar_valence_output = physics
             .kernel
             .synthesize_bands(&fixed.bands, &fixed.occupation.values)?;
-        let core_terms = frozen_core_energy_terms(core_sidecars)?;
+        let core_terms = frozen_core_energy_terms(physics, core_sidecars, &electrostatic)?;
         let scalar_energy = kh_soc_energy_diagnostic(
             &fixed.bands,
             &fixed.occupation,
@@ -1184,7 +1184,15 @@ pub fn run_relaxed_core_hf(
         )?;
         let core_one_body_traces = fresh_sidecars
             .iter()
-            .map(core_local_one_body_trace)
+            .map(|sidecar| {
+                let potential = sidecar
+                    .provenance
+                    .extended_potential
+                    .iter()
+                    .map(|value| value.get())
+                    .collect::<Vec<_>>();
+                core_local_one_body_trace(sidecar, &potential)
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let core_h0_trace = Hartree(
             core_one_body_traces
@@ -4123,12 +4131,38 @@ fn relaxed_energy_diagnostic(
 }
 
 fn frozen_core_energy_terms(
+    physics: &CheckpointPhysics,
     sidecars: &[CoreShellOrbitals],
+    electrostatic: &muffintin_dft::RegionalElectrostaticResult,
 ) -> Result<FrozenCoreEnergyTerms, GammaValenceHfError> {
+    if sidecars.is_empty() {
+        return Ok(FrozenCoreEnergyTerms {
+            h0: Hartree(0.0),
+            cc_trace: Hartree(0.0),
+        });
+    }
+    let mut meshes = physics
+        .kernel
+        .sites()
+        .iter()
+        .map(|site| site.up().mesh().clone())
+        .collect::<Vec<_>>();
+    for sidecar in sidecars {
+        meshes[sidecar.site_index] = sidecar.extended_mesh.clone();
+    }
+    let current = muffintin_dft::build_extended_electrostatic_core_potentials(
+        electrostatic,
+        physics.geometry(),
+        &meshes,
+        muffintin_sphere::CorePotentialContinuationSpec::default(),
+    )
+    .map_err(MaterialKernelError::from)?;
     let h0 = Hartree(
         sidecars
             .iter()
-            .map(core_local_one_body_trace)
+            .map(|sidecar| {
+                core_local_one_body_trace(sidecar, &current[sidecar.site_index].potential.values)
+            })
             .collect::<Result<Vec<_>, _>>()?
             .iter()
             .map(|trace| trace.total.get())

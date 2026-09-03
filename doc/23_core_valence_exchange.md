@@ -583,6 +583,13 @@ radius convergence remain physical acceptance checks. Core sidecars are
 explicit arguments of `MaterialKernel::solve_points`; ordinary unconstrained
 DFT callers pass an empty slice.
 
+Frozen-core energy evaluation is separate from frozen-core generation.
+`core_local_one_body_trace` requires an explicit evaluation potential; the
+KH+SOC driver supplies the current extended nuclear-plus-Hartree field.
+The initial LDA/XC generating potential is not reused as the HF one-body
+operator. Core orbitals and their CC exchange remain frozen, while their
+one-body expectation changes with the current Hartree density.
+
 The current Kr production-size acceptance is blocked by core-like active
 occupations, not established by successful inner-loop closure. A diagnostic
 at commit `2ac2e01` used an 8 bohr box, orbital/product cutoffs 2 inverse bohr,

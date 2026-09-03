@@ -318,21 +318,18 @@ pub fn build_regional_core_contribution_from_sidecar(
 }
 
 /// Evaluate `Tr(Dc H0)` from physical retained core radials and local potential.
+/// The evaluation potential is explicit and need not be the radial-generating
+/// potential recorded in the immutable sidecar provenance.
 pub fn core_local_one_body_trace(
     sidecar: &CoreShellOrbitals,
+    potential: &[f64],
 ) -> Result<CoreLocalOneBodyTrace, CoreLocalOneBodyError> {
-    if sidecar.provenance.extended_potential.len() != sidecar.extended_mesh.len() {
+    if potential.len() != sidecar.extended_mesh.len() {
         return Err(CoreLocalOneBodyError::PotentialLength {
             expected: sidecar.extended_mesh.len(),
-            actual: sidecar.provenance.extended_potential.len(),
+            actual: potential.len(),
         });
     }
-    let potential = sidecar
-        .provenance
-        .extended_potential
-        .iter()
-        .map(|value| value.get())
-        .collect::<Vec<_>>();
     let mut total = Hartree(0.0);
     let shells = sidecar
         .shells
@@ -342,7 +339,7 @@ pub fn core_local_one_body_trace(
             let occupation = sidecar_shell_occupation(shell_index, shell)?;
             let expectation = dirac_local_hamiltonian_expectation(
                 &sidecar.extended_mesh,
-                &potential,
+                potential,
                 shell.state.kappa,
                 &shell.p,
                 &shell.q,
@@ -1310,7 +1307,13 @@ mod tests {
         let rebuilt =
             build_regional_core_contribution_from_sidecar(&retained.orbitals, &density).unwrap();
         assert_eq!(rebuilt, retained.contribution);
-        let local_trace = core_local_one_body_trace(&retained.orbitals).unwrap();
+        let local_trace = core_local_one_body_trace(&retained.orbitals, &potential).unwrap();
+        let shifted = potential
+            .iter()
+            .map(|value| value + 0.125)
+            .collect::<Vec<_>>();
+        let shifted_trace = core_local_one_body_trace(&retained.orbitals, &shifted).unwrap();
+        assert!((shifted_trace.total.get() - local_trace.total.get() - 0.25).abs() < 1.0e-10);
         assert_eq!(local_trace.shells.len(), 1);
         assert_eq!(local_trace.shells[0].state, state);
         assert_eq!(local_trace.shells[0].occupation, 2.0);
