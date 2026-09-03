@@ -51,6 +51,7 @@ const FOCK_DIIS_HISTORY: usize = 8;
 const FOCK_DIIS_LEVEL_SHIFT_HARTREE: f64 = 0.25;
 const SECTOR_NUMERICAL_TOLERANCE_HARTREE: f64 = 1.0e-8;
 const MAXIMUM_CORE_SHELL_SPILL: f64 = 1.0;
+const HOMO_OCCUPATION_THRESHOLD: f64 = 0.5;
 
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -220,7 +221,7 @@ impl Default for Cli {
         Self {
             out: PathBuf::from("kr-relaxed-core-hf-p0"),
             relativity: RelativitySelection::SpinorFirst,
-            soc_bands: 24,
+            soc_bands: 7,
             box_size: 8.0,
             orbital_g: 1.0,
             field_g: 4.5,
@@ -1126,7 +1127,7 @@ fn run_kh_soc_example(
             ),
             (
                 "hf.energy_reference".to_owned(),
-                "occupied orbital energies shifted so HOMO=0".to_owned(),
+                "closed-shell occupation>=0.5 HOMO shifted to zero".to_owned(),
             ),
         ]),
     )?;
@@ -1389,7 +1390,7 @@ fn kh_soc_result_record(result: &KhSocValenceHfResult) -> Result<KhSocResultFile
         .iter()
         .zip(&result.occupations)
         .flat_map(|(energies, occupations)| energies.iter().zip(occupations))
-        .filter(|(_, occupation)| **occupation > 1.0e-8)
+        .filter(|(_, occupation)| **occupation >= HOMO_OCCUPATION_THRESHOLD)
         .map(|(energy, _)| energy.get())
         .max_by(f64::total_cmp)
         .ok_or_else(|| invalid_input("KH+SOC result has no occupied orbital for the HOMO shift"))?;
@@ -1454,7 +1455,7 @@ fn kh_soc_result_record(result: &KhSocValenceHfResult) -> Result<KhSocResultFile
     }
     Ok(KhSocResultFile {
         status: "configured_convergence_reached",
-        energy_reference: "highest occupied molecular orbital (occupation > 1e-8) set to zero",
+        energy_reference: "closed-shell HOMO (occupation >= 0.5) set to zero",
         homo_energy_hartree: homo,
         fermi_shift_hartree: -homo,
         total_energy_hartree: result.total_energy.get(),

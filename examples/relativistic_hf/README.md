@@ -94,7 +94,9 @@ The KH plus SOC `result.toml` records raw energies, the explicit HOMO shift,
 HOMO-shifted Hartree/eV energies, adjacent Kramers-pair splittings, occupations,
 and spin-resolved scalar-source-band mixing weights. This is the table intended
 for the X2C1e/4c-DC comparison; it does not by itself establish box or basis
-convergence.
+convergence. For closed-shell Kr, the HOMO is the highest state with occupation
+at least 0.5; this excludes finite-temperature occupation tails in the loose P0
+profile.
 
 For a bounded production-convergence attempt, set the outer and core gates
 explicitly together with the larger orbital and product bases:
