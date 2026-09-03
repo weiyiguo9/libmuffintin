@@ -474,22 +474,32 @@ no claim of a converged periodic Hartree–Fock limit.
 
 #### A3 — Scalar KH HF and SOC second variation
 
-`run_kh_soc_valence_hf` keeps the scalar first-variation H0/S problems fixed
-inside each Fock loop, builds independent same-spin VV exchange matrices on a
-shared scalar mixed-product basis, and feeds those matrices back into the two
-spin-degenerate KH channels. Only after the scalar density, energy, and Fock
-fixed points converge does it project the existing SPEX-form
-$\xi(r)\mathbf L\cdot\mathbf S$ operator into the requested source-band window.
-The second-variation solve therefore uses converged nonlocal scalar-Fock
-eigenvalues and eigenvectors, not the local H0 spectrum.
+`run_kh_soc_valence_hf` uses a converged scalar KH-Fock solve only to generate
+the fixed source-band frame for each outer Hartree step. It projects the
+SPEX-form $\xi(r)\mathbf L\cdot\mathbf S$ operator into that frame, subtracts
+the complete scalar VV plus scalar-averaged frozen-core feedback already
+contained in the source eigenvalues, and replaces them by resolved frozen-core
+exchange plus the current Pauli-spinor VV exchange. Consequently the solved
+operator is the projected scalar local Hamiltonian plus SOC, resolved core
+exchange, and one copy of the live spinor VV operator; neither scalar exchange
+nor core exchange is counted twice.
 
-The reconstructed Pauli orbitals are passed through a fresh exact-MPB VV
-contraction. Up/down pair vertices are summed before the Coulomb contraction;
-they are not treated as two independent collinear manifolds. For a complete
-occupied closed shell, the scalar and second-variation densities and exchange
-energies are reported separately as invariance diagnostics. `A3` is presently
-valence-only; it rejects configured core states until the CV/VC mixed
-scalar–Dirac product stage is available.
+Every spinor Fock iteration rebuilds the up/down-summed pair vertices from the
+current SOC orbitals on a cached scalar mixed-product basis and cached Coulomb
+operator. The band matrix is lifted to the fixed doubled scalar-band frame.
+CDIIS forms the full Pauli density matrix there and uses its ordinary
+commutator with the current spinor Fock matrix, so both diagonal-spin and
+spin-off-diagonal channels enter one consistent error vector. The converged
+spinor density and spinor HF energy, not the scalar source result, define the
+outer density and energy fixed point. Diagnostics retain separate scalar and
+spinor iteration/rebuild counts and the scalar-to-spinor density change.
+
+Frozen core remains a separate radial sidecar and does not enlarge the VV MPB
+or THC orbital span. Its spherical scalar-average action is used only in the
+source solve; the SOC frame replaces it by the complete spin-resolved static
+core action. Relaxed KH+SOC core is intentionally not implemented because it
+would require a four-component VC action generated from scalar/SOC valence
+states rather than a signed $\kappa$ approximation.
 
 | Milestone | Deliverable | Exit gates |
 |---|---|---|

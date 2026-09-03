@@ -159,7 +159,7 @@ pub struct GammaValenceHfResult {
 
 pub type ValenceHfResult = GammaValenceHfResult;
 
-/// Exact-MPB controls for scalar KH HF followed by conventional SOC second variation.
+/// Exact-MPB controls for self-consistent KH+SOC Pauli-spinor HF.
 #[derive(Clone, Debug, PartialEq)]
 pub struct KhSocValenceHfSpec {
     pub config: ScfConfig,
@@ -171,7 +171,7 @@ pub struct KhSocValenceHfSpec {
     pub max_fock_iterations: usize,
     pub fock_density_tolerance: f64,
     pub fock_feedback_tolerance: Hartree,
-    /// Scalar KH currently accepts linear or Pulay–Anderson feedback mixing.
+    /// Shared scalar-source and Pauli-spinor Fock mixer.
     pub fock_mixing: FockMixing,
     pub core_treatment: KhSocCoreTreatment,
 }
@@ -183,12 +183,18 @@ pub enum KhSocCoreTreatment {
     Frozen,
 }
 
-/// One outer scalar-KH HF iteration preceding SOC second variation.
+/// One outer KH+SOC Hartree-density iteration.
 #[derive(Clone, Debug, PartialEq)]
 pub struct KhSocValenceHfIterationDiagnostic {
     pub iteration: usize,
     pub fock_iterations: usize,
     pub exchange_rebuilds: usize,
+    pub scalar_fock_iterations: usize,
+    pub spinor_fock_iterations: usize,
+    pub scalar_exchange_rebuilds: usize,
+    pub spinor_exchange_rebuilds: usize,
+    pub scalar_fock_fixed_point_residual: f64,
+    pub scalar_fock_feedback_residual: Hartree,
     pub exchange_energy: Hartree,
     pub fock_fixed_point_residual: f64,
     pub fock_feedback_residual: Hartree,
@@ -198,7 +204,7 @@ pub struct KhSocValenceHfIterationDiagnostic {
     pub energy_change: Option<Hartree>,
 }
 
-/// Converged scalar KH HF state and its one-shot SOC second variation.
+/// Converged self-consistent Pauli-spinor KH+SOC HF state.
 #[derive(Clone, Debug)]
 pub struct KhSocValenceHfResult {
     pub valence_density: RegionalDensity,
@@ -234,7 +240,7 @@ pub struct KhSocValenceHfResult {
 pub enum KhSocValenceHfError {
     #[error("KH+SOC valence HF requires ScfRelativity::SocSecondVariation")]
     Relativity,
-    #[error("KH+SOC valence HF currently requires linear or Pulay–Anderson Fock mixing")]
+    #[error("KH+SOC valence HF received an invalid Fock-mixing specification")]
     FockMixing,
     #[error("KH+SOC core treatment is inconsistent with the configured occupied core states")]
     CoreTreatment,
@@ -871,6 +877,12 @@ fn run_kh_soc_valence_hf_inner(
             iteration: outer_iteration,
             fock_iterations: fixed.fock_iterations + spinor.fock_iterations,
             exchange_rebuilds: fixed.exchange_rebuilds + spinor.exchange_rebuilds,
+            scalar_fock_iterations: fixed.fock_iterations,
+            spinor_fock_iterations: spinor.fock_iterations,
+            scalar_exchange_rebuilds: fixed.exchange_rebuilds,
+            spinor_exchange_rebuilds: spinor.exchange_rebuilds,
+            scalar_fock_fixed_point_residual: fixed.fixed_point_residual,
+            scalar_fock_feedback_residual: Hartree(fixed.feedback_residual),
             exchange_energy: spinor.exchange.exchange_energy,
             fock_fixed_point_residual: spinor.fixed_point_residual,
             fock_feedback_residual: Hartree(spinor.feedback_residual),

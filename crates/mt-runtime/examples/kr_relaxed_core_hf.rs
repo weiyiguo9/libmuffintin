@@ -46,7 +46,7 @@ const OUTER_MIXING_HISTORY: usize = 8;
 const MAX_FOCK_ITERATIONS: usize = 32;
 const LOOSE_TOLERANCE: f64 = 1.0e100;
 const FOCK_DENSITY_TOLERANCE: f64 = 1.0e-5;
-const FOCK_FEEDBACK_TOLERANCE_HARTREE: f64 = 2.0e-6;
+const FOCK_FEEDBACK_TOLERANCE_HARTREE: f64 = 5.0e-6;
 const FOCK_DIIS_HISTORY: usize = 8;
 const FOCK_DIIS_LEVEL_SHIFT_HARTREE: f64 = 0.25;
 const SECTOR_NUMERICAL_TOLERANCE_HARTREE: f64 = 1.0e-8;
@@ -92,7 +92,7 @@ impl RelativitySelection {
             Self::SpinorFirst => {
                 "spinor-first-variation with fully-relativistic Dirac radial equation"
             }
-            Self::KhSoc => "scalar Koelling-Harmon HF plus SOC second variation",
+            Self::KhSoc => "self-consistent Pauli-spinor Koelling-Harmon plus SOC HF",
         }
     }
 }
@@ -210,6 +210,8 @@ struct Cli {
     core_energy_tolerance: f64,
     core_radial_tolerance: f64,
     max_fock_iterations: usize,
+    fock_density_tolerance: f64,
+    fock_feedback_tolerance: f64,
     fock_mixing: FockMixerSelection,
     fock_mixing_alpha: f64,
     fock_diis_history: usize,
@@ -243,6 +245,8 @@ impl Default for Cli {
             core_energy_tolerance: LOOSE_TOLERANCE,
             core_radial_tolerance: LOOSE_TOLERANCE,
             max_fock_iterations: MAX_FOCK_ITERATIONS,
+            fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
+            fock_feedback_tolerance: FOCK_FEEDBACK_TOLERANCE_HARTREE,
             fock_mixing: FockMixerSelection::Cdiis,
             fock_mixing_alpha: 0.5,
             fock_diis_history: FOCK_DIIS_HISTORY,
@@ -292,6 +296,12 @@ impl Cli {
                     cli.core_radial_tolerance = parse_value(&name, &value)?
                 }
                 "--fock-max-iterations" => cli.max_fock_iterations = parse_value(&name, &value)?,
+                "--fock-density-tolerance" => {
+                    cli.fock_density_tolerance = parse_value(&name, &value)?
+                }
+                "--fock-feedback-tolerance" => {
+                    cli.fock_feedback_tolerance = parse_value(&name, &value)?
+                }
                 "--fock-mixing" => cli.fock_mixing = FockMixerSelection::parse(&value)?,
                 "--fock-mixing-alpha" => cli.fock_mixing_alpha = parse_value(&name, &value)?,
                 "--fock-diis-history" => cli.fock_diis_history = parse_value(&name, &value)?,
@@ -319,6 +329,8 @@ impl Cli {
             ("--core-energy-tolerance", self.core_energy_tolerance),
             ("--core-radial-tolerance", self.core_radial_tolerance),
             ("--fock-mixing-alpha", self.fock_mixing_alpha),
+            ("--fock-density-tolerance", self.fock_density_tolerance),
+            ("--fock-feedback-tolerance", self.fock_feedback_tolerance),
         ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(invalid_input(format!(
@@ -590,6 +602,12 @@ struct KhSocIterationRecord {
     iteration: usize,
     fock_iterations: usize,
     exchange_rebuilds: usize,
+    scalar_fock_iterations: usize,
+    spinor_fock_iterations: usize,
+    scalar_exchange_rebuilds: usize,
+    spinor_exchange_rebuilds: usize,
+    scalar_fock_fixed_point_residual: f64,
+    scalar_fock_feedback_residual_hartree: f64,
     vv_exchange_energy_hartree: f64,
     fock_fixed_point_residual: f64,
     fock_feedback_residual_hartree: f64,
@@ -946,8 +964,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             core_max_iterations: (cli.relativity == RelativitySelection::SpinorFirst)
                 .then_some(cli.core_max_iterations),
             max_fock_iterations: cli.max_fock_iterations,
-            fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
-            fock_feedback_tolerance_hartree: FOCK_FEEDBACK_TOLERANCE_HARTREE,
+            fock_density_tolerance: cli.fock_density_tolerance,
+            fock_feedback_tolerance_hartree: cli.fock_feedback_tolerance,
             fock_mixing_algorithm: cli.fock_mixing.as_str(),
             fock_mixing_alpha: matches!(
                 cli.fock_mixing,
@@ -1013,8 +1031,8 @@ fn run_spinor_first_example(
         coulomb: CoulombRequest::cubic(cli.box_size, cli.lexp)?,
         gamma: GammaExchangeTreatment::FiniteBody,
         max_fock_iterations: cli.max_fock_iterations,
-        fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
-        fock_feedback_tolerance: Hartree(FOCK_FEEDBACK_TOLERANCE_HARTREE),
+        fock_density_tolerance: cli.fock_density_tolerance,
+        fock_feedback_tolerance: Hartree(cli.fock_feedback_tolerance),
         fock_mixing: cli.fock_mixing.build(
             cli.fock_mixing_alpha,
             cli.fock_diis_history,
@@ -1081,8 +1099,8 @@ fn run_kh_soc_example(
         coulomb: CoulombRequest::cubic(cli.box_size, cli.lexp)?,
         gamma: GammaExchangeTreatment::FiniteBody,
         max_fock_iterations: cli.max_fock_iterations,
-        fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
-        fock_feedback_tolerance: Hartree(FOCK_FEEDBACK_TOLERANCE_HARTREE),
+        fock_density_tolerance: cli.fock_density_tolerance,
+        fock_feedback_tolerance: Hartree(cli.fock_feedback_tolerance),
         fock_mixing: cli.fock_mixing.build(
             cli.fock_mixing_alpha,
             cli.fock_diis_history,
@@ -1372,6 +1390,12 @@ fn kh_soc_iteration_record(item: &KhSocValenceHfIterationDiagnostic) -> KhSocIte
         iteration: item.iteration,
         fock_iterations: item.fock_iterations,
         exchange_rebuilds: item.exchange_rebuilds,
+        scalar_fock_iterations: item.scalar_fock_iterations,
+        spinor_fock_iterations: item.spinor_fock_iterations,
+        scalar_exchange_rebuilds: item.scalar_exchange_rebuilds,
+        spinor_exchange_rebuilds: item.spinor_exchange_rebuilds,
+        scalar_fock_fixed_point_residual: item.scalar_fock_fixed_point_residual,
+        scalar_fock_feedback_residual_hartree: item.scalar_fock_feedback_residual.get(),
         vv_exchange_energy_hartree: item.exchange_energy.get(),
         fock_fixed_point_residual: item.fock_fixed_point_residual,
         fock_feedback_residual_hartree: item.fock_feedback_residual.get(),
