@@ -804,6 +804,15 @@ contracts only this CC block against the cached operator. No VC vertices
 or second Coulomb matrix are constructed merely to obtain the initial CC
 energy. VC reconstruction remains confined to the final accepted snapshot.
 
+The fixed spinor VV cache also stores the dense interstitial step-function
+map in raw relative-momentum order. Each orbital update first accumulates
+the two-component Pauli pair amplitudes on that support, then applies the
+map with the TBLIS-backed contraction `pr,ra->pa`. Blocks of 64 selected
+pairs bound the temporary amplitude tensor independently of the full band
+window. This replaces scalar step-table accumulation without changing pair
+ordering, the two Umklapp conventions, or the single cell-volume factor;
+the finite $q$ Pauli/step-function oracle checks those conventions directly.
+
 The public controls are `FrozenCoreHfSpec`; frozen and relaxed paths share
 `CoreValenceHfError` (renamed from `RelaxedCoreHfError`). The Kr example selects
 this route explicitly with `--relativity spinor-frozen`. For this one-loop

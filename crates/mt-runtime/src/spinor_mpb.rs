@@ -6,15 +6,13 @@ use crate::spinor_product::{
 use muffintin_core::{InverseBohr, ReciprocalLattice, RelativisticChannel};
 use muffintin_operators::lapw::SpinorCompiledBasis;
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
-use muffintin_prodbasis::mpb::InterstitialThetaTable;
 use muffintin_prodbasis::mpb::{
     DiracMtSectorTable, DiracProductMode, DiracVertexContext, MpbError, apply_dirac_overlap_cutoff,
     untruncated_dirac_product_space,
 };
 use muffintin_prodbasis::{
     AuxiliaryPartition, CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracRadialId,
-    DiracRawProductSpace, InterstitialPairSpec, OrbitalPair, PairColumnLayout, PairVertex,
-    TransferQ,
+    DiracRawProductSpace, OrbitalPair, PairColumnLayout, PairVertex, TransferQ,
 };
 use muffintin_tensor::{Axis, ComplexTensor, DenseEigenvectors, TensorError, einsum};
 use num_complex::Complex64;
@@ -54,7 +52,7 @@ pub(crate) struct SpinorMpbBasis {
     product_l_max: u32,
     product_g_max: InverseBohr,
     overlap_tolerance: f64,
-    interstitial_table: InterstitialThetaTable,
+    interstitial_theta: ComplexTensor,
     mt_coordinate_tensors: Vec<ComplexTensor>,
 }
 
@@ -177,6 +175,19 @@ pub(crate) fn compile_spinor_mpb_basis(
     )?;
     let context = DiracVertexContext::new(&input.source, &raw, &auxiliary)?;
     let interstitial_table = context.interstitial_table()?;
+    let pair_support = &input.source.interstitial_pair_support.components;
+    let mut theta = Vec::new();
+    for component in pair_support {
+        theta.extend_from_slice(interstitial_table.row(&auxiliary, component.g_relative.index)?);
+    }
+    let interstitial_theta = ComplexTensor::from_host_row_major(
+        &[
+            pair_support.len(),
+            auxiliary.dimension() - auxiliary.mt_dimension(),
+        ],
+        &[Axis::Auxiliary, Axis::Auxiliary],
+        theta,
+    )?;
     let known_pp = raw_mt_pairs(&raw, DiracChargeSector::LargeLarge);
     let known_qq = raw_mt_pairs(&raw, DiracChargeSector::SmallSmall);
     let mut table = context.sector_table();
@@ -191,7 +202,7 @@ pub(crate) fn compile_spinor_mpb_basis(
         product_l_max: spec.product_l_max,
         product_g_max: spec.product_g_max,
         overlap_tolerance: spec.overlap_tolerance,
-        interstitial_table,
+        interstitial_theta,
         mt_coordinate_tensors,
     })
 }
@@ -244,19 +255,25 @@ pub(crate) fn build_spinor_mpb_from_basis(
         &projected_by_k,
         &basis.mt_coordinate_tensors,
     )?;
+    let interstitial_vertices = contract_interstitial_selections(
+        input,
+        spec,
+        &relative_g_by_index,
+        &basis.interstitial_theta,
+    )?;
     let vertices = spec
         .selections
         .par_iter()
         .zip(muffin_tin_vertices.par_iter())
-        .map(|(selection, muffin_tin)| {
+        .zip(interstitial_vertices.par_iter())
+        .map(|((selection, muffin_tin), interstitial)| {
             contract_selection(
                 input,
                 &raw,
                 &auxiliary,
                 context,
-                &relative_g_by_index,
-                &basis.interstitial_table,
                 muffin_tin,
+                interstitial,
                 *selection,
             )
         })
@@ -318,9 +335,8 @@ fn contract_selection(
     raw: &DiracRawProductSpace,
     auxiliary: &CompiledAuxiliaryBasis,
     context: DiracVertexContext<'_>,
-    relative_g_by_index: &HashMap<[i32; 3], (usize, muffintin_core::GVector)>,
-    interstitial_table: &InterstitialThetaTable,
     muffin_tin: &[Complex64],
+    interstitial: &[Complex64],
     selection: SpinorMpbSelection,
 ) -> Result<SpinorMpbPairVertex, SpinorMpbError> {
     if auxiliary.q != input.source.q || raw.q != input.source.q {
@@ -329,42 +345,20 @@ fn contract_selection(
     if auxiliary.partition != input.source.partition || raw.partition != input.source.partition {
         return Err(MpbError::PartitionMismatch.into());
     }
-    let mapped = input
-        .k_minus_q
-        .iter()
-        .copied()
-        .find(|mapped| mapped.k_index == selection.k)
-        .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
-    let pair = BandPair {
-        left_band: selection.left_band,
-        right_band: selection.right_band,
-        left_basis: &input.orbitals.bases[mapped.kq_index],
-        right_basis: &input.orbitals.bases[mapped.k_index],
-        left_ev: &input.orbitals.eigenvectors[mapped.kq_index],
-        right_ev: &input.orbitals.eigenvectors[mapped.k_index],
-        wrap: mapped.umklapp,
-    };
-    if pair.left_ev.rows() != pair.left_basis.layout.dimension()
-        || pair.right_ev.rows() != pair.right_basis.layout.dimension()
-        || pair.left_ev.columns() != input.orbitals.band_window.count
-        || pair.right_ev.columns() != input.orbitals.band_window.count
-    {
-        return Err(SpinorMpbError::IncompatiblePairLayout);
-    }
     let bloch = OrbitalPair::Bloch {
         k_index: selection.k,
         left: selection.left_band,
         right: selection.right_band,
     };
     let mut acc = context.bloch_accumulator(bloch)?;
-    acc.add_auxiliary_coefficients(muffin_tin)?;
-    add_interstitial_terms(
-        &mut acc,
-        input,
-        relative_g_by_index,
-        interstitial_table,
-        &pair,
-    )?;
+    let mut coefficients = muffin_tin.to_vec();
+    for (target, value) in coefficients[auxiliary.mt_dimension()..]
+        .iter_mut()
+        .zip(interstitial)
+    {
+        *target += value;
+    }
+    acc.add_auxiliary_coefficients(&coefficients)?;
     let vertex = acc.finish()?;
     if vertex.pair() != bloch {
         return Err(SpinorMpbError::IncompatiblePairLayout);
@@ -583,13 +577,74 @@ fn select_site_bands(
     )?)
 }
 
-fn add_interstitial_terms(
-    acc: &mut muffintin_prodbasis::mpb::DiracBlochVertexAccumulator<'_>,
+fn contract_interstitial_selections(
+    input: &SpinorProductInput,
+    spec: &SpinorMpbSpec,
+    relative_g_by_index: &HashMap<[i32; 3], (usize, muffintin_core::GVector)>,
+    theta: &ComplexTensor,
+) -> Result<Vec<Vec<Complex64>>, SpinorMpbError> {
+    let n_raw = relative_g_by_index.len();
+    let n_pw = theta.shape()[1];
+    if n_raw == 0 || n_pw == 0 {
+        return Ok(vec![
+            vec![Complex64::default(); n_pw];
+            spec.selections.len()
+        ]);
+    }
+    // Bound temporary raw-pair amplitudes independently of the full band window.
+    let blocks = spec
+        .selections
+        .par_chunks(64)
+        .map(|selections| {
+            let mut amplitudes = Vec::with_capacity(selections.len() * n_raw);
+            for &selection in selections {
+                amplitudes.extend(interstitial_amplitudes(
+                    input,
+                    relative_g_by_index,
+                    selection,
+                )?);
+            }
+            let amplitudes = ComplexTensor::from_host_row_major(
+                &[selections.len(), n_raw],
+                &[Axis::PairColumn, Axis::Auxiliary],
+                amplitudes,
+            )?;
+            let contracted = einsum("pr,ra->pa", &[&amplitudes, theta])?.to_host_row_major();
+            Ok(contracted
+                .chunks_exact(n_pw)
+                .map(<[Complex64]>::to_vec)
+                .collect::<Vec<_>>())
+        })
+        .collect::<Result<Vec<_>, SpinorMpbError>>()?;
+    Ok(blocks.into_iter().flatten().collect())
+}
+
+fn interstitial_amplitudes(
     input: &SpinorProductInput,
     relative_g_by_index: &HashMap<[i32; 3], (usize, muffintin_core::GVector)>,
-    interstitial_table: &InterstitialThetaTable,
-    pair: &BandPair<'_>,
-) -> Result<(), SpinorMpbError> {
+    selection: SpinorMpbSelection,
+) -> Result<Vec<Complex64>, SpinorMpbError> {
+    let mapped = input
+        .k_minus_q
+        .iter()
+        .find(|mapped| mapped.k_index == selection.k)
+        .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
+    let pair = BandPair {
+        left_band: selection.left_band,
+        right_band: selection.right_band,
+        left_basis: &input.orbitals.bases[mapped.kq_index],
+        right_basis: &input.orbitals.bases[mapped.k_index],
+        left_ev: &input.orbitals.eigenvectors[mapped.kq_index],
+        right_ev: &input.orbitals.eigenvectors[mapped.k_index],
+        wrap: mapped.umklapp,
+    };
+    if pair.left_ev.rows() != pair.left_basis.layout.dimension()
+        || pair.right_ev.rows() != pair.right_basis.layout.dimension()
+        || pair.left_ev.columns() != input.orbitals.band_window.count
+        || pair.right_ev.columns() != input.orbitals.band_window.count
+    {
+        return Err(SpinorMpbError::IncompatiblePairLayout);
+    }
     let volume = input.source.partition.interstitial().cell_volume().get();
     let wrap = pair.wrap.index;
     let mut amplitudes = vec![Complex64::default(); relative_g_by_index.len()];
@@ -622,22 +677,7 @@ fn add_interstitial_terms(
             amplitudes[position] += amplitude;
         }
     }
-    for (component, amplitude) in input
-        .source
-        .interstitial_pair_support
-        .components
-        .iter()
-        .zip(amplitudes)
-    {
-        acc.add_interstitial_from_table(
-            interstitial_table,
-            InterstitialPairSpec {
-                g_relative: component.g_relative,
-                amplitude,
-            },
-        )?;
-    }
-    Ok(())
+    Ok(amplitudes)
 }
 
 fn site_channels(
