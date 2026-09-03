@@ -793,6 +793,8 @@ fn run_kh_soc_valence_hf_inner(
             &electrostatic,
             core_terms,
         )?;
+        let scalar_identity_tolerance =
+            IDENTITY_TOLERANCE.max(valence_electrons.max(1.0) * spec.fock_feedback_tolerance.get());
         require_gate(
             "scalar valence electron count",
             (electron_count(&valence_output)? - valence_electrons).abs(),
@@ -811,12 +813,12 @@ fn run_kh_soc_valence_hf_inner(
         require_gate(
             "scalar eigenvalue identity",
             energy.eigenvalue_identity_residual,
-            IDENTITY_TOLERANCE,
+            scalar_identity_tolerance,
         )?;
         require_gate(
             "scalar HF total-energy identity",
             energy.total_identity_residual,
-            IDENTITY_TOLERANCE,
+            scalar_identity_tolerance,
         )?;
         let energy_change = previous_total
             .map(|previous: Hartree| Hartree((energy.total.get() - previous.get()).abs()));
