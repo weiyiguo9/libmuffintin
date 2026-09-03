@@ -23,7 +23,7 @@ pub enum CoulombError {
     Angular(#[from] LmError),
     #[error(transparent)]
     Tensor(#[from] TensorError),
-    #[error("Weinert LEXP must be finite and at most 12, got {0}")]
+    #[error("Weinert angular cutoff must be at most {max}, got {0}", max = crate::MAX_LEXP)]
     InvalidLexp(u32),
     #[error("interpolation-point Coulomb assembly requires sampled zeta functions")]
     MissingSampledFunctions,

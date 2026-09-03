@@ -17,7 +17,7 @@ use muffintin::{
 use muffintin_core::{
     AngularGrid, Bohr, ExponentialMesh, Hartree, InverseBohr, SpinProjection, lm_count,
 };
-use muffintin_coulomb::CoulombRequest;
+use muffintin_coulomb::{CoulombRequest, DEFAULT_LEXP, MAX_LEXP};
 use muffintin_dft::{
     AtomicChannelTreatment, AtomicNumber, CheckpointKPointSolution, CoreFixedPotentialSpec,
     CoreShellOccupations, FirstVariationWindow, LinearizationEnergyGenerator, NoncollinearXcRoute,
@@ -298,7 +298,7 @@ impl Default for Cli {
             orbital_l_max: 1,
             product_g: 1.0,
             product_l_max: 2,
-            lexp: 2,
+            lexp: DEFAULT_LEXP,
             exchange_coulomb: ExchangeCoulombSelection::PeriodicFiniteBody,
             fock_fourier_g: 4.5,
             fock_smoothing_omega: None,
@@ -526,10 +526,10 @@ impl Cli {
                 "--fock-diis-damping must be finite and in [0, 1)",
             ));
         }
-        if self.product_l_max > self.lexp || self.lexp > 12 {
-            return Err(invalid_input(
-                "angular cutoffs must satisfy --product-lmax <= --lexp <= 12",
-            ));
+        if self.product_l_max > self.lexp || self.lexp > MAX_LEXP {
+            return Err(invalid_input(format!(
+                "angular cutoffs must satisfy --product-lmax <= --lexp <= {MAX_LEXP}",
+            )));
         }
         match (self.relativity, self.fock_mixing) {
             (

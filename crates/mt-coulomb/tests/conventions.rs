@@ -224,12 +224,13 @@ fn structure_constant_l1_matches_brute_force_at_finite_q() {
 }
 
 #[test]
-fn lexp_above_12_is_rejected_and_default_is_four() {
-    assert_eq!(DEFAULT_LEXP, 4);
-    let error = CoulombRequest::cubic(common::LATTICE, 13).unwrap_err();
-    assert!(matches!(error, CoulombError::InvalidLexp(13)));
-    let ok = CoulombRequest::cubic(common::LATTICE, 12).unwrap();
-    assert_eq!(ok.lexp(), 12);
+fn lexp_supports_spex_default_and_rejects_above_numeric_limit() {
+    assert_eq!(DEFAULT_LEXP, 14);
+    let limit = muffintin_coulomb::MAX_LEXP;
+    let error = CoulombRequest::cubic(common::LATTICE, limit + 1).unwrap_err();
+    assert!(matches!(error, CoulombError::InvalidLexp(value) if value == limit + 1));
+    let ok = CoulombRequest::cubic(common::LATTICE, limit).unwrap();
+    assert_eq!(ok.lexp(), limit);
 }
 
 #[test]
@@ -257,8 +258,8 @@ fn structure_constant_l8_matches_brute_force() {
 }
 
 #[test]
-fn structure_constant_l12_matches_brute_force_at_lexp_six() {
-    let request = CoulombRequest::cubic(common::LATTICE, 6).unwrap();
+fn structure_constant_l28_matches_brute_force_at_spex_default() {
+    let request = CoulombRequest::cubic(common::LATTICE, DEFAULT_LEXP).unwrap();
     let q = TransferQ::from_cartesian([
         InverseBohr(2.0 * PI / common::LATTICE),
         InverseBohr(0.0),
@@ -266,17 +267,24 @@ fn structure_constant_l12_matches_brute_force_at_lexp_six() {
     ])
     .unwrap();
     let partition = common::partition();
-    let spex = structure_constants(request.cell(), request.reciprocal(), &partition, q, 6).unwrap();
-    let assembled = spex.get(0, 0, 12, 0).unwrap();
+    let spex = structure_constants(
+        request.cell(),
+        request.reciprocal(),
+        &partition,
+        q,
+        DEFAULT_LEXP,
+    )
+    .unwrap();
+    let assembled = spex.get(0, 0, 28, 0).unwrap();
     let independent =
-        brute_force_structure_constant(request.cell(), q, [0.0; 3], 12, 0, 10).unwrap();
+        brute_force_structure_constant(request.cell(), q, [0.0; 3], 28, 0, 4).unwrap();
     assert!(
-        independent.norm() > 1.0e-12,
-        "L=12 brute-force structure constant vanished"
+        independent.norm() > 1.0e-30,
+        "L=28 brute-force structure constant vanished"
     );
     assert!(
         (assembled - independent).norm() < 5.0e-2 * independent.norm(),
-        "SPEX L=12 {assembled} brute {independent}"
+        "SPEX L=28 {assembled} brute {independent}"
     );
 }
 

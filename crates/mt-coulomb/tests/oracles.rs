@@ -721,7 +721,7 @@ fn one_sphere_pw_pw_matches_step_function_identity_and_idum_reset() {
     let q = common::transfer_q([0.5, 0.0, 0.0]);
     let auxiliary = one_sphere_pw_auxiliary(q, &[[0, 0, 0], [1, 0, 0], [0, 1, 0]]);
     auxiliary.validate().unwrap();
-    let request = CoulombRequest::cubic(common::LATTICE, 2).unwrap();
+    let request = CoulombRequest::cubic(common::LATTICE, muffintin_coulomb::DEFAULT_LEXP).unwrap();
     let operator = assemble_coulomb(&auxiliary, &request).unwrap();
     let payload = auxiliary.mixed_product().unwrap();
     let (structure, sfac) = structure_and_sfac(&request, &auxiliary);

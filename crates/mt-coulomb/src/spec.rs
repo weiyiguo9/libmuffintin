@@ -4,8 +4,12 @@ use crate::CoulombError;
 use muffintin_core::Cell;
 use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice};
 
-/// Default SPEX-style Weinert expansion cutoff used by the toy assembler.
-pub const DEFAULT_LEXP: u32 = 4;
+/// SPEX default floor; production callers also require at least twice the MPB L cutoff.
+pub const DEFAULT_LEXP: u32 = 14;
+
+/// Supported Rayleigh cutoff; structure harmonics extend through twice this value.
+/// At this bound the harmonic normalization and `gmat` factorial products fit in f64.
+pub const MAX_LEXP: u32 = 32;
 
 /// Projection cutoffs used when expanding sampled $\zeta$ (or the toy
 /// point-charge oracle) into the Weinert charge expansion.
@@ -46,7 +50,7 @@ impl InterpolationProjection {
         if !pw_cutoff.get().is_finite() || pw_cutoff.get() < 0.0 {
             return Err(CoulombError::InvalidPwCutoff(pw_cutoff.get()));
         }
-        if l_max > 12 {
+        if l_max > MAX_LEXP {
             return Err(CoulombError::InvalidLexp(l_max));
         }
         Ok(Self { pw_cutoff, l_max })
@@ -73,7 +77,7 @@ impl CoulombRequest {
     /// Build from a validated direct cell. Reciprocal vectors follow
     /// $a_i\cdot b_j = 2\pi\delta_{ij}$.
     pub fn new(cell: Cell, lexp: u32) -> Result<Self, CoulombError> {
-        if lexp > 12 {
+        if lexp > MAX_LEXP {
             return Err(CoulombError::InvalidLexp(lexp));
         }
         let reciprocal = ReciprocalLattice::from_direct(*cell.basis())?;
@@ -86,7 +90,7 @@ impl CoulombRequest {
         })
     }
 
-    /// Cubic cell of side `lattice` Bohr and the default `LEXP`.
+    /// Cubic cell of side `lattice` Bohr and an explicit `LEXP`.
     pub fn cubic(lattice: f64, lexp: u32) -> Result<Self, CoulombError> {
         let cell = Cell::new([
             [

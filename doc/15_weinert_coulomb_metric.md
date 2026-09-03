@@ -47,8 +47,8 @@ default remains `allq_l2`.
 ## 3. Public types
 
 `CoulombRequest` owns a validated direct `Cell`, the matching reciprocal
-lattice from $a_i\cdot b_j=2\pi\delta_{ij}$, Weinert `LEXP` (default 4,
-hard cap 12), and an optional `InterpolationProjection` (`pw_cutoff`,
+lattice from $a_i\cdot b_j=2\pi\delta_{ij}$, explicit Weinert `LEXP`
+(`DEFAULT_LEXP=14`, supported through `MAX_LEXP=32`), and an optional `InterpolationProjection` (`pw_cutoff`,
 $l_{\max}$). Volume equality is not enough: mixed-product $G$ labels are
 checked against `request.reciprocal()` (index, Cartesian, norm, and
 $q+G$). A same-volume skew cell is `WaveLatticeMismatch`. The assembled
@@ -200,13 +200,36 @@ $L=5,6,7$ use `HLP9` through $a/10$, $a/12$, $a/13$; $L\ge 8$ is
 $a^{-(L+1)}$ in real space only (reciprocal $g_L$ stops at $L=7$).
 The high $L$ real-space cutoff uses SPEX `CONVPARAM2` (`CONVTYPE=2`):
 $(1/\mathrm{CONVPARAM2})^{1/7}\times\mathrm{latcon}$, so advertised
-`LEXP`$\le 12$ ($2L_{\mathrm{exp}}\le 24$) is supported. `LEXP`$>12$ is
-rejected. The $L=0$ on-site constant $-5/16\sqrt{4\pi}$ is applied before
+`LEXP` through 32 ($2L_{\mathrm{exp}}\le 64$) is supported. This numeric
+bound keeps the spherical-harmonic normalization and `gmat` factorial
+products within double precision; it is not a convergence criterion.
+The $L=0$ on-site constant $-5/16\sqrt{4\pi}$ is applied before
 the final $\mathrm{scale}^{L+1}$. Cartesian $q$ is used ($e^{i q\cdot T}$,
 not crystal $2\pi k\cdot n$).
 
 Independent oracle for $L\ge 1$: brute-force real-space sum of
-$Y_{LM}^*/R^{L+1}$ (including $L=8$ and $L=12$).
+$Y_{LM}^*/R^{L+1}$ (including $L=8$ and $L=28$).
+
+SPEX `getinput.f` chooses `max(14,2*maxlcutm)` and requires at least
+`2*maxlcutm`. Production MPB callers should start from that choice and
+converge `LEXP` independently, particularly when the plane-wave cutoff
+times the MT radius grows. The explicit low-order requests remain usable
+for diagnostic fixtures; the assembler does not silently raise them.
+The Kr HF example defaults to 14, while explicit `--lexp` still records
+the requested diagnostic value.
+
+A standalone finite $q$ diagnostic uses seven IPWs through 6 inverse bohr,
+an 8 bohr cubic cell, and one radius-2 sphere at $(0.3,0.2,0.1)$ bohr.
+The independent reference sums analytic step-function Fourier coefficients
+with $4\pi/|q+G|^2$, without the Weinert angular expansion. At reference
+cutoff 48 inverse bohr, the maximum matrix-element differences for
+`LEXP=6,12,14,18,22` are respectively $1.11\times10^{-2}$,
+$3.88\times10^{-5}$, $1.19\times10^{-6}$, $1.20\times10^{-6}$, and
+$1.20\times10^{-6}$. The reference itself changes by $8.90\times10^{-6}$
+between cutoffs 24 and 48; the Weinert matrix changes by only
+$2.30\times10^{-10}$ between `LEXP=18` and 22. The last discrepancy is
+therefore not a demonstrated angular-error floor. This seven-function
+comparison is not convergence of the production Kr auxiliary space.
 
 ### MT-PW (`coulombmatrix.f:438-545`)
 
@@ -465,6 +488,6 @@ elementwise $V^{\mathrm{MPB}}=V^{\mathrm{THC}}$.
   no MPI/CTF, no HDF5 export.
 - Toy k-point THC Coulomb ranking still uses injected Grams. Production $V^q$ for
   interpolation points requires sampled $\zeta$, not the node list.
-- `LEXP` is capped at 12 in this crate. Default toy `LEXP` is 4.
-  `LEXP`$>12$ is rejected.
+- `LEXP` is capped at 32; the default floor is 14. Neither that floor nor
+  accepting a request establishes angular convergence of the Coulomb matrix.
 - Workspace `rust-version` remains 1.89. Optional tenferro remains 1.96.
