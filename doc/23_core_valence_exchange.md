@@ -554,6 +554,11 @@ H_{\mathrm{act}} = T^\dagger H_{\mathrm{aug}} T,\qquad
 S_{\mathrm{act}} = T^\dagger S_{\mathrm{aug}} T.
 ```
 
+Before the numerical congruences, a thin QR of $T$ replaces it by an
+orthonormal coordinate map spanning exactly the same allowed space. No core
+constraint or active column is discarded in this step; the usual physical
+overlap filtering follows in that space.
+
 The additional LO amplitudes are constrained coordinates, not additional
 active orbitals. Their vanishing value and slope preserve the APW boundary
 conditions. The driver retains the expanded physical coefficients $C=TZ$ for

@@ -232,9 +232,26 @@ pub fn solve_generalized_hermitian_embedded(
         }
     }
     let dimension = embedding.shape()[1];
+    // The columns can have very different scales after eliminating tightly
+    // localized core coordinates. Thin QR changes coordinates, not the allowed
+    // space or its dimension, before the physical overlap filter is applied.
+    let rows = embedding.shape()[0];
+    let qr = faer::Mat::from_fn(rows, dimension, |i, j| embedding.at(&[i, j])).qr();
+    let q = qr.compute_thin_Q();
+    let embedding = ComplexTensor::from_host_row_major(
+        &[rows, dimension],
+        &[Axis::GlobalBasis, Axis::Reduced],
+        (0..rows)
+            .flat_map(|i| (0..dimension).map(move |j| (i, j)))
+            .map(|(i, j)| q[(i, j)])
+            .collect(),
+    )?;
     let conjugate = embedding.conjugate();
     let reduce = |matrix: &DenseHermitianMatrix| -> Result<DenseHermitianMatrix, OperatorError> {
-        let projected = einsum("ia,ij,jb->ab", &[&conjugate, matrix.as_tensor(), embedding])?;
+        let projected = einsum(
+            "ia,ij,jb->ab",
+            &[&conjugate, matrix.as_tensor(), &embedding],
+        )?;
         Ok(DenseHermitianMatrix::from_host_row_major(
             dimension,
             Axis::GlobalBasis,
@@ -252,7 +269,7 @@ pub fn solve_generalized_hermitian_embedded(
         solved.eigenvectors.as_tensor().to_host_row_major(),
     )?;
     solved.eigenvectors =
-        DenseEigenvectors::from_tensor(einsum("ia,ab->ib", &[embedding, &coefficients])?)?;
+        DenseEigenvectors::from_tensor(einsum("ia,ab->ib", &[&embedding, &coefficients])?)?;
     Ok(solved)
 }
 
