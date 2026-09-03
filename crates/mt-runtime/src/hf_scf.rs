@@ -3341,21 +3341,80 @@ fn feedback_pulay_coefficients(
     history: &[FeedbackMixRecord],
 ) -> Result<Option<Vec<f64>>, GammaValenceHfError> {
     let number = history.len();
-    let dimension = number + 1;
-    let mut constrained = vec![vec![0.0; dimension]; dimension];
+    if number == 0 {
+        return Ok(None);
+    }
+    let mut gram = vec![vec![0.0; number]; number];
     for row in 0..number {
         for column in 0..=row {
             let value = feedback_error_inner_product(&history[row].error, &history[column].error)?;
-            constrained[row][column] = value;
-            constrained[column][row] = value;
+            gram[row][column] = value;
+            gram[column][row] = value;
         }
-        constrained[row][number] = 1.0;
-        constrained[number][row] = 1.0;
     }
-    let mut right = vec![0.0; dimension];
-    right[number] = 1.0;
-    Ok(solve_feedback_pseudoinverse(constrained, right)?
-        .map(|solution| solution[..number].to_vec()))
+    let eigen = solve_real_symmetric(number, |row, column| gram[row][column])?;
+    let scale = eigen
+        .eigenvalues
+        .iter()
+        .map(|value| value.abs())
+        .fold(0.0, f64::max);
+    if scale == 0.0 {
+        return Ok(Some(vec![1.0 / number as f64; number]));
+    }
+    let tolerance = DIIS_LINEAR_DEPENDENCE_TOLERANCE.max(1.0e-12 * scale);
+    if eigen.eigenvalues.iter().any(|&value| value < -tolerance) {
+        return Err(GammaValenceHfError::FockMixingAlgebra);
+    }
+
+    let mut null_projection = vec![0.0; number];
+    for column in 0..number {
+        if eigen.eigenvalues[column] > tolerance {
+            continue;
+        }
+        let overlap = (0..number)
+            .map(|row| eigen.eigenvectors[row + column * number])
+            .sum::<f64>();
+        for (row, value) in null_projection.iter_mut().enumerate() {
+            *value += eigen.eigenvectors[row + column * number] * overlap;
+        }
+    }
+    let null_constraint = null_projection.iter().sum::<f64>();
+    if null_constraint > tolerance {
+        return Ok(Some(
+            null_projection
+                .into_iter()
+                .map(|value| value / null_constraint)
+                .collect(),
+        ));
+    }
+
+    let mut inverse_ones = vec![0.0; number];
+    for column in 0..number {
+        let eigenvalue = eigen.eigenvalues[column];
+        if eigenvalue <= tolerance {
+            continue;
+        }
+        let overlap = (0..number)
+            .map(|row| eigen.eigenvectors[row + column * number])
+            .sum::<f64>()
+            / eigenvalue;
+        for (row, value) in inverse_ones.iter_mut().enumerate() {
+            *value += eigen.eigenvectors[row + column * number] * overlap;
+        }
+    }
+    let constraint = inverse_ones.iter().sum::<f64>();
+    if !constraint.is_finite() || constraint.abs() <= f64::EPSILON {
+        return Ok(None);
+    }
+    let coefficients = inverse_ones
+        .into_iter()
+        .map(|value| value / constraint)
+        .collect::<Vec<_>>();
+    if coefficients.iter().all(|value| value.is_finite()) {
+        Ok(Some(coefficients))
+    } else {
+        Err(GammaValenceHfError::FockMixingAlgebra)
+    }
 }
 
 fn feedback_error_inner_product(
@@ -3399,45 +3458,6 @@ fn combine_feedback_records(
         )?);
     }
     Ok(mixed)
-}
-
-fn solve_feedback_pseudoinverse(
-    matrix: Vec<Vec<f64>>,
-    right: Vec<f64>,
-) -> Result<Option<Vec<f64>>, GammaValenceHfError> {
-    let dimension = right.len();
-    if dimension == 0
-        || matrix.len() != dimension
-        || matrix.iter().any(|row| row.len() != dimension)
-        || matrix.iter().flatten().any(|value| !value.is_finite())
-        || right.iter().any(|value| !value.is_finite())
-    {
-        return Err(GammaValenceHfError::FockMixingAlgebra);
-    }
-    let eigen = solve_real_symmetric(dimension, |row, column| matrix[row][column])?;
-    let mut solution = vec![0.0; dimension];
-    let mut retained = 0;
-    for column in 0..dimension {
-        let eigenvalue = eigen.eigenvalues[column];
-        if eigenvalue.abs() <= DIIS_LINEAR_DEPENDENCE_TOLERANCE {
-            continue;
-        }
-        retained += 1;
-        let projection = (0..dimension)
-            .map(|row| eigen.eigenvectors[row + column * dimension] * right[row])
-            .sum::<f64>()
-            / eigenvalue;
-        for (row, value) in solution.iter_mut().enumerate() {
-            *value += eigen.eigenvectors[row + column * dimension] * projection;
-        }
-    }
-    if retained == 0 {
-        Ok(None)
-    } else if solution.iter().all(|value| value.is_finite()) {
-        Ok(Some(solution))
-    } else {
-        Err(GammaValenceHfError::FockMixingAlgebra)
-    }
 }
 
 fn global_feedback_difference(
@@ -4398,6 +4418,26 @@ mod tests {
         let coefficients = feedback_pulay_coefficients(&history).unwrap().unwrap();
 
         assert_eq!(coefficients.len(), 2);
+        assert!((coefficients.iter().sum::<f64>() - 1.0).abs() < 1.0e-12);
+        assert!((coefficients[0] - 0.5).abs() < 1.0e-12);
+        assert!((coefficients[1] - 0.5).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn diis_uses_feasible_error_nullspace() {
+        let history = vec![
+            FeedbackMixRecord {
+                candidate: Vec::new(),
+                error: vec![Complex64::new(1.0, 0.0)],
+            },
+            FeedbackMixRecord {
+                candidate: Vec::new(),
+                error: vec![Complex64::new(-1.0, 0.0)],
+            },
+        ];
+
+        let coefficients = feedback_pulay_coefficients(&history).unwrap().unwrap();
+
         assert!((coefficients.iter().sum::<f64>() - 1.0).abs() < 1.0e-12);
         assert!((coefficients[0] - 0.5).abs() < 1.0e-12);
         assert!((coefficients[1] - 0.5).abs() < 1.0e-12);
