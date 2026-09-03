@@ -110,6 +110,12 @@ cargo test -p libmuffintin-hf
 The workspace MSRV is Rust 1.89, set by `libmuffintin-symmetry`'s moyo
 dependency (which pins `nalgebra` 0.35).
 `libmuffintin-tensor` links TBLIS through `tblis-src`.
+Tensor storage shares one lazily initialized RSTSR device and its Rayon pool;
+allocating an array does not create another worker pool. Configure the Rayon
+thread budget before the first tensor allocation, for example with
+`RAYON_NUM_THREADS`. RSTSR sets TBLIS's thread count for each contraction from
+that device, so `TBLIS_NUM_THREADS` alone does not override this budget.
+
 By default, `tblis-src` builds TBLIS from source; first builds need a TBLIS git
 tree, supplied with `TBLIS_SRC` as a clone with submodules or as
 `https://github.com/MatthewsResearchGroup/tblis.git`. To use an existing

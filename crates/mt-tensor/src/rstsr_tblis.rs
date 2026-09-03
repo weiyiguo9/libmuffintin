@@ -2,6 +2,8 @@
 
 extern crate tblis_src;
 
+use std::sync::LazyLock;
+
 use crate::{
     Axis, ComplexTensor, MemoryLayout, TensorError,
     backend::{EinsumBackend, infer_output_axes},
@@ -12,6 +14,10 @@ use rstsr::prelude::*;
 pub struct RstsrTblisBackend;
 
 type RstsrTensor = Tensor<Complex64, DeviceFaer>;
+
+// DeviceFaer::default builds a Rayon pool. Tensor storage must share that pool,
+// not create and retain a fresh set of workers for every imported array.
+static DEVICE: LazyLock<DeviceFaer> = LazyLock::new(DeviceFaer::default);
 
 impl EinsumBackend for RstsrTblisBackend {
     fn name() -> &'static str {
@@ -26,7 +32,7 @@ impl EinsumBackend for RstsrTblisBackend {
 }
 
 pub fn device() -> DeviceFaer {
-    DeviceFaer::default()
+    DEVICE.clone()
 }
 
 pub fn asarray_row_major(
