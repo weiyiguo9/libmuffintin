@@ -437,6 +437,25 @@ The internal charge expansion retains the MPB mode identity for these lookups;
 sampled functions use their own radial samples directly. No norm-shell
 rounding, angular screening, or change of quadrature is introduced.
 
+### 6.4 Onsite PW shell reuse
+
+The spherical-harmonic addition theorem removes the onsite magnetic sum:
+
+```math
+\sum_m Y_{Lm}(\hat Q_1)Y_{Lm}^*(\hat Q_2)
+=\frac{2L+1}{4\pi}P_L(\hat Q_1\cdot\hat Q_2).
+```
+
+Thus the onsite PW block is $(4\pi)^2/\Omega$ times the site-phase-weighted
+sum of `sphbessel_pw_integral(L,Q1,Q2,R)` multiplied by $P_L$.
+The radial integral is cached per site, ordered pair of exact norm shells,
+and $L$; the angular polynomial is evaluated by a Legendre recurrence for
+each PW pair. Zero-wave pairs contribute only through $L=0$. No reciprocal
+shells are merged approximately and no expansion terms are discarded.
+This removes repeated Bessel recurrences and spherical-harmonic allocations
+from the high-`LEXP` matrix-entry loop. The standalone SPEX transcription
+retains its explicit magnetic sum as an independent reconstruction oracle.
+
 ## 7. Pair vertices
 
 `PairVertex` stores `AuxiliaryLayout`, not a raw count split.

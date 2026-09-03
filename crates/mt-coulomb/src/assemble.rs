@@ -38,7 +38,15 @@ struct Prepared<'a> {
     sfac: Vec<f64>,
     is_gamma: bool,
     pw_intersite: Vec<Complex64>,
+    pw_onsite: PwOnsiteRadial,
     mpb_moments: BTreeMap<(usize, u32, usize), MpbRadialMoments>,
+}
+
+struct PwOnsiteRadial {
+    wave_shells: Vec<usize>,
+    shell_count: usize,
+    /// Per site, ordered [left norm shell, right norm shell, L].
+    by_site: Vec<Vec<f64>>,
 }
 
 struct MpbRadialMoments {
@@ -180,6 +188,7 @@ fn assemble_kind(
     )?;
     let sfac = sfac_table((4 * request.lexp() + 4) as usize)?;
     let mpb_moments = prepare_mpb_radial_moments(auxiliary, &support)?;
+    let pw_onsite = prepare_pw_onsite_radial(&support, request.lexp());
     let mut prepared = Prepared {
         request,
         auxiliary,
@@ -189,6 +198,7 @@ fn assemble_kind(
         is_gamma: is_gamma(auxiliary.q.cartesian),
         pw_intersite: Vec::new(),
         mpb_moments,
+        pw_onsite,
     };
     prepared.pw_intersite = pw_pw_intersite_matrix(&prepared)?;
     let n = densities.len();
@@ -893,7 +903,7 @@ fn pw_pw_element(g1: usize, g2: usize, prepared: &Prepared<'_>) -> Result<Comple
         }
     }
     value += prepared.pw_intersite[g1 * prepared.support.waves.len() + g2];
-    value += pw_pw_intrasite(wave1, wave2, prepared)?;
+    value += pw_pw_intrasite(g1, g2, prepared);
     if prepared.is_gamma {
         value += pw_pw_gamma_correction(wave1, wave2, prepared)?;
     }
@@ -957,39 +967,87 @@ fn pw_pw_intersite_matrix(prepared: &Prepared<'_>) -> Result<Vec<Complex64>, Cou
     Ok(einsum("ai,ab,bj->ij", &[&moments.conjugate(), &lattice, &moments])?.to_host_row_major())
 }
 
-fn pw_pw_intrasite(
-    wave1: &AuxiliaryInterstitialWave,
-    wave2: &AuxiliaryInterstitialWave,
-    prepared: &Prepared<'_>,
-) -> Result<Complex64, CoulombError> {
-    let vol = prepared.support.volume;
+fn prepare_pw_onsite_radial(support: &ExpansionSupport, lexp: u32) -> PwOnsiteRadial {
+    let mut indices = BTreeMap::new();
+    let mut norms = Vec::new();
+    let wave_shells = support
+        .waves
+        .iter()
+        .map(|wave| {
+            *indices
+                .entry(wave.q_plus_g_norm.get().to_bits())
+                .or_insert_with(|| {
+                    let index = norms.len();
+                    norms.push(wave.q_plus_g_norm.get());
+                    index
+                })
+        })
+        .collect();
+    let shell_count = norms.len();
+    let n_l = lexp as usize + 1;
+    let by_site = support
+        .sites
+        .iter()
+        .map(|site| {
+            let mut values = vec![0.0; shell_count * shell_count * n_l];
+            values
+                .par_chunks_mut(n_l)
+                .enumerate()
+                .for_each(|(pair, row)| {
+                    for (l, value) in row.iter_mut().enumerate() {
+                        *value = sphbessel_pw_integral(
+                            l as u32,
+                            norms[pair / shell_count],
+                            norms[pair % shell_count],
+                            site.radius.get(),
+                        );
+                    }
+                });
+            values
+        })
+        .collect();
+    PwOnsiteRadial {
+        wave_shells,
+        shell_count,
+        by_site,
+    }
+}
+
+fn pw_pw_intrasite(g1: usize, g2: usize, prepared: &Prepared<'_>) -> Complex64 {
+    let wave1 = &prepared.support.waves[g1];
+    let wave2 = &prepared.support.waves[g2];
     let q1 = wave1.q_plus_g.map(InverseBohr::get);
     let q2 = wave2.q_plus_g.map(InverseBohr::get);
-    let y1 = complex_spherical_harmonics(prepared.request.lexp(), q1);
-    let y2 = complex_spherical_harmonics(prepared.request.lexp(), q2);
+    let norm1 = wave1.q_plus_g_norm.get();
+    let norm2 = wave2.q_plus_g_norm.get();
+    // A zero wave has only L=0 radial weight, so its direction is immaterial.
+    let cosine = if norm1 == 0.0 || norm2 == 0.0 {
+        0.0
+    } else {
+        q1.iter().zip(q2).map(|(a, b)| a * b).sum::<f64>() / (norm1 * norm2)
+    };
     let gdiff: [InverseBohr; 3] = std::array::from_fn(|axis| {
         InverseBohr(wave2.g.cartesian[axis].get() - wave1.g.cartesian[axis].get())
     });
+    let n_l = prepared.request.lexp() as usize + 1;
+    let cached = &prepared.pw_onsite;
+    let start = (cached.wave_shells[g1] * cached.shell_count + cached.wave_shells[g2]) * n_l;
     let mut cdum = Complex64::default();
-    for l in 0..=prepared.request.lexp() {
-        let mut cdum1 = Complex64::default();
-        for site in &prepared.support.sites {
-            let phase = plane_wave_phase(gdiff, site.position);
-            cdum1 += phase
-                * sphbessel_pw_integral(
-                    l,
-                    wave1.q_plus_g_norm.get(),
-                    wave2.q_plus_g_norm.get(),
-                    site.radius.get(),
-                )
-                / (2.0 * f64::from(l) + 1.0);
+    for (site, radial) in prepared.support.sites.iter().zip(&cached.by_site) {
+        let mut previous = 0.0;
+        let mut legendre = 1.0;
+        let mut sum = 0.0;
+        for (l, &integral) in radial[start..start + n_l].iter().enumerate() {
+            sum += integral * legendre;
+            let next =
+                ((2 * l + 1) as f64 * cosine * legendre - l as f64 * previous) / (l + 1) as f64;
+            previous = legendre;
+            legendre = next;
         }
-        for m in -(l as i32)..=l as i32 {
-            let lm = lm_index(l, m)?;
-            cdum += cdum1 * y1[lm] * y2[lm].conj();
-        }
+        cdum += plane_wave_phase(gdiff, site.position) * sum;
     }
-    Ok((4.0 * PI).powi(3) * cdum / vol)
+    // Sum_m Y_Lm(q1) Y_Lm*(q2) = (2L+1) P_L(cos theta) / (4 pi).
+    (4.0 * PI).powi(2) * cdum / prepared.support.volume
 }
 
 fn pw_pw_gamma_correction(
