@@ -837,6 +837,36 @@ to equal the radial/GTO references at this box size. Both runs show that
 ordinary full-spinor Fock CDIIS can converge this fixed SRA space; neither
 proves that changing the kernel alone resolves the spectral discrepancy.
 
+The subsequent dual-space probe at `25659dd` selected the explicitly
+smoothed spherical kernel with $\omega=0.8$ inverse bohr,
+$\eta=3.970243$, and correction cutoff 6 inverse bohr. Before correcting
+the nuclear Fourier representation it converged in nine iterations, with
+CC energy $-90.848073$ Ha, total energy $-2801.459010$ Ha, and
+HOMO-shifted lowest pair $-24.831851$ eV. Recovering the compact-core
+exchange alone therefore did not establish physical acceptance.
+
+At `b932824`, the nuclear potential also uses order-4 Weinert compensation,
+and MPB radial Fourier transforms are shared across magnetic channels and
+exact norm shells. With the other preceding orbital/product settings fixed,
+the completed local probes were:
+
+| Field cutoff (inverse bohr) | Iterations | Time (seconds) | Total energy (Ha) | CC exchange energy (Ha) | Lowest pair relative to HOMO (eV) | Next pair relative to HOMO (eV) |
+|---|---|---|---|---|---|---|
+| 4.5 | 10 | 300.63 | -2786.376859 | -90.846708 | -22.504894 | -0.700553 |
+| 8 | 10 | 357.77 | -2786.406987 | -90.848195 | -22.517664 | -0.699747 |
+
+Both runs removed the virtual shift before acceptance and retained 28 core
+plus 8 valence electrons. At field cutoff 8 the final density residual was
+$2.25\times10^{-8}$, commutator residual $2.54\times10^{-7}$ Ha, and
+active feedback change $1.46\times10^{-6}$ Ha; the CV/VC trace mismatch was
+$2.00\times10^{-15}$ Ha. These timings are individual local observations,
+not a controlled speedup ratio across different Hamiltonians and SCF paths.
+The approximately 4.19 eV lowest-pair discrepancy relative to the stored
+GTO Dirac–Coulomb HF result remains. The orbitals and product basis are not
+production-converged, and the core remains frozen from the LDA checkpoint,
+unlike the relaxed GTO reference. Neither the absolute total energy nor the
+relative spectrum is accepted as the requested all-electron benchmark.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
