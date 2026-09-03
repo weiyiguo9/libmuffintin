@@ -1254,26 +1254,33 @@ fn pauli_density_matrices(
             actual: down.shape(),
         }));
     }
-    let weighted_up = einsum("ib,b->ib", &[up, state_weights])?;
-    let weighted_down = einsum("ib,b->ib", &[down, state_weights])?;
-    let uu = einsum("ib,jb->ij", &[&up.conjugate(), &weighted_up])?;
-    let ud = einsum("ib,jb->ij", &[&up.conjugate(), &weighted_down])?;
-    let du = einsum("ib,jb->ij", &[&down.conjugate(), &weighted_up])?;
-    let dd = einsum("ib,jb->ij", &[&down.conjugate(), &weighted_down])?;
-    let uu = uu.to_host_row_major();
-    let ud = ud.to_host_row_major();
-    let du = du.to_host_row_major();
-    let dd = dd.to_host_row_major();
     let shape = up.shape()[0];
+    let doubled = 2 * shape;
+    let mut coefficients = up.to_host_row_major();
+    coefficients.extend(down.to_host_row_major());
+    let spinor =
+        ComplexTensor::from_host_row_major(&[doubled, up.shape()[1]], up.axes(), coefficients)?;
+    // One Gram contraction forms all four Pauli spin blocks. This avoids four
+    // separate small GEMMs and their native parallel synchronization overhead.
+    let weighted = einsum("ib,b->ib", &[&spinor, state_weights])?;
+    let gram = einsum("ib,jb->ij", &[&spinor.conjugate(), &weighted])?.to_host_row_major();
     let axes = [up.axes()[0], up.axes()[0]];
     let build = |component: usize| {
         let values = (0..shape * shape)
-            .map(|index| match component {
-                0 => uu[index] + dd[index],
-                1 => ud[index] + du[index],
-                2 => Complex64::new(0.0, -1.0) * ud[index] + Complex64::new(0.0, 1.0) * du[index],
-                3 => uu[index] - dd[index],
-                _ => unreachable!(),
+            .map(|index| {
+                let row = index / shape;
+                let column = index % shape;
+                let uu = gram[row * doubled + column];
+                let ud = gram[row * doubled + shape + column];
+                let du = gram[(shape + row) * doubled + column];
+                let dd = gram[(shape + row) * doubled + shape + column];
+                match component {
+                    0 => uu + dd,
+                    1 => ud + du,
+                    2 => Complex64::new(0.0, -1.0) * ud + Complex64::new(0.0, 1.0) * du,
+                    3 => uu - dd,
+                    _ => unreachable!(),
+                }
             })
             .collect();
         ComplexTensor::from_host_row_major(&[shape, shape], &axes, values)
