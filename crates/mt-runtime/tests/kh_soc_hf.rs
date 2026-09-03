@@ -52,6 +52,7 @@ fn gamma_scalar_hf_then_soc_preserves_closed_shell_density_and_exchange() {
             startup_steps: 0,
             damping: 0.0,
         },
+        spinor_virtual_level_shift: Hartree(0.0),
         core_treatment: KhSocCoreTreatment::ValenceOnly,
     };
 
@@ -152,6 +153,7 @@ fn frozen_core_enters_scalar_fock_soc_and_total_density_without_expanding_vv() {
             alpha: 0.5,
             history: 4,
         },
+        spinor_virtual_level_shift: Hartree(0.2),
         core_treatment: KhSocCoreTreatment::Frozen,
     };
 

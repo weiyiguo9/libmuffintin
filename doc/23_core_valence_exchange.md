@@ -525,6 +525,22 @@ completed outer steps even if a later inner solve fails. An output failure is
 propagated rather than silently disabling diagnostics. This history does not
 serialize the frozen-core sidecar or Pulay history and is not an exact restart.
 
+The optional `spinor_virtual_level_shift` changes only the update Hamiltonian:
+
+```math
+F_{\mathrm{update}} = F_{\mathrm{mixed}} + \Delta\,C\,\mathrm{diag}(1-f_i)\,C^\dagger.
+```
+
+Here $C$ is the current unitary spinor mixing in the fixed scalar-band frame.
+At integer occupation the added term is the virtual projector; fractional
+occupation retains the explicit vacancy weights. The density fixed-point
+residual is evaluated by diagonalizing the fresh, unmixed, unshifted Fock
+matrix, not the damped or shifted update. Once its gates pass, the shift is
+removed and exchange is rebuilt in the unshifted canonical frame before
+acceptance. Thus reported virtual energies do not contain the artificial
+shift. This control is distinct from `QuasiNewtonDiis::level_shift`, which
+regularizes only the error-vector energy denominator.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its

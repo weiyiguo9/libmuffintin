@@ -181,6 +181,9 @@ pub struct KhSocValenceHfSpec {
     pub scalar_fock_mixing: FockMixing,
     /// Mixer for the self-consistent Pauli-spinor solve.
     pub spinor_fock_mixing: FockMixing,
+    /// Virtual-space shift used only to generate spinor iterates, not to test
+    /// convergence or report orbital energies. Zero disables it.
+    pub spinor_virtual_level_shift: Hartree,
     pub core_treatment: KhSocCoreTreatment,
 }
 
@@ -260,6 +263,8 @@ pub enum KhSocValenceHfError {
     FockMixing,
     #[error("KH+SOC fock_commutator_tolerance must be finite and positive")]
     FockCommutatorTolerance,
+    #[error("KH+SOC spinor_virtual_level_shift must be finite and nonnegative")]
+    VirtualLevelShift,
     #[error("KH+SOC core treatment is inconsistent with the configured occupied core states")]
     CoreTreatment,
     #[error(transparent)]
@@ -1981,6 +1986,7 @@ fn solve_second_variation_fixed_potential(
         subtract_global_feedback(frame.fixed_hamiltonians(), &scalar_feedback)?;
     let mut previous_feedback: Option<Vec<DenseHermitianMatrix>> = None;
     let mut feedback_mixer = FeedbackMixer::new(spec.spinor_fock_mixing);
+    let mut virtual_level_shift = spec.spinor_virtual_level_shift.get();
     let mut current_density = None;
     let mut exchange_cache = None;
     let mut last_residual = f64::INFINITY;
@@ -2046,8 +2052,8 @@ fn solve_second_variation_fixed_potential(
             )?,
             None => fresh_feedback.clone(),
         };
-        let replacement = subtract_global_feedback(&mixed_feedback, &scalar_feedback)?;
-        let solved = frame.solve(&replacement)?;
+        let fresh_replacement = subtract_global_feedback(&fresh_feedback, &scalar_feedback)?;
+        let solved = frame.solve(&fresh_replacement)?;
         let solved_occupation = solve_occupations(
             solved.bands.states(),
             valence_electrons,
@@ -2062,12 +2068,20 @@ fn solve_second_variation_fixed_potential(
             &solved_occupation.values,
         )?;
         last_residual = density_residual;
-        current_density = Some(solved_density);
         if feedback_change_is_defined
             && density_residual <= spec.fock_density_tolerance
             && commutator_residual <= spec.fock_commutator_tolerance.get()
             && active_feedback_residual <= spec.fock_feedback_tolerance.get()
         {
+            if virtual_level_shift > 0.0 {
+                // Remove the iteration aid and rebuild exchange in the unshifted
+                // canonical frame before accepting either occupied or virtual energies.
+                virtual_level_shift = 0.0;
+                current = solved;
+                current_density = Some(solved_density);
+                previous_feedback = Some(fresh_feedback);
+                continue;
+            }
             return Ok(SecondVariationFixedPotentialResult {
                 bands: current.bands,
                 mixings: current.mixings,
@@ -2082,7 +2096,36 @@ fn solve_second_variation_fixed_potential(
                 active_feedback_residual,
             });
         }
-        current = solved;
+        let mut replacement = subtract_global_feedback(&mixed_feedback, &scalar_feedback)?;
+        if virtual_level_shift > 0.0 {
+            let virtual_band_shift = occupation_rows
+                .iter()
+                .map(|occupations| {
+                    DenseHermitianMatrix::from_upper_triangle(
+                        occupations.len(),
+                        Axis::Band,
+                        |row, column| {
+                            if row == column {
+                                Complex64::new(virtual_level_shift * (1.0 - occupations[row]), 0.0)
+                            } else {
+                                Complex64::default()
+                            }
+                        },
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let virtual_shift =
+                lift_second_variation_feedback(&current.mixings, &virtual_band_shift)?;
+            for (matrix, shift) in replacement.iter_mut().zip(virtual_shift) {
+                *matrix = DenseHermitianMatrix::from_upper_triangle(
+                    matrix.dimension(),
+                    matrix.axis(),
+                    |row, column| matrix.at(row, column) + shift.at(row, column),
+                )?;
+            }
+        }
+        current = frame.solve(&replacement)?;
+        current_density = None;
         previous_feedback = Some(mixed_feedback);
     }
     Err(GammaValenceHfError::SpinorFockNotConverged {
@@ -4385,6 +4428,11 @@ fn validate_kh_soc_spec(spec: &KhSocValenceHfSpec) -> Result<f64, KhSocValenceHf
     }
     if !valid_fock_mixing(spec.scalar_fock_mixing) || !valid_fock_mixing(spec.spinor_fock_mixing) {
         return Err(KhSocValenceHfError::Hf(GammaValenceHfError::FockMixing));
+    }
+    if !spec.spinor_virtual_level_shift.get().is_finite()
+        || spec.spinor_virtual_level_shift.get() < 0.0
+    {
+        return Err(KhSocValenceHfError::VirtualLevelShift);
     }
     Ok(valence_electrons)
 }

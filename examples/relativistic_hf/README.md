@@ -98,6 +98,13 @@ convergence. For closed-shell Kr, the HOMO is the highest state with occupation
 at least 0.5; this excludes finite-temperature occupation tails in the loose P0
 profile.
 
+For KH+SOC, `--spinor-virtual-level-shift 0.1` adds a 0.1 Hartree vacancy-weighted
+virtual-space shift only to the inner spinor update. The default is zero.
+The raw unshifted Fock map controls the density residual, and the driver removes
+the shift and rebuilds exchange before accepting canonical orbital energies.
+This is not `--fock-diis-level-shift`, which only regularizes the quasi-Newton
+CDIIS error denominator.
+
 For a bounded production-convergence attempt, set the outer and core gates
 explicitly together with the larger orbital and product bases:
 

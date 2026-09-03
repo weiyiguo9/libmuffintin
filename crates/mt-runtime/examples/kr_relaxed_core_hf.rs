@@ -258,6 +258,7 @@ struct Cli {
     fock_density_tolerance: f64,
     fock_feedback_tolerance: f64,
     fock_commutator_tolerance: f64,
+    spinor_virtual_level_shift: f64,
     scalar_fock_mixing: FockMixerSelection,
     fock_mixing: FockMixerSelection,
     fock_mixing_alpha: f64,
@@ -299,6 +300,7 @@ impl Default for Cli {
             fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
             fock_feedback_tolerance: FOCK_FEEDBACK_TOLERANCE_HARTREE,
             fock_commutator_tolerance: FOCK_COMMUTATOR_TOLERANCE_HARTREE,
+            spinor_virtual_level_shift: 0.0,
             scalar_fock_mixing: FockMixerSelection::Cdiis,
             fock_mixing: FockMixerSelection::Cdiis,
             fock_mixing_alpha: 0.5,
@@ -366,6 +368,9 @@ impl Cli {
                 }
                 "--scalar-fock-mixing" => {
                     cli.scalar_fock_mixing = FockMixerSelection::parse(&value)?
+                }
+                "--spinor-virtual-level-shift" => {
+                    cli.spinor_virtual_level_shift = parse_value(&name, &value)?
                 }
                 "--fock-mixing" => cli.fock_mixing = FockMixerSelection::parse(&value)?,
                 "--fock-mixing-alpha" => cli.fock_mixing_alpha = parse_value(&name, &value)?,
@@ -451,6 +456,16 @@ impl Cli {
         if !self.fock_diis_level_shift.is_finite() || self.fock_diis_level_shift < 0.0 {
             return Err(invalid_input(
                 "--fock-diis-level-shift must be finite and nonnegative",
+            ));
+        }
+        if !self.spinor_virtual_level_shift.is_finite() || self.spinor_virtual_level_shift < 0.0 {
+            return Err(invalid_input(
+                "--spinor-virtual-level-shift must be finite and nonnegative",
+            ));
+        }
+        if self.relativity != RelativitySelection::KhSoc && self.spinor_virtual_level_shift != 0.0 {
+            return Err(invalid_input(
+                "--spinor-virtual-level-shift requires --relativity kh-soc",
             ));
         }
         if !self.fock_diis_damping.is_finite()
@@ -562,6 +577,7 @@ struct ParameterManifest {
     fock_density_tolerance: f64,
     fock_feedback_tolerance_hartree: f64,
     fock_commutator_tolerance_hartree: Option<f64>,
+    spinor_virtual_level_shift_hartree: Option<f64>,
     scalar_fock_mixing_algorithm: Option<&'static str>,
     scalar_fock_diis_level_shift_hartree: Option<f64>,
     fock_mixing_algorithm: &'static str,
@@ -1080,6 +1096,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             fock_feedback_tolerance_hartree: cli.fock_feedback_tolerance,
             fock_commutator_tolerance_hartree: (cli.relativity == RelativitySelection::KhSoc)
                 .then_some(cli.fock_commutator_tolerance),
+            spinor_virtual_level_shift_hartree: (cli.relativity == RelativitySelection::KhSoc)
+                .then_some(cli.spinor_virtual_level_shift),
             scalar_fock_mixing_algorithm: (cli.relativity == RelativitySelection::KhSoc)
                 .then_some(cli.scalar_fock_mixing.as_str()),
             scalar_fock_diis_level_shift_hartree: (cli.relativity == RelativitySelection::KhSoc
@@ -1233,6 +1251,7 @@ fn run_kh_soc_example(
         fock_density_tolerance: cli.fock_density_tolerance,
         fock_feedback_tolerance: Hartree(cli.fock_feedback_tolerance),
         fock_commutator_tolerance: Hartree(cli.fock_commutator_tolerance),
+        spinor_virtual_level_shift: Hartree(cli.spinor_virtual_level_shift),
         scalar_fock_mixing: cli.scalar_fock_mixing.build(
             cli.fock_mixing_alpha,
             cli.fock_diis_history,
