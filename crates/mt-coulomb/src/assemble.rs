@@ -20,11 +20,12 @@ use crate::structure::structure_constants;
 use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, complex_spherical_harmonics, lm_index};
 use muffintin_envelope::Provenance;
 use muffintin_prodbasis::{
-    AuxiliaryInterstitialWave, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
+    AuxiliaryInterstitialWave, AuxiliaryRegion, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
 };
 use muffintin_tensor::{Axis, ComplexTensor, einsum};
 use num_complex::Complex64;
 use rayon::prelude::*;
+use std::collections::BTreeMap;
 use std::f64::consts::PI;
 
 const WAVE_TOLERANCE: f64 = 1.0e-12;
@@ -278,22 +279,8 @@ fn smoothed_truncation_correction(
     if waves.is_empty() {
         return Ok(vec![Complex64::default(); n * n]);
     }
-    let coefficients = waves
-        .par_iter()
-        .map(|wave| {
-            densities
-                .iter()
-                .map(|density| {
-                    truncated_fourier_coefficient(
-                        density,
-                        wave,
-                        &prepared.support,
-                        prepared.auxiliary,
-                    )
-                })
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .collect::<Result<Vec<_>, CoulombError>>()?;
+    let coefficients =
+        auxiliary_fourier_coefficients(densities, &prepared.support, prepared.auxiliary, &waves)?;
     let kernels = waves
         .iter()
         .map(|wave| {
@@ -336,15 +323,7 @@ fn assemble_spencer_alavi(
         .spencer_alavi_radius()
         .expect("the caller selected the Spencer-Alavi kernel");
     let waves = auxiliary_waves(request, auxiliary.q, reciprocal_cutoff)?;
-    let coefficients = waves
-        .par_iter()
-        .map(|wave| {
-            densities
-                .iter()
-                .map(|density| truncated_fourier_coefficient(density, wave, support, auxiliary))
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .collect::<Result<Vec<_>, CoulombError>>()?;
+    let coefficients = auxiliary_fourier_coefficients(densities, support, auxiliary, &waves)?;
     let kernels = waves
         .iter()
         .map(|wave| spencer_alavi_kernel(wave.q_plus_g_norm.get(), radius.get()))
@@ -394,6 +373,100 @@ fn assemble_spencer_alavi(
             reference: Some("VASP HFRCUT=-1; Spencer-Alavi PRB 77, 193110".to_owned()),
         },
     })
+}
+
+/// MPB radial transforms depend on |q+G|, not its direction or magnetic m.
+/// Cache exact floating-point shells, with no approximate radius grouping.
+fn auxiliary_fourier_coefficients(
+    densities: &[ChargeDensity],
+    support: &ExpansionSupport,
+    auxiliary: &CompiledAuxiliaryBasis,
+    waves: &[AuxiliaryInterstitialWave],
+) -> Result<Vec<Vec<Complex64>>, CoulombError> {
+    let Some(payload) = auxiliary.mixed_product() else {
+        return waves
+            .par_iter()
+            .map(|wave| {
+                densities
+                    .iter()
+                    .map(|density| truncated_fourier_coefficient(density, wave, support, auxiliary))
+                    .collect()
+            })
+            .collect();
+    };
+    let mut shell_indices = BTreeMap::new();
+    let mut shell_norms = Vec::new();
+    let wave_shells = waves
+        .iter()
+        .map(|wave| {
+            *shell_indices
+                .entry(wave.q_plus_g_norm.get().to_bits())
+                .or_insert_with(|| {
+                    let index = shell_norms.len();
+                    shell_norms.push(wave.q_plus_g_norm.get());
+                    index
+                })
+        })
+        .collect::<Vec<_>>();
+    let mut mode_indices = BTreeMap::new();
+    let mut modes = Vec::new();
+    for site in &payload.sites {
+        for mode in &site.modes {
+            mode_indices.insert((site.site, mode.l, mode.n), modes.len());
+            modes.push((site, mode));
+        }
+    }
+    let transforms = modes
+        .par_iter()
+        .map(|(site, mode)| {
+            shell_norms
+                .iter()
+                .map(|&norm| bessel_overlap(mode.l, norm, &site.mesh, &mode.radial))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let regions = auxiliary.regions();
+    let l_max = modes.iter().map(|(_, mode)| mode.l).max().unwrap_or(0);
+    let scale = 4.0 * PI / support.volume.sqrt();
+    waves
+        .par_iter()
+        .zip(&wave_shells)
+        .map(|(wave, &shell)| {
+            let harmonics = complex_spherical_harmonics(l_max, wave.q_plus_g.map(InverseBohr::get));
+            let phases = support
+                .sites
+                .iter()
+                .map(|site| plane_wave_phase(wave.q_plus_g, site.position).conj())
+                .collect::<Vec<_>>();
+            let mut next_wave = 0;
+            regions
+                .iter()
+                .map(|region| match *region {
+                    AuxiliaryRegion::MuffinTin { site, l, m, n } => {
+                        let mode = mode_indices[&(site, l, n)];
+                        Ok(scale
+                            * i_pow(l).conj()
+                            * harmonics[lm_index(l, m)?]
+                            * phases[site]
+                            * transforms[mode][shell])
+                    }
+                    AuxiliaryRegion::Interstitial { .. } => {
+                        let source = &support.waves[next_wave];
+                        next_wave += 1;
+                        let difference = std::array::from_fn(|axis| {
+                            InverseBohr(
+                                source.g.cartesian[axis].get() - wave.g.cartesian[axis].get(),
+                            )
+                        });
+                        Ok(auxiliary.partition.interstitial().coefficient(difference)?)
+                    }
+                    AuxiliaryRegion::InterpolationPoint { .. } => {
+                        unreachable!("validated mixed-product regions")
+                    }
+                })
+                .collect()
+        })
+        .collect()
 }
 
 fn truncated_fourier_coefficient(

@@ -356,6 +356,14 @@ this exponentially damped correction, not the compact MT short-range
 interaction. All VV, CV, VC, and CC sectors consume the resulting single
 operator; no radial energy-only replacement is made.
 
+The mixed-product Fourier construction shares each radial transform across
+magnetic components and directions with exactly equal $|q+G|$. Shell keys
+use the unmodified floating-point norm bits, not a rounded geometric
+tolerance. Angular harmonics and site phases are then applied separately.
+This avoids repeating the same radial Bessel integration for every matrix
+column and reciprocal direction; sampled interpolation functions retain
+their general charge-expansion transform.
+
 `SpencerAlaviSphere::smoothing` distinguishes the sharp boundary (`None`)
 from the smoothed boundary (`Some(omega)`). The Kr example selects the new
 kernel with `--exchange-coulomb smoothed-spencer-alavi-sphere` and requires
