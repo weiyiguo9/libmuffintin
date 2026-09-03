@@ -791,8 +791,10 @@ this route explicitly with `--relativity spinor-frozen`. For this one-loop
 route, `--fock-max-iterations`, `--fock-density-tolerance`, and
 `--outer-energy-tolerance` supply the iteration limit, density tolerance, and
 energy tolerance, respectively. Outer density-mixing options are not applied.
-Manifest version 4 records the effective coupled-SCF limit and density
-tolerance separately; iteration and final result files label SRA and frozen
+The manifest records the effective coupled-SCF limit and density
+tolerance separately; version 5 additionally records the explicit smoothing
+parameters for the optional dual-space spherical kernel of
+[15](15_weinert_coulomb_metric.md). Iteration and final result files label SRA and frozen
 core explicitly. The existing `spinor-first` relaxed-core route and `kh-soc`
 route are not silently switched to this Hamiltonian.
 

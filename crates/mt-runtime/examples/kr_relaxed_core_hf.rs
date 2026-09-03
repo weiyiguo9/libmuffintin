@@ -125,6 +125,7 @@ enum OuterMixerSelection {
 enum ExchangeCoulombSelection {
     PeriodicFiniteBody,
     SpencerAlaviSphere,
+    SmoothedSpencerAlaviSphere,
 }
 
 impl ExchangeCoulombSelection {
@@ -132,8 +133,9 @@ impl ExchangeCoulombSelection {
         match value {
             "periodic-finite-body" => Ok(Self::PeriodicFiniteBody),
             "spencer-alavi-sphere" => Ok(Self::SpencerAlaviSphere),
+            "smoothed-spencer-alavi-sphere" => Ok(Self::SmoothedSpencerAlaviSphere),
             _ => Err(invalid_input(format!(
-                "--exchange-coulomb must be periodic-finite-body or spencer-alavi-sphere, got {value:?}"
+                "--exchange-coulomb must be periodic-finite-body, spencer-alavi-sphere, or smoothed-spencer-alavi-sphere, got {value:?}"
             ))),
         }
     }
@@ -142,6 +144,7 @@ impl ExchangeCoulombSelection {
         match self {
             Self::PeriodicFiniteBody => "periodic-finite-body",
             Self::SpencerAlaviSphere => "spencer-alavi-sphere",
+            Self::SmoothedSpencerAlaviSphere => "smoothed-spencer-alavi-sphere",
         }
     }
 }
@@ -254,6 +257,7 @@ struct Cli {
     lexp: u32,
     exchange_coulomb: ExchangeCoulombSelection,
     fock_fourier_g: f64,
+    fock_smoothing_omega: Option<f64>,
     muffin_tin_radius: f64,
     radial_points: usize,
     hdlo: HdloSelection,
@@ -297,6 +301,7 @@ impl Default for Cli {
             lexp: 2,
             exchange_coulomb: ExchangeCoulombSelection::PeriodicFiniteBody,
             fock_fourier_g: 4.5,
+            fock_smoothing_omega: None,
             muffin_tin_radius: 2.0,
             radial_points: 2_401,
             hdlo: HdloSelection::None,
@@ -360,6 +365,9 @@ impl Cli {
                     cli.exchange_coulomb = ExchangeCoulombSelection::parse(&value)?
                 }
                 "--fock-fourier-g" => cli.fock_fourier_g = parse_value(&name, &value)?,
+                "--fock-smoothing-omega" => {
+                    cli.fock_smoothing_omega = Some(parse_value(&name, &value)?)
+                }
                 "--rmt" => cli.muffin_tin_radius = parse_value(&name, &value)?,
                 "--radial-points" => cli.radial_points = parse_value(&name, &value)?,
                 "--hdlo" => cli.hdlo = HdloSelection::parse(&value)?,
@@ -415,6 +423,21 @@ impl Cli {
     }
 
     fn validate(&self) -> Result<(), Box<dyn Error>> {
+        match (self.exchange_coulomb, self.fock_smoothing_omega) {
+            (ExchangeCoulombSelection::SmoothedSpencerAlaviSphere, Some(omega))
+                if omega.is_finite() && omega > 0.0 => {}
+            (ExchangeCoulombSelection::SmoothedSpencerAlaviSphere, _) => {
+                return Err(invalid_input(
+                    "smoothed-spencer-alavi-sphere requires explicit finite positive --fock-smoothing-omega",
+                ));
+            }
+            (_, Some(_)) => {
+                return Err(invalid_input(
+                    "--fock-smoothing-omega applies only to smoothed-spencer-alavi-sphere",
+                ));
+            }
+            (_, None) => {}
+        }
         for (name, value) in [
             ("--box", self.box_size),
             ("--rmt", self.muffin_tin_radius),
@@ -580,6 +603,8 @@ struct ParameterManifest {
     weinert_lexp: u32,
     exchange_coulomb: &'static str,
     spencer_alavi_radius_bohr: Option<f64>,
+    spencer_alavi_smoothing_omega_bohr_inverse: Option<f64>,
+    spencer_alavi_smoothing_eta: Option<f64>,
     fock_fourier_g_max_bohr_inverse: Option<f64>,
     hdlo: &'static str,
     temperature_hartree: f64,
@@ -1072,7 +1097,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (git_sha, git_dirty) = git_provenance()?;
     let manifest = Manifest {
-        schema_version: 4,
+        schema_version: 5,
         status: "prepared",
         system: SystemManifest {
             element: "Kr",
@@ -1110,10 +1135,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             weinert_lexp: cli.lexp,
             exchange_coulomb: cli.exchange_coulomb.as_str(),
             spencer_alavi_radius_bohr: (cli.exchange_coulomb
-                == ExchangeCoulombSelection::SpencerAlaviSphere)
+                != ExchangeCoulombSelection::PeriodicFiniteBody)
                 .then_some((3.0 * cli.box_size.powi(3) / (4.0 * PI)).cbrt()),
+            spencer_alavi_smoothing_omega_bohr_inverse: cli.fock_smoothing_omega,
+            spencer_alavi_smoothing_eta: cli
+                .fock_smoothing_omega
+                .map(|omega| omega * (3.0 * cli.box_size.powi(3) / (4.0 * PI)).cbrt()),
             fock_fourier_g_max_bohr_inverse: (cli.exchange_coulomb
-                == ExchangeCoulombSelection::SpencerAlaviSphere)
+                != ExchangeCoulombSelection::PeriodicFiniteBody)
                 .then_some(cli.fock_fourier_g),
             hdlo: cli.hdlo.as_str(),
             temperature_hartree: cli.temperature,
@@ -1122,7 +1151,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             k_mesh_reduction: "full",
             gamma_exchange: match cli.exchange_coulomb {
                 ExchangeCoulombSelection::PeriodicFiniteBody => "finite-body",
-                ExchangeCoulombSelection::SpencerAlaviSphere => "finite-kernel-no-head",
+                ExchangeCoulombSelection::SpencerAlaviSphere
+                | ExchangeCoulombSelection::SmoothedSpencerAlaviSphere => "finite-kernel-no-head",
             },
             relativity: cli.relativity.as_str(),
             soc_first_variation_bands: (cli.relativity == RelativitySelection::KhSoc)
@@ -1412,6 +1442,15 @@ fn exchange_coulomb_request(cli: &Cli) -> Result<CoulombRequest, Box<dyn Error>>
         ExchangeCoulombSelection::SpencerAlaviSphere => {
             Ok(request.with_spencer_alavi_sphere(1, InverseBohr(cli.fock_fourier_g))?)
         }
+        ExchangeCoulombSelection::SmoothedSpencerAlaviSphere => Ok(request
+            .with_smoothed_spencer_alavi_sphere(
+                1,
+                InverseBohr(cli.fock_fourier_g),
+                InverseBohr(
+                    cli.fock_smoothing_omega
+                        .expect("validated explicit smoothing"),
+                ),
+            )?),
     }
 }
 
