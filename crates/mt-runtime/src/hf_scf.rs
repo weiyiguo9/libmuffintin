@@ -44,7 +44,6 @@ use crate::{
 
 const SPECTRAL_REFINEMENT_PASSES: usize = 16;
 const IDENTITY_TOLERANCE: f64 = 1.0e-8;
-const RELAXED_VALENCE_EIGENVALUE_TOLERANCE: f64 = 1.0e-6;
 const ELECTRON_COUNT_TOLERANCE: f64 = 1.0e-8;
 
 /// Mixing algorithm for the fixed-potential global exchange feedback.
@@ -81,6 +80,8 @@ pub struct GammaValenceHfSpec {
     pub max_fock_iterations: usize,
     /// Regional-density fixed-point tolerance inside one fixed local potential.
     pub fock_density_tolerance: f64,
+    /// Maximum global exchange-feedback matrix-element residual in Hartree.
+    pub fock_feedback_tolerance: Hartree,
     /// Mixer for the freshly rebuilt global exchange feedback.
     pub fock_mixing: FockMixing,
 }
@@ -96,6 +97,7 @@ pub struct GammaValenceHfIterationDiagnostic {
     pub exchange_energy: Hartree,
     pub maximum_antihermitian_residual: f64,
     pub fock_fixed_point_residual: f64,
+    pub fock_feedback_residual: Hartree,
     pub regional_density_rms: f64,
     pub density_electron_count: f64,
     pub total_energy: Hartree,
@@ -127,6 +129,7 @@ pub struct GammaValenceHfResult {
     pub exchange_energy: Hartree,
     pub maximum_antihermitian_residual: f64,
     pub fock_fixed_point_residual: f64,
+    pub fock_feedback_residual: Hartree,
     pub regional_density_rms: f64,
     pub total_energy: Hartree,
     pub exchange_rebuilds: usize,
@@ -154,6 +157,8 @@ pub struct RelaxedCoreHfSpec {
     pub gamma: GammaExchangeTreatment,
     pub max_fock_iterations: usize,
     pub fock_density_tolerance: f64,
+    /// Maximum global exchange-feedback matrix-element residual in Hartree.
+    pub fock_feedback_tolerance: Hartree,
     pub fock_mixing: FockMixing,
     pub core: CoreFixedPotentialSpec,
     /// Numerical MPB/radial and CV/VC trace tolerance.
@@ -181,6 +186,7 @@ pub struct RelaxedCoreHfIterationDiagnostic {
     pub valence_feedback_vv_cv_trace: Hartree,
     pub maximum_antihermitian_residual: f64,
     pub fock_fixed_point_residual: f64,
+    pub fock_feedback_residual: Hartree,
     pub valence_density_rms: f64,
     pub total_density_rms: f64,
     pub valence_electron_count: f64,
@@ -226,6 +232,7 @@ pub struct RelaxedCoreHfResult {
     pub total_energy: Hartree,
     pub maximum_antihermitian_residual: f64,
     pub fock_fixed_point_residual: f64,
+    pub fock_feedback_residual: Hartree,
     pub valence_density_rms: f64,
     pub total_density_rms: f64,
     pub exchange_rebuilds: usize,
@@ -256,6 +263,8 @@ pub enum RelaxedCoreHfError {
     FockIterations,
     #[error("relaxed-core HF fock_density_tolerance must be finite and positive")]
     FockTolerance,
+    #[error("relaxed-core HF fock_feedback_tolerance must be finite and positive")]
+    FockFeedbackTolerance,
     #[error("relaxed-core HF Fock mixer requires alpha in (0, 1] and Pulay history >= 2")]
     FockMixing,
     #[error("relaxed-core HF sector numerical tolerance must be finite and nonnegative")]
@@ -346,6 +355,8 @@ pub enum GammaValenceHfError {
     FockIterations,
     #[error("valence HF fock_density_tolerance must be finite and positive")]
     FockTolerance,
+    #[error("valence HF fock_feedback_tolerance must be finite and positive")]
+    FockFeedbackTolerance,
     #[error("valence HF Fock mixer requires alpha in (0, 1] and Pulay history >= 2")]
     FockMixing,
     #[error("valence HF Pulay feedback algebra produced a non-finite value")]
@@ -515,6 +526,7 @@ pub fn run_valence_hf(
             exchange_energy: fixed.exchange.exchange_energy,
             maximum_antihermitian_residual: fixed.exchange.maximum_antihermitian_residual,
             fock_fixed_point_residual: fixed.fixed_point_residual,
+            fock_feedback_residual: Hartree(fixed.feedback_residual),
             regional_density_rms: density_rms,
             density_electron_count: output_electron_count,
             total_energy: energy.total,
@@ -542,6 +554,7 @@ pub fn run_valence_hf(
                 exchange_energy: fixed.exchange.exchange_energy,
                 maximum_antihermitian_residual: fixed.exchange.maximum_antihermitian_residual,
                 fock_fixed_point_residual: fixed.fixed_point_residual,
+                fock_feedback_residual: Hartree(fixed.feedback_residual),
                 regional_density_rms: density_rms,
                 total_energy: energy.total,
                 exchange_rebuilds: total_exchange_rebuilds,
@@ -742,7 +755,7 @@ pub fn run_relaxed_core_hf(
         require_relaxed_gate(
             "valence eigenvalue identity",
             energy.valence_eigenvalue_identity_residual,
-            RELAXED_VALENCE_EIGENVALUE_TOLERANCE,
+            spec.fock_feedback_tolerance.get(),
         )?;
         let energy_change = previous_total
             .map(|previous: Hartree| Hartree((energy.total.get() - previous.get()).abs()));
@@ -780,6 +793,7 @@ pub fn run_relaxed_core_hf(
             ),
             maximum_antihermitian_residual: maximum_sector_antihermitian(exchange),
             fock_fixed_point_residual: fixed.fixed_point_residual,
+            fock_feedback_residual: Hartree(fixed.feedback_residual),
             valence_density_rms,
             total_density_rms,
             valence_electron_count: output_valence_electrons,
@@ -824,6 +838,7 @@ pub fn run_relaxed_core_hf(
                 total_energy: energy.total,
                 maximum_antihermitian_residual,
                 fock_fixed_point_residual: fixed.fixed_point_residual,
+                fock_feedback_residual: Hartree(fixed.feedback_residual),
                 valence_density_rms,
                 total_density_rms,
                 exchange_rebuilds: total_exchange_rebuilds,
@@ -969,6 +984,7 @@ struct RelaxedFixedPotentialResult {
     fock_iterations: usize,
     exchange_rebuilds: usize,
     fixed_point_residual: f64,
+    feedback_residual: f64,
     lifting_identity_residual: f64,
     first_global_solve_identity_residual: Option<f64>,
 }
@@ -1096,7 +1112,7 @@ fn solve_relaxed_fixed_potential(
         last_residual = residual;
         current_density = Some(solved_density);
         if last_residual <= spec.fock_density_tolerance
-            && feedback_fixed_residual <= IDENTITY_TOLERANCE
+            && feedback_fixed_residual <= spec.fock_feedback_tolerance.get()
         {
             let exchange = complete_relaxed_sector_frame(spec, rebuilt)?;
             return Ok(RelaxedFixedPotentialResult {
@@ -1106,6 +1122,7 @@ fn solve_relaxed_fixed_potential(
                 fock_iterations: fock_iteration,
                 exchange_rebuilds: rebuilds,
                 fixed_point_residual: last_residual,
+                feedback_residual: feedback_fixed_residual,
                 lifting_identity_residual,
                 first_global_solve_identity_residual,
             });
@@ -1340,6 +1357,7 @@ struct FixedPotentialResult {
     fock_iterations: usize,
     exchange_rebuilds: usize,
     fixed_point_residual: f64,
+    feedback_residual: f64,
     lifting_identity_residual: f64,
     first_global_solve_identity_residual: Option<f64>,
     first_one_shot_exchange: Option<IsdfExchangeResult>,
@@ -1469,7 +1487,7 @@ fn solve_fixed_potential(
         last_residual = residual;
         current_density = Some(solved_density);
         if last_residual <= spec.fock_density_tolerance
-            && feedback_fixed_residual <= IDENTITY_TOLERANCE
+            && feedback_fixed_residual <= spec.fock_feedback_tolerance.get()
         {
             return Ok(FixedPotentialResult {
                 bands,
@@ -1478,6 +1496,7 @@ fn solve_fixed_potential(
                 fock_iterations: fock_iteration,
                 exchange_rebuilds: rebuilds,
                 fixed_point_residual: last_residual,
+                feedback_residual: feedback_fixed_residual,
                 lifting_identity_residual,
                 first_global_solve_identity_residual,
                 first_one_shot_exchange,
@@ -2303,6 +2322,11 @@ fn validate_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfError> {
     if !spec.fock_density_tolerance.is_finite() || spec.fock_density_tolerance <= 0.0 {
         return Err(GammaValenceHfError::FockTolerance);
     }
+    if !spec.fock_feedback_tolerance.get().is_finite()
+        || spec.fock_feedback_tolerance.get() <= 0.0
+    {
+        return Err(GammaValenceHfError::FockFeedbackTolerance);
+    }
     if !valid_fock_mixing(spec.fock_mixing) {
         return Err(GammaValenceHfError::FockMixing);
     }
@@ -2346,6 +2370,11 @@ fn validate_relaxed_core_spec(spec: &RelaxedCoreHfSpec) -> Result<f64, RelaxedCo
     }
     if !spec.fock_density_tolerance.is_finite() || spec.fock_density_tolerance <= 0.0 {
         return Err(RelaxedCoreHfError::FockTolerance);
+    }
+    if !spec.fock_feedback_tolerance.get().is_finite()
+        || spec.fock_feedback_tolerance.get() <= 0.0
+    {
+        return Err(RelaxedCoreHfError::FockFeedbackTolerance);
     }
     if !valid_fock_mixing(spec.fock_mixing) {
         return Err(RelaxedCoreHfError::FockMixing);

@@ -72,6 +72,7 @@ fn shifted_2x2x1_uses_unshifted_q_permutations_and_rejects_symmetry_reduction() 
         coulomb: CoulombRequest::cubic(LATTICE, 2).unwrap(),
         max_fock_iterations: 2,
         fock_density_tolerance: 1.0e-7,
+        fock_feedback_tolerance: Hartree(1.0e-8),
         fock_mixing: FockMixing::Linear { alpha: 0.5 },
     };
     let mut rejected_physics = CheckpointPhysics::new(&checkpoint).unwrap();
@@ -100,6 +101,7 @@ fn shifted_2x1x1_executes_complete_q_slice_and_per_k_feedback() {
         coulomb: CoulombRequest::cubic(LATTICE, 2).unwrap(),
         max_fock_iterations: 24,
         fock_density_tolerance: 1.0e-7,
+        fock_feedback_tolerance: Hartree(1.0e-8),
         fock_mixing: FockMixing::Linear { alpha: 0.5 },
     };
     let mut physics = CheckpointPhysics::new(&checkpoint).unwrap();

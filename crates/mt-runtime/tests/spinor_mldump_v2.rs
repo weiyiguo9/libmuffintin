@@ -80,6 +80,7 @@ fn relaxed_setup() -> (muffintin_io::CheckpointV2, RelaxedCoreHfSpec) {
         gamma: GammaExchangeTreatment::FiniteBody,
         max_fock_iterations: 32,
         fock_density_tolerance: 1.0e-7,
+        fock_feedback_tolerance: Hartree(1.0e-8),
         fock_mixing: FockMixing::Linear { alpha: 0.5 },
         core: CoreFixedPotentialSpec {
             action_mixing: 1.0,

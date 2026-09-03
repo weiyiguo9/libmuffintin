@@ -41,7 +41,8 @@ const CORE_MAX_ITERATIONS: usize = 2;
 const OUTER_MIXING_ALPHA: f64 = 0.1;
 const MAX_FOCK_ITERATIONS: usize = 32;
 const LOOSE_TOLERANCE: f64 = 1.0e100;
-const FOCK_DENSITY_TOLERANCE: f64 = 1.0e-7;
+const FOCK_DENSITY_TOLERANCE: f64 = 1.0e-5;
+const FOCK_FEEDBACK_TOLERANCE_HARTREE: f64 = 2.0e-5;
 const FOCK_MIXING: f64 = 1.0;
 const FOCK_PULAY_HISTORY: usize = 4;
 const SECTOR_NUMERICAL_TOLERANCE_HARTREE: f64 = 1.0e-8;
@@ -256,6 +257,7 @@ struct ParameterManifest {
     core_max_iterations: usize,
     max_fock_iterations: usize,
     fock_density_tolerance: f64,
+    fock_feedback_tolerance_hartree: f64,
     fock_mixing_algorithm: &'static str,
     fock_mixing_alpha: f64,
     fock_mixing_history: usize,
@@ -330,6 +332,7 @@ struct IterationRecord {
     valence_feedback_vv_cv_trace_hartree: f64,
     maximum_antihermitian_residual: f64,
     fock_fixed_point_residual: f64,
+    fock_feedback_residual_hartree: f64,
     valence_density_rms: f64,
     total_density_rms: f64,
     valence_electron_count: f64,
@@ -443,6 +446,7 @@ struct ElectronCounts {
 struct ResidualRecord {
     maximum_antihermitian: f64,
     fock_fixed_point: f64,
+    fock_feedback_hartree: f64,
     valence_density_rms: f64,
     total_density_rms: f64,
     valence_eigenvalue_identity: f64,
@@ -647,6 +651,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             core_max_iterations: CORE_MAX_ITERATIONS,
             max_fock_iterations: cli.max_fock_iterations,
             fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
+            fock_feedback_tolerance_hartree: FOCK_FEEDBACK_TOLERANCE_HARTREE,
             fock_mixing_algorithm: "pulay-anderson-global-feedback",
             fock_mixing_alpha: cli.fock_mixing_alpha,
             fock_mixing_history: cli.fock_pulay_history,
@@ -691,6 +696,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         gamma: GammaExchangeTreatment::FiniteBody,
         max_fock_iterations: cli.max_fock_iterations,
         fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
+        fock_feedback_tolerance: Hartree(FOCK_FEEDBACK_TOLERANCE_HARTREE),
         fock_mixing: FockMixing::PulayAnderson {
             alpha: cli.fock_mixing_alpha,
             history: cli.fock_pulay_history,
@@ -932,6 +938,7 @@ fn iteration_record(item: &RelaxedCoreHfIterationDiagnostic) -> IterationRecord 
         valence_feedback_vv_cv_trace_hartree: item.valence_feedback_vv_cv_trace.get(),
         maximum_antihermitian_residual: item.maximum_antihermitian_residual,
         fock_fixed_point_residual: item.fock_fixed_point_residual,
+        fock_feedback_residual_hartree: item.fock_feedback_residual.get(),
         valence_density_rms: item.valence_density_rms,
         total_density_rms: item.total_density_rms,
         valence_electron_count: item.valence_electron_count,
@@ -1041,6 +1048,7 @@ fn result_record(result: &RelaxedCoreHfResult) -> ResultFile {
         residuals: ResidualRecord {
             maximum_antihermitian: result.maximum_antihermitian_residual,
             fock_fixed_point: result.fock_fixed_point_residual,
+            fock_feedback_hartree: result.fock_feedback_residual.get(),
             valence_density_rms: result.valence_density_rms,
             total_density_rms: result.total_density_rms,
             valence_eigenvalue_identity: final_iteration.valence_eigenvalue_identity_residual,

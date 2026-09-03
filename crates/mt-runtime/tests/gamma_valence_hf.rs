@@ -107,6 +107,7 @@ fn gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals() {
         coulomb: request,
         max_fock_iterations: 32,
         fock_density_tolerance: 1.0e-7,
+        fock_feedback_tolerance: Hartree(1.0e-8),
         fock_mixing: FockMixing::Linear { alpha: 0.5 },
     };
     let result = run_gamma_valence_hf(&mut live_physics, &hf_spec).unwrap();
@@ -115,6 +116,7 @@ fn gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals() {
     assert_eq!(result.orbital_energies.len(), 1);
     assert!(result.maximum_antihermitian_residual <= 1.0e-8);
     assert!(result.fock_fixed_point_residual <= hf_spec.fock_density_tolerance);
+    assert!(result.fock_feedback_residual <= hf_spec.fock_feedback_tolerance);
     assert!(result.regional_density_rms <= hf_spec.config.convergence.density_tolerance);
     assert!(
         result

@@ -53,6 +53,7 @@ fn closed_shell_core_valence_setup() -> (muffintin_io::CheckpointV2, RelaxedCore
         gamma: GammaExchangeTreatment::FiniteBody,
         max_fock_iterations: 32,
         fock_density_tolerance: 1.0e-7,
+        fock_feedback_tolerance: Hartree(1.0e-8),
         fock_mixing: FockMixing::Linear { alpha: 0.5 },
         core: CoreFixedPotentialSpec {
             action_mixing: 1.0,
@@ -86,6 +87,7 @@ fn neutral_closed_shell_replaces_core_mixes_only_valence_and_keeps_gamma_parity(
                 <= 1.0e-12
     }));
     assert_eq!(gamma.diagnostics[0].core_inner_iterations, vec![1]);
+    assert!(gamma.fock_feedback_residual <= spec.fock_feedback_tolerance);
     assert!((gamma.diagnostics[0].valence_electron_count - 2.0).abs() <= 1.0e-8);
     assert!((gamma.diagnostics[0].core_electron_count - 2.0).abs() <= 1.0e-8);
     assert!((gamma.diagnostics[0].total_electron_count - 4.0).abs() <= 1.0e-8);
