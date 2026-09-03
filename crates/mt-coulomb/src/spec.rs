@@ -31,6 +31,13 @@ pub enum CoulombKernel {
         full_k_points: usize,
         reciprocal_cutoff: InverseBohr,
     },
+    /// Gaussian-smoothed spherical boundary, retaining the Weinert short range.
+    /// `smoothing` is omega; the sharp sphere is approached as omega increases.
+    SmoothedSpencerAlaviSphere {
+        full_k_points: usize,
+        reciprocal_cutoff: InverseBohr,
+        smoothing: InverseBohr,
+    },
 }
 
 impl InterpolationProjection {
@@ -138,6 +145,34 @@ impl CoulombRequest {
         Ok(self)
     }
 
+    /// Select a dual-space smoothed sphere, not VASP's sharp `HFRCUT=-1`.
+    /// The Fourier cutoff limits only the Gaussian-damped boundary correction;
+    /// the full periodic Weinert metric retains compact MT charge products.
+    pub fn with_smoothed_spencer_alavi_sphere(
+        mut self,
+        full_k_points: usize,
+        reciprocal_cutoff: InverseBohr,
+        smoothing: InverseBohr,
+    ) -> Result<Self, CoulombError> {
+        if full_k_points == 0 {
+            return Err(CoulombError::InvalidTruncationKPointCount(full_k_points));
+        }
+        if !reciprocal_cutoff.get().is_finite() || reciprocal_cutoff.get() <= 0.0 {
+            return Err(CoulombError::InvalidTruncationReciprocalCutoff(
+                reciprocal_cutoff.get(),
+            ));
+        }
+        if !smoothing.get().is_finite() || smoothing.get() <= 0.0 {
+            return Err(CoulombError::InvalidTruncationSmoothing(smoothing.get()));
+        }
+        self.kernel = CoulombKernel::SmoothedSpencerAlaviSphere {
+            full_k_points,
+            reciprocal_cutoff,
+            smoothing,
+        };
+        Ok(self)
+    }
+
     /// Direct-lattice cell.
     pub const fn cell(&self) -> &Cell {
         &self.cell
@@ -164,8 +199,10 @@ impl CoulombRequest {
 
     /// Automatic truncation radius when the Spencer–Alavi kernel is selected.
     pub fn spencer_alavi_radius(&self) -> Option<Bohr> {
-        let CoulombKernel::SpencerAlaviSphere { full_k_points, .. } = self.kernel else {
-            return None;
+        let full_k_points = match self.kernel {
+            CoulombKernel::PeriodicWeinert => return None,
+            CoulombKernel::SpencerAlaviSphere { full_k_points, .. }
+            | CoulombKernel::SmoothedSpencerAlaviSphere { full_k_points, .. } => full_k_points,
         };
         Some(Bohr(
             (3.0 * full_k_points as f64 * self.cell.volume().get() / (4.0 * std::f64::consts::PI))

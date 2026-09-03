@@ -317,6 +317,63 @@ retain its short-range part. Replacing only the CC energy by an isolated
 radial value would instead mix different operators and is not a correction
 to the existing HF Hamiltonian.
 
+### 6.2 Dual-space smoothed spherical boundary
+
+`with_smoothed_spencer_alavi_sphere(N_k, G_max, omega)` selects a distinct
+kernel with an explicit positive smoothing parameter $\omega$ in inverse
+bohr. It does not change the sharp-sphere path. Following
+[Yang et al., Eq. 9](https://arxiv.org/html/2609.00203v1),
+
+```math
+v_{\mathrm{sTC}}(Q)
+=\frac{4\pi}{Q^2}\left[1-\cos(QR_c)e^{-Q^2/(4\omega^2)}\right],
+\qquad
+v_{\mathrm{sTC}}(0)=2\pi R_c^2+\frac{\pi}{\omega^2}.
+```
+
+The short-distance Coulomb singularity is unchanged. Only the truncation
+boundary is smoothed over a length of order $1/\omega$; the dimensionless
+parameter $\eta=\omega R_c$ controls its sharpness. Increasing $\eta$ at
+fixed $R_c$ approaches the sharp sphere, but requires a larger reciprocal
+cutoff. Convergence in $\eta$, the Fourier cutoff, and the physical box size
+are separate questions.
+
+The implementation first assembles the periodic Weinert finite body,
+including its analytic MT integrals, then adds
+
+```math
+\Delta V_{IJ}
+=\sum_{|q+G|\le G_{\max}}
+\rho_I(q+G)^*\Delta v(q+G)\rho_J(q+G),
+```
+
+where $\Delta v(Q)=-4\pi\cos(QR_c)e^{-Q^2/(4\omega^2)}/Q^2$ for nonzero
+$Q$. At $Q=0$, $\Delta v$ is the complete finite $v_{\mathrm{sTC}}(0)$,
+because the periodic finite body omits that Fourier component. There is no
+remaining `GammaHead`. The correction is one weighted `gi,gj->ij` tensor
+contraction on the shared TBLIS backend. The Fourier cutoff limits only
+this exponentially damped correction, not the compact MT short-range
+interaction. All VV, CV, VC, and CC sectors consume the resulting single
+operator; no radial energy-only replacement is made.
+
+`SpencerAlaviSphere::smoothing` distinguishes the sharp boundary (`None`)
+from the smoothed boundary (`Some(omega)`). The Kr example selects the new
+kernel with `--exchange-coulomb smoothed-spencer-alavi-sphere` and requires
+`--fock-smoothing-omega` explicitly. Manifest version 5 records both $\omega$
+and $\eta$, together with the radius and the Fourier cutoff. This option is
+not claimed to be the exact VASP `HFRCUT=-1` kernel at finite $\omega$.
+
+An independent compact-charge diagnostic used the normalized hydrogenic
+1s density with $Z=20$ in an 8 bohr cell and an MT radius of 0.8 bohr. Its
+isolated Coulomb self integral is $5Z/8=12.5$ Ha. The direct sharp-sphere
+Fourier sum at cutoff 4.5 gave 2.776936 Ha. The dual-space result at
+$\omega=1.2$ inverse bohr was 12.500000112 Ha at cutoff 10 and
+12.500000110 Ha at cutoff 12. The separate onsite radial integral differed
+from 12.5 Ha by less than $2\times10^{-11}$ Ha. The smoothed periodic
+kernel still has image tails, so comparison with the isolated integral is
+not a same-kernel equality gate. Empty-sphere PW checks at Gamma and finite
+$q$ agreed with the full reciprocal formula within $3\times10^{-14}$.
+
 ## 7. Pair vertices
 
 `PairVertex` stores `AuxiliaryLayout`, not a raw count split.

@@ -22,6 +22,7 @@ use muffintin_envelope::Provenance;
 use muffintin_prodbasis::{
     AuxiliaryInterstitialWave, AuxiliaryRepresentation, CompiledAuxiliaryBasis,
 };
+use muffintin_tensor::{Axis, ComplexTensor, einsum};
 use num_complex::Complex64;
 use rayon::prelude::*;
 use std::f64::consts::PI;
@@ -206,6 +207,37 @@ fn assemble_kind(
             constant_coefficients: vectors.coeff,
         });
     }
+    let mut spencer_alavi = None;
+    let mut provenance = Provenance {
+        recipe: Some("weinert-spex-coulomb".to_owned()),
+        reference: Some("SPEX coulombmatrix.f".to_owned()),
+    };
+    if let CoulombKernel::SmoothedSpencerAlaviSphere {
+        full_k_points,
+        reciprocal_cutoff,
+        smoothing,
+    } = request.kernel()
+    {
+        let correction =
+            smoothed_truncation_correction(&densities, &prepared, reciprocal_cutoff, smoothing)?;
+        for i in 0..n {
+            for j in i..n {
+                matrix[i * n + j] += correction[i * n + j];
+                matrix[j * n + i] = matrix[i * n + j].conj();
+            }
+        }
+        gamma = None;
+        spencer_alavi = Some(SpencerAlaviSphere {
+            radius: request.spencer_alavi_radius().expect("selected sphere"),
+            full_k_points,
+            reciprocal_cutoff,
+            smoothing: Some(smoothing),
+        });
+        provenance = Provenance {
+            recipe: Some("weinert-smoothed-spencer-alavi-coulomb".to_owned()),
+            reference: Some("SPEX coulombmatrix.f; Yang et al. arXiv:2609.00203 Eq. 9".to_owned()),
+        };
+    }
     for (index, value) in matrix.iter().enumerate() {
         if !value.re.is_finite() || !value.im.is_finite() {
             return Err(CoulombError::NonFiniteMatrix {
@@ -221,12 +253,73 @@ fn assemble_kind(
         kind,
         matrix,
         gamma,
-        spencer_alavi: None,
-        provenance: Provenance {
-            recipe: Some("weinert-spex-coulomb".to_owned()),
-            reference: Some("SPEX coulombmatrix.f".to_owned()),
-        },
+        spencer_alavi,
+        provenance,
     })
+}
+
+/// Add the damped boundary correction to the full periodic finite body.
+/// Its Q=0 entry is the complete finite limit 2*pi*Rc^2 + pi/omega^2,
+/// since the periodic body omits that Fourier component.
+fn smoothed_truncation_correction(
+    densities: &[ChargeDensity],
+    prepared: &Prepared<'_>,
+    reciprocal_cutoff: InverseBohr,
+    smoothing: InverseBohr,
+) -> Result<Vec<Complex64>, CoulombError> {
+    let radius = prepared
+        .request
+        .spencer_alavi_radius()
+        .expect("selected sphere")
+        .get();
+    let omega = smoothing.get();
+    let waves = auxiliary_waves(prepared.request, prepared.auxiliary.q, reciprocal_cutoff)?;
+    let n = densities.len();
+    if waves.is_empty() {
+        return Ok(vec![Complex64::default(); n * n]);
+    }
+    let coefficients = waves
+        .par_iter()
+        .map(|wave| {
+            densities
+                .iter()
+                .map(|density| {
+                    truncated_fourier_coefficient(
+                        density,
+                        wave,
+                        &prepared.support,
+                        prepared.auxiliary,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, CoulombError>>()?;
+    let kernels = waves
+        .iter()
+        .map(|wave| {
+            let q = wave.q_plus_g_norm.get();
+            if is_zero_norm(q) {
+                2.0 * PI * radius * radius + PI / (omega * omega)
+            } else {
+                -4.0 * PI / (q * q) * (q * radius).cos() * (-(q / (2.0 * omega)).powi(2)).exp()
+            }
+        })
+        .collect::<Vec<_>>();
+    let conjugate = ComplexTensor::from_host_row_major(
+        &[waves.len(), n],
+        &[Axis::Auxiliary, Axis::Auxiliary],
+        coefficients.iter().flatten().map(|c| c.conj()).collect(),
+    )?;
+    let weighted = ComplexTensor::from_host_row_major(
+        &[waves.len(), n],
+        &[Axis::Auxiliary, Axis::Auxiliary],
+        coefficients
+            .iter()
+            .zip(kernels)
+            .flat_map(|(row, kernel)| row.iter().map(move |c| c * kernel))
+            .collect(),
+    )?;
+    Ok(einsum("gi,gj->ij", &[&conjugate, &weighted])?.to_host_row_major())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -294,6 +387,7 @@ fn assemble_spencer_alavi(
             radius,
             full_k_points,
             reciprocal_cutoff,
+            smoothing: None,
         }),
         provenance: Provenance {
             recipe: Some("spencer-alavi-sphere-coulomb".to_owned()),

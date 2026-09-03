@@ -39,6 +39,8 @@ pub enum CoulombError {
     InvalidTruncationKPointCount(usize),
     #[error("Spencer-Alavi reciprocal cutoff must be finite and positive, got {0}")]
     InvalidTruncationReciprocalCutoff(f64),
+    #[error("smoothed spherical truncation needs a finite positive omega, got {0}")]
+    InvalidTruncationSmoothing(f64),
     #[error("cell volume {cell} does not match the product partition volume {partition}")]
     CellVolumeMismatch { cell: f64, partition: f64 },
     #[error("Coulomb request reciprocal lattice does not match the direct cell")]

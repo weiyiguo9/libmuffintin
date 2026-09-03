@@ -41,6 +41,8 @@ pub struct SpencerAlaviSphere {
     pub radius: Bohr,
     pub full_k_points: usize,
     pub reciprocal_cutoff: InverseBohr,
+    /// None for the sharp sphere; Some(omega) for its Gaussian-smoothed boundary.
+    pub smoothing: Option<InverseBohr>,
 }
 
 /// Hermitian Coulomb operator $V^q$ in the compiled auxiliary order.
