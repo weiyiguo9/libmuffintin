@@ -541,6 +541,42 @@ acceptance. Thus reported virtual energies do not contain the artificial
 shift. This control is distinct from `QuasiNewtonDiis::level_shift`, which
 regularizes only the error-vector energy denominator.
 
+The current Kr production-size acceptance is blocked by core-like active
+occupations, not established by successful inner-loop closure. A diagnostic
+at commit `2ac2e01` used an 8 bohr box, orbital/product cutoffs 2 inverse bohr,
+field/exchange Fourier cutoffs 4.5 inverse bohr, orbital/product angular cutoffs
+4, a 2 bohr MT radius, 2401 radial points, all HDLOs, 48 scalar source bands,
+and Spencer–Alavi exchange. The core partition is 28 electrons; the active
+space contains 8 electrons and uses a $4d$, not $3d$, radial recipe. The two
+outer steps had deliberately loose outer gates and $10^{-4}$ Hartree inner
+feedback/commutator gates, so this is an occupation diagnostic only.
+
+| Diagnostic after outer step 2 | Measured value |
+| --- | ---: |
+| Each occupied spinor's summed MT $3d$ core overlap weight | 0.98155–0.98333 |
+| Occupation-weighted sum over all core-overlap weights | 7.85952 |
+| MT density residual RMS | 0.144631 |
+| Interstitial density residual RMS | 0.00810349 |
+| MT fraction of the squared total density residual | 0.996871 |
+
+These overlaps use the same scalar $P_cP_v+Q_cQ_v$ contraction as the static
+core operator. They directly expose strong core-like contamination within
+that model; they are not full-space FRA projection probabilities. Merely
+excluding occupied-core quantum numbers from the radial recipes does not
+enforce valence orthogonality. The next physical step is a core-orthogonal
+valence representation with consistent overlap, Hamiltonian, density, and
+exchange assembly. Do not repair this by skipping an energy-ranked number
+of bands or by accepting looser SCF gates. Core-orthogonalized active orbitals
+still define a VV-only THC space; the frozen core need not become an active
+THC orbital.
+
+The matched strict inner probe at `ac0ce76`, with a 0.1 Hartree virtual shift,
+still reached a commutator residual of $2.1461\times10^{-5}$ Hartree after 128
+spinor steps, above its $10^{-5}$ Hartree target. Disabling HDLOs did not yield
+an accepted control: that run stopped at the scalar eigenvalue identity gate
+with residual 0.00150118 Hartree versus tolerance 0.0008 Hartree. Neither run
+establishes a physical valence spectrum or an HDLO-only cause.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
