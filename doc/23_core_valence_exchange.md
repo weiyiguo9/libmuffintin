@@ -869,6 +869,28 @@ production-converged, and the core remains frozen from the LDA checkpoint,
 unlike the relaxed GTO reference. Neither the absolute total energy nor the
 relative spectrum is accepted as the requested all-electron benchmark.
 
+Increasing only the interstitial product cutoff from 2 to 4 inverse bohr
+at field cutoff 8 (`96b0ed3`) reached the configured thresholds in ten
+iterations (424.70 seconds), giving $-2786.410066$ Ha and a lowest-pair
+HOMO shift of $-22.510257$ eV. This changes that shift by only 0.00741 eV;
+it does not establish convergence of the other product-space parameters.
+All these smoothed orbital-cutoff-2 probes used `LEXP=4`, below SPEX's
+minimum of twice the MPB angular cutoff and its default floor of 14.
+The subsequent orbital-cutoff-3, product-angular-cutoff-6 probe at
+`cdf2e1f` used `LEXP=6` and was deliberately stopped after iteration 7,
+without convergence or mixer-failure acceptance, to investigate the
+Coulomb angular representation independently. See [15](15_weinert_coulomb_metric.md).
+
+An independent isolated radial calculation at `cdf2e1f` evaluates the
+Dirac–Coulomb HF functional on all 36 occupied LDA atomic spinors, without
+LAPW, MPB, or a periodic box. It gives one-body energy $-3876.581171$ Ha,
+Hartree energy $1182.642088$ Ha, exchange energy $-94.902618$ Ha, and total
+$-2788.841701$ Ha, approximately 0.04277 Ha above the stored GTO 4c HF
+reference. This is an LDA-determinant HF expectation, not self-consistent
+HF or a matched-Hamiltonian variational bound. It does not support
+attributing the preceding approximately 2.48 Ha error to frozen LDA core
+without further evidence.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
