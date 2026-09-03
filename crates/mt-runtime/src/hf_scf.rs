@@ -173,8 +173,10 @@ pub struct KhSocValenceHfSpec {
     pub fock_feedback_tolerance: Hartree,
     /// Maximum Pauli-spinor fixed-frame commutator matrix element in Hartree.
     pub fock_commutator_tolerance: Hartree,
-    /// Shared scalar-source and Pauli-spinor Fock mixer.
-    pub fock_mixing: FockMixing,
+    /// Mixer for the scalar KH source solve.
+    pub scalar_fock_mixing: FockMixing,
+    /// Mixer for the self-consistent Pauli-spinor solve.
+    pub spinor_fock_mixing: FockMixing,
     pub core_treatment: KhSocCoreTreatment,
 }
 
@@ -1820,8 +1822,8 @@ fn solve_scalar_fixed_potential(
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
     let mut previous_global_feedback: Option<Collinear<Vec<DenseHermitianMatrix>>> = None;
-    let mut up_mixer = FeedbackMixer::new(spec.fock_mixing);
-    let mut down_mixer = FeedbackMixer::new(spec.fock_mixing);
+    let mut up_mixer = FeedbackMixer::new(spec.scalar_fock_mixing);
+    let mut down_mixer = FeedbackMixer::new(spec.scalar_fock_mixing);
     let mut current_density = None;
     let mut exchange_cache = None;
     let core_feedback = physics
@@ -1948,7 +1950,7 @@ fn solve_second_variation_fixed_potential(
     let fixed_hamiltonians =
         subtract_global_feedback(frame.fixed_hamiltonians(), &scalar_feedback)?;
     let mut previous_feedback: Option<Vec<DenseHermitianMatrix>> = None;
-    let mut feedback_mixer = FeedbackMixer::new(spec.fock_mixing);
+    let mut feedback_mixer = FeedbackMixer::new(spec.spinor_fock_mixing);
     let mut current_density = None;
     let mut exchange_cache = None;
     let mut last_residual = f64::INFINITY;
@@ -4247,7 +4249,7 @@ fn validate_kh_soc_spec(spec: &KhSocValenceHfSpec) -> Result<f64, KhSocValenceHf
     {
         return Err(KhSocValenceHfError::FockCommutatorTolerance);
     }
-    if !valid_fock_mixing(spec.fock_mixing) {
+    if !valid_fock_mixing(spec.scalar_fock_mixing) || !valid_fock_mixing(spec.spinor_fock_mixing) {
         return Err(KhSocValenceHfError::Hf(GammaValenceHfError::FockMixing));
     }
     Ok(valence_electrons)

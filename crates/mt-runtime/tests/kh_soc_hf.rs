@@ -41,7 +41,8 @@ fn gamma_scalar_hf_then_soc_preserves_closed_shell_density_and_exchange() {
         fock_density_tolerance: 1.0e-7,
         fock_feedback_tolerance: Hartree(1.0e-8),
         fock_commutator_tolerance: Hartree(1.0e-8),
-        fock_mixing: FockMixing::QuasiNewtonDiis {
+        scalar_fock_mixing: FockMixing::CommutatorDiis { history: 4 },
+        spinor_fock_mixing: FockMixing::QuasiNewtonDiis {
             history: 4,
             level_shift: Hartree(0.25),
         },
@@ -120,7 +121,8 @@ fn frozen_core_enters_scalar_fock_soc_and_total_density_without_expanding_vv() {
         fock_density_tolerance: 1.0e-7,
         fock_feedback_tolerance: Hartree(1.0e-8),
         fock_commutator_tolerance: Hartree(1.0e-8),
-        fock_mixing: FockMixing::PulayAnderson {
+        scalar_fock_mixing: FockMixing::CommutatorDiis { history: 4 },
+        spinor_fock_mixing: FockMixing::PulayAnderson {
             alpha: 0.5,
             history: 4,
         },

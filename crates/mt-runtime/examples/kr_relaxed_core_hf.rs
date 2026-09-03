@@ -243,6 +243,7 @@ struct Cli {
     fock_density_tolerance: f64,
     fock_feedback_tolerance: f64,
     fock_commutator_tolerance: f64,
+    scalar_fock_mixing: FockMixerSelection,
     fock_mixing: FockMixerSelection,
     fock_mixing_alpha: f64,
     fock_diis_history: usize,
@@ -281,6 +282,7 @@ impl Default for Cli {
             fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
             fock_feedback_tolerance: FOCK_FEEDBACK_TOLERANCE_HARTREE,
             fock_commutator_tolerance: FOCK_COMMUTATOR_TOLERANCE_HARTREE,
+            scalar_fock_mixing: FockMixerSelection::Cdiis,
             fock_mixing: FockMixerSelection::Cdiis,
             fock_mixing_alpha: 0.5,
             fock_diis_history: FOCK_DIIS_HISTORY,
@@ -342,6 +344,9 @@ impl Cli {
                 }
                 "--fock-commutator-tolerance" => {
                     cli.fock_commutator_tolerance = parse_value(&name, &value)?
+                }
+                "--scalar-fock-mixing" => {
+                    cli.scalar_fock_mixing = FockMixerSelection::parse(&value)?
                 }
                 "--fock-mixing" => cli.fock_mixing = FockMixerSelection::parse(&value)?,
                 "--fock-mixing-alpha" => cli.fock_mixing_alpha = parse_value(&name, &value)?,
@@ -526,6 +531,8 @@ struct ParameterManifest {
     fock_density_tolerance: f64,
     fock_feedback_tolerance_hartree: f64,
     fock_commutator_tolerance_hartree: Option<f64>,
+    scalar_fock_mixing_algorithm: Option<&'static str>,
+    scalar_fock_diis_level_shift_hartree: Option<f64>,
     fock_mixing_algorithm: &'static str,
     fock_mixing_alpha: Option<f64>,
     fock_mixing_history: usize,
@@ -1031,6 +1038,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             fock_feedback_tolerance_hartree: cli.fock_feedback_tolerance,
             fock_commutator_tolerance_hartree: (cli.relativity == RelativitySelection::KhSoc)
                 .then_some(cli.fock_commutator_tolerance),
+            scalar_fock_mixing_algorithm: (cli.relativity == RelativitySelection::KhSoc)
+                .then_some(cli.scalar_fock_mixing.as_str()),
+            scalar_fock_diis_level_shift_hartree: (cli.relativity == RelativitySelection::KhSoc
+                && matches!(cli.scalar_fock_mixing, FockMixerSelection::QuasiNewtonCdiis))
+            .then_some(cli.fock_diis_level_shift),
             fock_mixing_algorithm: cli.fock_mixing.as_str(),
             fock_mixing_alpha: matches!(
                 cli.fock_mixing,
@@ -1167,7 +1179,12 @@ fn run_kh_soc_example(
         fock_density_tolerance: cli.fock_density_tolerance,
         fock_feedback_tolerance: Hartree(cli.fock_feedback_tolerance),
         fock_commutator_tolerance: Hartree(cli.fock_commutator_tolerance),
-        fock_mixing: cli.fock_mixing.build(
+        scalar_fock_mixing: cli.scalar_fock_mixing.build(
+            cli.fock_mixing_alpha,
+            cli.fock_diis_history,
+            cli.fock_diis_level_shift,
+        ),
+        spinor_fock_mixing: cli.fock_mixing.build(
             cli.fock_mixing_alpha,
             cli.fock_diis_history,
             cli.fock_diis_level_shift,

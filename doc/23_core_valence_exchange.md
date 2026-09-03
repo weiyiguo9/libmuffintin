@@ -486,7 +486,10 @@ operator is the projected scalar local Hamiltonian plus SOC, resolved core
 exchange, and one copy of the live spinor VV operator; neither scalar exchange
 nor core exchange is counted twice.
 
-Every spinor Fock iteration rebuilds the up/down-summed pair vertices from the
+The scalar KH source and Pauli-spinor loops own separate explicit Fock mixers;
+their maps have different conditioning, so a preconditioner chosen for the
+spinor loop is not silently imposed on the scalar source. Every spinor Fock
+iteration rebuilds the up/down-summed pair vertices from the
 current SOC orbitals on a cached scalar mixed-product basis and cached Coulomb
 operator. The band matrix is lifted to the fixed doubled scalar-band frame.
 CDIIS forms the full Pauli density matrix there and uses its ordinary
