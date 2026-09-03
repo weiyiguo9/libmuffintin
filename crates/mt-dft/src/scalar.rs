@@ -26,16 +26,29 @@ const POTENTIAL_TOLERANCE: f64 = 4096.0 * f64::EPSILON;
 
 /// One scalar local-orbital request, resolved by angular momentum rather than
 /// signed `kappa`. `p1/2` requests belong to the full-spinor route.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ScalarLocalOrbitalRequest {
-    Lo { l: u32, energy: Hartree },
-    Hdlo { l: u32 },
+    Lo {
+        l: u32,
+        energy: Hartree,
+    },
+    Hdlo {
+        l: u32,
+    },
+    /// Homogeneous Dirac s core samples in the same radial reference potential.
+    /// They are reduced P/Q components, restricted to the MT mesh.
+    BoundSCore {
+        energy: Hartree,
+        p: Vec<f64>,
+        q: Vec<f64>,
+    },
 }
 
 impl ScalarLocalOrbitalRequest {
-    pub const fn angular_momentum(self) -> u32 {
+    pub const fn angular_momentum(&self) -> u32 {
         match self {
-            Self::Lo { l, .. } | Self::Hdlo { l } => l,
+            Self::Lo { l, .. } | Self::Hdlo { l } => *l,
+            Self::BoundSCore { .. } => 0,
         }
     }
 }
@@ -276,7 +289,7 @@ fn build_site(site: usize, input: &ScalarSiteInput) -> Result<BuiltSite, ScalarB
         })
         .collect::<Result<Vec<_>, _>>()?;
     let mut local_orbitals = vec![Vec::new(); linearized.len()];
-    for &request in &input.local_orbitals {
+    for request in &input.local_orbitals {
         let l = usize::try_from(request.angular_momentum())
             .map_err(|_| ScalarBuilderError::AngularMomentumOverflow)?;
         let Some(base) = linearized.get(l) else {
@@ -288,26 +301,35 @@ fn build_site(site: usize, input: &ScalarSiteInput) -> Result<BuiltSite, ScalarB
         };
         let built = match request {
             ScalarLocalOrbitalRequest::Lo { energy, .. } => {
-                if energy == base.solution.energy() {
+                if *energy == base.solution.energy() {
                     return Err(ScalarBuilderError::LocalOrbitalEnergyNotDistinct {
                         site,
                         l: request.angular_momentum(),
-                        energy,
+                        energy: *energy,
                     });
                 }
-                let raw = solver.solve(request.angular_momentum(), energy)?;
-                let orbital = solver.local_orbital(base, energy)?;
+                let raw = solver.solve(request.angular_momentum(), *energy)?;
+                let orbital = solver.local_orbital(base, &raw)?;
                 BuiltScalarLocalOrbital {
-                    request,
+                    request: request.clone(),
                     orbital,
                     origin: ScalarLocalOrbitalOrigin::DistinctEnergy(raw),
                 }
             }
             ScalarLocalOrbitalRequest::Hdlo { .. } => BuiltScalarLocalOrbital {
-                request,
+                request: request.clone(),
                 orbital: base.hdlo(&input.mesh)?,
                 origin: ScalarLocalOrbitalOrigin::Hdlo(base.second_energy_derivative.clone()),
             },
+            ScalarLocalOrbitalRequest::BoundSCore { energy, p, q } => {
+                let raw = solver.bound_s_primitive(*energy, p, q)?;
+                let orbital = solver.local_orbital(base, &raw)?;
+                BuiltScalarLocalOrbital {
+                    request: request.clone(),
+                    orbital,
+                    origin: ScalarLocalOrbitalOrigin::DistinctEnergy(raw),
+                }
+            }
         };
         local_orbitals[l].push(built);
     }

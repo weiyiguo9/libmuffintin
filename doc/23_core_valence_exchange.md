@@ -575,7 +575,12 @@ current-minus-reference potential, including its spherical component, is
 added to the reference site Hamiltonian; the interstitial Hamiltonian uses
 the current physical potential. Thus the radial reference is frozen, not the
 HF Hamiltonian or Hartree density. One matched KH local orbital is appended internally for
-each core radial shell in each represented angular channel. Let $B$ contain
+each core radial shell in each represented angular channel. For an $s$ shell,
+the KH radial equation equals the Dirac equation at $\kappa=-1$: its primitive
+therefore reuses the homogeneous frozen-core $P,Q$ samples, normalized on the
+MT mesh, instead of shooting outward again at the deep core eigenenergy.
+Nonzero angular momenta still use KH primitives and retain the limitations
+documented below. Let $B$ contain
 the core overlaps with the original radial columns, and $D$ the overlaps with
 these additional cancellation LOs. Both use the same MT $P_cP_v+Q_cQ_v$
 contraction as static core exchange. The active embedding is
@@ -633,8 +638,8 @@ The initial LDA/XC generating potential is not reused as the HF one-body
 operator. Core orbitals and their CC exchange remain frozen, while their
 one-body expectation changes with the current Hartree density.
 
-The current Kr production-size acceptance is blocked by core-like active
-occupations, not established by successful inner-loop closure. A diagnostic
+Kr production-size physical acceptance is not established by successful
+inner-loop closure. An earlier unconstrained diagnostic
 at commit `2ac2e01` used an 8 bohr box, orbital/product cutoffs 2 inverse bohr,
 field/exchange Fourier cutoffs 4.5 inverse bohr, orbital/product angular cutoffs
 4, a 2 bohr MT radius, 2401 radial points, all HDLOs, 48 scalar source bands,
@@ -652,12 +657,12 @@ feedback/commutator gates, so this is an occupation diagnostic only.
 | MT fraction of the squared total density residual | 0.996871 |
 
 These overlaps use the same scalar $P_cP_v+Q_cQ_v$ contraction as the static
-core operator. They directly expose strong core-like contamination within
+core operator. They exposed strong core-like contamination within
 that model; they are not full-space FRA projection probabilities. Merely
 excluding occupied-core quantum numbers from the radial recipes does not
-enforce valence orthogonality. The next physical step is a core-orthogonal
-valence representation with consistent overlap, Hamiltonian, density, and
-exchange assembly. Do not repair this by skipping an energy-ranked number
+enforce valence orthogonality. The constrained representation above addresses
+that contamination, but the radial-span diagnostic below shows why zero core
+overlap alone is insufficient for acceptance. Do not repair this by skipping an energy-ranked number
 of bands or by accepting looser SCF gates. Core-orthogonalized active orbitals
 still define a VV-only THC space; the frozen core need not become an active
 THC orbital.
@@ -668,6 +673,48 @@ spinor steps, above its $10^{-5}$ Hartree target. Disabling HDLOs did not yield
 an accepted control: that run stopped at the scalar eigenvalue identity gate
 with residual 0.00150118 Hartree versus tolerance 0.0008 Hartree. Neither run
 establishes a physical valence spectrum or an HDLO-only cause.
+
+A fixed-checkpoint diagnostic at `f790d53` separated core projection from SCF
+mixing using the same Kr basis parameters. The core generating potential and
+the scalar radial reference agreed sample by sample. Independently contracting
+the physical density-site orbitals also reproduced the vanishing core overlaps
+of the constrained eigenvectors; this was not a mismatch between radial and
+density coordinate layouts.
+
+| Frozen LDA operator, before the bound s primitive repair | Lowest s energy (Ha) | Lowest p-dominated energy (Ha) | p-channel MT norm |
+| --- | ---: | ---: | ---: |
+| No core constraints | -1.562566 | -0.877116 | 0.72516 |
+| All signed kappa radial constraints | -0.756348 | 0.356490 | 0.03588 |
+| Negative kappa constraints only, diagnostic | -0.756348 | -0.139982 | 0.38705 |
+| Positive kappa constraints, retaining s, diagnostic | -0.756348 | -0.140178 | 0.38640 |
+
+The deep $1s$ cancellation LO had only $8.90\times10^{-12}$ overlap amplitude
+with the actual $1s$ core and a mean radius of 1.15223 bohr. Its outward-shot
+primitive failed to retain the bound-core shape, so imposing an exact zero
+overlap through that direction distorted even the $s$ valence space. Reusing
+the stable bound $s$ samples repairs this specific construction error without
+dropping a core constraint or changing a convergence tolerance.
+
+With the repair, the same fixed-potential diagnostic gives a $1s$ cancellation
+LO mean radius of 0.0415356 bohr and a lowest $s$ energy of -1.56256950 Hartree
+(unconstrained reference: -1.56256563 Hartree). Its MT $s$ norm is 0.859082,
+and the independently evaluated $s$-core overlap weights remain below
+$10^{-35}$ for that eigenvector. The active scalar dimension is unchanged at
+106. The lowest $p$-dominated energy with all signed kappa constraints remains
+0.356490 Hartree, isolating the still-unrepaired nonzero-angular-momentum issue.
+
+The separate nonzero-angular-momentum issue remains open: both Dirac partners
+are imposed on every scalar magnetic/spin channel, while the cancellation
+radials themselves are KH, not kappa-resolved Dirac functions. Selecting just
+one kappa branch is not an accepted fix. These comparisons are fixed-potential
+diagnostics, not converged HF spectra. Neither a vanishing overlap residual
+nor an improved mixer establishes that the remaining valence span is physical.
+
+`RadialSolver::local_orbital` now consumes a resolved `RadialSolution`; callers
+of the distinct-energy route first call `solve`. `BoundSCore` requests carry
+homogeneous core samples in the same reference potential and are not valid
+for sourced relaxed-core HF orbitals. `ScalarLocalOrbitalRequest` is no longer
+`Copy` because this explicit primitive owns radial samples.
 
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain

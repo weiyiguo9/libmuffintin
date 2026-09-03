@@ -41,6 +41,8 @@ pub enum ScalarCoreOrthogonalizationError {
 
 /// Add one matched KH LO per core radial shell, then eliminate exactly those
 /// added coordinates by imposing all MT `P_c P_v + Q_c Q_v` overlaps to zero.
+/// The s primitives reuse homogeneous Dirac core samples, avoiding unstable
+/// outward shooting of deeply bound states. Non-s primitives remain KH solves.
 /// The original plane-wave and valence-LO coordinates remain the active space.
 /// Radials use `reference_sites`; the complete physical potential difference
 /// from `physical_sites` is added to the local Hamiltonian, including its monopole.
@@ -82,9 +84,17 @@ pub fn build_core_orthogonal_scalar_iteration_basis(
         for shell in &core.shells {
             let l = shell.state.kappa.large_l();
             if (l as usize) < input.linearization_energies.len() {
-                input.local_orbitals.push(ScalarLocalOrbitalRequest::Lo {
-                    l,
-                    energy: shell.energy,
+                input.local_orbitals.push(if l == 0 {
+                    ScalarLocalOrbitalRequest::BoundSCore {
+                        energy: shell.energy,
+                        p: shell.p[..input.mesh.len()].to_vec(),
+                        q: shell.q[..input.mesh.len()].to_vec(),
+                    }
+                } else {
+                    ScalarLocalOrbitalRequest::Lo {
+                        l,
+                        energy: shell.energy,
+                    }
                 });
             }
         }

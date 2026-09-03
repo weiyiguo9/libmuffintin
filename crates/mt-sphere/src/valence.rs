@@ -320,6 +320,8 @@ pub enum RadialError {
         solver: RadialEquation,
         solution: RadialEquation,
     },
+    #[error("local-orbital angular momentum {raw} differs from the linearized channel {base}")]
+    LocalOrbitalAngularMomentum { base: u32, raw: u32 },
     #[error("large/small component presence is inconsistent in a radial basis combination")]
     ComponentMismatch,
     #[error("hard-wall energy bracket is invalid: [{lower}, {upper}] Ha")]
@@ -420,6 +422,34 @@ impl<'a> RadialSolver<'a> {
     ) -> Result<RadialSolution, RadialError> {
         let raw = self.integrate_homogeneous(angular_momentum, energy)?;
         self.normalize(raw, angular_momentum, energy)
+    }
+
+    /// Normalize a bound Dirac s radial on this muffin-tin mesh as a KH
+    /// primitive. For kappa = -1 the two radial equations are identical.
+    /// The samples must come from a homogeneous core solve in this potential;
+    /// do not substitute a sourced HF core or a non-s Dirac shell.
+    pub fn bound_s_primitive(
+        &self,
+        energy: Hartree,
+        p: &[f64],
+        q: &[f64],
+    ) -> Result<RadialSolution, RadialError> {
+        if self.equation != RadialEquation::ScalarKoellingHarmon {
+            return Err(RadialError::EquationMismatch {
+                solver: self.equation,
+                solution: RadialEquation::ScalarKoellingHarmon,
+            });
+        }
+        ensure_mesh_length(self.mesh, p.len())?;
+        ensure_mesh_length(self.mesh, q.len())?;
+        self.normalize(
+            InternalSolution {
+                p: p.to_vec(),
+                q_tilde: q.iter().map(|q| q * SPEX_SPEED_OF_LIGHT).collect(),
+            },
+            0,
+            energy,
+        )
     }
 
     pub fn solve_with_energy_derivative(
@@ -693,11 +723,12 @@ impl<'a> RadialSolver<'a> {
         })
     }
 
-    /// Build and normalize a matched local orbital at `lo_energy`.
+    /// Match and normalize a supplied homogeneous radial primitive against
+    /// the value and slope of the linearized pair at the muffin-tin boundary.
     pub fn local_orbital(
         &self,
         linearized: &LinearizedRadialSolution,
-        lo_energy: Hartree,
+        raw: &RadialSolution,
     ) -> Result<LocalOrbital, RadialError> {
         if linearized.solution.equation != self.equation {
             return Err(RadialError::EquationMismatch {
@@ -705,7 +736,19 @@ impl<'a> RadialSolver<'a> {
                 solution: linearized.solution.equation,
             });
         }
-        let raw = self.solve(linearized.solution.angular_momentum, lo_energy)?;
+        if raw.equation != self.equation {
+            return Err(RadialError::EquationMismatch {
+                solver: self.equation,
+                solution: raw.equation,
+            });
+        }
+        if raw.angular_momentum != linearized.solution.angular_momentum {
+            return Err(RadialError::LocalOrbitalAngularMomentum {
+                base: linearized.solution.angular_momentum,
+                raw: raw.angular_momentum,
+            });
+        }
+        ensure_mesh_length(self.mesh, raw.p.len())?;
         let u = &linearized.solution;
         let udot = &linearized.energy_derivative;
         ensure_mesh_length(self.mesh, u.p.len())?;
@@ -756,7 +799,7 @@ impl<'a> RadialSolver<'a> {
         let derivative = scale
             * (raw.boundary.derivative + a * u.boundary.derivative + b * udot.boundary.derivative);
         Ok(LocalOrbital {
-            energy: lo_energy,
+            energy: raw.energy,
             p,
             q,
             coefficients: LocalOrbitalCoefficients {
@@ -1503,7 +1546,10 @@ mod tests {
         let pair = solver
             .solve_with_energy_derivative(1, Hartree(-0.18))
             .unwrap();
-        let local = solver.local_orbital(&pair, Hartree(0.4)).unwrap();
+        let raw = solver
+            .solve(pair.solution.angular_momentum(), Hartree(0.4))
+            .unwrap();
+        let local = solver.local_orbital(&pair, &raw).unwrap();
         assert!(local.boundary.value.abs() < 2.0e-12);
         assert!(local.boundary.derivative.abs() < 2.0e-12);
         assert!((component_norm_squared(&mesh, &local.p, None).unwrap() - 1.0).abs() < 2.0e-12);
