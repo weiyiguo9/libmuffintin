@@ -48,6 +48,7 @@ const MAX_FOCK_ITERATIONS: usize = 32;
 const LOOSE_TOLERANCE: f64 = 1.0e100;
 const FOCK_DENSITY_TOLERANCE: f64 = 1.0e-5;
 const FOCK_FEEDBACK_TOLERANCE_HARTREE: f64 = 5.0e-6;
+const FOCK_COMMUTATOR_TOLERANCE_HARTREE: f64 = 5.0e-6;
 const FOCK_DIIS_HISTORY: usize = 8;
 const FOCK_DIIS_LEVEL_SHIFT_HARTREE: f64 = 0.25;
 const SECTOR_NUMERICAL_TOLERANCE_HARTREE: f64 = 1.0e-8;
@@ -241,6 +242,7 @@ struct Cli {
     max_fock_iterations: usize,
     fock_density_tolerance: f64,
     fock_feedback_tolerance: f64,
+    fock_commutator_tolerance: f64,
     fock_mixing: FockMixerSelection,
     fock_mixing_alpha: f64,
     fock_diis_history: usize,
@@ -278,6 +280,7 @@ impl Default for Cli {
             max_fock_iterations: MAX_FOCK_ITERATIONS,
             fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
             fock_feedback_tolerance: FOCK_FEEDBACK_TOLERANCE_HARTREE,
+            fock_commutator_tolerance: FOCK_COMMUTATOR_TOLERANCE_HARTREE,
             fock_mixing: FockMixerSelection::Cdiis,
             fock_mixing_alpha: 0.5,
             fock_diis_history: FOCK_DIIS_HISTORY,
@@ -337,6 +340,9 @@ impl Cli {
                 "--fock-feedback-tolerance" => {
                     cli.fock_feedback_tolerance = parse_value(&name, &value)?
                 }
+                "--fock-commutator-tolerance" => {
+                    cli.fock_commutator_tolerance = parse_value(&name, &value)?
+                }
                 "--fock-mixing" => cli.fock_mixing = FockMixerSelection::parse(&value)?,
                 "--fock-mixing-alpha" => cli.fock_mixing_alpha = parse_value(&name, &value)?,
                 "--fock-diis-history" => cli.fock_diis_history = parse_value(&name, &value)?,
@@ -367,6 +373,10 @@ impl Cli {
             ("--fock-mixing-alpha", self.fock_mixing_alpha),
             ("--fock-density-tolerance", self.fock_density_tolerance),
             ("--fock-feedback-tolerance", self.fock_feedback_tolerance),
+            (
+                "--fock-commutator-tolerance",
+                self.fock_commutator_tolerance,
+            ),
         ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(invalid_input(format!(
@@ -515,6 +525,7 @@ struct ParameterManifest {
     max_fock_iterations: usize,
     fock_density_tolerance: f64,
     fock_feedback_tolerance_hartree: f64,
+    fock_commutator_tolerance_hartree: Option<f64>,
     fock_mixing_algorithm: &'static str,
     fock_mixing_alpha: Option<f64>,
     fock_mixing_history: usize,
@@ -647,9 +658,11 @@ struct KhSocIterationRecord {
     spinor_exchange_rebuilds: usize,
     scalar_fock_fixed_point_residual: f64,
     scalar_fock_feedback_residual_hartree: f64,
+    spinor_fock_commutator_residual_hartree: f64,
     vv_exchange_energy_hartree: f64,
     fock_fixed_point_residual: f64,
     fock_feedback_residual_hartree: f64,
+    fock_commutator_residual_hartree: f64,
     valence_density_rms: f64,
     total_density_rms: f64,
     total_energy_hartree: f64,
@@ -1015,6 +1028,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             max_fock_iterations: cli.max_fock_iterations,
             fock_density_tolerance: cli.fock_density_tolerance,
             fock_feedback_tolerance_hartree: cli.fock_feedback_tolerance,
+            fock_commutator_tolerance_hartree: (cli.relativity == RelativitySelection::KhSoc)
+                .then_some(cli.fock_commutator_tolerance),
             fock_mixing_algorithm: cli.fock_mixing.as_str(),
             fock_mixing_alpha: matches!(
                 cli.fock_mixing,
@@ -1150,6 +1165,7 @@ fn run_kh_soc_example(
         max_fock_iterations: cli.max_fock_iterations,
         fock_density_tolerance: cli.fock_density_tolerance,
         fock_feedback_tolerance: Hartree(cli.fock_feedback_tolerance),
+        fock_commutator_tolerance: Hartree(cli.fock_commutator_tolerance),
         fock_mixing: cli.fock_mixing.build(
             cli.fock_mixing_alpha,
             cli.fock_diis_history,
@@ -1455,6 +1471,7 @@ fn kh_soc_iteration_record(item: &KhSocValenceHfIterationDiagnostic) -> KhSocIte
         spinor_exchange_rebuilds: item.spinor_exchange_rebuilds,
         scalar_fock_fixed_point_residual: item.scalar_fock_fixed_point_residual,
         scalar_fock_feedback_residual_hartree: item.scalar_fock_feedback_residual.get(),
+        spinor_fock_commutator_residual_hartree: item.spinor_fock_commutator_residual.get(),
         vv_exchange_energy_hartree: item.exchange_energy.get(),
         fock_fixed_point_residual: item.fock_fixed_point_residual,
         fock_feedback_residual_hartree: item.fock_feedback_residual.get(),
@@ -1553,6 +1570,7 @@ fn kh_soc_result_record(result: &KhSocValenceHfResult) -> Result<KhSocResultFile
         },
         fock_fixed_point_residual: result.fock_fixed_point_residual,
         fock_feedback_residual_hartree: result.fock_feedback_residual.get(),
+        fock_commutator_residual_hartree: result.fock_commutator_residual.get(),
         scalar_to_soc_density_rms: result.second_variation_density_rms,
         exchange_rebuilds: result.exchange_rebuilds,
         k_fractional: result.k_fractional.clone(),

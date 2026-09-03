@@ -171,6 +171,8 @@ pub struct KhSocValenceHfSpec {
     pub max_fock_iterations: usize,
     pub fock_density_tolerance: f64,
     pub fock_feedback_tolerance: Hartree,
+    /// Maximum Pauli-spinor fixed-frame commutator matrix element in Hartree.
+    pub fock_commutator_tolerance: Hartree,
     /// Shared scalar-source and Pauli-spinor Fock mixer.
     pub fock_mixing: FockMixing,
     pub core_treatment: KhSocCoreTreatment,
@@ -195,6 +197,7 @@ pub struct KhSocValenceHfIterationDiagnostic {
     pub spinor_exchange_rebuilds: usize,
     pub scalar_fock_fixed_point_residual: f64,
     pub scalar_fock_feedback_residual: Hartree,
+    pub spinor_fock_commutator_residual: Hartree,
     pub exchange_energy: Hartree,
     pub fock_fixed_point_residual: f64,
     pub fock_feedback_residual: Hartree,
@@ -225,6 +228,7 @@ pub struct KhSocValenceHfResult {
     pub total_energy: Hartree,
     pub fock_fixed_point_residual: f64,
     pub fock_feedback_residual: Hartree,
+    pub fock_commutator_residual: Hartree,
     pub valence_density_rms: f64,
     pub regional_density_rms: f64,
     pub second_variation_density_rms: f64,
@@ -242,6 +246,8 @@ pub enum KhSocValenceHfError {
     Relativity,
     #[error("KH+SOC valence HF received an invalid Fock-mixing specification")]
     FockMixing,
+    #[error("KH+SOC fock_commutator_tolerance must be finite and positive")]
+    FockCommutatorTolerance,
     #[error("KH+SOC core treatment is inconsistent with the configured occupied core states")]
     CoreTreatment,
     #[error(transparent)]
@@ -480,6 +486,16 @@ pub enum GammaValenceHfError {
         outer_iteration: usize,
         iterations: usize,
         density_residual: f64,
+        feedback_residual: f64,
+    },
+    #[error(
+        "KH+SOC spinor Fock iteration did not converge after {iterations} iterations at outer step {outer_iteration}: density residual {density_residual}, commutator residual {commutator_residual} Ha, feedback residual {feedback_residual} Ha"
+    )]
+    SpinorFockNotConverged {
+        outer_iteration: usize,
+        iterations: usize,
+        density_residual: f64,
+        commutator_residual: f64,
         feedback_residual: f64,
     },
     #[error(
@@ -883,6 +899,7 @@ fn run_kh_soc_valence_hf_inner(
             spinor_exchange_rebuilds: spinor.exchange_rebuilds,
             scalar_fock_fixed_point_residual: fixed.fixed_point_residual,
             scalar_fock_feedback_residual: Hartree(fixed.feedback_residual),
+            spinor_fock_commutator_residual: Hartree(spinor.commutator_residual),
             exchange_energy: spinor.exchange.exchange_energy,
             fock_fixed_point_residual: spinor.fixed_point_residual,
             fock_feedback_residual: Hartree(spinor.feedback_residual),
@@ -922,6 +939,7 @@ fn run_kh_soc_valence_hf_inner(
                 total_energy: energy.total,
                 fock_fixed_point_residual: spinor.fixed_point_residual,
                 fock_feedback_residual: Hartree(spinor.feedback_residual),
+                fock_commutator_residual: Hartree(spinor.commutator_residual),
                 valence_density_rms,
                 regional_density_rms: density_rms,
                 second_variation_density_rms,
@@ -1772,6 +1790,7 @@ struct SecondVariationFixedPotentialResult {
     exchange_rebuilds: usize,
     fixed_point_residual: f64,
     feedback_residual: f64,
+    commutator_residual: f64,
 }
 
 struct ScalarExchangeCache {
@@ -1932,6 +1951,7 @@ fn solve_second_variation_fixed_potential(
     let mut exchange_cache = None;
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
+    let mut last_commutator_residual = f64::INFINITY;
 
     for fock_iteration in 1..=spec.max_fock_iterations {
         let occupation = solve_occupations(
@@ -1951,12 +1971,22 @@ fn solve_second_variation_fixed_potential(
         )?;
         let band_feedback = exchange_feedback(&exchange)?;
         let fresh_feedback = lift_second_variation_feedback(&current.mixings, &band_feedback)?;
+        let commutator_residual = maximum_complex_element(&second_variation_commutator_diis_error(
+            &current.bands,
+            &fixed_hamiltonians,
+            &current.mixings,
+            &occupation_rows,
+            &fresh_feedback,
+            None,
+        )?);
+        last_commutator_residual = commutator_residual;
         let feedback_residual = previous_feedback
             .as_ref()
             .map(|previous| global_feedback_difference(previous, &fresh_feedback))
             .transpose()?
             .unwrap_or(f64::INFINITY);
         last_feedback_residual = feedback_residual;
+        let feedback_change_is_defined = previous_feedback.is_some();
         let mixed_feedback = match &previous_feedback {
             Some(previous) => feedback_mixer.mix_second_variation(
                 &current.bands,
@@ -1985,8 +2015,9 @@ fn solve_second_variation_fixed_potential(
         )?;
         last_residual = density_residual;
         current_density = Some(solved_density);
-        if density_residual <= spec.fock_density_tolerance
-            && feedback_residual <= spec.fock_feedback_tolerance.get()
+        if feedback_change_is_defined
+            && density_residual <= spec.fock_density_tolerance
+            && commutator_residual <= spec.fock_commutator_tolerance.get()
         {
             return Ok(SecondVariationFixedPotentialResult {
                 bands: current.bands,
@@ -1998,17 +2029,23 @@ fn solve_second_variation_fixed_potential(
                 exchange_rebuilds: fock_iteration,
                 fixed_point_residual: density_residual,
                 feedback_residual,
+                commutator_residual,
             });
         }
         current = solved;
         previous_feedback = Some(mixed_feedback);
     }
-    Err(GammaValenceHfError::FockNotConverged {
+    Err(GammaValenceHfError::SpinorFockNotConverged {
         outer_iteration,
         iterations: spec.max_fock_iterations,
         density_residual: last_residual,
+        commutator_residual: last_commutator_residual,
         feedback_residual: last_feedback_residual,
     })
+}
+
+fn maximum_complex_element(values: &[Complex64]) -> f64 {
+    values.iter().map(|value| value.norm()).fold(0.0, f64::max)
 }
 
 fn scalar_feedback_in_second_variation_frame(
@@ -4202,6 +4239,11 @@ fn validate_kh_soc_spec(spec: &KhSocValenceHfSpec) -> Result<f64, KhSocValenceHf
         return Err(KhSocValenceHfError::Hf(
             GammaValenceHfError::FockFeedbackTolerance,
         ));
+    }
+    if !spec.fock_commutator_tolerance.get().is_finite()
+        || spec.fock_commutator_tolerance.get() <= 0.0
+    {
+        return Err(KhSocValenceHfError::FockCommutatorTolerance);
     }
     if !valid_fock_mixing(spec.fock_mixing) {
         return Err(KhSocValenceHfError::Hf(GammaValenceHfError::FockMixing));

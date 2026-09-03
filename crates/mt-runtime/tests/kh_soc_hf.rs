@@ -1,4 +1,4 @@
-//! Scalar KH Hartree–Fock followed by SOC second-variation regression.
+//! Self-consistent Pauli-spinor KH+SOC Hartree–Fock regression.
 
 use muffintin::{
     CheckpointPhysics, FockMixing, GammaExchangeTreatment, KhSocCoreTreatment, KhSocValenceHfSpec,
@@ -40,6 +40,7 @@ fn gamma_scalar_hf_then_soc_preserves_closed_shell_density_and_exchange() {
         max_fock_iterations: 32,
         fock_density_tolerance: 1.0e-7,
         fock_feedback_tolerance: Hartree(1.0e-8),
+        fock_commutator_tolerance: Hartree(1.0e-8),
         fock_mixing: FockMixing::QuasiNewtonDiis {
             history: 4,
             level_shift: Hartree(0.25),
@@ -59,7 +60,8 @@ fn gamma_scalar_hf_then_soc_preserves_closed_shell_density_and_exchange() {
             <= 1.0e-10
     );
     assert!(result.fock_fixed_point_residual <= spec.fock_density_tolerance);
-    assert!(result.fock_feedback_residual <= spec.fock_feedback_tolerance);
+    assert!(result.fock_feedback_residual.get().is_finite());
+    assert!(result.fock_commutator_residual <= spec.fock_commutator_tolerance);
     assert!(result.second_variation_density_rms <= 1.0e-10);
     assert!(result.exchange_energy_change.get() <= 1.0e-10);
     assert_eq!(result.k_fractional, vec![[0.0; 3]]);
@@ -117,6 +119,7 @@ fn frozen_core_enters_scalar_fock_soc_and_total_density_without_expanding_vv() {
         max_fock_iterations: 32,
         fock_density_tolerance: 1.0e-7,
         fock_feedback_tolerance: Hartree(1.0e-8),
+        fock_commutator_tolerance: Hartree(1.0e-8),
         fock_mixing: FockMixing::PulayAnderson {
             alpha: 0.5,
             history: 4,

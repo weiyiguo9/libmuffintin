@@ -492,9 +492,16 @@ operator. The band matrix is lifted to the fixed doubled scalar-band frame.
 CDIIS forms the full Pauli density matrix there and uses its ordinary
 commutator with the current spinor Fock matrix, so both diagonal-spin and
 spin-off-diagonal channels enter one consistent error vector. The converged
-spinor density and spinor HF energy, not the scalar source result, define the
-outer density and energy fixed point. Diagnostics retain separate scalar and
-spinor iteration/rebuild counts and the scalar-to-spinor density change.
+spinor inner loop requires both the regional-density residual and the maximum
+matrix element of this weighted commutator to meet their explicit tolerances.
+The change in the complete feedback matrix remains a diagnostic rather than a
+convergence gate because rotations inside an unoccupied near-degenerate
+subspace can change that representation without changing the occupied density
+or satisfying direction. The converged spinor density and spinor HF energy,
+not the scalar source result, define the outer density and energy fixed point.
+Diagnostics retain separate scalar and spinor iteration/rebuild counts, the
+commutator residual, the feedback change, and the scalar-to-spinor density
+change.
 
 Frozen core remains a separate radial sidecar and does not enlarge the VV MPB
 or THC orbital span. Its spherical scalar-average action is used only in the
