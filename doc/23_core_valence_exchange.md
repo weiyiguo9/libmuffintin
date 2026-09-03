@@ -781,9 +781,11 @@ Frozen core one-body expectations use the current electrostatic potential as
 well. VV and core auxiliary spaces and their Coulomb operators are cached;
 the initial CC energy is evaluated with the same requested kernel, not a
 different isolated-atom kernel. Full sector reconstruction, including VC and
-the CV/VC trace identity, is performed at the final snapshot. Initial CC
-evaluation also uses a full sector reconstruction; eliminating that redundant
-VC work is a separate optimization, not a different physical approximation.
+the CV/VC trace identity, is performed at the final snapshot. Fixed CC
+vertices are compiled with the core-member auxiliary cache, and startup
+contracts only this CC block against the cached operator. No VC vertices
+or second Coulomb matrix are constructed merely to obtain the initial CC
+energy. VC reconstruction remains confined to the final accepted snapshot.
 
 The public controls are `FrozenCoreHfSpec`; frozen and relaxed paths share
 `CoreValenceHfError` (renamed from `RelaxedCoreHfError`). The Kr example selects

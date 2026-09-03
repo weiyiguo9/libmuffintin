@@ -90,6 +90,7 @@ pub(crate) struct SpinorExchangeMpbBasis {
     k_minus_q: Vec<SpinorKMinusQ>,
     cv_layout: ExchangePairLayout,
     cv_site_tensors: Vec<CvSiteTensor>,
+    pub(crate) cc: SpinorExchangeMpbSector,
     product_l_max: u32,
     product_g_max: InverseBohr,
     overlap_tolerance: f64,
@@ -176,6 +177,38 @@ pub(crate) fn compile_spinor_exchange_mpb_basis(
     let known_qq = raw_mt_pairs(&raw, DiracChargeSector::SmallSmall);
     let cv_site_tensors =
         compile_cv_site_tensors(input, &source, &raw, &auxiliary, &known_pp, &known_qq)?;
+    let cc_layout = ExchangePairLayout::new(
+        ExchangeSpace::Core,
+        ExchangeSpace::Core,
+        input.orbitals.k_fractional.len(),
+        input.core.orbitals.len(),
+        input.core.orbitals.len(),
+    );
+    let context = DiracVertexContext::new(&source, &raw, &auxiliary)?;
+    let mut table = context.sector_table();
+    let mut cc_vertices = Vec::with_capacity(cc_layout.n_columns()?);
+    for mapped in input.k_minus_q.iter().copied() {
+        for (occupied, left) in input.core.orbitals.iter().enumerate() {
+            for (target, right) in input.core.orbitals.iter().enumerate() {
+                let mut acc = context.bloch_accumulator(exchange_pair(
+                    cc_layout,
+                    mapped.k_index,
+                    occupied,
+                    target,
+                ))?;
+                add_cc(
+                    &mut acc, &mut table, input, mapped, left, right, &known_pp, &known_qq,
+                )?;
+                cc_vertices.push(SpinorExchangeMpbPairVertex {
+                    column: cc_layout.encode(mapped.k_index, occupied, target)?,
+                    k: mapped.k_index,
+                    occupied,
+                    target,
+                    vertex: acc.finish()?,
+                });
+            }
+        }
+    }
     Ok(SpinorExchangeMpbBasis {
         source,
         raw,
@@ -185,6 +218,10 @@ pub(crate) fn compile_spinor_exchange_mpb_basis(
         k_minus_q: input.k_minus_q.clone(),
         cv_layout,
         cv_site_tensors,
+        cc: SpinorExchangeMpbSector {
+            layout: cc_layout,
+            vertices: cc_vertices,
+        },
         product_l_max: spec.product_l_max,
         product_g_max: spec.product_g_max,
         overlap_tolerance: spec.overlap_tolerance,

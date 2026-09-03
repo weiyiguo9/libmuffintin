@@ -327,6 +327,64 @@ pub(crate) fn build_cached_spinor_valence_feedback_exchange(
     Ok(FrozenSpinorValenceFeedbackExchange { vv, cv })
 }
 
+/// Contract the immutable CC energy without constructing any valence vertices.
+pub(crate) fn cached_core_core_exchange_trace(
+    inputs: &[SpinorProductInput],
+    sectors: &[&SpinorExchangeMpbSector],
+    operators: &[muffintin_coulomb::CoulombOperator],
+    request: &CoulombRequest,
+    occupations: &SectorOccupations,
+) -> Result<Hartree, FrozenSpinorSectorExchangeError> {
+    let first = validate_frozen_core_context(inputs, request, occupations)?;
+    let n_k = first.pair_columns.n_k;
+    let n_core = first.core.orbitals.len();
+    let layout = ExchangePairLayout::new(
+        ExchangeSpace::Core,
+        ExchangeSpace::Core,
+        n_k,
+        n_core,
+        n_core,
+    );
+    if sectors.len() != n_k || operators.len() != n_k {
+        return Err(FrozenSpinorSectorExchangeError::CoreMpbCount {
+            actual: sectors.len().min(operators.len()),
+            expected: n_k,
+        });
+    }
+    let vertices = sectors
+        .iter()
+        .enumerate()
+        .map(|(q, sector)| {
+            if sector.layout != layout {
+                return Err(FrozenSpinorSectorExchangeError::CoreMpbContext { index: q });
+            }
+            order_sector(q, sector)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let maps = inputs
+        .iter()
+        .map(|input| {
+            input
+                .k_minus_q
+                .iter()
+                .map(|mapped| mapped.kq_index)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let core_rows = vec![occupations.core.clone(); n_k];
+    Ok(contract_sector(
+        layout,
+        &maps,
+        &vertices,
+        operators,
+        &occupations.k_weights,
+        &core_rows,
+        &core_rows,
+        occupations.gamma,
+    )?
+    .trace)
+}
+
 /// Evaluate VV, CV, VC, and CC independently on one converged frozen DFT snapshot.
 ///
 /// This function performs no orbital update, density feedback, core solve, or SCF

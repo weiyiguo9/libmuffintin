@@ -136,11 +136,22 @@ pub fn run_frozen_core_hf(
             &mut cache,
         )?;
         if cc_trace.is_none() {
+            let cache = cache
+                .as_ref()
+                .expect("fixed-basis exchange was initialized");
+            let sectors = cache
+                .core_bases
+                .iter()
+                .map(|basis| &basis.cc)
+                .collect::<Vec<_>>();
             cc_trace = Some(
-                complete_core_sector_frame(&exchange_spec, rebuilt.clone())?
-                    .exchange
-                    .cc
-                    .trace,
+                crate::spinor_sector_exchange::cached_core_core_exchange_trace(
+                    &rebuilt.inputs,
+                    &sectors,
+                    &cache.core_operators,
+                    &spec.coulomb,
+                    &rebuilt.occupations,
+                )?,
             );
         }
         let cc = cc_trace.expect("initial frozen CC contraction is retained");
