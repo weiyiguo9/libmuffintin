@@ -606,14 +606,17 @@ pub fn solve_weinert_hartree(
 /// Construct the periodic external potential of point nuclei.
 ///
 /// `nuclear_charges` are positive atomic charges $Z_a$ in the site order of
-/// `template.geometry()`. The interstitial result is
-/// $V_G=-4\pi\sum_a Z_a e^{-iG\cdot R_a}/(\Omega G^2)$ for `G != 0` and
-/// exactly zero for `G=0`. The template supplies only basis-neutral geometry,
+/// `template.geometry()`. The interstitial field uses each nucleus's normalized
+/// Weinert pseudocharge with the same polynomial order as the electronic
+/// Hartree solve. The exact point singularity is restored in its MT sphere.
+/// The pseudocharge Fourier potential is exactly zero for `G=0`.
+/// The template supplies only basis-neutral geometry,
 /// radial meshes/angular cutoffs, and the exact Hermitian Fourier layout; its
 /// density values are not used.
 pub fn solve_periodic_nuclear_potential(
     template: &WeinertChargeDensity,
     nuclear_charges: &[f64],
+    spec: WeinertHartreeSpec,
 ) -> Result<RawNuclearPotential, HartreeError> {
     if nuclear_charges.len() != template.geometry.spheres().len() {
         return Err(HartreeError::NuclearChargeCount {
@@ -626,7 +629,7 @@ pub fn solve_periodic_nuclear_potential(
             return Err(HartreeError::InvalidNuclearCharge { site, charge });
         }
     }
-    let coefficients = nuclear_fourier_coefficients(template, nuclear_charges)?;
+    let coefficients = nuclear_fourier_coefficients(template, nuclear_charges, spec)?;
     let field =
         HermitianFourierField::new(template.interstitial.layout().clone(), coefficients.clone())?;
     let muffin_tins = nuclear_muffin_tin_potentials(template, nuclear_charges, &coefficients)?;
@@ -644,8 +647,11 @@ pub fn solve_periodic_nuclear_potential(
 fn nuclear_fourier_coefficients(
     template: &WeinertChargeDensity,
     nuclear_charges: &[f64],
+    spec: WeinertHartreeSpec,
 ) -> Result<Vec<Complex64>, HartreeError> {
     let volume = template.geometry.cell_volume().get();
+    let order = spec.pseudocharge_order;
+    let normalization = pseudocharge_normalization(0, order)?;
     let mut coefficients = Vec::with_capacity(template.interstitial.layout().len());
     for g in template.interstitial.layout().vectors() {
         let value = if g.index == [0; 3] {
@@ -657,7 +663,10 @@ fn nuclear_fourier_coefficients(
                 .iter()
                 .zip(nuclear_charges)
                 .map(|(sphere, charge)| {
-                    charge * plane_wave_phase(g.cartesian, sphere.center).conj()
+                    charge
+                        * normalization
+                        * pseudocharge_bessel_ratio(0, order, g.norm.get() * sphere.radius.get())
+                        * plane_wave_phase(g.cartesian, sphere.center).conj()
                 })
                 .sum::<Complex64>();
             -4.0 * PI / (volume * g.norm.get().powi(2)) * structure_factor

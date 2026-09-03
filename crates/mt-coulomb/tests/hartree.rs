@@ -210,11 +210,16 @@ fn electronic_density_uses_explicit_uniform_background_and_zero_gauge() {
 }
 
 #[test]
-fn periodic_nucleus_has_exact_finite_g_formula_and_minus_z_over_r_core() {
+fn periodic_nucleus_has_weinert_fourier_form_and_minus_z_over_r_core() {
     let layout = layout(4.0);
     let template = zero_template(CENTER, layout.clone(), 1);
     let charge = 2.3;
-    let nuclear = solve_periodic_nuclear_potential(&template, &[charge]).unwrap();
+    let nuclear = solve_periodic_nuclear_potential(
+        &template,
+        &[charge],
+        WeinertHartreeSpec::electronic(4).unwrap(),
+    )
+    .unwrap();
 
     assert_eq!(nuclear.gauge(), HartreeGauge::ZeroInterstitialFourierMean);
     assert_eq!(nuclear.nuclear_charges(), &[charge]);
@@ -239,7 +244,10 @@ fn periodic_nucleus_has_exact_finite_g_formula_and_minus_z_over_r_core() {
         .zip(CENTER)
         .map(|(component, coordinate)| component.get() * coordinate.get())
         .sum::<f64>();
-    let expected = -4.0 * PI * charge / (LATTICE.powi(3) * g.norm.get().powi(2))
+    // The Fourier transform of normalized (R^2-r^2)^4 is 11!! j5(GR)/(GR)^5.
+    let x = g.norm.get() * RADIUS;
+    let form = 10_395.0 * spherical_bessel_j(5, x) / x.powi(5);
+    let expected = -4.0 * PI * charge * form / (LATTICE.powi(3) * g.norm.get().powi(2))
         * Complex64::from_polar(1.0, -phase);
     let actual = nuclear
         .interstitial()
@@ -263,12 +271,18 @@ fn nuclear_translation_covariance_and_mt_local_potential_are_preserved() {
     let layout = layout(4.0);
     let shifted = [Bohr(4.3), Bohr(3.8), Bohr(4.1)];
     let displacement = [0.3, -0.2, 0.1];
-    let original =
-        solve_periodic_nuclear_potential(&zero_template(CENTER, layout.clone(), 1), &[1.7])
-            .unwrap();
-    let translated =
-        solve_periodic_nuclear_potential(&zero_template(shifted, layout.clone(), 1), &[1.7])
-            .unwrap();
+    let original = solve_periodic_nuclear_potential(
+        &zero_template(CENTER, layout.clone(), 1),
+        &[1.7],
+        WeinertHartreeSpec::electronic(4).unwrap(),
+    )
+    .unwrap();
+    let translated = solve_periodic_nuclear_potential(
+        &zero_template(shifted, layout.clone(), 1),
+        &[1.7],
+        WeinertHartreeSpec::electronic(4).unwrap(),
+    )
+    .unwrap();
 
     for g in layout.vectors() {
         let left = original
@@ -332,7 +346,12 @@ fn electronic_and_nuclear_parts_add_to_a_neutral_total_source() {
     let density = WeinertChargeDensity::new(geometry(true), vec![electron_mt], electron_i).unwrap();
     let electronic =
         solve_weinert_hartree(&density, WeinertHartreeSpec::electronic(4).unwrap()).unwrap();
-    let nuclear = solve_periodic_nuclear_potential(&density, &[charge]).unwrap();
+    let nuclear = solve_periodic_nuclear_potential(
+        &density,
+        &[charge],
+        WeinertHartreeSpec::electronic(4).unwrap(),
+    )
+    .unwrap();
     let total = electronic.add_nuclear_external(&nuclear).unwrap();
 
     assert!((electronic.source_charge() - charge).abs() < 2.0e-12);
@@ -366,11 +385,16 @@ fn electronic_and_nuclear_parts_add_to_a_neutral_total_source() {
 }
 
 #[test]
-fn finite_g_nuclear_sum_converges_to_the_periodic_ewald_oracle() {
+fn weinert_nuclear_sum_matches_ewald_in_the_pseudocharge_gauge() {
     let layout = layout(18.0);
     let template = zero_template(CENTER, layout.clone(), 0);
     let charge = 1.0;
-    let nuclear = solve_periodic_nuclear_potential(&template, &[charge]).unwrap();
+    let nuclear = solve_periodic_nuclear_potential(
+        &template,
+        &[charge],
+        WeinertHartreeSpec::electronic(4).unwrap(),
+    )
+    .unwrap();
     let evaluation = [Bohr(1.3), Bohr(2.1), Bohr(3.2)];
     let mut fourier_value = Complex64::default();
     for g in layout.vectors() {
@@ -401,8 +425,11 @@ fn finite_g_nuclear_sum_converges_to_the_periodic_ewald_oracle() {
         },
     )
     .unwrap();
+    // Removing the pseudocharge G=0 potential shifts the outside potential by
+    // -2*pi*Z*<r^2>/(3*Omega), with <r^2>=3*R^2/(2*N+5).
+    let gauge_shift = -2.0 * PI * charge * RADIUS.powi(2) / (13.0 * LATTICE.powi(3));
     assert!(
-        (fourier_value + charge * ewald.value).norm() < 3.0e-2,
+        (fourier_value + charge * ewald.value - gauge_shift).norm() < 1.0e-6,
         "finite-G {fourier_value}, Ewald {}",
         -charge * ewald.value
     );

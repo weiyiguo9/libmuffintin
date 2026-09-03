@@ -177,13 +177,30 @@ The frozen-checkpoint bootstrap copies the physical muffin-tin monopole and obta
 
 Weinert is a general Coulomb/Poisson component in `libmuffintin-coulomb`, not a DFT-owned algorithm. Its public inputs are geometry, muffin-tin multipoles, a Hermitian Fourier charge field, and an explicit constant-mode treatment; it has no dependency on SCF, occupations, XC, or `libmuffintin-dft`. The DFT adapter only converts a regional electronic density and periodic nuclei to that reusable boundary, evaluates DFT energy contractions, and masks the returned operator potential. It does not route a charge density through `CompiledAuxiliaryBasis` and does not create a second Coulomb convention.
 
-Positive electron number density first produces the repulsive electronic Hartree potential. Its $G=0$ source is removed by an explicit uniform-background treatment and its potential gauge is $V_{G=0}=0$. Periodic point nuclei are then evaluated separately with
+Positive electron number density first produces the repulsive electronic Hartree potential. Its $G=0$ source is removed by an explicit uniform-background treatment and its pseudocharge potential gauge is $V_{G=0}=0$. Periodic point nuclei use the same Weinert polynomial order $N$ and normalized spherical pseudocharges. For $G\ne0$,
 
 ```math
-V_{\mathrm{nuc},G}=-\frac{4\pi}{\Omega G^2}\sum_s Z_s e^{-iG\cdot R_s},\qquad G\ne0,
+V_{\mathrm{nuc},G}=-\frac{4\pi}{\Omega G^2}\sum_s Z_s e^{-iG\cdot R_s}F_N(GR_{\mathrm{MT},s}),
+\qquad F_N(x)=(2N+3)!!\frac{j_{N+1}(x)}{x^{N+1}}.
 ```
 
 and the own-site muffin-tin monopole restores $-Z_s/r$. The combined adapter requires physical electron and nuclear source charges to cancel. Raw electrostatic Fourier coefficients remain available for physical continuation and energy contractions; only the operator-facing `RegionalPotential` receives the step-function convolution.
+
+The pseudocharge changes the reciprocal representation, not the physical
+point nucleus. The bare point-charge Fourier sum is not suitable at the
+ordinary field cutoff: in the 8 bohr Kr box with $R_{\mathrm{MT}}=2$ bohr,
+its surface-derived nuclear energy changed from $-200.952273$ Ha at cutoff
+4.5 to $-232.868567$ Ha at cutoff 6. The nuclear surface and the electronic
+Hartree solve must instead use consistently compensated, rapidly convergent
+Fourier fields. `solve_periodic_nuclear_potential` therefore takes an explicit
+`WeinertHartreeSpec`, and the regional adapter passes the same specification
+to both electronic and nuclear solves.
+
+Outside a sphere the zero-mean pseudocharge potential differs from the
+zero-mean point-charge Ewald potential by the known constant
+$-2\pi Z R_{\mathrm{MT}}^2/[\Omega(2N+5)]$. The finite $G$ Ewald comparison
+includes this gauge shift; it is not removed selectively from energies or
+orbitals. The common regional energy functional keeps the same gauge.
 
 The energy adapter evaluates $C=\int n(V_H+V_{\mathrm{nuc}})$, $M=E_{en}+2E_{II}$, $E_H=\tfrac12\int nV_H$, $E_{en}=\int nV_{\mathrm{nuc}}$, and $E_{II}$ in one common gauge. Discrete muffin-tin and Fourier boundary values are matched using the actual Poisson mesh endpoint, not a second independently rounded multipole quadrature.
 

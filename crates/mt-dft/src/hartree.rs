@@ -91,7 +91,8 @@ pub fn evaluate_regional_electrostatics(
 ) -> Result<RegionalElectrostaticResult, RegionalElectrostaticError> {
     let weinert_density = weinert_density(charge)?;
     let raw_hartree = solve_weinert_hartree(&weinert_density, spec.weinert())?;
-    let raw_nuclear = solve_periodic_nuclear_potential(&weinert_density, spec.nuclear_charges())?;
+    let raw_nuclear =
+        solve_periodic_nuclear_potential(&weinert_density, spec.nuclear_charges(), spec.weinert())?;
     let raw_electrostatic = raw_hartree.add_nuclear_external(&raw_nuclear)?;
 
     let charge_scale = raw_hartree
