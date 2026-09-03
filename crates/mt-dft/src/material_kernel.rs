@@ -1749,6 +1749,62 @@ impl MaterialKernel {
         Ok(Collinear::new(build_spin(0)?, build_spin(1)?))
     }
 
+    /// Assemble the current local Hamiltonian in a retained SRA basis and
+    /// subtract its stored H0. Radials and core constraints remain unchanged;
+    /// the result can be mixed with exchange in that same physical basis.
+    pub fn spinor_local_potential_feedback(
+        &self,
+        bands: &CheckpointBandSolution,
+        potential: &RegionalPotential,
+    ) -> Result<Vec<DenseHermitianMatrix>, MaterialKernelError> {
+        self.require_potential_site_count(potential)?;
+        let interstitial = potential.to_lapw_interstitial()?;
+        bands
+            .points
+            .iter()
+            .enumerate()
+            .map(|(point, state)| {
+                let CheckpointKPointSolution::Spinor {
+                    basis,
+                    eigenproblem,
+                    ..
+                } = &state.solution
+                else {
+                    return Err(MaterialKernelError::FeedbackRequiresSpinor { point });
+                };
+                let mut sites = basis.full_spinor_sites.clone();
+                for (site, input) in sites.iter_mut().enumerate() {
+                    input.potential = LocalPauliPotential::new(
+                        potential.scalar().muffin_tins()[site].field().clone(),
+                        potential
+                            .magnetic()
+                            .each_ref()
+                            .map(|field| field.muffin_tins()[site].field().clone()),
+                    )?;
+                }
+                let blocks = crate::build_full_spinor_site_blocks(
+                    crate::RelativisticSpinorRoute::FullFourComponentFirstVariation,
+                    &basis.compiled,
+                    &sites,
+                )?;
+                let current = muffintin_operators::lapw::assemble_sra_spinor_compiled(
+                    &basis.compiled,
+                    &self.geometry,
+                    &interstitial,
+                    &blocks,
+                )?;
+                Ok(DenseHermitianMatrix::from_upper_triangle(
+                    current.hamiltonian.dimension(),
+                    Axis::GlobalBasis,
+                    |row, column| {
+                        current.hamiltonian.at(row, column)
+                            - eigenproblem.hamiltonian.at(row, column)
+                    },
+                )?)
+            })
+            .collect()
+    }
+
     pub fn spinor_site_inputs(
         &self,
         potential: &RegionalPotential,
