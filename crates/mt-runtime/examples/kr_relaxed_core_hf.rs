@@ -7,18 +7,21 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use muffintin::{
-    AtomicStartRequest, CheckpointPhysics, FockMixing, GammaExchangeTreatment, RegionalFieldLayout,
-    RelaxedCoreHfIterationDiagnostic, RelaxedCoreHfResult, RelaxedCoreHfSpec, Structure,
-    checkpoint_v2_from_regional_state, materialize_atomic_start, run_gamma_relaxed_core_hf,
+    AtomicStartRequest, CheckpointPhysics, FockMixing, GammaExchangeTreatment, KhSocCoreTreatment,
+    KhSocValenceHfIterationDiagnostic, KhSocValenceHfResult, KhSocValenceHfSpec,
+    RegionalFieldLayout, RelaxedCoreHfIterationDiagnostic, RelaxedCoreHfResult, RelaxedCoreHfSpec,
+    Structure, checkpoint_v2_from_regional_state, materialize_atomic_start,
+    run_gamma_kh_soc_valence_hf, run_gamma_relaxed_core_hf,
 };
 use muffintin_core::{AngularGrid, Bohr, ExponentialMesh, Hartree, InverseBohr};
 use muffintin_coulomb::CoulombRequest;
 use muffintin_dft::{
     AtomicChannelTreatment, AtomicNumber, CoreFixedPotentialSpec, CoreShellOccupations,
-    LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
-    ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfConvergence,
-    ScfCoreSite, ScfCoreState, ScfExchangeCorrelation, ScfKMesh, ScfKReduction, ScfMixing,
-    ScfOccupations, ScfRelativity, XcFunctional, fleur_default_atomic_configuration,
+    FirstVariationWindow, LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis,
+    ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig,
+    ScfConvergence, ScfCoreSite, ScfCoreState, ScfExchangeCorrelation, ScfKMesh, ScfKReduction,
+    ScfMixing, ScfOccupations, ScfRelativity, XcFunctional, electron_count,
+    fleur_default_atomic_configuration,
 };
 use muffintin_io::{
     AngularBasis, CheckpointFile, CheckpointMeta, EnergyUnit, ExponentialMeshSpec, GeometryV2,
@@ -59,8 +62,38 @@ enum HdloSelection {
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum FockMixerSelection {
+    Linear,
+    Pulay,
     Cdiis,
     QuasiNewtonCdiis,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum RelativitySelection {
+    SpinorFirst,
+    KhSoc,
+}
+
+impl RelativitySelection {
+    fn parse(value: &str) -> Result<Self, Box<dyn Error>> {
+        match value {
+            "spinor-first" => Ok(Self::SpinorFirst),
+            "kh-soc" => Ok(Self::KhSoc),
+            _ => Err(invalid_input(format!(
+                "--relativity must be spinor-first or kh-soc, got {value:?}"
+            ))),
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::SpinorFirst => {
+                "spinor-first-variation with fully-relativistic Dirac radial equation"
+            }
+            Self::KhSoc => "scalar Koelling-Harmon HF plus SOC second variation",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -99,18 +132,34 @@ impl OuterMixerSelection {
 impl FockMixerSelection {
     fn parse(value: &str) -> Result<Self, Box<dyn Error>> {
         match value {
+            "linear" => Ok(Self::Linear),
+            "pulay" => Ok(Self::Pulay),
             "cdiis" => Ok(Self::Cdiis),
             "quasi-newton-cdiis" => Ok(Self::QuasiNewtonCdiis),
             _ => Err(invalid_input(format!(
-                "--fock-mixing must be cdiis or quasi-newton-cdiis, got {value:?}"
+                "--fock-mixing must be linear, pulay, cdiis, or quasi-newton-cdiis, got {value:?}"
             ))),
         }
     }
 
     const fn as_str(self) -> &'static str {
         match self {
+            Self::Linear => "linear-global-feedback",
+            Self::Pulay => "pulay-anderson-global-feedback",
             Self::Cdiis => "commutator-cdiis-global-feedback",
             Self::QuasiNewtonCdiis => "quasi-newton-commutator-cdiis-global-feedback",
+        }
+    }
+
+    const fn build(self, alpha: f64, history: usize, level_shift: f64) -> FockMixing {
+        match self {
+            Self::Linear => FockMixing::Linear { alpha },
+            Self::Pulay => FockMixing::PulayAnderson { alpha, history },
+            Self::Cdiis => FockMixing::CommutatorDiis { history },
+            Self::QuasiNewtonCdiis => FockMixing::QuasiNewtonDiis {
+                history,
+                level_shift: Hartree(level_shift),
+            },
         }
     }
 }
@@ -137,6 +186,8 @@ impl HdloSelection {
 #[derive(Debug)]
 struct Cli {
     out: PathBuf,
+    relativity: RelativitySelection,
+    soc_bands: usize,
     box_size: f64,
     orbital_g: f64,
     field_g: f64,
@@ -159,6 +210,7 @@ struct Cli {
     core_radial_tolerance: f64,
     max_fock_iterations: usize,
     fock_mixing: FockMixerSelection,
+    fock_mixing_alpha: f64,
     fock_diis_history: usize,
     fock_diis_level_shift: f64,
 }
@@ -167,6 +219,8 @@ impl Default for Cli {
     fn default() -> Self {
         Self {
             out: PathBuf::from("kr-relaxed-core-hf-p0"),
+            relativity: RelativitySelection::SpinorFirst,
+            soc_bands: 24,
             box_size: 8.0,
             orbital_g: 1.0,
             field_g: 4.5,
@@ -189,6 +243,7 @@ impl Default for Cli {
             core_radial_tolerance: LOOSE_TOLERANCE,
             max_fock_iterations: MAX_FOCK_ITERATIONS,
             fock_mixing: FockMixerSelection::Cdiis,
+            fock_mixing_alpha: 0.5,
             fock_diis_history: FOCK_DIIS_HISTORY,
             fock_diis_level_shift: FOCK_DIIS_LEVEL_SHIFT_HARTREE,
         }
@@ -205,6 +260,8 @@ impl Cli {
                 .ok_or_else(|| invalid_input(format!("missing value after {name}")))?;
             match name.as_str() {
                 "--out" => cli.out = PathBuf::from(value),
+                "--relativity" => cli.relativity = RelativitySelection::parse(&value)?,
+                "--soc-bands" => cli.soc_bands = parse_value(&name, &value)?,
                 "--box" => cli.box_size = parse_value(&name, &value)?,
                 "--orbital-g" => cli.orbital_g = parse_value(&name, &value)?,
                 "--field-g" => cli.field_g = parse_value(&name, &value)?,
@@ -235,6 +292,7 @@ impl Cli {
                 }
                 "--fock-max-iterations" => cli.max_fock_iterations = parse_value(&name, &value)?,
                 "--fock-mixing" => cli.fock_mixing = FockMixerSelection::parse(&value)?,
+                "--fock-mixing-alpha" => cli.fock_mixing_alpha = parse_value(&name, &value)?,
                 "--fock-diis-history" => cli.fock_diis_history = parse_value(&name, &value)?,
                 "--fock-diis-level-shift" => {
                     cli.fock_diis_level_shift = parse_value(&name, &value)?
@@ -259,6 +317,7 @@ impl Cli {
             ("--outer-mixing-alpha", self.outer_mixing_alpha),
             ("--core-energy-tolerance", self.core_energy_tolerance),
             ("--core-radial-tolerance", self.core_radial_tolerance),
+            ("--fock-mixing-alpha", self.fock_mixing_alpha),
         ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(invalid_input(format!(
@@ -293,6 +352,12 @@ impl Cli {
         if self.max_fock_iterations < 2 {
             return Err(invalid_input("--fock-max-iterations must be at least 2"));
         }
+        if self.soc_bands == 0 {
+            return Err(invalid_input("--soc-bands must be positive"));
+        }
+        if self.fock_mixing_alpha > 1.0 {
+            return Err(invalid_input("--fock-mixing-alpha must not exceed 1"));
+        }
         if self.fock_diis_history < 2 {
             return Err(invalid_input("--fock-diis-history must be at least 2"));
         }
@@ -305,6 +370,26 @@ impl Cli {
             return Err(invalid_input(
                 "angular cutoffs must satisfy --product-lmax <= --lexp <= 12",
             ));
+        }
+        match (self.relativity, self.fock_mixing) {
+            (
+                RelativitySelection::SpinorFirst,
+                FockMixerSelection::Cdiis | FockMixerSelection::QuasiNewtonCdiis,
+            )
+            | (
+                RelativitySelection::KhSoc,
+                FockMixerSelection::Linear | FockMixerSelection::Pulay,
+            ) => {}
+            (RelativitySelection::SpinorFirst, _) => {
+                return Err(invalid_input(
+                    "spinor-first requires --fock-mixing cdiis or quasi-newton-cdiis",
+                ));
+            }
+            (RelativitySelection::KhSoc, _) => {
+                return Err(invalid_input(
+                    "kh-soc requires --fock-mixing linear or pulay",
+                ));
+            }
         }
         Ok(())
     }
@@ -363,6 +448,8 @@ struct ParameterManifest {
     k_mesh_reduction: &'static str,
     gamma_exchange: &'static str,
     relativity: &'static str,
+    soc_first_variation_bands: Option<usize>,
+    core_treatment: &'static str,
     exchange_correlation: &'static str,
     outer_mixing_algorithm: &'static str,
     outer_mixing_alpha: f64,
@@ -370,15 +457,16 @@ struct ParameterManifest {
     outer_energy_tolerance_hartree: f64,
     outer_density_tolerance: f64,
     outer_max_iterations: usize,
-    core_action_mixing: f64,
-    core_energy_tolerance_hartree: f64,
-    core_radial_tolerance: f64,
-    core_vc_imaginary_tolerance: f64,
-    core_max_iterations: usize,
+    core_action_mixing: Option<f64>,
+    core_energy_tolerance_hartree: Option<f64>,
+    core_radial_tolerance: Option<f64>,
+    core_vc_imaginary_tolerance: Option<f64>,
+    core_max_iterations: Option<usize>,
     max_fock_iterations: usize,
     fock_density_tolerance: f64,
     fock_feedback_tolerance_hartree: f64,
     fock_mixing_algorithm: &'static str,
+    fock_mixing_alpha: Option<f64>,
     fock_mixing_history: usize,
     fock_diis_level_shift_hartree: Option<f64>,
     overlap_tolerance: f64,
@@ -490,6 +578,71 @@ struct ResultFile {
     k_fractional: Vec<[f64; 3]>,
     q_fractional: Vec<[f64; 3]>,
     k_weights: Vec<f64>,
+}
+
+#[derive(Serialize)]
+struct KhSocIterationsFile {
+    status: &'static str,
+    iterations: Vec<KhSocIterationRecord>,
+}
+
+#[derive(Serialize)]
+struct KhSocIterationRecord {
+    iteration: usize,
+    fock_iterations: usize,
+    exchange_rebuilds: usize,
+    vv_exchange_energy_hartree: f64,
+    fock_fixed_point_residual: f64,
+    fock_feedback_residual_hartree: f64,
+    valence_density_rms: f64,
+    total_density_rms: f64,
+    total_energy_hartree: f64,
+    energy_change_hartree: Option<f64>,
+}
+
+#[derive(Serialize)]
+struct KhSocResultFile {
+    status: &'static str,
+    energy_reference: &'static str,
+    homo_energy_hartree: f64,
+    fermi_shift_hartree: f64,
+    total_energy_hartree: f64,
+    vv_exchange_energy_hartree: f64,
+    core_valence_exchange_hartree: f64,
+    core_core_exchange_hartree: f64,
+    core_h0_trace_hartree: f64,
+    orbital_energies_and_occupations: Vec<KhSocOrbitalRecord>,
+    core_shells: Vec<CoreShellRecord>,
+    electron_counts: ElectronCounts,
+    fock_fixed_point_residual: f64,
+    fock_feedback_residual_hartree: f64,
+    scalar_to_soc_density_rms: f64,
+    exchange_rebuilds: usize,
+    k_fractional: Vec<[f64; 3]>,
+    q_fractional: Vec<[f64; 3]>,
+    k_weights: Vec<f64>,
+}
+
+#[derive(Serialize)]
+struct KhSocOrbitalRecord {
+    k_index: usize,
+    band_index: usize,
+    kramers_pair_index: usize,
+    kramers_splitting_hartree: f64,
+    energy_hartree: f64,
+    homo_shifted_hartree: f64,
+    homo_shifted_ev: f64,
+    occupation: f64,
+    source_weights: Vec<SourceWeightRecord>,
+}
+
+#[derive(Serialize)]
+struct SourceWeightRecord {
+    source_band: usize,
+    scalar_energy_hartree: f64,
+    spin_up: f64,
+    spin_down: f64,
+    total: f64,
 }
 
 #[derive(Serialize)]
@@ -605,7 +758,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             core_charge + valence_charge
         )));
     }
-    let channels = derive_basis_channels(&configuration, cli.orbital_l_max, cli.hdlo);
+    let channels =
+        derive_basis_channels(&configuration, cli.orbital_l_max, cli.hdlo, cli.relativity);
 
     let geometry = GeometryV2 {
         lattice: LatticeV1 {
@@ -634,7 +788,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 last: cli.muffin_tin_radius,
                 consistency_tolerance: 1.0e-12,
             },
-            radial_equation: RadialEquationTag::FullyRelativisticDirac,
+            radial_equation: match cli.relativity {
+                RelativitySelection::SpinorFirst => RadialEquationTag::FullyRelativisticDirac,
+                RelativitySelection::KhSoc => RadialEquationTag::ScalarKoellingHarmon,
+            },
             linearization: LinearizationV1 {
                 energy_unit: EnergyUnit::Hartree,
                 linearization_energies: Vec::new(),
@@ -643,8 +800,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         }],
     };
     let meta = CheckpointMeta {
-        title: "Kr point-nucleus Gamma relaxed-core HF smoke".to_owned(),
-        producer: "libmuffintin-runtime kr_relaxed_core_hf example".to_owned(),
+        title: format!("Kr point-nucleus Gamma {} HF", cli.relativity.as_str()),
+        producer: "libmuffintin-runtime kr_relativistic_hf example".to_owned(),
         producer_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
         energy_zero: "periodic finite-cell electrostatic reference".to_owned(),
         potential_convention: PotentialConventionV1 {
@@ -683,7 +840,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         mixing: cli
             .outer_mixing
             .build(cli.outer_mixing_alpha, cli.outer_mixing_history),
-        relativity: ScfRelativity::SpinorFirstVariation,
+        relativity: match cli.relativity {
+            RelativitySelection::SpinorFirst => ScfRelativity::SpinorFirstVariation,
+            RelativitySelection::KhSoc => ScfRelativity::SocSecondVariation {
+                window: FirstVariationWindow::new(0, cli.soc_bands)?,
+            },
+        },
         convergence: ScfConvergence {
             energy_tolerance: Hartree(cli.outer_energy_tolerance),
             density_tolerance: cli.outer_density_tolerance,
@@ -720,7 +882,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (git_sha, git_dirty) = git_provenance()?;
     let manifest = Manifest {
-        schema_version: 2,
+        schema_version: 3,
         status: "prepared",
         system: SystemManifest {
             element: "Kr",
@@ -758,7 +920,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             k_mesh_shift: [0.0; 3],
             k_mesh_reduction: "full",
             gamma_exchange: "finite-body",
-            relativity: "spinor-first-variation with fully-relativistic Dirac radial equation",
+            relativity: cli.relativity.as_str(),
+            soc_first_variation_bands: (cli.relativity == RelativitySelection::KhSoc)
+                .then_some(cli.soc_bands),
+            core_treatment: match cli.relativity {
+                RelativitySelection::SpinorFirst => "relaxed",
+                RelativitySelection::KhSoc => "frozen-checkpoint",
+            },
             exchange_correlation: "LDA-PW92 local-spin-frame",
             outer_mixing_algorithm: cli.outer_mixing.as_str(),
             outer_mixing_alpha: cli.outer_mixing_alpha,
@@ -769,18 +937,29 @@ fn main() -> Result<(), Box<dyn Error>> {
             outer_energy_tolerance_hartree: cli.outer_energy_tolerance,
             outer_density_tolerance: cli.outer_density_tolerance,
             outer_max_iterations: cli.outer_max_iterations,
-            core_action_mixing: 1.0,
-            core_energy_tolerance_hartree: cli.core_energy_tolerance,
-            core_radial_tolerance: cli.core_radial_tolerance,
-            core_vc_imaginary_tolerance: 1.0e-8,
-            core_max_iterations: cli.core_max_iterations,
+            core_action_mixing: (cli.relativity == RelativitySelection::SpinorFirst).then_some(1.0),
+            core_energy_tolerance_hartree: (cli.relativity == RelativitySelection::SpinorFirst)
+                .then_some(cli.core_energy_tolerance),
+            core_radial_tolerance: (cli.relativity == RelativitySelection::SpinorFirst)
+                .then_some(cli.core_radial_tolerance),
+            core_vc_imaginary_tolerance: (cli.relativity == RelativitySelection::SpinorFirst)
+                .then_some(1.0e-8),
+            core_max_iterations: (cli.relativity == RelativitySelection::SpinorFirst)
+                .then_some(cli.core_max_iterations),
             max_fock_iterations: cli.max_fock_iterations,
             fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
             fock_feedback_tolerance_hartree: FOCK_FEEDBACK_TOLERANCE_HARTREE,
             fock_mixing_algorithm: cli.fock_mixing.as_str(),
+            fock_mixing_alpha: matches!(
+                cli.fock_mixing,
+                FockMixerSelection::Linear | FockMixerSelection::Pulay
+            )
+            .then_some(cli.fock_mixing_alpha),
             fock_mixing_history: cli.fock_diis_history,
             fock_diis_level_shift_hartree: match cli.fock_mixing {
-                FockMixerSelection::Cdiis => None,
+                FockMixerSelection::Linear
+                | FockMixerSelection::Pulay
+                | FockMixerSelection::Cdiis => None,
                 FockMixerSelection::QuasiNewtonCdiis => Some(cli.fock_diis_level_shift),
             },
             overlap_tolerance: DEFAULT_TOLERANCE,
@@ -815,6 +994,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     write_toml(&cli.out.join("manifest.toml"), &manifest)?;
     write_checkpoint(&cli.out.join("initial-checkpoint.toml"), &start.checkpoint)?;
 
+    match cli.relativity {
+        RelativitySelection::SpinorFirst => run_spinor_first_example(&cli, &start, config)?,
+        RelativitySelection::KhSoc => run_kh_soc_example(&cli, &start, config)?,
+    }
+    Ok(())
+}
+
+fn run_spinor_first_example(
+    cli: &Cli,
+    start: &muffintin::AtomicStart,
+    config: ScfConfig,
+) -> Result<(), Box<dyn Error>> {
     let spec = RelaxedCoreHfSpec {
         config,
         product_l_max: cli.product_l_max,
@@ -825,15 +1016,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         max_fock_iterations: cli.max_fock_iterations,
         fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
         fock_feedback_tolerance: Hartree(FOCK_FEEDBACK_TOLERANCE_HARTREE),
-        fock_mixing: match cli.fock_mixing {
-            FockMixerSelection::Cdiis => FockMixing::CommutatorDiis {
-                history: cli.fock_diis_history,
-            },
-            FockMixerSelection::QuasiNewtonCdiis => FockMixing::QuasiNewtonDiis {
-                history: cli.fock_diis_history,
-                level_shift: Hartree(cli.fock_diis_level_shift),
-            },
-        },
+        fock_mixing: cli.fock_mixing.build(
+            cli.fock_mixing_alpha,
+            cli.fock_diis_history,
+            cli.fock_diis_level_shift,
+        ),
         core: CoreFixedPotentialSpec {
             action_mixing: 1.0,
             energy_tolerance: Hartree(cli.core_energy_tolerance),
@@ -882,6 +1069,79 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn run_kh_soc_example(
+    cli: &Cli,
+    start: &muffintin::AtomicStart,
+    config: ScfConfig,
+) -> Result<(), Box<dyn Error>> {
+    let spec = KhSocValenceHfSpec {
+        config,
+        product_l_max: cli.product_l_max,
+        product_g_max: InverseBohr(cli.product_g),
+        overlap_tolerance: DEFAULT_TOLERANCE,
+        coulomb: CoulombRequest::cubic(cli.box_size, cli.lexp)?,
+        gamma: GammaExchangeTreatment::FiniteBody,
+        max_fock_iterations: cli.max_fock_iterations,
+        fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
+        fock_feedback_tolerance: Hartree(FOCK_FEEDBACK_TOLERANCE_HARTREE),
+        fock_mixing: cli.fock_mixing.build(
+            cli.fock_mixing_alpha,
+            cli.fock_diis_history,
+            cli.fock_diis_level_shift,
+        ),
+        core_treatment: KhSocCoreTreatment::Frozen,
+    };
+    let mut physics = CheckpointPhysics::new(&start.checkpoint)?;
+    let result = run_gamma_kh_soc_valence_hf(&mut physics, &spec)?;
+    write_toml(
+        &cli.out.join("iterations.toml"),
+        &KhSocIterationsFile {
+            status: "configured_convergence_reached",
+            iterations: result
+                .diagnostics
+                .iter()
+                .map(kh_soc_iteration_record)
+                .collect(),
+        },
+    )?;
+    let result_file = kh_soc_result_record(&result)?;
+    write_toml(&cli.out.join("result.toml"), &result_file)?;
+
+    let final_checkpoint = checkpoint_v2_from_regional_state(
+        &start.checkpoint,
+        &result.total_density,
+        &result.potential,
+        BTreeMap::from([
+            (
+                "hf.driver".to_owned(),
+                "run_gamma_kh_soc_valence_hf".to_owned(),
+            ),
+            (
+                "hf.status".to_owned(),
+                "configured_convergence_reached".to_owned(),
+            ),
+            (
+                "hf.core_treatment".to_owned(),
+                "frozen-checkpoint".to_owned(),
+            ),
+            (
+                "hf.energy_reference".to_owned(),
+                "occupied orbital energies shifted so HOMO=0".to_owned(),
+            ),
+        ]),
+    )?;
+    write_checkpoint(&cli.out.join("final-checkpoint.toml"), &final_checkpoint)?;
+    println!(
+        "status=configured_convergence_reached route=kh-soc out={} total_energy_hartree={} homo_energy_hartree={} outer_iterations={} exchange_rebuilds={}",
+        cli.out.display(),
+        result.total_energy.get(),
+        result_file.homo_energy_hartree,
+        result.diagnostics.len(),
+        result.exchange_rebuilds
+    );
+    Ok(())
+}
+
 fn derive_core_partition(
     configuration: &muffintin_dft::AtomicElectronicConfiguration,
 ) -> (Vec<ScfCoreState>, f64, f64) {
@@ -912,9 +1172,11 @@ fn derive_basis_channels(
     configuration: &muffintin_dft::AtomicElectronicConfiguration,
     l_max: u32,
     hdlo: HdloSelection,
+    relativity: RelativitySelection,
 ) -> Vec<ScfChannelRecipe> {
     let mut channels = Vec::new();
     let mut collapsed_valence = BTreeSet::new();
+    let mut collapsed_local = BTreeSet::new();
     for occupied in configuration.occupations() {
         let n = u32::from(occupied.orbital.principal_quantum_number());
         let kappa = i32::from(occupied.orbital.kappa());
@@ -930,11 +1192,22 @@ fn derive_basis_channels(
                     ));
                 }
             }
-            AtomicChannelTreatment::RelativisticLocalOrbital => channels.push(channel(
-                ScfChannelIdentity::Kappa { n, kappa },
-                ScfChannelTreatment::Lo,
-                0,
-            )),
+            AtomicChannelTreatment::RelativisticLocalOrbital => match relativity {
+                RelativitySelection::SpinorFirst => channels.push(channel(
+                    ScfChannelIdentity::Kappa { n, kappa },
+                    ScfChannelTreatment::Lo,
+                    0,
+                )),
+                RelativitySelection::KhSoc => {
+                    if collapsed_local.insert((n, l)) {
+                        channels.push(channel(
+                            ScfChannelIdentity::ScalarL { n, l },
+                            ScfChannelTreatment::Lo,
+                            0,
+                        ));
+                    }
+                }
+            },
         }
     }
     for l in 0..=l_max {
@@ -1095,6 +1368,160 @@ fn iteration_record(item: &RelaxedCoreHfIterationDiagnostic) -> IterationRecord 
     }
 }
 
+fn kh_soc_iteration_record(item: &KhSocValenceHfIterationDiagnostic) -> KhSocIterationRecord {
+    KhSocIterationRecord {
+        iteration: item.iteration,
+        fock_iterations: item.fock_iterations,
+        exchange_rebuilds: item.exchange_rebuilds,
+        vv_exchange_energy_hartree: item.exchange_energy.get(),
+        fock_fixed_point_residual: item.fock_fixed_point_residual,
+        fock_feedback_residual_hartree: item.fock_feedback_residual.get(),
+        valence_density_rms: item.valence_density_rms,
+        total_density_rms: item.regional_density_rms,
+        total_energy_hartree: item.total_energy.get(),
+        energy_change_hartree: item.energy_change.map(Hartree::get),
+    }
+}
+
+fn kh_soc_result_record(result: &KhSocValenceHfResult) -> Result<KhSocResultFile, Box<dyn Error>> {
+    let homo = result
+        .orbital_energies
+        .iter()
+        .zip(&result.occupations)
+        .flat_map(|(energies, occupations)| energies.iter().zip(occupations))
+        .filter(|(_, occupation)| **occupation > 1.0e-8)
+        .map(|(energy, _)| energy.get())
+        .max_by(f64::total_cmp)
+        .ok_or_else(|| invalid_input("KH+SOC result has no occupied orbital for the HOMO shift"))?;
+    let mut orbitals = Vec::new();
+    for (k, ((energies, occupations), diagnostics)) in result
+        .orbital_energies
+        .iter()
+        .zip(&result.occupations)
+        .zip(&result.second_variation_diagnostics)
+        .enumerate()
+    {
+        if energies.len() != occupations.len() || energies.len() != diagnostics.len() {
+            return Err(invalid_input(format!(
+                "KH+SOC output arrays have inconsistent lengths at k={k}"
+            )));
+        }
+        let scalar_energies = scalar_source_energies(result, k)?;
+        for (band, ((energy, occupation), diagnostic)) in energies
+            .iter()
+            .zip(occupations)
+            .zip(diagnostics)
+            .enumerate()
+        {
+            let pair_start = 2 * (band / 2);
+            let pair_end = pair_start + 1;
+            let splitting = energies.get(pair_end).map_or(0.0, |partner| {
+                (partner.get() - energies[pair_start].get()).abs()
+            });
+            let source_weights = diagnostic
+                .source_weights
+                .iter()
+                .map(|weight| {
+                    let scalar_energy =
+                        scalar_energies.get(weight.source_band).ok_or_else(|| {
+                            invalid_input(format!(
+                                "SOC source band {} is outside scalar spectrum at k={k}",
+                                weight.source_band
+                            ))
+                        })?;
+                    Ok(SourceWeightRecord {
+                        source_band: weight.source_band,
+                        scalar_energy_hartree: scalar_energy.get(),
+                        spin_up: weight.spin_up,
+                        spin_down: weight.spin_down,
+                        total: weight.spin_up + weight.spin_down,
+                    })
+                })
+                .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+            let shifted = energy.get() - homo;
+            orbitals.push(KhSocOrbitalRecord {
+                k_index: k,
+                band_index: band,
+                kramers_pair_index: band / 2,
+                kramers_splitting_hartree: splitting,
+                energy_hartree: energy.get(),
+                homo_shifted_hartree: shifted,
+                homo_shifted_ev: Hartree(shifted).to_ev(),
+                occupation: *occupation,
+                source_weights,
+            });
+        }
+    }
+    Ok(KhSocResultFile {
+        status: "configured_convergence_reached",
+        energy_reference: "highest occupied molecular orbital (occupation > 1e-8) set to zero",
+        homo_energy_hartree: homo,
+        fermi_shift_hartree: -homo,
+        total_energy_hartree: result.total_energy.get(),
+        vv_exchange_energy_hartree: result.second_variation_exchange.exchange_energy.get(),
+        core_valence_exchange_hartree: result.core_valence_exchange.get(),
+        core_core_exchange_hartree: result.core_core_exchange.get(),
+        core_h0_trace_hartree: result.core_h0_trace.get(),
+        orbital_energies_and_occupations: orbitals,
+        core_shells: core_shell_records(&result.core_orbitals),
+        electron_counts: ElectronCounts {
+            valence: electron_count(&result.valence_density)?,
+            core: electron_count(&result.core_density)?,
+            total: electron_count(&result.total_density)?,
+        },
+        fock_fixed_point_residual: result.fock_fixed_point_residual,
+        fock_feedback_residual_hartree: result.fock_feedback_residual.get(),
+        scalar_to_soc_density_rms: result.second_variation_density_rms,
+        exchange_rebuilds: result.exchange_rebuilds,
+        k_fractional: result.k_fractional.clone(),
+        q_fractional: result.q_fractional.clone(),
+        k_weights: result.k_weights.clone(),
+    })
+}
+
+fn scalar_source_energies(
+    result: &KhSocValenceHfResult,
+    k: usize,
+) -> Result<&[Hartree], Box<dyn Error>> {
+    let point = result
+        .scalar_bands
+        .points()
+        .get(k)
+        .ok_or_else(|| invalid_input(format!("missing scalar k point {k}")))?;
+    let muffintin_dft::CheckpointKPointSolution::Collinear { solutions, .. } = &point.solution
+    else {
+        return Err(invalid_input("KH+SOC scalar source is not collinear"));
+    };
+    Ok(&solutions.up.eigenvalues)
+}
+
+fn core_shell_records(sidecars: &[muffintin_dft::CoreShellOrbitals]) -> Vec<CoreShellRecord> {
+    let mut records = Vec::new();
+    for site in sidecars {
+        for (shell_index, shell) in site.shells.iter().enumerate() {
+            let occupation = match &shell.occupations {
+                CoreShellOccupations::MuResolved(values) => {
+                    values.iter().map(|(_, value)| value).sum()
+                }
+                CoreShellOccupations::ExplicitCollinear { up, down } => up + down,
+            };
+            records.push(CoreShellRecord {
+                site_index: site.site_index,
+                site_id: site.site_id.clone(),
+                shell_index,
+                principal_quantum_number: shell.state.n,
+                kappa: shell.state.kappa.get(),
+                energy_hartree: shell.energy.get(),
+                occupation,
+                norm_total: shell.norm_total,
+                norm_muffin_tin: shell.norm_mt,
+                spill: shell.spill,
+            });
+        }
+    }
+    records
+}
+
 fn result_record(result: &RelaxedCoreHfResult) -> ResultFile {
     let final_iteration = result
         .diagnostics
@@ -1111,29 +1538,7 @@ fn result_record(result: &RelaxedCoreHfResult) -> ResultFile {
             });
         }
     }
-    let mut core_shells = Vec::new();
-    for site in &result.core_orbitals {
-        for (shell_index, shell) in site.shells.iter().enumerate() {
-            let occupation = match &shell.occupations {
-                CoreShellOccupations::MuResolved(values) => {
-                    values.iter().map(|(_, value)| value).sum()
-                }
-                CoreShellOccupations::ExplicitCollinear { up, down } => up + down,
-            };
-            core_shells.push(CoreShellRecord {
-                site_index: site.site_index,
-                site_id: site.site_id.clone(),
-                shell_index,
-                principal_quantum_number: shell.state.n,
-                kappa: shell.state.kappa.get(),
-                energy_hartree: shell.energy.get(),
-                occupation,
-                norm_total: shell.norm_total,
-                norm_muffin_tin: shell.norm_mt,
-                spill: shell.spill,
-            });
-        }
-    }
+    let core_shells = core_shell_records(&result.core_orbitals);
     let mut core_h0_shells = Vec::new();
     for (site, trace) in result
         .core_orbitals

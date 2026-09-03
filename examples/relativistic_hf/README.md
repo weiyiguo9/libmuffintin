@@ -36,13 +36,14 @@ for each complete script process, measured externally by macOS
 ## libmuffintin Kr molecule-in-box smoke harness
 
 The runtime example constructs a neutral point-nucleus Kr atom at the center of
-an $8$ bohr cubic cell, derives the 28 core and 8 valence electrons from
-`fleur_default_atomic_configuration`, and runs the public Gamma relaxed-core HF
-path with explicit finite-body exchange:
+an $8$ bohr cubic cell and derives the 28 core and 8 valence electrons from
+`fleur_default_atomic_configuration`. Its default `spinor-first` route runs
+Gamma relaxed-core HF with explicit finite-body exchange:
 
 ```sh
 cargo run -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
   --out kr-relaxed-core-hf-p0 \
+  --relativity spinor-first \
   --box 8 --orbital-g 1 --field-g 4.5 --orbital-lmax 1 \
   --product-g 1 --product-lmax 2 --lexp 2 \
   --rmt 2 --radial-points 2401 --hdlo none
@@ -66,12 +67,42 @@ remains the orbital-basis cutoff. The field angular cutoff is
 complete channel layout. The 2401-point muffin-tin mesh resolves the separate
 full-space and muffin-tin core norm quadratures used by the spill gate.
 
+`--relativity kh-soc` selects scalar Koelling–Harmon HF followed by SOC second
+variation. This route freezes the 28 core electrons in the immutable atomic
+checkpoint potential, keeps their density in the total Hartree/mixing state,
+adds exact spherical core exchange to scalar Fock iterations, and adds the
+SOC-resolved core operator before second-variation diagonalization. It does not
+put CV, VC, or CC products into the VV MPB. Scalar KH accepts `linear` or
+`pulay` Fock mixing; `--soc-bands` is the explicit number of lowest scalar
+source bands retained:
+
+```sh
+cargo run --release -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
+  --out kr-kh-soc-hf-production \
+  --relativity kh-soc --soc-bands 48 \
+  --box 8 --orbital-g 2 --field-g 4.5 --orbital-lmax 4 \
+  --product-g 2 --product-lmax 4 --lexp 4 \
+  --rmt 2 --radial-points 2401 --hdlo all --temperature 1e-6 \
+  --outer-mixing pulay --outer-mixing-alpha 0.1 --outer-mixing-history 8 \
+  --outer-max-iterations 64 --outer-energy-tolerance 1e-7 \
+  --outer-density-tolerance 1e-6 \
+  --fock-max-iterations 128 --fock-mixing pulay \
+  --fock-mixing-alpha 0.5 --fock-diis-history 8
+```
+
+The KH plus SOC `result.toml` records raw energies, the explicit HOMO shift,
+HOMO-shifted Hartree/eV energies, adjacent Kramers-pair splittings, occupations,
+and spin-resolved scalar-source-band mixing weights. This is the table intended
+for the X2C1e/4c-DC comparison; it does not by itself establish box or basis
+convergence.
+
 For a bounded production-convergence attempt, set the outer and core gates
 explicitly together with the larger orbital and product bases:
 
 ```sh
 cargo run --release -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
   --out kr-relaxed-core-hf-production \
+  --relativity spinor-first \
   --box 8 --orbital-g 2 --field-g 4.5 --orbital-lmax 4 \
   --product-g 2 --product-lmax 4 --lexp 4 \
   --rmt 2 --radial-points 2401 --hdlo all --temperature 1e-6 \
@@ -95,13 +126,15 @@ The output directory contains:
   core-state split, and Git SHA/dirty provenance;
 - `initial-checkpoint.toml`: the canonical atomic-superposition restart written
   before HF;
-- `iterations.toml`: every completed relaxed-core HF iteration diagnostic;
-- `result.toml`: total and exchange-sector energies, four sector traces,
-  core/valence diagnostics, all orbital energies and occupations, and core-shell
-  energies, norms, and spill;
+- `iterations.toml`: every completed outer/Fock iteration diagnostic for the
+  selected route;
+- `result.toml`: route-specific total/exchange terms, core/valence diagnostics,
+  orbital energies and occupations, and core-shell energies, norms, and spill;
 - `final-checkpoint.toml`: the canonical restart built from the final total
   density and potential.
 
 `--hdlo all` adds one derivative-order-2 atomic HDLO request per orbital $l$.
-The harness does not assign an AO matching tolerance, HOMO or vacuum reference,
-or a pass/fail acceptance threshold.
+The harness does not assign an AO matching tolerance or a cross-method pass/fail
+acceptance threshold. For the KH plus SOC route, “Fermi shift” is recorded
+explicitly as the finite-system HOMO reference, not as a periodic chemical
+potential.
