@@ -600,6 +600,13 @@ not project between changing radial spaces or carry CDIIS history across
 different Hartree potentials. This avoids repeatedly initializing HF from the
 Hartree-only spectrum without retaining checkpoint XC in the physical Fock.
 
+For this fixed radial reference, the scalar and Pauli-summed MPB bases and
+their Coulomb operators are retained across outer steps as well as inner
+Fock iterations. Each call still rebuilds orbital-dependent vertices and
+checks the cached product-source context. Routes whose radial generators
+follow the changing physical potential discard these caches at every outer
+step; sharing an iteration count is not evidence of a shared product space.
+
 The additional LO amplitudes are constrained coordinates, not additional
 active orbitals. Their vanishing value and slope preserve the APW boundary
 conditions. The driver retains the expanded physical coefficients $C=TZ$ for

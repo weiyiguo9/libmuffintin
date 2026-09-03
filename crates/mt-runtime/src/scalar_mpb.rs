@@ -173,7 +173,7 @@ pub enum ScalarMpbError {
     },
     #[error("scalar MPB pair-column layout is incompatible with the frozen orbitals")]
     IncompatiblePairLayout,
-    #[error("scalar MPB static basis does not match the current fixed-potential input")]
+    #[error("scalar MPB static basis does not match the current radial-basis input")]
     IncompatibleBasisContext,
     #[error("Pauli-summed MPB vertices require SOC second-variation orbitals")]
     RequiresSecondVariation,

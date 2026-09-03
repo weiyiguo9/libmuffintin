@@ -823,8 +823,16 @@ fn run_kh_soc_valence_hf_inner(
     } else {
         None
     };
+    let mut scalar_exchange_cache = None;
+    let mut spinor_exchange_cache = None;
 
     for outer_iteration in 1..=spec.config.convergence.max_iterations {
+        // Only frozen-core KH guarantees identical radial/product spaces across
+        // outer steps. The MPB producer also checks the cached source context.
+        if scalar_guess.is_none() {
+            scalar_exchange_cache = None;
+            spinor_exchange_cache = None;
+        }
         let electrostatic = evaluate_regional_electrostatics(
             total_density.charge(),
             &ElectrostaticSpec::new(
@@ -861,6 +869,7 @@ fn run_kh_soc_valence_hf_inner(
             &k_fractional,
             &q_fractional,
             core_sidecars,
+            &mut scalar_exchange_cache,
         )?;
         let scalar_valence_output = physics
             .kernel
@@ -912,6 +921,7 @@ fn run_kh_soc_valence_hf_inner(
             &potential,
             &electrostatic,
             &core_density,
+            &mut spinor_exchange_cache,
         )?;
         total_exchange_rebuilds += fixed.exchange_rebuilds + spinor.exchange_rebuilds;
         let valence_output = physics
@@ -1930,6 +1940,7 @@ fn solve_scalar_fixed_potential(
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
     core_sidecars: &[CoreShellOrbitals],
+    exchange_cache: &mut Option<ScalarExchangeCache>,
 ) -> Result<ScalarFixedPotentialResult, GammaValenceHfError> {
     let mut rebuilds = 0;
     let mut last_residual = f64::INFINITY;
@@ -1937,7 +1948,6 @@ fn solve_scalar_fixed_potential(
     let mut previous_global_feedback: Option<Collinear<Vec<DenseHermitianMatrix>>> = None;
     let mut up_mixer = FeedbackMixer::new(spec.scalar_fock_mixing);
     let mut down_mixer = FeedbackMixer::new(spec.scalar_fock_mixing);
-    let mut exchange_cache = None;
     let core_feedback = physics
         .kernel
         .scalar_static_core_exchange_feedback(&bands, core_sidecars)?;
@@ -1952,7 +1962,7 @@ fn solve_scalar_fixed_potential(
             &occupation_rows,
             k_fractional,
             q_fractional,
-            &mut exchange_cache,
+            exchange_cache,
         )?;
         rebuilds += 1;
         let fresh_band_feedback = scalar_exchange_feedback(&rebuilt)?;
@@ -2067,6 +2077,7 @@ fn solve_second_variation_hf(
     initial_potential: &RegionalPotential,
     initial_electrostatic: &muffintin_dft::RegionalElectrostaticResult,
     core_density: &RegionalDensity,
+    exchange_cache: &mut Option<SecondVariationExchangeCache>,
 ) -> Result<SecondVariationHfResult, GammaValenceHfError> {
     let scalar_feedback = scalar_feedback_in_second_variation_frame(&scalar.bands, frame)?;
     let scalar_core_feedback = scalar_core_feedback_in_second_variation_frame(
@@ -2082,7 +2093,6 @@ fn solve_second_variation_hf(
     let mut feedback_mixer = FeedbackMixer::new(spec.spinor_fock_mixing);
     let mut virtual_level_shift = spec.spinor_virtual_level_shift.get();
     let mut current_density = None;
-    let mut exchange_cache = None;
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
     let mut last_commutator_residual = f64::INFINITY;
@@ -2130,7 +2140,7 @@ fn solve_second_variation_hf(
             &occupation_rows,
             k_fractional,
             q_fractional,
-            &mut exchange_cache,
+            exchange_cache,
         )?;
         let band_feedback = exchange_feedback(&exchange)?;
         let exchange_feedback = lift_second_variation_feedback(&current.mixings, &band_feedback)?;
