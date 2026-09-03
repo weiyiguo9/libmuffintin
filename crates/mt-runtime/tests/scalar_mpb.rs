@@ -520,3 +520,53 @@ fn scalar_mpb_rejects_empty_or_incompatible_selection() {
         Err(ScalarMpbError::IncompatiblePairLayout)
     ));
 }
+
+#[test]
+fn batched_scalar_mpb_preserves_selection_order_and_coefficients() {
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
+    let input = physics
+        .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
+        .unwrap();
+    assert!(input.orbitals.band_window.count >= 2);
+    let selections = vec![
+        ScalarMpbSelection {
+            spin: 1,
+            k: 0,
+            left_band: 1,
+            right_band: 0,
+        },
+        ScalarMpbSelection {
+            spin: 0,
+            k: 0,
+            left_band: 0,
+            right_band: 1,
+        },
+        ScalarMpbSelection {
+            spin: 1,
+            k: 0,
+            left_band: 0,
+            right_band: 0,
+        },
+    ];
+    let spec = |selections| ScalarMpbSpec {
+        lattice: *physics.reciprocal(),
+        product_l_max: 2,
+        product_g_max: InverseBohr(1.5),
+        overlap_tolerance: DEFAULT_TOLERANCE,
+        selections,
+    };
+    let batched = build_scalar_mpb(&input, &spec(selections.clone())).unwrap();
+    for (position, selection) in selections.into_iter().enumerate() {
+        let single = build_scalar_mpb(&input, &spec(vec![selection])).unwrap();
+        let record = &batched.vertices[position];
+        assert_eq!(record.spin, selection.spin);
+        assert_eq!(record.left_band, selection.left_band);
+        assert_eq!(record.right_band, selection.right_band);
+        assert!(
+            max_abs_diff(
+                record.vertex.coefficients(),
+                single.vertices[0].vertex.coefficients()
+            ) < 1.0e-10
+        );
+    }
+}
