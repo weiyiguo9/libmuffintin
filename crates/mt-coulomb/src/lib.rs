@@ -27,6 +27,7 @@ mod primitive;
 mod radial_core_valence;
 mod radial_slater;
 mod spec;
+mod static_core_exchange;
 mod structure;
 
 pub use assemble::{assemble_coulomb, assemble_point_charge_oracle, assemble_sampled_coulomb};
@@ -63,6 +64,10 @@ pub use radial_slater::{
     RadialSlaterTraces, radial_slater_cv_traces, radial_slater_traces,
 };
 pub use spec::{CoulombRequest, DEFAULT_LEXP, InterpolationProjection};
+pub use static_core_exchange::{
+    ScalarCoreExchangeRadial, StaticCoreExchangeBlock, StaticCoreExchangeError,
+    StaticCoreExchangeMode, StaticCoreExchangeShell, static_core_exchange_block,
+};
 pub use structure::{
     StructureConstants, brute_force_structure_constant, spex_real_g, structure_constants,
 };
