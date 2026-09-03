@@ -333,11 +333,19 @@ fn spencer_alavi_g0_outer_product_includes_mt_and_interstitial_coefficients() {
             AuxiliaryRegion::Interstitial { .. } => {
                 let wave = &payload.interstitial.waves[next_wave];
                 next_wave += 1;
-                auxiliary
+                // At Fourier H=0: integral Theta(r) exp(+i G.r) / volume.
+                // Use the analytic sphere transform, not the assembly helper.
+                let excluded: Complex64 = auxiliary
                     .partition
-                    .interstitial()
-                    .coefficient(wave.g.cartesian)
-                    .unwrap()
+                    .sites()
+                    .iter()
+                    .map(|site| {
+                        sphere_form(wave.g.norm.get(), site.radius.get())
+                            * phase(wave.g.cartesian, site.position)
+                            / volume
+                    })
+                    .sum();
+                Complex64::new(if wave.g.index == [0; 3] { 1.0 } else { 0.0 }, 0.0) - excluded
             }
             AuxiliaryRegion::InterpolationPoint { .. } => unreachable!(),
         })

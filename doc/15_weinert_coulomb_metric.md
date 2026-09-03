@@ -320,6 +320,19 @@ V_{IJ}^{q,R_c}
 =\sum_G \rho_I(q+G)^*v_{R_c}(|q+G|)\rho_J(q+G).
 ```
 
+For an IPW labelled by $G$, its coefficient at $q+H$ is
+$\rho_G(q+H)=\Theta_I(H-G)$, where the step coefficient uses
+$\exp[-i(H-G)\cdot R_a]$. Reversing this difference conjugates the
+interstitial coefficients but not the MT coefficients, and gives an
+incorrect translated-sphere matrix. The same convention is used by the
+sharp kernel and by the Fourier correction of the smoothed kernel.
+For the translated seven-IPW diagnostic above, the smoothed Gamma matrix
+at `LEXP=18` differed from the independent cutoff-48 Fourier reference by
+3.77383 Ha before correcting that sign, and by $1.20\times10^{-6}$ Ha
+afterward. The latter is consistent with the reference-tail uncertainty;
+the matrix's smallest eigenvalue is 0.387794 Ha. An origin-centred sphere
+or an empty-sphere diagonal cannot expose this phase error.
+
 The request carries an explicit reciprocal cutoff for this sum. It is a
 caller-visible convergence parameter analogous to the finite FFT grid used by
 a PW implementation. A truncated operator has no separated `GammaHead`; it

@@ -472,7 +472,7 @@ fn auxiliary_fourier_coefficients(
                         next_wave += 1;
                         let difference = std::array::from_fn(|axis| {
                             InverseBohr(
-                                source.g.cartesian[axis].get() - wave.g.cartesian[axis].get(),
+                                wave.g.cartesian[axis].get() - source.g.cartesian[axis].get(),
                             )
                         });
                         Ok(auxiliary.partition.interstitial().coefficient(difference)?)
@@ -515,7 +515,7 @@ fn truncated_fourier_coefficient(
             continue;
         }
         let difference = std::array::from_fn(|axis| {
-            InverseBohr(source.g.cartesian[axis].get() - wave.g.cartesian[axis].get())
+            InverseBohr(wave.g.cartesian[axis].get() - source.g.cartesian[axis].get())
         });
         coefficient += *amplitude * auxiliary.partition.interstitial().coefficient(difference)?;
     }
