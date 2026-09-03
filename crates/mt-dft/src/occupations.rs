@@ -173,7 +173,9 @@ pub fn solve_gaussian(
     )?;
     let mut generalized_entropy = 0.0;
     for &state in states {
-        let scaled = (state.energy.get() - solution.chemical_potential) / width.get();
+        let scaled = ((state.energy.get() - solution.energy_reference)
+            - solution.relative_chemical_potential)
+            / width.get();
         generalized_entropy += state.capacity() * normal_pdf(scaled);
     }
     let smearing_correction = -width.get() * generalized_entropy;
@@ -181,7 +183,9 @@ pub fn solve_gaussian(
         return Err(OccupationError::NonFiniteThermodynamics);
     }
     Ok(GaussianResult {
-        chemical_potential: Hartree(solution.chemical_potential),
+        chemical_potential: Hartree(
+            solution.energy_reference + solution.relative_chemical_potential,
+        ),
         occupations: solution.occupations,
         electron_count: solution.electron_count,
         band_energy: Hartree(solution.band_energy),
@@ -253,7 +257,8 @@ struct SpectrumSummary {
 
 #[derive(Debug)]
 struct SmearingSolution {
-    chemical_potential: f64,
+    energy_reference: f64,
+    relative_chemical_potential: f64,
     occupations: Vec<f64>,
     electron_count: f64,
     band_energy: f64,
@@ -284,12 +289,38 @@ fn solve_smearing(
             capacity: summary.capacity,
         });
     }
+    // Center on the weighted Fermi-level orbital, not the absolute energy zero.
+    // At low temperature an absolute mu can run out of representable bits while
+    // the occupation residual is still above the requested count tolerance.
+    let mut ordered = states.to_vec();
+    ordered.sort_by(|a, b| a.energy.get().total_cmp(&b.energy.get()));
+    let mut filled = 0.0;
+    let mut energy_reference = ordered[0].energy.get();
+    for (index, state) in ordered.iter().enumerate() {
+        energy_reference = state.energy.get();
+        filled += state.capacity();
+        if filled >= requested_electrons {
+            if filled == requested_electrons && index + 1 < ordered.len() {
+                // In a zero-temperature gap, center between its endpoints.
+                // Half-sums keep even opposite extreme endpoints finite.
+                energy_reference = 0.5 * energy_reference + 0.5 * ordered[index + 1].energy.get();
+            }
+            break;
+        }
+    }
+    let shifted = states
+        .iter()
+        .map(|&state| BandState {
+            energy: Hartree(state.energy.get() - energy_reference),
+            ..state
+        })
+        .collect::<Vec<_>>();
     let (mut lower, mut upper) = bracket(
-        states,
+        &shifted,
         requested_electrons,
         scale,
-        summary.minimum_energy,
-        summary.maximum_energy,
+        summary.minimum_energy - energy_reference,
+        summary.maximum_energy - energy_reference,
         kernel,
     )?;
     let mut electron_residual = f64::INFINITY;
@@ -298,11 +329,17 @@ fn solve_smearing(
         completed_iterations = iteration;
         let chemical_potential = lower * 0.5 + upper * 0.5;
         let stalled = chemical_potential == lower || chemical_potential == upper;
-        let count = electron_count(states, chemical_potential, scale, kernel);
+        let count = electron_count(&shifted, chemical_potential, scale, kernel);
         electron_residual = count - requested_electrons;
         if electron_residual.abs() <= electron_tolerance {
-            let occupations = occupations(states, chemical_potential, scale, kernel);
-            return summarize_solution(states, occupations, chemical_potential, iteration);
+            let occupations = occupations(&shifted, chemical_potential, scale, kernel);
+            return summarize_solution(
+                states,
+                occupations,
+                energy_reference,
+                chemical_potential,
+                iteration,
+            );
         }
         if stalled {
             break;
@@ -414,7 +451,8 @@ fn bracket(
 fn summarize_solution(
     states: &[BandState],
     occupations: Vec<f64>,
-    chemical_potential: f64,
+    energy_reference: f64,
+    relative_chemical_potential: f64,
     iterations: usize,
 ) -> Result<SmearingSolution, OccupationError> {
     let mut electron_count = 0.0;
@@ -428,7 +466,8 @@ fn summarize_solution(
         return Err(OccupationError::NonFiniteThermodynamics);
     }
     Ok(SmearingSolution {
-        chemical_potential,
+        energy_reference,
+        relative_chemical_potential,
         occupations,
         electron_count,
         band_energy,
@@ -453,7 +492,9 @@ fn fermi_dirac_thermodynamics(
         return Err(OccupationError::NonFiniteThermodynamics);
     }
     Ok(FermiDiracResult {
-        chemical_potential: Hartree(solution.chemical_potential),
+        chemical_potential: Hartree(
+            solution.energy_reference + solution.relative_chemical_potential,
+        ),
         occupations: solution.occupations,
         electron_count: solution.electron_count,
         band_energy: Hartree(solution.band_energy),

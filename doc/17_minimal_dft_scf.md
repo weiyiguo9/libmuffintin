@@ -249,6 +249,14 @@ $C_\sigma$ is a generalized broadening correction, not a thermodynamic entropy. 
 
 The input `electron-count` is the total electron count. The driver subtracts the automatically selected, override-adjusted core occupations exactly once before solving valence occupations and rejects a configuration with no represented valence electron.
 
+The numerical chemical-potential solve uses energies relative to the orbital
+at the weighted zero-temperature filling boundary. This choice only sets the
+energy origin: finite-temperature occupations and the requested electron-count
+tolerance are unchanged. It prevents low-temperature bisection from exhausting
+the precision of an absolute chemical potential before satisfying the count.
+Occupation factors and Gaussian corrections use the relative coordinate;
+reported chemical potentials and band energies retain the original energy zero.
+
 ## 8. Scalar, second-variation SOC, and four-component routes
 
 The scalar route constructs Schrödinger or Koelling–Harmon radial solutions, analytic first and second energy derivatives, distinct-energy local orbitals, and HDLOs from the materialized channel recipe. Scalar $l$ atomic records are generated $\kappa$ first and folded with exact partner degeneracies. A magnetic `frozen-checkpoint` retains the original up/down energy anchors bitwise for the two scalar channels. LO and HDLO records with signed $\kappa$ are spinor-only and are omitted rather than silently reinterpreted as scalar $l$ orbitals. Scalar-relativistic overlap uses the physical $PP+QQ$ norm. Nonspherical sphere fields enter through Gaunt matrix elements, and all site blocks use the same compiled projection order as density synthesis.
