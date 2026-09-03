@@ -423,13 +423,6 @@ the corresponding $k$ weight and concatenated before the constrained DIIS
 solve. The coefficients sum to one, so extrapolating only $K[D]$ is equivalent
 to extrapolating the full Fock matrix while keeping $H_0$ fixed. The error is
 always represented in the global basis rather than a changing orbital gauge.
-The positive-semidefinite error Gram matrix is solved by a real-symmetric
-eigendecomposition. Directions below the larger of $10^{-14}$ and
-$10^{-12}$ times its spectral radius are treated as its numerical nullspace;
-the coefficient-sum constraint is imposed within that nullspace when possible,
-or through the retained pseudoinverse otherwise. This keeps the unit constraint
-out of the differently scaled Gram eigensystem and retains useful dependent
-histories instead of silently falling back to the latest raw Fock operator.
 Both commutator variants may delay DIIS by an explicit number of startup
 updates. During that interval the fresh feedback is damped against the prior
 feedback; no startup vector is inserted into the later DIIS history. Zero
