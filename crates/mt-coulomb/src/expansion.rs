@@ -180,6 +180,8 @@ pub(crate) struct MtPiece {
     pub site: usize,
     pub l: u32,
     pub m: i32,
+    /// Retained MPB radial mode, independent of m; absent for sampled functions.
+    pub mpb_mode: Option<usize>,
     /// SPEX `basm` radial samples.
     pub radial: Vec<f64>,
     /// Complex amplitude in front of the real radial.
@@ -264,6 +266,7 @@ pub(crate) fn mixed_product_densities(
                         site,
                         l,
                         m,
+                        mpb_mode: Some(n),
                         radial: mode.radial.clone(),
                         amplitude: Complex64::new(1.0, 0.0),
                     }],
@@ -446,6 +449,7 @@ pub(crate) fn sampled_zeta_densities(
                     site: channel.site,
                     l: channel.l,
                     m: channel.m,
+                    mpb_mode: None,
                     radial: real,
                     amplitude: Complex64::new(1.0, 0.0),
                 });
@@ -460,6 +464,7 @@ pub(crate) fn sampled_zeta_densities(
                     site: channel.site,
                     l: channel.l,
                     m: channel.m,
+                    mpb_mode: None,
                     radial: imaginary,
                     amplitude: Complex64::new(0.0, 1.0),
                 });
@@ -560,6 +565,7 @@ fn accumulate_muffin_tin(
                 site,
                 l,
                 m,
+                mpb_mode: None,
                 radial: spike.clone(),
                 amplitude: harmonics[lm_index(l, m)?].conj() * charge,
             });

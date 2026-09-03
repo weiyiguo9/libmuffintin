@@ -38,6 +38,18 @@ struct Prepared<'a> {
     sfac: Vec<f64>,
     is_gamma: bool,
     pw_intersite: Vec<Complex64>,
+    mpb_moments: BTreeMap<(usize, u32, usize), MpbRadialMoments>,
+}
+
+struct MpbRadialMoments {
+    multipole: f64,
+    second: f64,
+    pw: BTreeMap<u64, RadialPwIntegrals>,
+}
+
+struct RadialPwIntegrals {
+    overlap: f64,
+    weinert: f64,
 }
 
 /// Assemble $V^q$ for a mixed-product auxiliary.
@@ -167,6 +179,7 @@ fn assemble_kind(
         request.lexp(),
     )?;
     let sfac = sfac_table((4 * request.lexp() + 4) as usize)?;
+    let mpb_moments = prepare_mpb_radial_moments(auxiliary, &support)?;
     let mut prepared = Prepared {
         request,
         auxiliary,
@@ -175,6 +188,7 @@ fn assemble_kind(
         sfac,
         is_gamma: is_gamma(auxiliary.q.cartesian),
         pw_intersite: Vec::new(),
+        mpb_moments,
     };
     prepared.pw_intersite = pw_pw_intersite_matrix(&prepared)?;
     let n = densities.len();
@@ -578,6 +592,66 @@ fn require_mixed_product_waves(
     Ok(())
 }
 
+/// Radial MPB moments are shared by all magnetic components and PW directions.
+fn prepare_mpb_radial_moments(
+    auxiliary: &CompiledAuxiliaryBasis,
+    support: &ExpansionSupport,
+) -> Result<BTreeMap<(usize, u32, usize), MpbRadialMoments>, CoulombError> {
+    let Some(payload) = auxiliary.mixed_product() else {
+        return Ok(BTreeMap::new());
+    };
+    let shells = support
+        .waves
+        .iter()
+        .map(|wave| {
+            let norm = wave.q_plus_g_norm.get();
+            (norm.to_bits(), norm)
+        })
+        .collect::<BTreeMap<_, _>>();
+    let modes = payload
+        .sites
+        .iter()
+        .flat_map(|site| site.modes.iter().map(move |mode| (site, mode)))
+        .collect::<Vec<_>>();
+    modes
+        .par_iter()
+        .map(|(site, mode)| {
+            let multipole = multipole_moment(mode.l, &site.mesh, &mode.radial)?;
+            let second = if mode.l == 0 {
+                second_moment(&site.mesh, &mode.radial)?
+            } else {
+                0.0
+            };
+            let pw = shells
+                .iter()
+                .map(|(&key, &norm)| {
+                    Ok((
+                        key,
+                        RadialPwIntegrals {
+                            overlap: bessel_overlap(mode.l, norm, &site.mesh, &mode.radial)?,
+                            weinert: bessel_weinert_integral(
+                                mode.l,
+                                norm,
+                                &site.mesh,
+                                &mode.radial,
+                            )?,
+                        },
+                    ))
+                })
+                .collect::<Result<BTreeMap<_, _>, CoulombError>>()?;
+            Ok((
+                (site.site, mode.l, mode.n),
+                MpbRadialMoments {
+                    multipole,
+                    second,
+                    pw,
+                },
+            ))
+        })
+        .collect::<Result<Vec<_>, CoulombError>>()
+        .map(|rows| rows.into_iter().collect())
+}
+
 fn weinert_inner(
     left: &ChargeDensity,
     right: &ChargeDensity,
@@ -630,16 +704,22 @@ fn mt_mt_element(
         let radial = intra_sphere_poisson(left.l, mesh, &left.radial, &right.radial)?;
         value += left.amplitude.conj() * right.amplitude * radial;
     }
-    let moment_l = multipole_moment(
-        left.l,
-        &prepared.support.sites[left.site].mesh,
-        &left.radial,
-    )?;
-    let moment_r = multipole_moment(
-        right.l,
-        &prepared.support.sites[right.site].mesh,
-        &right.radial,
-    )?;
+    let moment_l = match left.mpb_mode {
+        Some(n) => prepared.mpb_moments[&(left.site, left.l, n)].multipole,
+        None => multipole_moment(
+            left.l,
+            &prepared.support.sites[left.site].mesh,
+            &left.radial,
+        )?,
+    };
+    let moment_r = match right.mpb_mode {
+        Some(n) => prepared.mpb_moments[&(right.site, right.l, n)].multipole,
+        None => multipole_moment(
+            right.l,
+            &prepared.support.sites[right.site].mesh,
+            &right.radial,
+        )?,
+    };
     let l = left.l + right.l;
     let m = left.m - right.m;
     if l > 2 * prepared.request.lexp() || m.unsigned_abs() > l {
@@ -677,14 +757,23 @@ fn mt_pw_element(
     let y =
         complex_spherical_harmonics(prepared.request.lexp(), wave.q_plus_g.map(InverseBohr::get));
     let lm = lm_index(l, m)?;
-    let moment = multipole_moment(l, mesh, &piece.radial)?;
-    let moment2 = if l == 0 {
-        second_moment(mesh, &piece.radial)?
-    } else {
-        0.0
+    let (moment, moment2, olap, integral) = match piece.mpb_mode {
+        Some(n) => {
+            let radial = &prepared.mpb_moments[&(site, l, n)];
+            let pw = &radial.pw[&qnorm.to_bits()];
+            (radial.multipole, radial.second, pw.overlap, pw.weinert)
+        }
+        None => (
+            multipole_moment(l, mesh, &piece.radial)?,
+            if l == 0 {
+                second_moment(mesh, &piece.radial)?
+            } else {
+                0.0
+            },
+            bessel_overlap(l, qnorm, mesh, &piece.radial)?,
+            bessel_weinert_integral(l, qnorm, mesh, &piece.radial)?,
+        ),
     };
-    let olap = bessel_overlap(l, qnorm, mesh, &piece.radial)?;
-    let integral = bessel_weinert_integral(l, qnorm, mesh, &piece.radial)?;
     let mut csum = Complex64::default();
     let g_is_zero = wave.g.index == [0; 3];
     for (site1, support1) in prepared.support.sites.iter().enumerate() {

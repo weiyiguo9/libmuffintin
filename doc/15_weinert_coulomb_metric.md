@@ -394,6 +394,13 @@ repeated angular lattice sum for every PW pair. MT terms, the onsite PW
 integral, and the Gamma Taylor corrections are unchanged; the sharp and
 smoothed sphere definitions are not modified by this factorization.
 
+The MPB path also prepares its multipole and second moments once per retained
+radial mode. Its MT–PW Bessel overlap and Weinert radial integral are computed
+once per exact reciprocal-norm shell and reused for every magnetic component.
+The internal charge expansion retains the MPB mode identity for these lookups;
+sampled functions use their own radial samples directly. No norm-shell
+rounding, angular screening, or change of quadrature is introduced.
+
 ## 7. Pair vertices
 
 `PairVertex` stores `AuxiliaryLayout`, not a raw count split.
