@@ -796,6 +796,45 @@ tolerance separately; iteration and final result files label SRA and frozen
 core explicitly. The existing `spinor-first` relaxed-core route and `kh-soc`
 route are not silently switched to this Hamiltonian.
 
+A first coupled frozen-core SRA Kr probe at `a120172` used an 8 bohr box,
+$R_{\mathrm{MT}}=2$ bohr, orbital/product cutoffs of 2 inverse bohr,
+orbital/product angular cutoffs of 4, 2401 radial points, all HDLOs, and
+Spencer–Alavi exchange with Fourier cutoff 4.5 inverse bohr. Ordinary CDIIS
+with history 8, two damped startup steps, and an initial 0.1 Ha virtual-space
+shift reached the configured thresholds in eight iterations. The final
+unshifted rebuild had density residual $5.16\times10^{-9}$, commutator
+residual $3.81\times10^{-7}$ Ha, active feedback change
+$8.23\times10^{-7}$ Ha, and energy change $6.60\times10^{-8}$ Ha. The CV/VC
+trace mismatch was $5.55\times10^{-16}$ Ha; the integrated core/valence
+counts were 28 and 8. This single-thread local run took 319.91 seconds.
+
+These are convergence results for the configured Hamiltonian, not an
+all-electron benchmark acceptance. Its HOMO-shifted lowest occupied pair was
+$-23.893924$ eV, versus $-18.324633$ eV in the stored point-nucleus
+dyall-v4z Dirac–Coulomb HF reference. More importantly, its CC exchange
+energy was only $-33.239082$ Ha. An independent radial Slater contraction
+of the same frozen core gave onsite MT CC energy $-90.840873$ Ha and
+extended-mesh CC energy $-90.843536$ Ha. The radial oracle has an isolated
+onsite Coulomb body, not the finite Fourier truncated periodic body, so this
+is not a numerical identity test. The large discrepancy exposes the need
+to resolve compact core products in the chosen exchange metric before
+interpreting spectra or total energies. It must not be hidden by loosening
+SCF gates or by replacing only one energy sector. This run also does not
+establish a KH+SOC fix, relaxed-core HF, or orbital/product/box convergence.
+
+Changing only the exchange kernel to periodic Weinert finite body at the
+same source commit and numerical settings reached the configured thresholds
+in nine iterations, with the final shift removed. The final density,
+commutator, and active-feedback residuals were $3.09\times10^{-9}$,
+$4.79\times10^{-8}$ Ha, and $8.57\times10^{-8}$ Ha; this local run took
+289.95 seconds. Its CC exchange energy was $-85.891332$ Ha, but its
+HOMO-shifted lowest occupied pair was still $-22.696568$ eV. The periodic
+finite body is a different interaction from spherical truncation and from
+isolated molecular Coulomb, so neither the total energy nor CC is required
+to equal the radial/GTO references at this box size. Both runs show that
+ordinary full-spinor Fock CDIIS can converge this fixed SRA space; neither
+proves that changing the kernel alone resolves the spectral discrepancy.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its

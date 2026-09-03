@@ -304,6 +304,19 @@ records `SpencerAlaviSphere` metadata containing $R_c$, $N_k$, and the Fourier
 cutoff. Empty-sphere PW and isolated $G=0$ mixed MT/interstitial outer-product
 oracles lock the finite limit and the shared-kernel normalization.
 
+This direct Fourier realization is not a production all-electron shortcut.
+Unlike the periodic Weinert path, it does not retain the analytic MT
+short-range Coulomb integrals outside the selected Fourier space. A cutoff
+adequate for interstitial valence products can therefore badly underestimate
+deep-core CC and CV exchange. The Kr diagnostic in
+[23](23_core_valence_exchange.md) separates SCF convergence from this
+representation error. Increasing only the orbital basis or improving DIIS
+cannot repair a truncated interaction metric; the all-electron cutoff must
+be converged independently or a separately specified dual-space kernel must
+retain its short-range part. Replacing only the CC energy by an isolated
+radial value would instead mix different operators and is not a correction
+to the existing HF Hamiltonian.
+
 ## 7. Pair vertices
 
 `PairVertex` stores `AuxiliaryLayout`, not a raw count split.
