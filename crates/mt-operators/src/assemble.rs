@@ -83,6 +83,28 @@ pub fn add_site_contributions(
     })
 }
 
+/// Assemble one Hermitian scalar site operator in the compiled global basis.
+pub fn assemble_scalar_site_operator(
+    compiled: &CompiledBasis,
+    sites: &[DenseHermitianMatrix],
+) -> Result<DenseHermitianMatrix, OperatorError> {
+    if sites.len() != compiled.site_count() {
+        return Err(OperatorError::BasisSiteCount {
+            expected: compiled.site_count(),
+            actual: sites.len(),
+        });
+    }
+    let dimension = compiled.layout.dimension();
+    let mut global = vec![Complex64::default(); dimension * dimension];
+    for (site, block) in sites.iter().enumerate() {
+        let projection = CompiledSiteProjection::scalar(compiled, site)?;
+        validate_site_block(site, "operator", block, projection.coordinate_count())?;
+        projection.add_congruence_to(&mut global, dimension, block)?;
+    }
+    DenseHermitianMatrix::from_host_row_major(dimension, Axis::GlobalBasis, global)
+        .map_err(Into::into)
+}
+
 fn validate_operator_site(
     site_index: usize,
     site: &SiteOperatorBlocks,
@@ -92,21 +114,31 @@ fn validate_operator_site(
         ("overlap", &site.overlap),
         ("Hamiltonian", &site.hamiltonian),
     ] {
-        if block.dimension() != expected {
-            return Err(OperatorError::SiteBlockDimension {
-                site: site_index,
-                matrix: name,
-                expected,
-                actual: block.dimension(),
-            });
-        }
-        if block.axis() != Axis::SiteCoordinate {
-            return Err(OperatorError::Tensor(TensorError::Axis {
-                index: 0,
-                expected: Axis::SiteCoordinate,
-                actual: block.axis(),
-            }));
-        }
+        validate_site_block(site_index, name, block, expected)?;
+    }
+    Ok(())
+}
+
+fn validate_site_block(
+    site: usize,
+    name: &'static str,
+    block: &DenseHermitianMatrix,
+    expected: usize,
+) -> Result<(), OperatorError> {
+    if block.dimension() != expected {
+        return Err(OperatorError::SiteBlockDimension {
+            site,
+            matrix: name,
+            expected,
+            actual: block.dimension(),
+        });
+    }
+    if block.axis() != Axis::SiteCoordinate {
+        return Err(OperatorError::Tensor(TensorError::Axis {
+            index: 0,
+            expected: Axis::SiteCoordinate,
+            actual: block.axis(),
+        }));
     }
     Ok(())
 }

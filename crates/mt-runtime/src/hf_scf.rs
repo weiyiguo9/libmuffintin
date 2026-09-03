@@ -784,7 +784,7 @@ fn run_kh_soc_valence_hf_inner(
             let bands =
                 physics
                     .kernel
-                    .apply_soc_second_variation(&potential, &fixed.bands, window)?;
+                    .apply_soc_second_variation(&potential, &fixed.bands, window, &[])?;
             let occupation = solve_occupations(
                 bands.states(),
                 spec.config.electron_count,

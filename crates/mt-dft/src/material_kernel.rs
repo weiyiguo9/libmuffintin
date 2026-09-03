@@ -7,40 +7,43 @@ use std::ops::Range;
 use crate::core_station::{extend_core_mesh, solve_regional_core_site};
 use crate::{
     AtomicEnergyRequest, BandPathRequest, BandState, ChannelKappaError, CollinearKPoint,
-    CoreContribution, CorePotentialBuildError, CoreSiteRequest, CoreSpinPartition,
-    CoreStateRequest, CoreStationError, DensityError, FirstVariationRoute, FirstVariationSubspace,
-    FirstVariationWindow, FullSpinorKPoint, GeneratedLinearizationEnergy, InterstitialField,
-    LinearizationEnergyDiagnostic, LinearizationEnergyError, LinearizationEnergyGenerator,
-    LocalPauliPotential, MuffinTinField, OccupationError, PdosEnergySample, RegionalCoreResult,
-    RegionalDensity, RegionalElectrostaticResult, RegionalPotential, RegionalScalarField,
-    RegularSpectrum, ScalarBuilderError, ScalarIterationBasis, ScalarLocalOrbitalRequest,
-    ScalarSiteInput, ScfBasis, ScfChannelIdentity, ScfChannelRecipe, ScfChannelTreatment,
-    ScfConfig, ScfCoreSite, ScfEnergyContext, ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh,
-    ScfKReduction, ScfKSamplingProvenance, ScfOccupations, ScfPhysics, ScfPotentialBuild,
-    ScfPotentialBuildError, ScfRelativity, ScfResolvedChannelEnergy, ScfState,
-    SecondVariationError, SpinorBuilderError, SpinorFirstVariationError, SpinorIterationBasis,
-    SpinorLinearizationEnergy, SpinorLocalOrbitalRequest, SpinorSiteInput, TetrahedronError,
+    CoreContribution, CorePotentialBuildError, CoreShellOrbitals, CoreSiteRequest,
+    CoreSpinPartition, CoreStateRequest, CoreStationError, DensityError, FirstVariationRoute,
+    FirstVariationSubspace, FirstVariationWindow, FullSpinorKPoint, GeneratedLinearizationEnergy,
+    InterstitialField, LinearizationEnergyDiagnostic, LinearizationEnergyError,
+    LinearizationEnergyGenerator, LocalPauliPotential, MuffinTinField, OccupationError,
+    PdosEnergySample, RegionalCoreResult, RegionalDensity, RegionalElectrostaticResult,
+    RegionalPotential, RegionalScalarField, RegularSpectrum, ScalarBuilderError,
+    ScalarIterationBasis, ScalarLocalOrbitalRequest, ScalarSiteInput, ScfBasis, ScfChannelIdentity,
+    ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfCoreSite, ScfEnergyContext,
+    ScfEnergyTerms, ScfExchangeCorrelation, ScfKMesh, ScfKReduction, ScfKSamplingProvenance,
+    ScfOccupations, ScfPhysics, ScfPotentialBuild, ScfPotentialBuildError, ScfRelativity,
+    ScfResolvedChannelEnergy, ScfState, SecondVariationError, SpinorBuilderError,
+    SpinorFirstVariationError, SpinorIterationBasis, SpinorLinearizationEnergy,
+    SpinorLocalOrbitalRequest, SpinorSiteInput, StaticCoreSiteExchangeError, TetrahedronError,
     build_collinear_scalar_iteration_bases, build_extended_checkpoint_core_potentials,
     build_extended_core_potentials, build_extended_electrostatic_core_potentials,
-    build_scf_potential, build_spinor_iteration_basis, channel_kappas, channel_l, channel_n,
-    generate_atomic_energy, generate_band_center_energy, generate_band_cog_energy,
-    generate_explicit_energy, generate_fermi_offset_energy, generate_frozen_checkpoint_energy,
-    generate_log_derivative_energy, kappa_degeneracy_average, physical_site_band_projections,
-    scalar_component_energy, solve_fermi_dirac, solve_gaussian, solve_soc_second_variation,
-    solve_spinor_k_point, spin_resolved_energy, spinor_kappas_for_l,
+    build_scf_potential, build_spinor_iteration_basis, build_static_core_exchange_site_blocks,
+    channel_kappas, channel_l, channel_n, generate_atomic_energy, generate_band_center_energy,
+    generate_band_cog_energy, generate_explicit_energy, generate_fermi_offset_energy,
+    generate_frozen_checkpoint_energy, generate_log_derivative_energy, kappa_degeneracy_average,
+    physical_site_band_projections, scalar_component_energy, solve_fermi_dirac, solve_gaussian,
+    solve_soc_second_variation, solve_spinor_k_point, spin_resolved_energy, spinor_kappas_for_l,
     synthesize_collinear_valence_density, synthesize_full_spinor_valence_density,
 };
 use muffintin_core::{
     Bohr, ExponentialMesh, FourierFieldError, FourierLayout, GVector, Hartree,
     InterstitialGeometry, InverseBohr, Kappa, LatticeError, MeshError, ReciprocalLattice,
 };
+use muffintin_coulomb::StaticCoreExchangeMode;
 use muffintin_envelope::{PlaneWave, PlaneWaveEnvelope};
 use muffintin_operators::lapw::{
     Collinear, GeneralizedEigensolution, InterstitialPotential, LapwEigenproblem, LapwError,
 };
 use muffintin_operators::{
     CompiledSiteProjection, OperatorError, SiteSpinOrbitBlock, SocOperatorError,
-    SpinorSiteOperatorBlocks, lift_band_hermitian_feedback, solve_generalized_hermitian,
+    SpinorSiteOperatorBlocks, assemble_scalar_site_operator, lift_band_hermitian_feedback,
+    solve_generalized_hermitian,
 };
 use muffintin_sphere::{
     CorePotentialContinuationSpec, CoreState, DiracError, ExtendedCorePotential, RadialEquation,
@@ -962,6 +965,7 @@ impl MaterialKernel {
         potential: &RegionalPotential,
         scalar: &CheckpointBandSolution,
         window: FirstVariationWindow,
+        core_sidecars: &[CoreShellOrbitals],
     ) -> Result<CheckpointBandSolution, MaterialKernelError> {
         self.require_second_variation_route(potential)?;
         if window.start() != 0 {
@@ -998,11 +1002,21 @@ impl MaterialKernel {
                 &solutions.up.eigenvectors,
             )?;
             let blocks = second_variation_blocks_from_potential(&bases.up, potential)?;
+            let core_blocks = build_static_core_exchange_site_blocks(
+                &bases.up,
+                core_sidecars,
+                StaticCoreExchangeMode::SpinOrbitResolved,
+            )?;
+            let core_feedback = core_blocks
+                .iter()
+                .map(|block| block.matrix().clone())
+                .collect::<Vec<_>>();
             let second = solve_soc_second_variation(
                 FirstVariationRoute::NonmagneticScalarKoellingHarmon,
                 &bases.up.compiled,
                 &first,
                 &blocks,
+                &core_feedback,
             )?;
             let split = split_second_variation(&second)?;
             let start = states.len();
@@ -1034,6 +1048,47 @@ impl MaterialKernel {
             symmetry_transforms: scalar.symmetry_transforms.clone(),
             spacegroup_number: scalar.spacegroup_number,
         })
+    }
+
+    /// Assemble the spherical static core-exchange operator on each retained
+    /// scalar KH global basis.
+    pub fn scalar_static_core_exchange_feedback(
+        &self,
+        scalar: &CheckpointBandSolution,
+        core_sidecars: &[CoreShellOrbitals],
+    ) -> Result<Vec<Collinear<DenseHermitianMatrix>>, MaterialKernelError> {
+        scalar
+            .points
+            .iter()
+            .enumerate()
+            .map(|(point, point_solution)| {
+                let CheckpointKPointSolution::Collinear {
+                    bases,
+                    up_occupations,
+                    down_occupations,
+                    ..
+                } = &point_solution.solution
+                else {
+                    return Err(MaterialKernelError::FeedbackRequiresScalar { point });
+                };
+                if up_occupations == down_occupations || bases.up != bases.down {
+                    return Err(MaterialKernelError::SecondVariationRequiresSpinDegenerate {
+                        point,
+                    });
+                }
+                let sites = build_static_core_exchange_site_blocks(
+                    &bases.up,
+                    core_sidecars,
+                    StaticCoreExchangeMode::ScalarAverage,
+                )?;
+                let scalar_sites = sites
+                    .iter()
+                    .map(|site| site.scalar_block())
+                    .collect::<Result<Vec<_>, _>>()?;
+                let global = assemble_scalar_site_operator(&bases.up.compiled, &scalar_sites)?;
+                Ok(Collinear::new(global.clone(), global))
+            })
+            .collect()
     }
 
     /// Materialize one local-potential radial/basis problem without entering
@@ -1166,6 +1221,7 @@ impl MaterialKernel {
                         &bases.up.compiled,
                         &first,
                         &blocks,
+                        &[],
                     )?;
                     let split = split_second_variation(&second)?;
                     let start = states.len();
@@ -2782,6 +2838,8 @@ pub enum MaterialKernelError {
     CorePotential(#[from] CorePotentialBuildError),
     #[error(transparent)]
     CoreStation(#[from] CoreStationError),
+    #[error(transparent)]
+    StaticCoreExchange(#[from] StaticCoreSiteExchangeError),
     #[error(transparent)]
     SymmetryDetection(#[from] MoyoDetectionError),
     #[error(transparent)]

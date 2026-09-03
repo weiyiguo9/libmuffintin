@@ -10,9 +10,9 @@ use muffintin_envelope::CompiledBasis;
 use muffintin_operators::{
     CompiledSiteProjection, OperatorError, SecondVariationMixing, SiteSpinOrbitBlock,
     SocEigenpairResidual, SocOperatorError, project_site_soc_to_subspace,
-    solve_second_variation_subspace,
+    project_site_spinor_operator_to_subspace, solve_second_variation_subspace,
 };
-use muffintin_tensor::{DenseEigenvectors, TensorError};
+use muffintin_tensor::{DenseEigenvectors, DenseHermitianMatrix, TensorError};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -142,6 +142,7 @@ pub fn solve_soc_second_variation(
     compiled: &CompiledBasis,
     first_variation: &FirstVariationSubspace,
     site_blocks: &[SiteSpinOrbitBlock],
+    site_feedback: &[DenseHermitianMatrix],
 ) -> Result<SecondVariationResult, SecondVariationError> {
     if route != FirstVariationRoute::NonmagneticScalarKoellingHarmon {
         return Err(SecondVariationError::UnsupportedRoute(route));
@@ -163,12 +164,25 @@ pub fn solve_soc_second_variation(
             actual: site_blocks.len(),
         });
     }
+    if !site_feedback.is_empty() && site_feedback.len() != compiled.site_count() {
+        return Err(SecondVariationError::SiteFeedbackCount {
+            expected: compiled.site_count(),
+            actual: site_feedback.len(),
+        });
+    }
 
-    let mut site_contributions = Vec::with_capacity(site_blocks.len());
+    let mut site_contributions = Vec::with_capacity(site_blocks.len() + site_feedback.len());
     for (site, block) in site_blocks.iter().enumerate() {
         let projection = CompiledSiteProjection::scalar(compiled, site)?;
         let coefficients = projection.project_eigenvectors(&first_variation.eigenvectors)?;
         site_contributions.push(project_site_soc_to_subspace(block, &coefficients)?);
+        if let Some(feedback) = site_feedback.get(site) {
+            site_contributions.push(project_site_spinor_operator_to_subspace(
+                projection.coordinate_count(),
+                feedback,
+                &coefficients,
+            )?);
+        }
     }
     let subspace =
         solve_second_variation_subspace(&first_variation.eigenvalues, &site_contributions)?;
@@ -248,6 +262,8 @@ pub enum SecondVariationError {
     GlobalBasisDimension { expected: usize, actual: usize },
     #[error("received {actual} site SOC blocks, expected {expected}")]
     SiteCount { expected: usize, actual: usize },
+    #[error("received {actual} site feedback blocks, expected zero or {expected}")]
+    SiteFeedbackCount { expected: usize, actual: usize },
     #[error(transparent)]
     Operator(#[from] OperatorError),
     #[error(transparent)]
@@ -344,7 +360,7 @@ mod tests {
             FirstVariationRoute::SpinorFirstVariation,
         ] {
             assert_eq!(
-                solve_soc_second_variation(route, &compiled, &first, &[]).unwrap_err(),
+                solve_soc_second_variation(route, &compiled, &first, &[], &[]).unwrap_err(),
                 SecondVariationError::UnsupportedRoute(route)
             );
         }

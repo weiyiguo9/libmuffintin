@@ -146,11 +146,38 @@ pub fn project_site_soc_to_subspace(
     block: &SiteSpinOrbitBlock,
     coefficients: &SiteOrbitalCoefficients,
 ) -> Result<DenseHermitianMatrix, SocOperatorError> {
-    if coefficients.coordinate_count() != block.scalar_coordinate_count {
+    project_site_spinor_operator_to_subspace(
+        block.scalar_coordinate_count,
+        &block.matrix,
+        coefficients,
+    )
+}
+
+/// Project an arbitrary doubled scalar-site operator into the doubled
+/// first-variation band subspace.
+pub fn project_site_spinor_operator_to_subspace(
+    scalar_coordinate_count: usize,
+    block: &DenseHermitianMatrix,
+    coefficients: &SiteOrbitalCoefficients,
+) -> Result<DenseHermitianMatrix, SocOperatorError> {
+    if coefficients.coordinate_count() != scalar_coordinate_count {
         return Err(SocOperatorError::SiteCoefficientDimension {
-            expected: block.scalar_coordinate_count,
+            expected: scalar_coordinate_count,
             actual: coefficients.coordinate_count(),
         });
+    }
+    if block.dimension() != 2 * scalar_coordinate_count {
+        return Err(SocOperatorError::DoubledSiteOperatorDimension {
+            expected: 2 * scalar_coordinate_count,
+            actual: block.dimension(),
+        });
+    }
+    if block.axis() != Axis::SiteCoordinate {
+        return Err(SocOperatorError::Tensor(TensorError::Axis {
+            index: 0,
+            expected: Axis::SiteCoordinate,
+            actual: block.axis(),
+        }));
     }
     let coordinates = coefficients.coordinate_count();
     let bands = coefficients.band_count();
@@ -169,7 +196,7 @@ pub fn project_site_soc_to_subspace(
         &[Axis::SiteCoordinate, Axis::Band],
         doubled,
     )?;
-    hermitian_congruence(&projection, &block.matrix).map_err(Into::into)
+    hermitian_congruence(&projection, block).map_err(Into::into)
 }
 
 /// Residual of one ordinary Hermitian second-variation eigenpair.
@@ -386,6 +413,8 @@ pub enum SocOperatorError {
     },
     #[error("site coefficients have {actual} rows, expected {expected}")]
     SiteCoefficientDimension { expected: usize, actual: usize },
+    #[error("doubled site operator has dimension {actual}, expected {expected}")]
+    DoubledSiteOperatorDimension { expected: usize, actual: usize },
     #[error("first-variation subspace is empty")]
     EmptyFirstVariationSubspace,
     #[error("first-variation energy {band} is non-finite: {value}")]

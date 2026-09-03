@@ -14,7 +14,9 @@ pub mod recipes;
 mod soc;
 mod spinor;
 
-pub use assemble::{OperatorSet, SiteOperatorBlocks, add_site_contributions};
+pub use assemble::{
+    OperatorSet, SiteOperatorBlocks, add_site_contributions, assemble_scalar_site_operator,
+};
 pub use eigensolve::{
     Collinear, EigenpairResidual, GeneralizedEigensolution, RealSymmetricEigensolution,
     lift_band_hermitian_feedback, solve_generalized_hermitian, solve_real_symmetric,
@@ -26,7 +28,7 @@ pub use projection::{
 pub use soc::{
     SecondVariationMixing, SecondVariationSubspaceSolution, SiteSpinOrbitBlock,
     SocEigenpairResidual, SocOperatorError, project_site_soc_to_subspace,
-    solve_second_variation_subspace,
+    project_site_spinor_operator_to_subspace, solve_second_variation_subspace,
 };
 pub use spinor::{SpinorSiteOperatorBlocks, add_spinor_site_contributions};
 
