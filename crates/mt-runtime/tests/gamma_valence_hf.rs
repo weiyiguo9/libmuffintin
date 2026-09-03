@@ -111,6 +111,8 @@ fn gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals() {
         fock_mixing: FockMixing::QuasiNewtonDiis {
             history: 8,
             level_shift: Hartree(0.25),
+            startup_steps: 0,
+            damping: 0.0,
         },
     };
     let result = run_gamma_valence_hf(&mut live_physics, &hf_spec).unwrap();

@@ -68,10 +68,14 @@ pub enum FockMixing {
     },
     CommutatorDiis {
         history: usize,
+        startup_steps: usize,
+        damping: f64,
     },
     QuasiNewtonDiis {
         history: usize,
         level_shift: Hartree,
+        startup_steps: usize,
+        damping: f64,
     },
 }
 
@@ -80,7 +84,7 @@ impl FockMixing {
         match self {
             Self::Linear { .. } => None,
             Self::PulayAnderson { history, .. }
-            | Self::CommutatorDiis { history }
+            | Self::CommutatorDiis { history, .. }
             | Self::QuasiNewtonDiis { history, .. } => Some(history),
         }
     }
@@ -2775,6 +2779,7 @@ struct FeedbackMixRecord {
 struct FeedbackMixer {
     mixing: FockMixing,
     history: Vec<FeedbackMixRecord>,
+    updates: usize,
 }
 
 impl FeedbackMixer {
@@ -2782,6 +2787,7 @@ impl FeedbackMixer {
         Self {
             mixing,
             history: Vec::new(),
+            updates: 0,
         }
     }
 
@@ -2821,6 +2827,9 @@ impl FeedbackMixer {
         input: &[DenseHermitianMatrix],
         output: &[DenseHermitianMatrix],
     ) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+        if let Some(startup) = self.damped_startup(input, output)? {
+            return Ok(startup);
+        }
         let (candidate, error) = match self.mixing {
             FockMixing::Linear { alpha } => {
                 return mix_global_feedback(input, output, alpha);
@@ -2863,6 +2872,9 @@ impl FeedbackMixer {
         output: &[DenseHermitianMatrix],
         channel: FeedbackChannel,
     ) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+        if let Some(startup) = self.damped_startup(input, output)? {
+            return Ok(startup);
+        }
         let (candidate, error) = match self.mixing {
             FockMixing::Linear { alpha } => {
                 return mix_global_feedback(input, output, alpha);
@@ -2881,6 +2893,32 @@ impl FeedbackMixer {
             ),
         };
         self.push_and_combine(candidate, error)
+    }
+
+    fn damped_startup(
+        &mut self,
+        input: &[DenseHermitianMatrix],
+        output: &[DenseHermitianMatrix],
+    ) -> Result<Option<Vec<DenseHermitianMatrix>>, GammaValenceHfError> {
+        let (startup_steps, damping) = match self.mixing {
+            FockMixing::CommutatorDiis {
+                startup_steps,
+                damping,
+                ..
+            }
+            | FockMixing::QuasiNewtonDiis {
+                startup_steps,
+                damping,
+                ..
+            } => (startup_steps, damping),
+            _ => return Ok(None),
+        };
+        self.updates += 1;
+        if self.updates <= startup_steps {
+            Ok(Some(mix_global_feedback(input, output, 1.0 - damping)?))
+        } else {
+            Ok(None)
+        }
     }
 
     fn push_and_combine(
@@ -4151,11 +4189,21 @@ fn valid_fock_mixing(mixing: FockMixing) -> bool {
         FockMixing::PulayAnderson { alpha, history } => {
             alpha.is_finite() && alpha > 0.0 && alpha <= 1.0 && history >= 2
         }
-        FockMixing::CommutatorDiis { history } => history >= 2,
+        FockMixing::CommutatorDiis {
+            history, damping, ..
+        } => history >= 2 && damping.is_finite() && (0.0..1.0).contains(&damping),
         FockMixing::QuasiNewtonDiis {
             history,
             level_shift,
-        } => history >= 2 && level_shift.get().is_finite() && level_shift.get() >= 0.0,
+            damping,
+            ..
+        } => {
+            history >= 2
+                && level_shift.get().is_finite()
+                && level_shift.get() >= 0.0
+                && damping.is_finite()
+                && (0.0..1.0).contains(&damping)
+        }
     }
 }
 
@@ -4353,6 +4401,32 @@ mod tests {
         assert!((coefficients.iter().sum::<f64>() - 1.0).abs() < 1.0e-12);
         assert!((coefficients[0] - 0.5).abs() < 1.0e-12);
         assert!((coefficients[1] - 0.5).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn cdiis_startup_damps_without_populating_history() {
+        let matrix = |value| {
+            DenseHermitianMatrix::from_upper_triangle(1, Axis::Band, |_, _| {
+                Complex64::new(value, 0.0)
+            })
+            .unwrap()
+        };
+        let input = vec![matrix(0.0)];
+        let output = vec![matrix(2.0)];
+        let mut mixer = FeedbackMixer::new(FockMixing::CommutatorDiis {
+            history: 4,
+            startup_steps: 2,
+            damping: 0.75,
+        });
+
+        let first = mixer.damped_startup(&input, &output).unwrap().unwrap();
+        let second = mixer.damped_startup(&input, &output).unwrap().unwrap();
+        let third = mixer.damped_startup(&input, &output).unwrap();
+
+        assert!((first[0].at(0, 0).re - 0.5).abs() < f64::EPSILON);
+        assert!((second[0].at(0, 0).re - 0.5).abs() < f64::EPSILON);
+        assert!(third.is_none());
+        assert!(mixer.history.is_empty());
     }
 
     #[test]

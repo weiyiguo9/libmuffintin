@@ -428,6 +428,10 @@ directions with eigenvalue magnitude at most $10^{-14}$ are removed before
 forming the pseudoinverse. Linearly dependent histories therefore retain the
 remaining Pulay subspace instead of silently falling back to the latest raw
 Fock operator.
+Both commutator variants may delay DIIS by an explicit number of startup
+updates. During that interval the fresh feedback is damped against the prior
+feedback; no startup vector is inserted into the later DIIS history. Zero
+startup steps and zero damping recover immediate CDIIS.
 `QuasiNewtonDiis` additionally divides the commutator in the instantaneous
 orbital basis by $|\varepsilon_a-\varepsilon_i|+\lambda$ and lifts the result
 back to the same global basis before building the DIIS metric. This is a

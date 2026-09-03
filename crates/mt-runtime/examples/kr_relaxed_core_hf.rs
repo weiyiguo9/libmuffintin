@@ -51,6 +51,8 @@ const FOCK_FEEDBACK_TOLERANCE_HARTREE: f64 = 5.0e-6;
 const FOCK_COMMUTATOR_TOLERANCE_HARTREE: f64 = 1.0e-5;
 const FOCK_DIIS_HISTORY: usize = 8;
 const FOCK_DIIS_LEVEL_SHIFT_HARTREE: f64 = 0.25;
+const FOCK_DIIS_STARTUP_STEPS: usize = 2;
+const FOCK_DIIS_DAMPING: f64 = 0.5;
 const SECTOR_NUMERICAL_TOLERANCE_HARTREE: f64 = 1.0e-8;
 const MAXIMUM_CORE_SHELL_SPILL: f64 = 1.0;
 const HOMO_OCCUPATION_THRESHOLD: f64 = 0.5;
@@ -180,14 +182,27 @@ impl FockMixerSelection {
         }
     }
 
-    const fn build(self, alpha: f64, history: usize, level_shift: f64) -> FockMixing {
+    const fn build(
+        self,
+        alpha: f64,
+        history: usize,
+        level_shift: f64,
+        startup_steps: usize,
+        damping: f64,
+    ) -> FockMixing {
         match self {
             Self::Linear => FockMixing::Linear { alpha },
             Self::Pulay => FockMixing::PulayAnderson { alpha, history },
-            Self::Cdiis => FockMixing::CommutatorDiis { history },
+            Self::Cdiis => FockMixing::CommutatorDiis {
+                history,
+                startup_steps,
+                damping,
+            },
             Self::QuasiNewtonCdiis => FockMixing::QuasiNewtonDiis {
                 history,
                 level_shift: Hartree(level_shift),
+                startup_steps,
+                damping,
             },
         }
     }
@@ -248,6 +263,8 @@ struct Cli {
     fock_mixing_alpha: f64,
     fock_diis_history: usize,
     fock_diis_level_shift: f64,
+    fock_diis_startup_steps: usize,
+    fock_diis_damping: f64,
 }
 
 impl Default for Cli {
@@ -287,6 +304,8 @@ impl Default for Cli {
             fock_mixing_alpha: 0.5,
             fock_diis_history: FOCK_DIIS_HISTORY,
             fock_diis_level_shift: FOCK_DIIS_LEVEL_SHIFT_HARTREE,
+            fock_diis_startup_steps: FOCK_DIIS_STARTUP_STEPS,
+            fock_diis_damping: FOCK_DIIS_DAMPING,
         }
     }
 }
@@ -354,6 +373,10 @@ impl Cli {
                 "--fock-diis-level-shift" => {
                     cli.fock_diis_level_shift = parse_value(&name, &value)?
                 }
+                "--fock-diis-startup-steps" => {
+                    cli.fock_diis_startup_steps = parse_value(&name, &value)?
+                }
+                "--fock-diis-damping" => cli.fock_diis_damping = parse_value(&name, &value)?,
                 _ => return Err(invalid_input(format!("unknown option {name:?}"))),
             }
         }
@@ -428,6 +451,14 @@ impl Cli {
         if !self.fock_diis_level_shift.is_finite() || self.fock_diis_level_shift < 0.0 {
             return Err(invalid_input(
                 "--fock-diis-level-shift must be finite and nonnegative",
+            ));
+        }
+        if !self.fock_diis_damping.is_finite()
+            || self.fock_diis_damping < 0.0
+            || self.fock_diis_damping >= 1.0
+        {
+            return Err(invalid_input(
+                "--fock-diis-damping must be finite and in [0, 1)",
             ));
         }
         if self.product_l_max > self.lexp || self.lexp > 12 {
@@ -537,6 +568,8 @@ struct ParameterManifest {
     fock_mixing_alpha: Option<f64>,
     fock_mixing_history: usize,
     fock_diis_level_shift_hartree: Option<f64>,
+    fock_diis_startup_steps: Option<usize>,
+    fock_diis_damping: Option<f64>,
     overlap_tolerance: f64,
     sector_numerical_tolerance_hartree: f64,
     maximum_core_shell_spill: f64,
@@ -1056,6 +1089,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                 | FockMixerSelection::Cdiis => None,
                 FockMixerSelection::QuasiNewtonCdiis => Some(cli.fock_diis_level_shift),
             },
+            fock_diis_startup_steps: matches!(
+                cli.fock_mixing,
+                FockMixerSelection::Cdiis | FockMixerSelection::QuasiNewtonCdiis
+            )
+            .then_some(cli.fock_diis_startup_steps),
+            fock_diis_damping: matches!(
+                cli.fock_mixing,
+                FockMixerSelection::Cdiis | FockMixerSelection::QuasiNewtonCdiis
+            )
+            .then_some(cli.fock_diis_damping),
             overlap_tolerance: DEFAULT_TOLERANCE,
             sector_numerical_tolerance_hartree: SECTOR_NUMERICAL_TOLERANCE_HARTREE,
             maximum_core_shell_spill: MAXIMUM_CORE_SHELL_SPILL,
@@ -1114,6 +1157,8 @@ fn run_spinor_first_example(
             cli.fock_mixing_alpha,
             cli.fock_diis_history,
             cli.fock_diis_level_shift,
+            cli.fock_diis_startup_steps,
+            cli.fock_diis_damping,
         ),
         core: CoreFixedPotentialSpec {
             action_mixing: 1.0,
@@ -1183,11 +1228,15 @@ fn run_kh_soc_example(
             cli.fock_mixing_alpha,
             cli.fock_diis_history,
             cli.fock_diis_level_shift,
+            0,
+            0.0,
         ),
         spinor_fock_mixing: cli.fock_mixing.build(
             cli.fock_mixing_alpha,
             cli.fock_diis_history,
             cli.fock_diis_level_shift,
+            cli.fock_diis_startup_steps,
+            cli.fock_diis_damping,
         ),
         core_treatment: KhSocCoreTreatment::Frozen,
     };

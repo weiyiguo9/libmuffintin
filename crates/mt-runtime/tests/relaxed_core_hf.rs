@@ -54,7 +54,11 @@ fn closed_shell_core_valence_setup() -> (muffintin_io::CheckpointV2, RelaxedCore
         max_fock_iterations: 32,
         fock_density_tolerance: 1.0e-7,
         fock_feedback_tolerance: Hartree(1.0e-8),
-        fock_mixing: FockMixing::CommutatorDiis { history: 8 },
+        fock_mixing: FockMixing::CommutatorDiis {
+            history: 8,
+            startup_steps: 0,
+            damping: 0.0,
+        },
         core: CoreFixedPotentialSpec {
             action_mixing: 1.0,
             energy_tolerance: Hartree(1.0e100),
