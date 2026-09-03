@@ -1,6 +1,6 @@
 //! Scalar mixed-product bridge from frozen [`ScalarProductInput`] to MPB vertices.
 
-use crate::scalar_product::{ScalarProductInput, ScalarSpinChannel};
+use crate::scalar_product::ScalarProductInput;
 use crate::site_coords::site_coordinate;
 use muffintin_core::{InverseBohr, ReciprocalLattice};
 use muffintin_dft::ScfRelativity;
@@ -12,12 +12,10 @@ use muffintin_prodbasis::mpb::{
     spex_mixed_product_basis,
 };
 use muffintin_prodbasis::{
-    CompiledAuxiliaryBasis, InterstitialPairSpec, MtPairSpec, OrbitalPair, PairVertex,
-    ProductRadialId, RawProductSpace,
+    CompiledAuxiliaryBasis, MtPairSpec, OrbitalPair, PairVertex, ProductRadialId, RawProductSpace,
 };
-use muffintin_tensor::{Axis, ComplexTensor, DenseEigenvectors, TensorError, einsum};
+use muffintin_tensor::{Axis, ComplexTensor, TensorError, einsum};
 use num_complex::Complex64;
-use rayon::prelude::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use thiserror::Error;
 
@@ -199,8 +197,7 @@ pub fn build_scalar_mpb(
         .interstitial_pair_support
         .components
         .iter()
-        .enumerate()
-        .map(|(position, component)| (component.g_relative.index, (position, component.g_relative)))
+        .map(|component| (component.g_relative.index, component.g_relative))
         .collect::<HashMap<_, _>>();
     let context = ScalarVertexContext::new(&input.source, &raw, &auxiliary)?;
     let interstitial_table = context.interstitial_table()?;
@@ -211,21 +208,20 @@ pub fn build_scalar_mpb(
         auxiliary.dimension(),
         context.muffin_tin_table(),
     )?;
-    let vertices = spec
-        .selections
-        .par_iter()
-        .zip(muffin_tin_vertices.par_iter())
-        .map(|(selection, muffin_tin)| {
-            contract_selection(
-                input,
-                &relative_g_by_index,
-                &interstitial_table,
-                context,
-                muffin_tin,
-                *selection,
-            )
-        })
-        .collect::<Result<Vec<_>, ScalarMpbError>>()?;
+    let interstitial_vertices = contract_interstitial_selections(
+        input,
+        spec,
+        &auxiliary,
+        &relative_g_by_index,
+        &interstitial_table,
+    )?;
+    let vertices = assemble_scalar_vertices(
+        input,
+        &auxiliary,
+        spec,
+        &muffin_tin_vertices,
+        &interstitial_vertices,
+    )?;
     Ok(ScalarMpbResult {
         raw,
         auxiliary,
@@ -284,8 +280,7 @@ pub fn build_second_variation_mpb(
         .interstitial_pair_support
         .components
         .iter()
-        .enumerate()
-        .map(|(position, component)| (component.g_relative.index, (position, component.g_relative)))
+        .map(|component| (component.g_relative.index, component.g_relative))
         .collect::<HashMap<_, _>>();
     let scalar_spec = ScalarMpbSpec {
         lattice: spec.lattice,
@@ -314,21 +309,20 @@ pub fn build_second_variation_mpb(
         auxiliary.dimension(),
         context.muffin_tin_table(),
     )?;
-    let components = scalar_spec
-        .selections
-        .par_iter()
-        .zip(muffin_tin_vertices.par_iter())
-        .map(|(selection, muffin_tin)| {
-            contract_selection(
-                input,
-                &relative_g_by_index,
-                &interstitial_table,
-                context,
-                muffin_tin,
-                *selection,
-            )
-        })
-        .collect::<Result<Vec<_>, ScalarMpbError>>()?;
+    let interstitial_vertices = contract_interstitial_selections(
+        input,
+        &scalar_spec,
+        &auxiliary,
+        &relative_g_by_index,
+        &interstitial_table,
+    )?;
+    let components = assemble_scalar_vertices(
+        input,
+        &auxiliary,
+        &scalar_spec,
+        &muffin_tin_vertices,
+        &interstitial_vertices,
+    )?;
     let vertices = spec
         .selections
         .iter()
@@ -418,81 +412,43 @@ fn require_selection(
     }
 }
 
-fn contract_selection(
+fn assemble_scalar_vertices(
     input: &ScalarProductInput,
-    relative_g_by_index: &HashMap<[i32; 3], (usize, muffintin_core::GVector)>,
-    interstitial_table: &InterstitialThetaTable,
-    context: ScalarVertexContext<'_>,
-    muffin_tin: &[Complex64],
-    selection: ScalarMpbSelection,
-) -> Result<ScalarMpbPairVertex, ScalarMpbError> {
-    let channel = spin_channel(input, selection.spin, selection)?;
-    let mapped = input
-        .k_minus_q
+    auxiliary: &CompiledAuxiliaryBasis,
+    spec: &ScalarMpbSpec,
+    muffin_tin: &[Vec<Complex64>],
+    interstitial: &[Vec<Complex64>],
+) -> Result<Vec<ScalarMpbPairVertex>, ScalarMpbError> {
+    spec.selections
         .iter()
-        .copied()
-        .find(|mapped| mapped.k_index == selection.k)
-        .ok_or(ScalarMpbError::IncompatiblePairLayout)?;
-    let pair = BandPair {
-        left_band: selection.left_band,
-        right_band: selection.right_band,
-        left_basis: &channel.bases[mapped.kq_index],
-        right_basis: &channel.bases[mapped.k_index],
-        left_ev: &channel.eigenvectors[mapped.kq_index],
-        right_ev: &channel.eigenvectors[mapped.k_index],
-        wrap: mapped.umklapp,
-    };
-    let mut acc = context.accumulator(OrbitalPair::Bloch {
-        k_index: selection.k,
-        left: selection.left_band,
-        right: selection.right_band,
-    });
-    acc.add_auxiliary_coefficients(muffin_tin)?;
-    add_interstitial_terms(
-        &mut acc,
-        input,
-        relative_g_by_index,
-        interstitial_table,
-        &pair,
-    )?;
-    Ok(ScalarMpbPairVertex {
-        spin: selection.spin,
-        k: selection.k,
-        column: input
-            .pair_columns
-            .encode(selection.k, selection.left_band, selection.right_band),
-        left_band: selection.left_band,
-        right_band: selection.right_band,
-        vertex: acc.finish()?,
-    })
-}
-
-fn spin_channel(
-    input: &ScalarProductInput,
-    spin: u8,
-    selection: ScalarMpbSelection,
-) -> Result<&ScalarSpinChannel, ScalarMpbError> {
-    input
-        .orbitals
-        .channels
-        .iter()
-        .find(|channel| channel.spin == spin)
-        .ok_or(ScalarMpbError::InvalidSelection {
-            spin: selection.spin,
-            k: selection.k,
-            left_band: selection.left_band,
-            right_band: selection.right_band,
+        .zip(muffin_tin)
+        .zip(interstitial)
+        .map(|((selection, muffin_tin), interstitial)| {
+            let pair = OrbitalPair::Bloch {
+                k_index: selection.k,
+                left: selection.left_band,
+                right: selection.right_band,
+            };
+            let coefficients = muffin_tin
+                .iter()
+                .zip(interstitial)
+                .map(|(muffin_tin, interstitial)| muffin_tin + interstitial)
+                .collect();
+            Ok(ScalarMpbPairVertex {
+                spin: selection.spin,
+                k: selection.k,
+                column: input.pair_columns.encode(
+                    selection.k,
+                    selection.left_band,
+                    selection.right_band,
+                ),
+                left_band: selection.left_band,
+                right_band: selection.right_band,
+                vertex: PairVertex::from_auxiliary(auxiliary, pair, coefficients)
+                    .map_err(MpbError::from)?,
+            })
         })
-}
-
-struct BandPair<'a> {
-    left_band: usize,
-    right_band: usize,
-    left_basis: &'a CompiledBasis,
-    right_basis: &'a CompiledBasis,
-    left_ev: &'a DenseEigenvectors,
-    right_ev: &'a DenseEigenvectors,
-    wrap: muffintin_core::GVector,
+        .collect()
 }
 
 struct ProjectedSitePair {
@@ -700,48 +656,146 @@ fn select_site_bands(
     )?)
 }
 
-fn add_interstitial_terms(
-    acc: &mut muffintin_prodbasis::mpb::PairVertexAccumulator<'_>,
+fn contract_interstitial_selections(
     input: &ScalarProductInput,
-    relative_g_by_index: &HashMap<[i32; 3], (usize, muffintin_core::GVector)>,
-    interstitial_table: &InterstitialThetaTable,
-    pair: &BandPair<'_>,
-) -> Result<(), ScalarMpbError> {
+    spec: &ScalarMpbSpec,
+    auxiliary: &CompiledAuxiliaryBasis,
+    relative_g_by_index: &HashMap<[i32; 3], muffintin_core::GVector>,
+    table: &InterstitialThetaTable,
+) -> Result<Vec<Vec<Complex64>>, ScalarMpbError> {
+    let auxiliary_count = auxiliary.dimension();
+    let mt_count = auxiliary.mt_dimension();
+    let interstitial_count = auxiliary.interstitial_dimension();
     let volume = input.source.partition.interstitial().cell_volume().get();
-    let wrap = pair.wrap.index;
-    let mut amplitudes = vec![Complex64::default(); relative_g_by_index.len()];
-    for (left_row, left_wave) in pair.left_basis.plane_waves.iter().enumerate() {
-        for (right_row, right_wave) in pair.right_basis.plane_waves.iter().enumerate() {
-            let index = [
-                right_wave.g.index[0] - left_wave.g.index[0] + wrap[0],
-                right_wave.g.index[1] - left_wave.g.index[1] + wrap[1],
-                right_wave.g.index[2] - left_wave.g.index[2] + wrap[2],
+    let mut by_selection = HashMap::new();
+    let groups = spec
+        .selections
+        .iter()
+        .map(|selection| (selection.spin, selection.k))
+        .collect::<BTreeSet<_>>();
+    for (spin, k) in groups {
+        let mapped = input
+            .k_minus_q
+            .iter()
+            .copied()
+            .find(|mapped| mapped.k_index == k)
+            .ok_or(ScalarMpbError::IncompatiblePairLayout)?;
+        let channel = input
+            .orbitals
+            .channels
+            .iter()
+            .find(|channel| channel.spin == spin)
+            .ok_or(ScalarMpbError::IncompatiblePairLayout)?;
+        let left_basis = &channel.bases[mapped.kq_index];
+        let right_basis = &channel.bases[mapped.k_index];
+        let left_bands = selected_bands(spec, spin, k, true);
+        let right_bands = selected_bands(spec, spin, k, false);
+        let left = select_plane_wave_bands(
+            &channel.eigenvectors[mapped.kq_index],
+            left_basis.plane_waves.len(),
+            &left_bands,
+        )?;
+        let right = select_plane_wave_bands(
+            &channel.eigenvectors[mapped.k_index],
+            right_basis.plane_waves.len(),
+            &right_bands,
+        )?;
+        let mut kernel =
+            vec![
+                Complex64::default();
+                interstitial_count * left_basis.plane_waves.len() * right_basis.plane_waves.len()
             ];
-            let &(position, _) = relative_g_by_index
-                .get(&index)
-                .ok_or(MpbError::UnknownInterstitialPair { g: index })?;
-            let amplitude = pair.left_ev.at(left_row, pair.left_band).conj()
-                * pair.right_ev.at(right_row, pair.right_band)
-                / volume;
-            amplitudes[position] += amplitude;
+        for (left_row, left_wave) in left_basis.plane_waves.iter().enumerate() {
+            for (right_row, right_wave) in right_basis.plane_waves.iter().enumerate() {
+                let index = [
+                    right_wave.g.index[0] - left_wave.g.index[0] + mapped.umklapp.index[0],
+                    right_wave.g.index[1] - left_wave.g.index[1] + mapped.umklapp.index[1],
+                    right_wave.g.index[2] - left_wave.g.index[2] + mapped.umklapp.index[2],
+                ];
+                let g_relative = relative_g_by_index
+                    .get(&index)
+                    .ok_or(MpbError::UnknownInterstitialPair { g: index })?;
+                for (auxiliary_position, &theta) in
+                    table.row(auxiliary, g_relative.index)?.iter().enumerate()
+                {
+                    kernel[(auxiliary_position * left_basis.plane_waves.len() + left_row)
+                        * right_basis.plane_waves.len()
+                        + right_row] = theta / volume;
+                }
+            }
+        }
+        let kernel = ComplexTensor::from_host_row_major(
+            &[
+                interstitial_count,
+                left_basis.plane_waves.len(),
+                right_basis.plane_waves.len(),
+            ],
+            &[Axis::Auxiliary, Axis::GlobalBasis, Axis::GlobalBasis],
+            kernel,
+        )?;
+        let contracted =
+            einsum("gi,agh,hj->aij", &[&left.conjugate(), &kernel, &right])?.to_host_row_major();
+        for (left_position, &left_band) in left_bands.iter().enumerate() {
+            for (right_position, &right_band) in right_bands.iter().enumerate() {
+                let mut coefficients = vec![Complex64::default(); auxiliary_count];
+                for auxiliary_position in 0..interstitial_count {
+                    coefficients[mt_count + auxiliary_position] =
+                        contracted[(auxiliary_position * left_bands.len() + left_position)
+                            * right_bands.len()
+                            + right_position];
+                }
+                by_selection.insert((spin, k, left_band, right_band), coefficients);
+            }
         }
     }
-    for (component, amplitude) in input
-        .source
-        .interstitial_pair_support
-        .components
+    spec.selections
         .iter()
-        .zip(amplitudes)
-    {
-        acc.add_interstitial_from_table(
-            interstitial_table,
-            InterstitialPairSpec {
-                g_relative: component.g_relative,
-                amplitude,
-            },
-        )?;
+        .map(|selection| {
+            by_selection
+                .get(&(
+                    selection.spin,
+                    selection.k,
+                    selection.left_band,
+                    selection.right_band,
+                ))
+                .cloned()
+                .ok_or(ScalarMpbError::IncompatiblePairLayout)
+        })
+        .collect()
+}
+
+fn selected_bands(spec: &ScalarMpbSpec, spin: u8, k: usize, left: bool) -> Vec<usize> {
+    spec.selections
+        .iter()
+        .filter(|selection| selection.spin == spin && selection.k == k)
+        .map(|selection| {
+            if left {
+                selection.left_band
+            } else {
+                selection.right_band
+            }
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn select_plane_wave_bands(
+    eigenvectors: &muffintin_tensor::DenseEigenvectors,
+    plane_wave_count: usize,
+    bands: &[usize],
+) -> Result<ComplexTensor, ScalarMpbError> {
+    let mut values = Vec::with_capacity(plane_wave_count * bands.len());
+    for plane_wave in 0..plane_wave_count {
+        for &band in bands {
+            values.push(eigenvectors.at(plane_wave, band));
+        }
     }
-    Ok(())
+    Ok(ComplexTensor::from_host_row_major(
+        &[plane_wave_count, bands.len()],
+        &[Axis::GlobalBasis, Axis::Band],
+        values,
+    )?)
 }
 
 fn raw_mt_pairs(raw: &RawProductSpace) -> HashSet<(ProductRadialId, ProductRadialId)> {

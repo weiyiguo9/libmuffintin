@@ -50,20 +50,27 @@ impl InterstitialThetaTable {
         spec: InterstitialPairSpec,
         coefficients: &mut [Complex64],
     ) -> Result<(), MpbError> {
-        if self.layout != auxiliary.layout() {
-            return Err(MpbError::InterstitialThetaContext);
-        }
-        let row =
-            self.rows
-                .get(&spec.g_relative.index)
-                .ok_or(MpbError::UnknownInterstitialPair {
-                    g: spec.g_relative.index,
-                })?;
+        let row = self.row(auxiliary, spec.g_relative.index)?;
         let offset = auxiliary.mt_dimension();
         for (coefficient, &theta) in coefficients[offset..].iter_mut().zip(row) {
             *coefficient += spec.amplitude * theta;
         }
         Ok(())
+    }
+
+    /// Precomputed interstitial auxiliary row for one raw relative momentum.
+    pub fn row(
+        &self,
+        auxiliary: &CompiledAuxiliaryBasis,
+        g_relative: [i32; 3],
+    ) -> Result<&[Complex64], MpbError> {
+        if self.layout != auxiliary.layout() {
+            return Err(MpbError::InterstitialThetaContext);
+        }
+        self.rows
+            .get(&g_relative)
+            .map(Vec::as_slice)
+            .ok_or(MpbError::UnknownInterstitialPair { g: g_relative })
     }
 }
 
