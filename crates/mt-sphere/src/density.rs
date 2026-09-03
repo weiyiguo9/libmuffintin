@@ -201,6 +201,30 @@ pub fn project_orbital_pair_density_with_convention(
     SphereField::new(convention, channels).map_err(Into::into)
 }
 
+/// Complex-harmonic angular factors of one scalar orbital pair.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScalarPairDensityAngular {
+    pub channel: Lm,
+    pub coefficient: f64,
+}
+
+/// Compile the radial-independent complex-harmonic factors of
+/// `conj(left) * right`.
+pub fn scalar_pair_density_angular(left: Lm, right: Lm) -> Vec<ScalarPairDensityAngular> {
+    let l_max = left.l + right.l;
+    let mut angular = Vec::new();
+    for l in 0..=l_max {
+        for m in -(l as i32)..=l as i32 {
+            let field = Lm::new(l, -m).expect("loop bounds validate magnetic channel");
+            angular.push(ScalarPairDensityAngular {
+                channel: Lm::new(l, m).expect("loop bounds validate magnetic channel"),
+                coefficient: magnetic_phase(m) * complex_matrix_gaunt(left, field, right),
+            });
+        }
+    }
+    angular
+}
+
 /// Project a scalar Dirac-spinor pair density into normalized harmonics.
 ///
 /// The large `P` product is projected through `Omega_kappa`, and the small

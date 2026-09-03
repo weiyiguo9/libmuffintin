@@ -14,7 +14,7 @@ use muffintin_operators::{
 use muffintin_sphere::{CoreDiracSolution, RadialComponents};
 use muffintin_sphere::{
     DensityProjectionError, HarmonicConvention, SphereField, SphereFieldError, SphereOrbital,
-    SpinorSphereOrbital, project_orbital_pair_density, spinor_pair_density_angular,
+    SpinorSphereOrbital, scalar_pair_density_angular, spinor_pair_density_angular,
 };
 use muffintin_tensor::{
     Axis, ComplexTensor, DenseEigenvectors, DenseHermitianMatrix, TensorError, einsum,
@@ -80,6 +80,94 @@ struct SpinorDensityTerm {
     right: usize,
     pp: Complex64,
     qq: Complex64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ScalarDensityContraction {
+    harmonics: Vec<Lm>,
+    terms: Vec<Vec<ScalarDensityTerm>>,
+    radial_large: Vec<f64>,
+    radial_small: Vec<f64>,
+    radial_count: usize,
+    orbital_count: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ScalarDensityTerm {
+    left: usize,
+    right: usize,
+    angular: f64,
+}
+
+impl ScalarDensityContraction {
+    fn compile(site: &ScalarSiteBasis) -> Self {
+        let l_max = site
+            .orbitals
+            .iter()
+            .flat_map(|left| {
+                site.orbitals
+                    .iter()
+                    .map(move |right| left.angular().l + right.angular().l)
+            })
+            .max()
+            .unwrap_or(0);
+        let harmonics = (0..=l_max)
+            .flat_map(|l| {
+                (-(l as i32)..=l as i32)
+                    .map(move |m| Lm::new(l, m).expect("loop bounds validate magnetic channel"))
+            })
+            .collect::<Vec<_>>();
+        let mut terms = vec![Vec::new(); harmonics.len()];
+        for (left, left_orbital) in site.orbitals.iter().enumerate() {
+            for (right, right_orbital) in site.orbitals.iter().enumerate() {
+                for angular in
+                    scalar_pair_density_angular(left_orbital.angular(), right_orbital.angular())
+                {
+                    if angular.coefficient == 0.0 {
+                        continue;
+                    }
+                    let harmonic = lm_index(angular.channel.l, angular.channel.m)
+                        .expect("compiled angular channel is valid");
+                    terms[harmonic].push(ScalarDensityTerm {
+                        left,
+                        right,
+                        angular: angular.coefficient,
+                    });
+                }
+            }
+        }
+        let radial_count = site.mesh.len();
+        let radial_large = site
+            .orbitals
+            .iter()
+            .flat_map(|orbital| {
+                orbital
+                    .large_component()
+                    .iter()
+                    .zip(site.mesh.radii())
+                    .map(|(&value, radius)| value / radius.get())
+            })
+            .collect();
+        let radial_small = site
+            .orbitals
+            .iter()
+            .flat_map(|orbital| {
+                (0..radial_count).map(move |radial| {
+                    orbital
+                        .small_component()
+                        .map_or(0.0, |small| small[radial] / site.mesh.radii()[radial].get())
+                })
+            })
+            .collect();
+        Self {
+            harmonics,
+            terms,
+            radial_large,
+            radial_small,
+            radial_count,
+            orbital_count: site.orbitals.len(),
+        }
+    }
 }
 
 impl FullSpinorDensitySiteBasis {
@@ -259,6 +347,10 @@ pub fn synthesize_collinear_valence_density(
     k_points: &[CollinearKPoint<'_>],
 ) -> Result<RegionalDensity, DensityError> {
     validate_k_points(sites, k_points)?;
+    let contractions = sites
+        .iter()
+        .map(ScalarDensityContraction::compile)
+        .collect::<Vec<_>>();
     let mut muffin_tins = Collinear::new(site_accumulators(sites), site_accumulators(sites));
     let mut interstitial = Collinear::new(
         vec![Complex64::new(0.0, 0.0); layout.len()],
@@ -273,6 +365,7 @@ pub fn synthesize_collinear_valence_density(
             k_point.occupations.up,
             SpinDensityAccumulator {
                 sites,
+                contractions: &contractions,
                 muffin_tins: &mut muffin_tins.up,
                 layout: &layout,
                 interstitial: &mut interstitial.up,
@@ -285,6 +378,7 @@ pub fn synthesize_collinear_valence_density(
             k_point.occupations.down,
             SpinDensityAccumulator {
                 sites,
+                contractions: &contractions,
                 muffin_tins: &mut muffin_tins.down,
                 layout: &layout,
                 interstitial: &mut interstitial.down,
@@ -931,6 +1025,7 @@ fn validate_spin(
 
 struct SpinDensityAccumulator<'a> {
     sites: &'a [ScalarSiteBasis],
+    contractions: &'a [ScalarDensityContraction],
     muffin_tins: &'a mut [BTreeMap<Lm, Vec<Complex64>>],
     layout: &'a FourierLayout,
     interstitial: &'a mut [Complex64],
@@ -945,45 +1040,42 @@ fn accumulate_spin(
 ) -> Result<(), DensityError> {
     let SpinDensityAccumulator {
         sites,
+        contractions,
         muffin_tins,
         layout,
         interstitial,
         inverse_volume,
     } = accumulator;
-    for (site_index, (site, muffin_tin)) in sites.iter().zip(muffin_tins).enumerate() {
+    let state_weights = ComplexTensor::from_host_row_major(
+        &[occupations.len()],
+        &[Axis::Band],
+        occupations
+            .iter()
+            .map(|&occupation| Complex64::new(k_point.weight * occupation, 0.0))
+            .collect(),
+    )?;
+    for (site_index, ((_site, contraction), muffin_tin)) in
+        sites.iter().zip(contractions).zip(muffin_tins).enumerate()
+    {
         let projected = CompiledSiteProjection::scalar(k_point.compiled, site_index)?
             .project_eigenvectors(&solution.eigenvectors)?;
-        for (band, &occupation) in occupations.iter().enumerate() {
-            let state_weight = k_point.weight * occupation;
-            if state_weight == 0.0 {
-                continue;
-            }
-            for left in 0..site.orbitals.len() {
-                for right in 0..site.orbitals.len() {
-                    let coefficient =
-                        state_weight * projected.at(left, band).conj() * projected.at(right, band);
-                    if coefficient == Complex64::new(0.0, 0.0) {
-                        continue;
-                    }
-                    let pair = project_orbital_pair_density(
-                        &site.mesh,
-                        &site.orbitals[left],
-                        &site.orbitals[right],
-                    )?;
-                    accumulate_sphere(muffin_tin, coefficient, &pair);
-                }
-            }
-        }
+        let weighted = einsum("ib,b->ib", &[projected.as_tensor(), &state_weights])?;
+        let density_matrix = einsum(
+            "ib,jb->ij",
+            &[&projected.as_tensor().conjugate(), &weighted],
+        )?;
+        let site_density = synthesize_scalar_site_density(contraction, &density_matrix);
+        merge_sphere_accumulator(muffin_tin, &site_density);
     }
 
     let plane_waves = &k_point.compiled.plane_waves;
-    for (band, &occupation) in occupations.iter().enumerate() {
-        let state_weight = k_point.weight * occupation * inverse_volume;
-        if state_weight == 0.0 {
-            continue;
-        }
+    if !plane_waves.is_empty() {
+        let coefficients =
+            select_plane_wave_bands(&solution.eigenvectors, plane_waves.len(), occupations.len())?;
+        let weighted = einsum("ib,b->ib", &[&coefficients, &state_weights])?;
+        let density_matrix =
+            einsum("ib,jb->ij", &[&coefficients.conjugate(), &weighted])?.to_host_row_major();
         for (left, left_wave) in plane_waves.iter().enumerate() {
-            let left_coefficient = solution.eigenvectors.at(left, band).conj();
             for (right, right_wave) in plane_waves.iter().enumerate() {
                 let difference = [
                     right_wave.g.index[0].checked_sub(left_wave.g.index[0]),
@@ -995,12 +1087,68 @@ fn accumulate_spin(
                 };
                 if let Some(position) = layout.index([g0, g1, g2]) {
                     interstitial[position] +=
-                        state_weight * left_coefficient * solution.eigenvectors.at(right, band);
+                        inverse_volume * density_matrix[left * plane_waves.len() + right];
                 }
             }
         }
     }
     Ok(())
+}
+
+fn synthesize_scalar_site_density(
+    contraction: &ScalarDensityContraction,
+    density_matrix: &ComplexTensor,
+) -> BTreeMap<Lm, Vec<Complex64>> {
+    let density_matrix = density_matrix.to_host_row_major();
+    let blocks = contraction
+        .terms
+        .par_iter()
+        .enumerate()
+        .map(|(harmonic, terms)| {
+            let mut values = vec![Complex64::default(); contraction.radial_count];
+            for term in terms {
+                let coefficient = density_matrix
+                    [term.left * contraction.orbital_count + term.right]
+                    * term.angular;
+                if coefficient == Complex64::default() {
+                    continue;
+                }
+                let left_large = &contraction.radial_large[term.left * contraction.radial_count
+                    ..(term.left + 1) * contraction.radial_count];
+                let right_large = &contraction.radial_large[term.right * contraction.radial_count
+                    ..(term.right + 1) * contraction.radial_count];
+                let left_small = &contraction.radial_small[term.left * contraction.radial_count
+                    ..(term.left + 1) * contraction.radial_count];
+                let right_small = &contraction.radial_small[term.right * contraction.radial_count
+                    ..(term.right + 1) * contraction.radial_count];
+                for radial in 0..contraction.radial_count {
+                    values[radial] += coefficient
+                        * (left_large[radial] * right_large[radial]
+                            + left_small[radial] * right_small[radial]);
+                }
+            }
+            (contraction.harmonics[harmonic], values)
+        })
+        .collect::<Vec<_>>();
+    blocks.into_iter().collect()
+}
+
+fn select_plane_wave_bands(
+    eigenvectors: &DenseEigenvectors,
+    plane_wave_count: usize,
+    band_count: usize,
+) -> Result<ComplexTensor, DensityError> {
+    let mut values = Vec::with_capacity(plane_wave_count * band_count);
+    for plane_wave in 0..plane_wave_count {
+        for band in 0..band_count {
+            values.push(eigenvectors.at(plane_wave, band));
+        }
+    }
+    Ok(ComplexTensor::from_host_row_major(
+        &[plane_wave_count, band_count],
+        &[Axis::GlobalBasis, Axis::Band],
+        values,
+    )?)
 }
 
 fn site_accumulators(sites: &[ScalarSiteBasis]) -> Vec<BTreeMap<Lm, Vec<Complex64>>> {
@@ -1062,21 +1210,6 @@ fn spinor_site_accumulator(site: &FullSpinorDensitySiteBasis) -> BTreeMap<Lm, Ve
             })
             .collect()
     })
-}
-
-fn accumulate_sphere(
-    accumulator: &mut BTreeMap<Lm, Vec<Complex64>>,
-    scale: Complex64,
-    pair: &SphereField,
-) {
-    for (channel, values) in pair.channels() {
-        let target = accumulator
-            .entry(channel)
-            .or_insert_with(|| vec![Complex64::new(0.0, 0.0); values.len()]);
-        for (target, &value) in target.iter_mut().zip(values) {
-            *target += scale * value;
-        }
-    }
 }
 
 fn merge_sphere_accumulator(
@@ -1604,6 +1737,108 @@ mod tests {
                         .iter()
                         .all(|&value| value == Complex64::new(0.0, 0.0))
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn batched_collinear_muffin_tin_density_matches_pair_oracle() {
+        let reciprocal = ReciprocalLattice::new([
+            [InverseBohr(1.0), InverseBohr(0.0), InverseBohr(0.0)],
+            [InverseBohr(0.0), InverseBohr(1.0), InverseBohr(0.0)],
+            [InverseBohr(0.0), InverseBohr(0.0), InverseBohr(1.0)],
+        ])
+        .unwrap();
+        let mesh = ExponentialMesh::new(Bohr(1.0e-3), 0.18, 12).unwrap();
+        let compiled = CompiledBasis {
+            layout: BasisLayout::new(0, vec![LocalOrbitalLayout::new(vec![1, 1])]),
+            plane_waves: Vec::new(),
+            site_augmentations: vec![Vec::new()],
+            site_geometry: vec![ApwSiteGeometry {
+                position: [Bohr(0.0); 3],
+                radius: mesh.last(),
+            }],
+            provenance: Provenance::default(),
+        };
+        let coefficients = [
+            Complex64::new(0.7, 0.1),
+            Complex64::new(-0.2, 0.3),
+            Complex64::new(0.15, -0.25),
+            Complex64::new(0.4, 0.05),
+        ];
+        let solution = GeneralizedEigensolution {
+            eigenvalues: vec![Hartree(0.0)],
+            eigenvectors: DenseEigenvectors::from_host_column_major(4, 1, coefficients.to_vec())
+                .unwrap(),
+            retained_dimension: 1,
+            filtered_dimension: 3,
+            residuals: Vec::new(),
+        };
+        let orbitals = vec![
+            SphereOrbital::new(0, 0, vec![0.8; mesh.len()], None).unwrap(),
+            SphereOrbital::new(1, -1, vec![0.9; mesh.len()], None).unwrap(),
+            SphereOrbital::new(1, 0, vec![1.0; mesh.len()], None).unwrap(),
+            SphereOrbital::new(1, 1, vec![1.1; mesh.len()], None).unwrap(),
+        ];
+        let sites = [ScalarSiteBasis {
+            mesh: mesh.clone(),
+            orbitals: orbitals.clone(),
+        }];
+        let occupation = 0.65;
+        let density = synthesize_collinear_valence_density(
+            InterstitialGeometry::new(
+                VolumeBohr3((2.0 * PI).powi(3)),
+                vec![Sphere {
+                    center: [Bohr(0.0); 3],
+                    radius: mesh.last(),
+                }],
+            )
+            .unwrap(),
+            FourierLayout::new(reciprocal, reciprocal.enumerate(InverseBohr(0.0)).unwrap())
+                .unwrap(),
+            &sites,
+            &[CollinearKPoint {
+                weight: 1.0,
+                compiled: &compiled,
+                solutions: Collinear::new(&solution, &solution),
+                occupations: Collinear::new(&[occupation], &[0.0]),
+            }],
+        )
+        .unwrap();
+
+        let projected = CompiledSiteProjection::scalar(&compiled, 0)
+            .unwrap()
+            .project_eigenvectors(&solution.eigenvectors)
+            .unwrap();
+        let mut expected = site_accumulators(&sites).remove(0);
+        for (left, left_orbital) in orbitals.iter().enumerate() {
+            for (right, right_orbital) in orbitals.iter().enumerate() {
+                let scale = occupation * projected.at(left, 0).conj() * projected.at(right, 0);
+                let pair = muffintin_sphere::project_orbital_pair_density(
+                    &mesh,
+                    left_orbital,
+                    right_orbital,
+                )
+                .unwrap();
+                for (channel, values) in pair.channels() {
+                    for (target, &value) in
+                        expected.get_mut(&channel).unwrap().iter_mut().zip(values)
+                    {
+                        *target += scale * value;
+                    }
+                }
+            }
+        }
+        enforce_sphere_reality(&mut expected);
+        let actual = density.charge().muffin_tins()[0].field();
+        for (channel, expected) in expected {
+            for (&actual, expected) in actual
+                .channel(channel.l, channel.m)
+                .unwrap()
+                .iter()
+                .zip(expected)
+            {
+                assert!((actual - expected).norm() < 2.0e-13 * (1.0 + expected.norm()));
             }
         }
     }

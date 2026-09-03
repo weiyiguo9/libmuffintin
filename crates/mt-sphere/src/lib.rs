@@ -48,10 +48,11 @@ pub use core_potential::{
     ExtendedCorePotential, continue_core_spherical_potential, join_core_spherical_potential,
 };
 pub use density::{
-    DensityComponent, DensityOperand, DensityProjectionError, SpinorPairDensity,
-    SpinorPairDensityAngular, project_orbital_pair_density,
+    DensityComponent, DensityOperand, DensityProjectionError, ScalarPairDensityAngular,
+    SpinorPairDensity, SpinorPairDensityAngular, project_orbital_pair_density,
     project_orbital_pair_density_with_convention, project_spinor_pair_density,
-    project_spinor_pair_density_components, spinor_pair_density_angular,
+    project_spinor_pair_density_components, scalar_pair_density_angular,
+    spinor_pair_density_angular,
 };
 pub use integrals::{RadialComponents, RadialIntegralError, RadialIntegralKernel, radial_integral};
 pub use spin_orbit::{
