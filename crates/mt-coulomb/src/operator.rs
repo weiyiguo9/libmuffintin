@@ -1,8 +1,7 @@
 //! Finite-$q$ Coulomb operator over a compiled auxiliary basis.
 
 use crate::CoulombError;
-use muffintin_core::Cell;
-use muffintin_core::ReciprocalLattice;
+use muffintin_core::{Bohr, Cell, InverseBohr, ReciprocalLattice};
 use muffintin_envelope::Provenance;
 use muffintin_prodbasis::{AuxiliaryLayout, AuxiliaryRegion, PairVertex, TransferQ};
 use muffintin_tensor::{Axis, ComplexTensor, einsum};
@@ -36,6 +35,14 @@ pub struct GammaHead {
     pub constant_coefficients: Vec<Complex64>,
 }
 
+/// Finite spherical bare-Coulomb truncation attached to an assembled operator.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpencerAlaviSphere {
+    pub radius: Bohr,
+    pub full_k_points: usize,
+    pub reciprocal_cutoff: InverseBohr,
+}
+
 /// Hermitian Coulomb operator $V^q$ in the compiled auxiliary order.
 ///
 /// Storage is full $n\times n$ row-major. SPEX stores packed $I\le J$; this type
@@ -50,6 +57,7 @@ pub struct CoulombOperator {
     pub(crate) kind: AuxiliaryKind,
     pub(crate) matrix: Vec<Complex64>,
     pub(crate) gamma: Option<GammaHead>,
+    pub(crate) spencer_alavi: Option<SpencerAlaviSphere>,
     pub(crate) provenance: Provenance,
 }
 
@@ -125,6 +133,11 @@ impl CoulombOperator {
     /// Gamma-head metadata when $q=0$.
     pub const fn gamma(&self) -> Option<&GammaHead> {
         self.gamma.as_ref()
+    }
+
+    /// Spherical-truncation metadata; mutually exclusive with [`Self::gamma`].
+    pub const fn spencer_alavi(&self) -> Option<&SpencerAlaviSphere> {
+        self.spencer_alavi.as_ref()
     }
 
     /// Provenance of the assembly.

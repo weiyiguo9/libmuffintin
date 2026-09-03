@@ -2,8 +2,8 @@
 
 use crate::CoulombError;
 use crate::expansion::{
-    ChargeDensity, ExpansionSupport, SampledAuxiliaryFunctions, mixed_product_densities,
-    mixed_product_support, point_charge_densities, point_charge_support,
+    ChargeDensity, ExpansionSupport, SampledAuxiliaryFunctions, auxiliary_waves,
+    mixed_product_densities, mixed_product_support, point_charge_densities, point_charge_support,
     sampled_interpolation_support, sampled_zeta_densities,
 };
 use crate::math::{
@@ -13,9 +13,9 @@ use crate::moments::{
     bessel_overlap, bessel_weinert_integral, multipole_moment, second_moment,
     sphbessel_pw_integral, sphere_plane_wave_integral, spherical_bessel_moment,
 };
-use crate::operator::{AuxiliaryKind, CoulombOperator, GammaHead};
+use crate::operator::{AuxiliaryKind, CoulombOperator, GammaHead, SpencerAlaviSphere};
 use crate::primitive::intra_sphere_poisson;
-use crate::spec::CoulombRequest;
+use crate::spec::{CoulombKernel, CoulombRequest};
 use crate::structure::structure_constants;
 use muffintin_core::{Bohr, InverseBohr, ReciprocalLattice, complex_spherical_harmonics, lm_index};
 use muffintin_envelope::Provenance;
@@ -141,6 +141,21 @@ fn assemble_kind(
             }
         }
     }
+    if let CoulombKernel::SpencerAlaviSphere {
+        full_k_points,
+        reciprocal_cutoff,
+    } = request.kernel()
+    {
+        return assemble_spencer_alavi(
+            auxiliary,
+            request,
+            kind,
+            &support,
+            &densities,
+            full_k_points,
+            reciprocal_cutoff,
+        );
+    }
     let structure = structure_constants(
         request.cell(),
         request.reciprocal(),
@@ -206,11 +221,129 @@ fn assemble_kind(
         kind,
         matrix,
         gamma,
+        spencer_alavi: None,
         provenance: Provenance {
             recipe: Some("weinert-spex-coulomb".to_owned()),
             reference: Some("SPEX coulombmatrix.f".to_owned()),
         },
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn assemble_spencer_alavi(
+    auxiliary: &CompiledAuxiliaryBasis,
+    request: &CoulombRequest,
+    kind: AuxiliaryKind,
+    support: &ExpansionSupport,
+    densities: &[ChargeDensity],
+    full_k_points: usize,
+    reciprocal_cutoff: InverseBohr,
+) -> Result<CoulombOperator, CoulombError> {
+    let radius = request
+        .spencer_alavi_radius()
+        .expect("the caller selected the Spencer-Alavi kernel");
+    let waves = auxiliary_waves(request, auxiliary.q, reciprocal_cutoff)?;
+    let coefficients = waves
+        .par_iter()
+        .map(|wave| {
+            densities
+                .iter()
+                .map(|density| truncated_fourier_coefficient(density, wave, support, auxiliary))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, CoulombError>>()?;
+    let kernels = waves
+        .iter()
+        .map(|wave| spencer_alavi_kernel(wave.q_plus_g_norm.get(), radius.get()))
+        .collect::<Vec<_>>();
+    let n = densities.len();
+    let mut matrix = vec![Complex64::default(); n * n];
+    matrix
+        .par_chunks_mut(n)
+        .enumerate()
+        .for_each(|(left, row)| {
+            for right in left..n {
+                row[right] = coefficients
+                    .iter()
+                    .zip(&kernels)
+                    .map(|(wave, &kernel)| wave[left].conj() * kernel * wave[right])
+                    .sum();
+            }
+        });
+    for left in 0..n {
+        for right in left + 1..n {
+            matrix[right * n + left] = matrix[left * n + right].conj();
+        }
+    }
+    for (index, value) in matrix.iter().enumerate() {
+        if !value.re.is_finite() || !value.im.is_finite() {
+            return Err(CoulombError::NonFiniteMatrix {
+                row: index / n,
+                column: index % n,
+            });
+        }
+    }
+    Ok(CoulombOperator {
+        layout: auxiliary.layout(),
+        cell: *request.cell(),
+        reciprocal: *request.reciprocal(),
+        kind,
+        matrix,
+        gamma: None,
+        spencer_alavi: Some(SpencerAlaviSphere {
+            radius,
+            full_k_points,
+            reciprocal_cutoff,
+        }),
+        provenance: Provenance {
+            recipe: Some("spencer-alavi-sphere-coulomb".to_owned()),
+            reference: Some("VASP HFRCUT=-1; Spencer-Alavi PRB 77, 193110".to_owned()),
+        },
+    })
+}
+
+fn truncated_fourier_coefficient(
+    density: &ChargeDensity,
+    wave: &AuxiliaryInterstitialWave,
+    support: &ExpansionSupport,
+    auxiliary: &CompiledAuxiliaryBasis,
+) -> Result<Complex64, CoulombError> {
+    let mut coefficient = Complex64::default();
+    let harmonics = complex_spherical_harmonics(
+        density.mt.iter().map(|piece| piece.l).max().unwrap_or(0),
+        wave.q_plus_g.map(InverseBohr::get),
+    );
+    let inverse_sqrt_volume = support.volume.sqrt().recip();
+    for piece in &density.mt {
+        let site = &support.sites[piece.site];
+        let radial = bessel_overlap(piece.l, wave.q_plus_g_norm.get(), &site.mesh, &piece.radial)?;
+        coefficient += piece.amplitude
+            * 4.0
+            * PI
+            * i_pow(piece.l).conj()
+            * harmonics[lm_index(piece.l, piece.m)?]
+            * plane_wave_phase(wave.q_plus_g, site.position).conj()
+            * radial
+            * inverse_sqrt_volume;
+    }
+    for (source, amplitude) in support.waves.iter().zip(&density.pw) {
+        if *amplitude == Complex64::default() {
+            continue;
+        }
+        let difference = std::array::from_fn(|axis| {
+            InverseBohr(source.g.cartesian[axis].get() - wave.g.cartesian[axis].get())
+        });
+        coefficient += *amplitude * auxiliary.partition.interstitial().coefficient(difference)?;
+    }
+    Ok(coefficient)
+}
+
+fn spencer_alavi_kernel(q_norm: f64, radius: f64) -> f64 {
+    if is_zero_norm(q_norm) {
+        2.0 * PI * radius * radius
+    } else {
+        8.0 * PI * (0.5 * q_norm * radius).sin().powi(2) / (q_norm * q_norm)
+    }
 }
 
 fn require_cell_and_reciprocal(

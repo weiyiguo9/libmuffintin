@@ -14,7 +14,7 @@ use muffintin_coulomb::{
 };
 use muffintin_envelope::Provenance;
 use muffintin_prodbasis::{
-    AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryPartition,
+    AuxiliaryInterstitialSupport, AuxiliaryInterstitialWave, AuxiliaryPartition, AuxiliaryRegion,
     AuxiliaryRepresentation, CompiledAuxiliaryBasis, MixedProductAuxiliary, SiteAuxiliaryBlock,
     TransferQ,
 };
@@ -255,6 +255,103 @@ fn empty_sphere_gamma_omits_g0_head_and_keeps_finite_g_coulomb() {
             continue;
         }
         assert!(operator.element(g0, index).unwrap().norm() < 1.0e-10);
+    }
+}
+
+#[test]
+fn empty_sphere_spencer_alavi_kernel_has_finite_g0_and_exact_pw_diagonal() {
+    let q = TransferQ::from_cartesian([InverseBohr(0.0); 3]).unwrap();
+    let auxiliary = empty_sphere_pw_auxiliary(q, &[[0, 0, 0], [1, 0, 0], [0, 1, 0]]);
+    let request = CoulombRequest::cubic(common::LATTICE, 2)
+        .unwrap()
+        .with_spencer_alavi_sphere(1, InverseBohr(2.0))
+        .unwrap();
+    let operator = assemble_coulomb(&auxiliary, &request).unwrap();
+    assert!(operator.gamma().is_none());
+    let truncation = operator
+        .spencer_alavi()
+        .expect("spherical truncation metadata");
+    let expected_radius = (3.0 * common::LATTICE.powi(3) / (4.0 * PI)).cbrt();
+    assert!((truncation.radius.get() - expected_radius).abs() < 1.0e-12);
+    assert_eq!(truncation.full_k_points, 1);
+    assert_eq!(truncation.reciprocal_cutoff, InverseBohr(2.0));
+
+    let payload = auxiliary.mixed_product().unwrap();
+    for (left, wave) in payload.interstitial.waves.iter().enumerate() {
+        for right in 0..payload.interstitial.waves.len() {
+            let got = operator.element(left, right).unwrap();
+            if left != right {
+                assert!(
+                    got.norm() < 1.0e-12,
+                    "truncated PW off diagonal {left},{right}"
+                );
+                continue;
+            }
+            let qg = wave.q_plus_g_norm.get();
+            let expected = if qg == 0.0 {
+                2.0 * PI * expected_radius.powi(2)
+            } else {
+                4.0 * PI * (1.0 - (qg * expected_radius).cos()) / qg.powi(2)
+            };
+            assert!((got.re - expected).abs() < 1.0e-10, "{got} vs {expected}");
+            assert!(got.im.abs() < 1.0e-12);
+        }
+    }
+}
+
+#[test]
+fn spencer_alavi_g0_outer_product_includes_mt_and_interstitial_coefficients() {
+    let q = TransferQ::from_cartesian([InverseBohr(0.0); 3]).unwrap();
+    let (_, auxiliary) = common::mixed_product_auxiliary(q);
+    let request = CoulombRequest::cubic(common::LATTICE, 2)
+        .unwrap()
+        .with_spencer_alavi_sphere(1, InverseBohr(0.5))
+        .unwrap();
+    let operator = assemble_coulomb(&auxiliary, &request).unwrap();
+    let payload = auxiliary.mixed_product().unwrap();
+    let volume = common::LATTICE.powi(3);
+    let radius = request.spencer_alavi_radius().unwrap().get();
+    let mut next_wave = 0usize;
+    let coefficients = auxiliary
+        .regions()
+        .iter()
+        .map(|region| match *region {
+            AuxiliaryRegion::MuffinTin { site, l, m, n } => {
+                assert_eq!((l, m), (0, 0));
+                let block = &payload.sites[site];
+                let mode = block
+                    .modes
+                    .iter()
+                    .find(|mode| mode.l == l && mode.n == n)
+                    .unwrap();
+                Complex64::new(
+                    (4.0 * PI).sqrt() * multipole_moment(0, &block.mesh, &mode.radial).unwrap()
+                        / volume.sqrt(),
+                    0.0,
+                )
+            }
+            AuxiliaryRegion::Interstitial { .. } => {
+                let wave = &payload.interstitial.waves[next_wave];
+                next_wave += 1;
+                auxiliary
+                    .partition
+                    .interstitial()
+                    .coefficient(wave.g.cartesian)
+                    .unwrap()
+            }
+            AuxiliaryRegion::InterpolationPoint { .. } => unreachable!(),
+        })
+        .collect::<Vec<_>>();
+    let kernel = 2.0 * PI * radius.powi(2);
+    for left in 0..coefficients.len() {
+        for right in 0..coefficients.len() {
+            let expected = coefficients[left].conj() * kernel * coefficients[right];
+            let got = operator.element(left, right).unwrap();
+            assert!(
+                (got - expected).norm() < 1.0e-10,
+                "truncated mixed block ({left},{right}) {got} vs {expected}"
+            );
+        }
     }
 }
 

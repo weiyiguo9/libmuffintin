@@ -35,6 +35,10 @@ pub enum CoulombError {
     InvalidPwCutoff(f64),
     #[error("interpolation angular cutoff exceeds Weinert LEXP ({l_max} > {lexp})")]
     InterpolationLmax { l_max: u32, lexp: u32 },
+    #[error("Spencer-Alavi truncation needs a positive full-BZ k-point count, got {0}")]
+    InvalidTruncationKPointCount(usize),
+    #[error("Spencer-Alavi reciprocal cutoff must be finite and positive, got {0}")]
+    InvalidTruncationReciprocalCutoff(f64),
     #[error("cell volume {cell} does not match the product partition volume {partition}")]
     CellVolumeMismatch { cell: f64, partition: f64 },
     #[error("Coulomb request reciprocal lattice does not match the direct cell")]

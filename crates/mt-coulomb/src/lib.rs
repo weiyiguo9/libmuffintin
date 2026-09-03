@@ -52,7 +52,9 @@ pub use moments::{
     bessel_overlap, bessel_weinert_integral, multipole_moment, second_moment,
     sphbessel_pw_integral, spherical_bessel_moment,
 };
-pub use operator::{AuxiliaryKind, CoulombOperator, CoulombVertexContractor, GammaHead};
+pub use operator::{
+    AuxiliaryKind, CoulombOperator, CoulombVertexContractor, GammaHead, SpencerAlaviSphere,
+};
 pub use primitive::{intra_sphere_poisson, radial_primitive};
 pub use radial_core_valence::{
     RadialValenceCoreActions, RadialValenceCoreError, RadialValenceCoreShellAction,
@@ -63,7 +65,7 @@ pub use radial_slater::{
     RadialSlaterComponents, RadialSlaterCvTraces, RadialSlaterError, RadialSlaterSite,
     RadialSlaterTraces, radial_slater_cv_traces, radial_slater_traces,
 };
-pub use spec::{CoulombRequest, DEFAULT_LEXP, InterpolationProjection};
+pub use spec::{CoulombKernel, CoulombRequest, DEFAULT_LEXP, InterpolationProjection};
 pub use static_core_exchange::{
     ScalarCoreExchangeRadial, StaticCoreExchangeBlock, StaticCoreExchangeError,
     StaticCoreExchangeMode, StaticCoreExchangeShell, static_core_exchange_block,
