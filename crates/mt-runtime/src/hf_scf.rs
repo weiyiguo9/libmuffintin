@@ -47,6 +47,28 @@ const IDENTITY_TOLERANCE: f64 = 1.0e-8;
 const RELAXED_VALENCE_EIGENVALUE_TOLERANCE: f64 = 1.0e-6;
 const ELECTRON_COUNT_TOLERANCE: f64 = 1.0e-8;
 
+/// Mixing algorithm for the fixed-potential global exchange feedback.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FockMixing {
+    Linear { alpha: f64 },
+    PulayAnderson { alpha: f64, history: usize },
+}
+
+impl FockMixing {
+    const fn alpha(self) -> f64 {
+        match self {
+            Self::Linear { alpha } | Self::PulayAnderson { alpha, .. } => alpha,
+        }
+    }
+
+    const fn history(self) -> Option<usize> {
+        match self {
+            Self::Linear { .. } => None,
+            Self::PulayAnderson { history, .. } => Some(history),
+        }
+    }
+}
+
 /// Exact MPB controls and bounded iteration controls for the full-BZ
 /// spinor-first valence HF engine.
 #[derive(Clone, Debug, PartialEq)]
@@ -59,8 +81,8 @@ pub struct GammaValenceHfSpec {
     pub max_fock_iterations: usize,
     /// Regional-density fixed-point tolerance inside one fixed local potential.
     pub fock_density_tolerance: f64,
-    /// Weight of the freshly rebuilt band-space exchange in the next Fock solve.
-    pub fock_mixing: f64,
+    /// Mixer for the freshly rebuilt global exchange feedback.
+    pub fock_mixing: FockMixing,
 }
 
 pub type ValenceHfSpec = GammaValenceHfSpec;
@@ -132,7 +154,7 @@ pub struct RelaxedCoreHfSpec {
     pub gamma: GammaExchangeTreatment,
     pub max_fock_iterations: usize,
     pub fock_density_tolerance: f64,
-    pub fock_mixing: f64,
+    pub fock_mixing: FockMixing,
     pub core: CoreFixedPotentialSpec,
     /// Numerical MPB/radial and CV/VC trace tolerance.
     pub sector_numerical_tolerance: Hartree,
@@ -234,7 +256,7 @@ pub enum RelaxedCoreHfError {
     FockIterations,
     #[error("relaxed-core HF fock_density_tolerance must be finite and positive")]
     FockTolerance,
-    #[error("relaxed-core HF fock_mixing must be finite and in (0, 1]")]
+    #[error("relaxed-core HF Fock mixer requires alpha in (0, 1] and Pulay history >= 2")]
     FockMixing,
     #[error("relaxed-core HF sector numerical tolerance must be finite and nonnegative")]
     SectorTolerance,
@@ -324,8 +346,10 @@ pub enum GammaValenceHfError {
     FockIterations,
     #[error("valence HF fock_density_tolerance must be finite and positive")]
     FockTolerance,
-    #[error("valence HF fock_mixing must be finite and in (0, 1]")]
+    #[error("valence HF Fock mixer requires alpha in (0, 1] and Pulay history >= 2")]
     FockMixing,
+    #[error("valence HF Pulay feedback algebra produced a non-finite value")]
+    FockMixingAlgebra,
     #[error("spectral radial-basis refinement did not settle after {passes} passes")]
     SpectralRefinement { passes: usize },
     #[error(
@@ -965,6 +989,7 @@ fn solve_relaxed_fixed_potential(
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
     let mut previous_global_feedback = None;
+    let mut feedback_mixer = FeedbackMixer::new(spec.fock_mixing);
     // The next step's input bands and occupations are this step's solved ones,
     // so its input density is the density already synthesized here.
     let mut current_density = None;
@@ -1047,9 +1072,7 @@ fn solve_relaxed_fixed_potential(
             .unwrap_or(f64::INFINITY);
         last_feedback_residual = feedback_fixed_residual;
         let global_feedback = match &previous_global_feedback {
-            Some(previous) => {
-                mix_global_feedback(previous, &fresh_global_feedback, spec.fock_mixing)?
-            }
+            Some(previous) => feedback_mixer.mix(previous, &fresh_global_feedback)?,
             None => fresh_global_feedback.clone(),
         };
         let lifting_identity_residual =
@@ -1336,6 +1359,7 @@ fn solve_fixed_potential(
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
     let mut previous_global_feedback = None;
+    let mut feedback_mixer = FeedbackMixer::new(spec.fock_mixing);
     let mut current_density = None;
     for fock_iteration in 1..=spec.max_fock_iterations {
         let occupation = solve_occupations(
@@ -1418,9 +1442,7 @@ fn solve_fixed_potential(
             .unwrap_or(f64::INFINITY);
         last_feedback_residual = feedback_fixed_residual;
         let global_feedback = match &previous_global_feedback {
-            Some(previous) => {
-                mix_global_feedback(previous, &fresh_global_feedback, spec.fock_mixing)?
-            }
+            Some(previous) => feedback_mixer.mix(previous, &fresh_global_feedback)?,
             None => fresh_global_feedback.clone(),
         };
         let lifting_identity_residual =
@@ -1584,6 +1606,53 @@ fn lift_global_feedback(
         .collect()
 }
 
+#[derive(Clone, Debug)]
+struct FeedbackMixRecord {
+    input: Vec<DenseHermitianMatrix>,
+    residual: Vec<DenseHermitianMatrix>,
+}
+
+#[derive(Clone, Debug)]
+struct FeedbackMixer {
+    mixing: FockMixing,
+    history: Vec<FeedbackMixRecord>,
+}
+
+impl FeedbackMixer {
+    fn new(mixing: FockMixing) -> Self {
+        Self {
+            mixing,
+            history: Vec::new(),
+        }
+    }
+
+    fn mix(
+        &mut self,
+        input: &[DenseHermitianMatrix],
+        output: &[DenseHermitianMatrix],
+    ) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+        let alpha = self.mixing.alpha();
+        let Some(max_history) = self.mixing.history() else {
+            return mix_global_feedback(input, output, alpha);
+        };
+        let record = FeedbackMixRecord {
+            input: input.to_vec(),
+            residual: subtract_global_feedback(input, output)?,
+        };
+        self.history.push(record);
+        if self.history.len() > max_history {
+            self.history.remove(0);
+        }
+        if self.history.len() == 1 {
+            return mix_global_feedback(input, output, alpha);
+        }
+        let Some(coefficients) = feedback_pulay_coefficients(&self.history)? else {
+            return mix_global_feedback(input, output, alpha);
+        };
+        combine_feedback_records(&self.history, &coefficients, alpha)
+    }
+}
+
 fn mix_global_feedback(
     previous: &[DenseHermitianMatrix],
     fresh: &[DenseHermitianMatrix],
@@ -1625,6 +1694,184 @@ fn mix_global_feedback(
             )?)
         })
         .collect()
+}
+
+fn subtract_global_feedback(
+    input: &[DenseHermitianMatrix],
+    output: &[DenseHermitianMatrix],
+) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+    require_feedback_layout(input, output)?;
+    input
+        .iter()
+        .zip(output)
+        .map(|(input, output)| {
+            Ok(DenseHermitianMatrix::from_upper_triangle(
+                input.dimension(),
+                Axis::GlobalBasis,
+                |row, column| input.at(row, column) - output.at(row, column),
+            )?)
+        })
+        .collect()
+}
+
+fn require_feedback_layout(
+    left: &[DenseHermitianMatrix],
+    right: &[DenseHermitianMatrix],
+) -> Result<(), GammaValenceHfError> {
+    if left.len() != right.len() {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: left.len(),
+            actual: right.len(),
+        });
+    }
+    for (left, right) in left.iter().zip(right) {
+        if left.axis() != Axis::GlobalBasis || right.axis() != Axis::GlobalBasis {
+            return Err(GammaValenceHfError::Tensor(TensorError::Axis {
+                index: 0,
+                expected: Axis::GlobalBasis,
+                actual: if left.axis() != Axis::GlobalBasis {
+                    left.axis()
+                } else {
+                    right.axis()
+                },
+            }));
+        }
+        if left.dimension() != right.dimension() {
+            return Err(GammaValenceHfError::ExchangeKIndex {
+                expected: left.dimension(),
+                actual: right.dimension(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn feedback_pulay_coefficients(
+    history: &[FeedbackMixRecord],
+) -> Result<Option<Vec<f64>>, GammaValenceHfError> {
+    let number = history.len();
+    let dimension = number + 1;
+    let mut constrained = vec![vec![0.0; dimension]; dimension];
+    for row in 0..number {
+        for column in 0..=row {
+            let value = feedback_inner_product(&history[row].residual, &history[column].residual)?;
+            constrained[row][column] = value;
+            constrained[column][row] = value;
+        }
+        constrained[row][number] = 1.0;
+        constrained[number][row] = 1.0;
+    }
+    let mut right = vec![0.0; dimension];
+    right[number] = 1.0;
+    Ok(solve_feedback_dense(constrained, right)?.map(|solution| solution[..number].to_vec()))
+}
+
+fn feedback_inner_product(
+    left: &[DenseHermitianMatrix],
+    right: &[DenseHermitianMatrix],
+) -> Result<f64, GammaValenceHfError> {
+    require_feedback_layout(left, right)?;
+    let mut value = 0.0;
+    for (left, right) in left.iter().zip(right) {
+        for row in 0..left.dimension() {
+            for column in 0..left.dimension() {
+                value += (left.at(row, column).conj() * right.at(row, column)).re;
+            }
+        }
+    }
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(GammaValenceHfError::FockMixingAlgebra)
+    }
+}
+
+fn combine_feedback_records(
+    history: &[FeedbackMixRecord],
+    coefficients: &[f64],
+    alpha: f64,
+) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
+    let k_count = history[0].input.len();
+    let mut mixed = Vec::with_capacity(k_count);
+    for k in 0..k_count {
+        let dimension = history[0].input[k].dimension();
+        mixed.push(DenseHermitianMatrix::from_upper_triangle(
+            dimension,
+            Axis::GlobalBasis,
+            |row, column| {
+                history
+                    .iter()
+                    .zip(coefficients)
+                    .map(|(record, &coefficient)| {
+                        coefficient
+                            * (record.input[k].at(row, column)
+                                - alpha * record.residual[k].at(row, column))
+                    })
+                    .sum()
+            },
+        )?);
+    }
+    Ok(mixed)
+}
+
+fn solve_feedback_dense(
+    mut matrix: Vec<Vec<f64>>,
+    mut right: Vec<f64>,
+) -> Result<Option<Vec<f64>>, GammaValenceHfError> {
+    let dimension = right.len();
+    if matrix.iter().flatten().any(|value| !value.is_finite())
+        || right.iter().any(|value| !value.is_finite())
+    {
+        return Err(GammaValenceHfError::FockMixingAlgebra);
+    }
+    let scale = matrix
+        .iter()
+        .flatten()
+        .chain(&right)
+        .map(|value| value.abs())
+        .fold(0.0, f64::max);
+    if scale == 0.0 {
+        return Ok(None);
+    }
+    let tolerance = 256.0 * f64::EPSILON * scale * dimension.max(1) as f64;
+    for column in 0..dimension {
+        let pivot = (column..dimension)
+            .max_by(|&left, &right_row| {
+                matrix[left][column]
+                    .abs()
+                    .total_cmp(&matrix[right_row][column].abs())
+            })
+            .expect("the constrained Pulay matrix is nonempty");
+        if matrix[pivot][column].abs() <= tolerance {
+            return Ok(None);
+        }
+        matrix.swap(column, pivot);
+        right.swap(column, pivot);
+        for row in column + 1..dimension {
+            let factor = matrix[row][column] / matrix[column][column];
+            matrix[row][column] = 0.0;
+            let (upper, lower) = matrix.split_at_mut(row);
+            let pivot_tail = &upper[column][column + 1..];
+            let target_tail = &mut lower[0][column + 1..];
+            for (target, &pivot_entry) in target_tail.iter_mut().zip(pivot_tail) {
+                *target -= factor * pivot_entry;
+            }
+            right[row] -= factor * right[column];
+        }
+    }
+    let mut solution = vec![0.0; dimension];
+    for row in (0..dimension).rev() {
+        let tail = matrix[row][row + 1..]
+            .iter()
+            .zip(&solution[row + 1..])
+            .map(|(coefficient, value)| coefficient * value)
+            .sum::<f64>();
+        solution[row] = (right[row] - tail) / matrix[row][row];
+        if !solution[row].is_finite() {
+            return Err(GammaValenceHfError::FockMixingAlgebra);
+        }
+    }
+    Ok(Some(solution))
 }
 
 fn global_feedback_difference(
@@ -2027,6 +2274,14 @@ fn density_mixer(spec: ScfMixing) -> Result<DensityMixer, MixingError> {
     }
 }
 
+fn valid_fock_mixing(mixing: FockMixing) -> bool {
+    let alpha = mixing.alpha();
+    alpha.is_finite()
+        && alpha > 0.0
+        && alpha <= 1.0
+        && mixing.history().is_none_or(|history| history >= 2)
+}
+
 fn validate_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfError> {
     if spec.config.k_mesh.reduction != ScfKReduction::Full {
         return Err(GammaValenceHfError::SymmetryReduction);
@@ -2048,7 +2303,7 @@ fn validate_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfError> {
     if !spec.fock_density_tolerance.is_finite() || spec.fock_density_tolerance <= 0.0 {
         return Err(GammaValenceHfError::FockTolerance);
     }
-    if !spec.fock_mixing.is_finite() || spec.fock_mixing <= 0.0 || spec.fock_mixing > 1.0 {
+    if !valid_fock_mixing(spec.fock_mixing) {
         return Err(GammaValenceHfError::FockMixing);
     }
     Ok(())
@@ -2092,7 +2347,7 @@ fn validate_relaxed_core_spec(spec: &RelaxedCoreHfSpec) -> Result<f64, RelaxedCo
     if !spec.fock_density_tolerance.is_finite() || spec.fock_density_tolerance <= 0.0 {
         return Err(RelaxedCoreHfError::FockTolerance);
     }
-    if !spec.fock_mixing.is_finite() || spec.fock_mixing <= 0.0 || spec.fock_mixing > 1.0 {
+    if !valid_fock_mixing(spec.fock_mixing) {
         return Err(RelaxedCoreHfError::FockMixing);
     }
     if !spec.sector_numerical_tolerance.get().is_finite()

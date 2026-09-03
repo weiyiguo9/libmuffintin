@@ -1,8 +1,8 @@
 //! Bounded neutral closed-shell relaxed-core HF production-path fixture.
 
 use muffintin::{
-    CheckpointPhysics, GammaExchangeTreatment, RelaxedCoreHfSpec, run_gamma_relaxed_core_hf,
-    run_relaxed_core_hf,
+    CheckpointPhysics, FockMixing, GammaExchangeTreatment, RelaxedCoreHfSpec,
+    run_gamma_relaxed_core_hf, run_relaxed_core_hf,
 };
 use muffintin_core::{Hartree, InverseBohr};
 use muffintin_coulomb::CoulombRequest;
@@ -53,7 +53,7 @@ fn closed_shell_core_valence_setup() -> (muffintin_io::CheckpointV2, RelaxedCore
         gamma: GammaExchangeTreatment::FiniteBody,
         max_fock_iterations: 32,
         fock_density_tolerance: 1.0e-7,
-        fock_mixing: 0.5,
+        fock_mixing: FockMixing::Linear { alpha: 0.5 },
         core: CoreFixedPotentialSpec {
             action_mixing: 1.0,
             energy_tolerance: Hartree(1.0e100),

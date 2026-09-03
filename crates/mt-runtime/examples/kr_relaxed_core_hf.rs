@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use muffintin::{
-    AtomicStartRequest, CheckpointPhysics, GammaExchangeTreatment, RegionalFieldLayout,
+    AtomicStartRequest, CheckpointPhysics, FockMixing, GammaExchangeTreatment, RegionalFieldLayout,
     RelaxedCoreHfIterationDiagnostic, RelaxedCoreHfResult, RelaxedCoreHfSpec, Structure,
     checkpoint_v2_from_regional_state, materialize_atomic_start, run_gamma_relaxed_core_hf,
 };
@@ -42,7 +42,8 @@ const OUTER_MIXING_ALPHA: f64 = 0.1;
 const MAX_FOCK_ITERATIONS: usize = 32;
 const LOOSE_TOLERANCE: f64 = 1.0e100;
 const FOCK_DENSITY_TOLERANCE: f64 = 1.0e-7;
-const FOCK_MIXING: f64 = 0.5;
+const FOCK_MIXING: f64 = 1.0;
+const FOCK_PULAY_HISTORY: usize = 4;
 const SECTOR_NUMERICAL_TOLERANCE_HARTREE: f64 = 1.0e-8;
 const MAXIMUM_CORE_SHELL_SPILL: f64 = 1.0;
 
@@ -87,6 +88,8 @@ struct Cli {
     hdlo: HdloSelection,
     temperature: f64,
     max_fock_iterations: usize,
+    fock_mixing_alpha: f64,
+    fock_pulay_history: usize,
 }
 
 impl Default for Cli {
@@ -105,6 +108,8 @@ impl Default for Cli {
             hdlo: HdloSelection::None,
             temperature: 0.02,
             max_fock_iterations: MAX_FOCK_ITERATIONS,
+            fock_mixing_alpha: FOCK_MIXING,
+            fock_pulay_history: FOCK_PULAY_HISTORY,
         }
     }
 }
@@ -131,6 +136,8 @@ impl Cli {
                 "--hdlo" => cli.hdlo = HdloSelection::parse(&value)?,
                 "--temperature" => cli.temperature = parse_value(&name, &value)?,
                 "--fock-max-iterations" => cli.max_fock_iterations = parse_value(&name, &value)?,
+                "--fock-mixing-alpha" => cli.fock_mixing_alpha = parse_value(&name, &value)?,
+                "--fock-pulay-history" => cli.fock_pulay_history = parse_value(&name, &value)?,
                 _ => return Err(invalid_input(format!("unknown option {name:?}"))),
             }
         }
@@ -146,6 +153,7 @@ impl Cli {
             ("--field-g", self.field_g),
             ("--product-g", self.product_g),
             ("--temperature", self.temperature),
+            ("--fock-mixing-alpha", self.fock_mixing_alpha),
         ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(invalid_input(format!(
@@ -167,6 +175,12 @@ impl Cli {
         }
         if self.max_fock_iterations < 2 {
             return Err(invalid_input("--fock-max-iterations must be at least 2"));
+        }
+        if self.fock_mixing_alpha > 1.0 {
+            return Err(invalid_input("--fock-mixing-alpha must not exceed 1"));
+        }
+        if self.fock_pulay_history < 2 {
+            return Err(invalid_input("--fock-pulay-history must be at least 2"));
         }
         if self.product_l_max > self.lexp || self.lexp > 12 {
             return Err(invalid_input(
@@ -242,7 +256,9 @@ struct ParameterManifest {
     core_max_iterations: usize,
     max_fock_iterations: usize,
     fock_density_tolerance: f64,
-    fock_mixing: f64,
+    fock_mixing_algorithm: &'static str,
+    fock_mixing_alpha: f64,
+    fock_mixing_history: usize,
     overlap_tolerance: f64,
     sector_numerical_tolerance_hartree: f64,
     maximum_core_shell_spill: f64,
@@ -631,7 +647,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             core_max_iterations: CORE_MAX_ITERATIONS,
             max_fock_iterations: cli.max_fock_iterations,
             fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
-            fock_mixing: FOCK_MIXING,
+            fock_mixing_algorithm: "pulay-anderson-global-feedback",
+            fock_mixing_alpha: cli.fock_mixing_alpha,
+            fock_mixing_history: cli.fock_pulay_history,
             overlap_tolerance: DEFAULT_TOLERANCE,
             sector_numerical_tolerance_hartree: SECTOR_NUMERICAL_TOLERANCE_HARTREE,
             maximum_core_shell_spill: MAXIMUM_CORE_SHELL_SPILL,
@@ -673,7 +691,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         gamma: GammaExchangeTreatment::FiniteBody,
         max_fock_iterations: cli.max_fock_iterations,
         fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
-        fock_mixing: FOCK_MIXING,
+        fock_mixing: FockMixing::PulayAnderson {
+            alpha: cli.fock_mixing_alpha,
+            history: cli.fock_pulay_history,
+        },
         core: CoreFixedPotentialSpec {
             action_mixing: 1.0,
             energy_tolerance: Hartree(LOOSE_TOLERANCE),

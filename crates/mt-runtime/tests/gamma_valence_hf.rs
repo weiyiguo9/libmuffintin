@@ -1,7 +1,7 @@
 //! Bounded production-path fixture for Gamma valence-only spinor HF.
 
 use muffintin::{
-    CheckpointPhysics, GammaExchangeTreatment, GammaValenceHfSpec, IsdfExchangeError,
+    CheckpointPhysics, FockMixing, GammaExchangeTreatment, GammaValenceHfSpec, IsdfExchangeError,
     IsdfExchangeSpec, SpinorMpbSelection, SpinorMpbSpec, build_spinor_mpb,
     build_spinor_mpb_exchange, run_gamma_valence_hf, run_valence_hf,
 };
@@ -107,7 +107,7 @@ fn gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals() {
         coulomb: request,
         max_fock_iterations: 32,
         fock_density_tolerance: 1.0e-7,
-        fock_mixing: 0.5,
+        fock_mixing: FockMixing::Linear { alpha: 0.5 },
     };
     let result = run_gamma_valence_hf(&mut live_physics, &hf_spec).unwrap();
     assert!(result.exchange_rebuilds >= 2);

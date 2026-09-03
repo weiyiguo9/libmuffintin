@@ -3,11 +3,12 @@
 use std::path::PathBuf;
 
 use muffintin::{
-    CheckpointPhysics, GammaExchangeTreatment, RankPolicy, RelaxedCoreHfResult, RelaxedCoreHfSpec,
-    SpinorCoulombResult, SpinorCoulombSpec, SpinorMldumpV2Error, SpinorMpbSelection, SpinorMpbSpec,
-    SpinorSectorThcMpbComparison, SpinorSectorThcResult, SpinorThcResult, build_spinor_coulomb,
-    build_spinor_exchange_mpb, build_spinor_mpb, build_spinor_sector_thc, build_spinor_thc,
-    compare_spinor_sector_thc_mpb, run_gamma_relaxed_core_hf, write_spinor_mldump_v2,
+    CheckpointPhysics, FockMixing, GammaExchangeTreatment, RankPolicy, RelaxedCoreHfResult,
+    RelaxedCoreHfSpec, SpinorCoulombResult, SpinorCoulombSpec, SpinorMldumpV2Error,
+    SpinorMpbSelection, SpinorMpbSpec, SpinorSectorThcMpbComparison, SpinorSectorThcResult,
+    SpinorThcResult, build_spinor_coulomb, build_spinor_exchange_mpb, build_spinor_mpb,
+    build_spinor_sector_thc, build_spinor_thc, compare_spinor_sector_thc_mpb,
+    run_gamma_relaxed_core_hf, write_spinor_mldump_v2,
 };
 use muffintin_core::{Hartree, InverseBohr};
 use muffintin_coulomb::CoulombRequest;
@@ -79,7 +80,7 @@ fn relaxed_setup() -> (muffintin_io::CheckpointV2, RelaxedCoreHfSpec) {
         gamma: GammaExchangeTreatment::FiniteBody,
         max_fock_iterations: 32,
         fock_density_tolerance: 1.0e-7,
-        fock_mixing: 0.5,
+        fock_mixing: FockMixing::Linear { alpha: 0.5 },
         core: CoreFixedPotentialSpec {
             action_mixing: 1.0,
             energy_tolerance: Hartree(1.0e100),

@@ -60,7 +60,7 @@ pub use dft_scf::{
 };
 pub use error::{InputError, InputValidationError};
 pub use hf_scf::{
-    GammaValenceHfError, GammaValenceHfIterationDiagnostic, GammaValenceHfResult,
+    FockMixing, GammaValenceHfError, GammaValenceHfIterationDiagnostic, GammaValenceHfResult,
     GammaValenceHfSpec, RelaxedCoreHfError, RelaxedCoreHfIterationDiagnostic, RelaxedCoreHfResult,
     RelaxedCoreHfSpec, ValenceHfError, ValenceHfIterationDiagnostic, ValenceHfResult,
     ValenceHfSpec, run_gamma_relaxed_core_hf, run_gamma_valence_hf, run_relaxed_core_hf,
