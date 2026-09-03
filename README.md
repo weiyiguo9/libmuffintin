@@ -164,12 +164,17 @@ FRA-LAPW acceptance test. The exact MPB route now performs valence-only
 self-consistent Fock feedback on a caller-specified finite full-BZ mesh. The
 Gamma API is the `1x1x1`, zero-shift wrapper over that engine. This is not a
 box-size, basis, product-cutoff, or k-mesh convergence result and is not a
-converged periodic HF claim. Core exchange and core relaxation remain outside
-that route; ISDF/THC remains a frozen-orbital optional backend. M0, M1, and M2
-are implemented separately: they retain core radials, build rectangular core
-sectors, and evaluate frozen one-shot sector exchange with radial trace gates.
-They do not relax the core, feed core exchange into the valence driver, or
-establish core-aware SCF convergence.
+converged periodic HF claim. The scalar KH plus SOC driver accepts either
+`ValenceOnly` or `Frozen` core treatment. Frozen core orbitals are solved once
+in the immutable checkpoint potential; their density stays in the total-density
+Hartree/mixing loop. Static core exchange is evaluated exactly from every
+core–valence radial product: its spherical average enters scalar KH Fock
+iterations and its SOC-resolved operator enters final second variation. The VV
+MPB/THC space is not enlarged with CV, VC, or CC products. Relaxed core remains
+available only in the full first-variation spinor HF driver; the KH plus SOC
+route deliberately has no `RelaxedCore` variant until a scalar/SOC valence
+density can generate the four-component VC radial action without a signed
+$\kappa$ surrogate. ISDF/THC remains a frozen-orbital optional backend.
 
 Crystal symmetry is currently detection and classification only: the
 `libmuffintin-symmetry` dataset is not yet consumed by the SCF loop, and no

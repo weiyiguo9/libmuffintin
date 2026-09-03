@@ -226,6 +226,45 @@ the frozen input identity, and contracts the exact Weinert MPB Coulomb body.
 It does not reinterpret the second-variation orbitals as two independent
 collinear exchange manifolds.
 
+### 2.2.1 Exact static core exchange for KH plus SOC
+
+Static core exchange is not projected into the VV auxiliary space. For core
+shell $c$ and scalar radial $a$ in valence shell $l$, the muffin-tin product is
+
+```math
+f_{ca}(r)=\frac{P_c(r)P_a(r)+Q_c(r)Q_a(r)}{r\sqrt{N_c}}.
+```
+
+`static_core_exchange_block` retains every such product and evaluates the
+radial multipole integral directly with the SPEX primitive. The resolved
+operator sums the complete closed-shell Clebsch–Gordan expansion over each
+core $\mu$ and all allowed $L,M$; it therefore retains both spin-diagonal and
+spin-off-diagonal terms. `ScalarAverage` takes the angular trace of that same
+operator and installs the resulting radial matrix identically for every
+$m$ and spin. This is the scalar KH core feedback and is not a second product
+basis.
+
+`build_static_core_exchange_site_blocks` maps both forms into the exact
+compiled `(u, udot, LO)` site-coordinate frame. The scalar block is projected
+to the global nonorthogonal LAPW basis and added to every VV Fock rebuild. The
+resolved doubled block is projected together with the SOC operator into the
+first-variation band subspace before diagonalization. Thus scalar KH and SOC
+second variation use one valence span while retaining different, physically
+required angular reductions of the same frozen core shell.
+
+The KH plus SOC runtime currently exposes `ValenceOnly` and `Frozen` core
+treatment. `Frozen` solves core orbitals once in the immutable checkpoint
+potential, keeps their density in the total Hartree/mixing state, and includes
+core $H_0$, CC exchange, and CV exchange in the HF energy. A `RelaxedCore`
+variant is intentionally not exposed here yet: updating a four-component core
+requires the VC radial action generated from the scalar/SOC valence density.
+Expanding the VV MPB or assigning an arbitrary signed $\kappa$ to scalar KH
+radials would not supply that action. Full first-variation spinor HF remains
+the implemented relaxed-core route. CoQui Cholesky/THC export consequently
+continues to carry the active VV Hamiltonian only; static core exchange remains
+a separate one-body contribution unless a future CoQui interface explicitly
+places core orbitals in the active Hamiltonian.
+
 ### 2.3 Scalar adaptive THC selection and fit
 
 The bridge consumes a nonempty complete $q$ slice in production $q$ index
