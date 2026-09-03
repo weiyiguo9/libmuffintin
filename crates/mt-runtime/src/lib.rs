@@ -61,10 +61,11 @@ pub use dft_scf::{
 pub use error::{InputError, InputValidationError};
 pub use hf_scf::{
     FockMixing, GammaValenceHfError, GammaValenceHfIterationDiagnostic, GammaValenceHfResult,
-    GammaValenceHfSpec, RelaxedCoreHfError, RelaxedCoreHfIterationDiagnostic, RelaxedCoreHfResult,
-    RelaxedCoreHfSpec, ValenceHfError, ValenceHfIterationDiagnostic, ValenceHfResult,
-    ValenceHfSpec, run_gamma_relaxed_core_hf, run_gamma_valence_hf, run_relaxed_core_hf,
-    run_valence_hf,
+    GammaValenceHfSpec, KhSocValenceHfError, KhSocValenceHfIterationDiagnostic,
+    KhSocValenceHfResult, KhSocValenceHfSpec, RelaxedCoreHfError, RelaxedCoreHfIterationDiagnostic,
+    RelaxedCoreHfResult, RelaxedCoreHfSpec, ValenceHfError, ValenceHfIterationDiagnostic,
+    ValenceHfResult, ValenceHfSpec, run_gamma_kh_soc_valence_hf, run_gamma_relaxed_core_hf,
+    run_gamma_valence_hf, run_kh_soc_valence_hf, run_relaxed_core_hf, run_valence_hf,
 };
 pub use input::{
     BandPathPoint, Basis, BasisEnvelope, BasisEnvelopeKind, Convergence, EnergyWindow,
@@ -73,8 +74,8 @@ pub use input::{
 };
 pub use isdf_exchange::{
     GammaExchangeTreatment, IsdfExchangeBandMatrix, IsdfExchangeError, IsdfExchangeResult,
-    IsdfExchangeSpec, build_scalar_isdf_exchange, build_second_variation_mpb_exchange,
-    build_spinor_isdf_exchange, build_spinor_mpb_exchange,
+    IsdfExchangeSpec, build_scalar_isdf_exchange, build_scalar_mpb_exchange,
+    build_second_variation_mpb_exchange, build_spinor_isdf_exchange, build_spinor_mpb_exchange,
 };
 pub use muffintin_dft::{ScalarRadialSamples, ScfKSamplingProvenance};
 pub use muffintin_prodbasis::thc::RankPolicy;

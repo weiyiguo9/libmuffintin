@@ -12,11 +12,13 @@ contract lifts two explicit exclusions of
 [18](18_lapw_mpb_thc_integration.md) §4 —
 core–valence products and the self-consistent Fock loop — and it replaces the
 earlier frozen-core staging idea with a relaxed core at FlapwMBPT parity.
-The route is spinor-first: the core is inherently four-component Dirac
-([06](06_dirac_4c_core_and_valence.md)), so the first implementation targets
-the full-first-variation spinor valence path; a scalar-relativistic HF route
-is derived later or not at all. The mixed-product basis is the exact oracle
-throughout; THC never defines a sector, it only compresses one.
+The core is inherently four-component Dirac
+([06](06_dirac_4c_core_and_valence.md)). The original implementation targets
+the full-first-variation spinor valence path. A separate valence-only route now
+converges scalar Koelling–Harmon HF before applying conventional SOC second
+variation; its core-sector extension is specified below rather than
+reinterpreting full-first-variation orbitals. The mixed-product basis is the
+exact oracle throughout; THC never defines a sector, it only compresses one.
 
 ## 1. Formulas
 
@@ -470,6 +472,25 @@ point only on its specified finite full-BZ mesh. Convergence in $k$ mesh,
 basis, product cutoff, and molecule box size remains a caller study; A2 makes
 no claim of a converged periodic Hartree–Fock limit.
 
+#### A3 — Scalar KH HF and SOC second variation
+
+`run_kh_soc_valence_hf` keeps the scalar first-variation H0/S problems fixed
+inside each Fock loop, builds independent same-spin VV exchange matrices on a
+shared scalar mixed-product basis, and feeds those matrices back into the two
+spin-degenerate KH channels. Only after the scalar density, energy, and Fock
+fixed points converge does it project the existing SPEX-form
+$\xi(r)\mathbf L\cdot\mathbf S$ operator into the requested source-band window.
+The second-variation solve therefore uses converged nonlocal scalar-Fock
+eigenvalues and eigenvectors, not the local H0 spectrum.
+
+The reconstructed Pauli orbitals are passed through a fresh exact-MPB VV
+contraction. Up/down pair vertices are summed before the Coulomb contraction;
+they are not treated as two independent collinear manifolds. For a complete
+occupied closed shell, the scalar and second-variation densities and exchange
+energies are reported separately as invariance diagnostics. `A3` is presently
+valence-only; it rejects configured core states until the CV/VC mixed
+scalar–Dirac product stage is available.
+
 | Milestone | Deliverable | Exit gates |
 |---|---|---|
 | M0 | Implemented: core station retains and outputs the `CoreShellOrbitals` sidecar | sidecar radials bit-identical to the density path; `norm_mt` and spill reported per shell; no consumer change |
@@ -477,7 +498,7 @@ no claim of a converged periodic Hartree–Fock limit.
 | M2 | Implemented: sector-aware one-shot exact-MPB traces and exchange energies on one converged frozen DFT snapshot, plus an independent trace-only radial Slater oracle | VV adapter reproduces the square contraction; CV and VC are contracted independently; signed finite-body MPB-minus-onsite-radial differences are reported; radial imaginary residual and physical core spill are separate gates |
 | M3a | Implemented: channel-reduced radial core-core Fock kernel with per-shell inner self-consistency | converged core shells; finite-body MPB-minus-onsite-radial CC difference is reported; final CC action matches the extended radial trace numerically; extended-minus-MT spill is reported separately |
 | M3b | Implemented: complete site-valence density, channel-reduced radial VC action, CV/VC-only exact MPB contraction, per-core $\delta_c$, and shared CC+VC core relaxation | production VC action matches the independent radial oracle; MPB CV and VC traces agree; their finite-body difference from the spherical on-site action is reported and closes through weighted $\delta_c$; imaginary residual and shell spill gated; final VC action rebuilt from final core radials |
-| M3c | Implemented internally: unified Track A2 valence driver and relaxed core with full CV feedback | bounded neutral closed-shell synthetic pipeline gates the density fixed point, valence eigenvalue identity, core convergence, fresh-core replacement, valence-only mixing, VV+CV feedback, and Gamma/generic parity; external Kr AO comparison remains blocked by the missing checked-in LAPW molecule/box-series fixture and acceptance tolerance |
+| M3c | Implemented internally: unified Track A2 valence driver and relaxed core with full CV feedback | bounded neutral closed-shell synthetic pipeline gates the density fixed point, valence eigenvalue identity, core convergence, fresh-core replacement, total-density mixing, VV+CV feedback, and Gamma/generic parity; external Kr AO comparison remains blocked by the missing checked-in LAPW molecule/box-series fixture and acceptance tolerance |
 | M4 | Implemented: core-aware THC selection and fit over exact rectangular VV/CV/VC/CC layouts, with MPB quadratic forms as the representation-neutral oracle | four sector-resolved fit residuals and four sector-resolved MPB quadratic residuals reported separately; every sector column enters the pooled selector; rank and column scaling reported |
 | M5 | Implemented: MLDUMP/pyexport v2 with sector energies and exchange provenance | schema versioned; the common payload remains a strict spinor v1 payload; v1 files remain exchange-absent; final-frame and energy identities preflighted |
 

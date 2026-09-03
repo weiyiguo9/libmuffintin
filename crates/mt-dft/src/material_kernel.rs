@@ -9,7 +9,7 @@ use crate::{
     AtomicEnergyRequest, BandPathRequest, BandState, ChannelKappaError, CollinearKPoint,
     CoreContribution, CorePotentialBuildError, CoreSiteRequest, CoreSpinPartition,
     CoreStateRequest, CoreStationError, DensityError, FirstVariationRoute, FirstVariationSubspace,
-    FullSpinorKPoint, GeneratedLinearizationEnergy, InterstitialField,
+    FirstVariationWindow, FullSpinorKPoint, GeneratedLinearizationEnergy, InterstitialField,
     LinearizationEnergyDiagnostic, LinearizationEnergyError, LinearizationEnergyGenerator,
     LocalPauliPotential, MuffinTinField, OccupationError, PdosEnergySample, RegionalCoreResult,
     RegionalDensity, RegionalElectrostaticResult, RegionalPotential, RegionalScalarField,
@@ -378,6 +378,91 @@ impl CheckpointBandSolution {
         }
         Ok(updated)
     }
+
+    /// Re-solve both scalar KH spin channels with physical-basis exchange
+    /// feedback on the retained fixed H0/S frame.
+    pub fn solve_scalar_global_feedback(
+        &self,
+        feedback: &[Collinear<DenseHermitianMatrix>],
+    ) -> Result<Self, MaterialKernelError> {
+        if feedback.len() != self.points.len() {
+            return Err(MaterialKernelError::FeedbackPointCount {
+                actual: feedback.len(),
+                expected: self.points.len(),
+            });
+        }
+        let mut updated = self.clone();
+        let (points, states) = (&mut updated.points, &mut updated.states);
+        for (point_index, (point, feedback)) in points.iter_mut().zip(feedback).enumerate() {
+            let CheckpointKPointSolution::Collinear {
+                eigenproblems,
+                solutions,
+                up_occupations,
+                down_occupations,
+                ..
+            } = &mut point.solution
+            else {
+                return Err(MaterialKernelError::FeedbackRequiresScalar { point: point_index });
+            };
+            if up_occupations == down_occupations {
+                return Err(MaterialKernelError::FeedbackRequiresScalar { point: point_index });
+            }
+            let solve = |problem: &LapwEigenproblem,
+                         feedback: &DenseHermitianMatrix|
+             -> Result<GeneralizedEigensolution, MaterialKernelError> {
+                if feedback.axis() != Axis::GlobalBasis {
+                    return Err(TensorError::Axis {
+                        index: 0,
+                        expected: Axis::GlobalBasis,
+                        actual: feedback.axis(),
+                    }
+                    .into());
+                }
+                if feedback.dimension() != problem.hamiltonian.dimension() {
+                    return Err(TensorError::Shape {
+                        expected: vec![problem.hamiltonian.dimension(); 2],
+                        actual: vec![feedback.dimension(); 2],
+                    }
+                    .into());
+                }
+                let fock = DenseHermitianMatrix::from_upper_triangle(
+                    problem.hamiltonian.dimension(),
+                    Axis::GlobalBasis,
+                    |row, column| problem.hamiltonian.at(row, column) + feedback.at(row, column),
+                )?;
+                Ok(solve_generalized_hermitian(
+                    &fock,
+                    &problem.overlap,
+                    OVERLAP_THRESHOLD,
+                )?)
+            };
+            let up = solve(&eigenproblems.up, &feedback.up)?;
+            let down = solve(&eigenproblems.down, &feedback.down)?;
+            for (range, solved) in [
+                (up_occupations.clone(), &up),
+                (down_occupations.clone(), &down),
+            ] {
+                if solved.eigenvalues.len() != range.len() {
+                    return Err(MaterialKernelError::FeedbackBandCount {
+                        point: point_index,
+                        actual: solved.eigenvalues.len(),
+                        expected: range.len(),
+                    });
+                }
+                for (state, &energy) in states[range].iter_mut().zip(&solved.eigenvalues) {
+                    state.energy = energy;
+                }
+            }
+            point.energies = up
+                .eigenvalues
+                .iter()
+                .chain(&down.eigenvalues)
+                .copied()
+                .collect();
+            *solutions = Collinear::new(up, down);
+        }
+        Ok(updated)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -397,6 +482,8 @@ impl CheckpointKPoint {
 pub enum CheckpointKPointSolution {
     Collinear {
         bases: Box<Collinear<ScalarIterationBasis>>,
+        /// Original scalar local-potential H0/S problems for this radial basis.
+        eigenproblems: Collinear<LapwEigenproblem>,
         solutions: Collinear<GeneralizedEigensolution>,
         up_occupations: Range<usize>,
         down_occupations: Range<usize>,
@@ -868,6 +955,87 @@ impl MaterialKernel {
         self.solve_points_with_weights(potential, basis, points, &weights, relativity)
     }
 
+    /// Apply conventional SOC second variation to an already solved,
+    /// spin-degenerate scalar KH Fock spectrum.
+    pub fn apply_soc_second_variation(
+        &self,
+        potential: &RegionalPotential,
+        scalar: &CheckpointBandSolution,
+        window: FirstVariationWindow,
+    ) -> Result<CheckpointBandSolution, MaterialKernelError> {
+        self.require_second_variation_route(potential)?;
+        if window.start() != 0 {
+            return Err(MaterialKernelError::SecondVariationDropsLowerBands {
+                start: window.start(),
+            });
+        }
+        let mut points = Vec::with_capacity(scalar.points.len());
+        let mut states = Vec::new();
+        for (point_index, point) in scalar.points.iter().enumerate() {
+            let CheckpointKPointSolution::Collinear {
+                bases,
+                eigenproblems,
+                solutions,
+                up_occupations,
+                down_occupations,
+            } = &point.solution
+            else {
+                return Err(MaterialKernelError::SecondVariationRequiresScalarBands {
+                    point: point_index,
+                });
+            };
+            if up_occupations == down_occupations
+                || bases.up != bases.down
+                || solutions.up != solutions.down
+            {
+                return Err(MaterialKernelError::SecondVariationRequiresSpinDegenerate {
+                    point: point_index,
+                });
+            }
+            let first = FirstVariationSubspace::select(
+                window,
+                &solutions.up.eigenvalues,
+                &solutions.up.eigenvectors,
+            )?;
+            let blocks = second_variation_blocks_from_potential(&bases.up, potential)?;
+            let second = solve_soc_second_variation(
+                FirstVariationRoute::NonmagneticScalarKoellingHarmon,
+                &bases.up.compiled,
+                &first,
+                &blocks,
+            )?;
+            let split = split_second_variation(&second)?;
+            let start = states.len();
+            states.extend(
+                second
+                    .eigenvalues
+                    .iter()
+                    .copied()
+                    .map(|energy| BandState::new(energy, point.weight, 1)),
+            );
+            let end = states.len();
+            points.push(CheckpointKPoint {
+                weight: point.weight,
+                energies: second.eigenvalues,
+                solution: CheckpointKPointSolution::Collinear {
+                    bases: bases.clone(),
+                    eigenproblems: eigenproblems.clone(),
+                    solutions: split,
+                    up_occupations: start..end,
+                    down_occupations: start..end,
+                },
+            });
+        }
+        Ok(CheckpointBandSolution {
+            points,
+            states,
+            reduction: scalar.reduction.clone(),
+            density_layout: scalar.density_layout.clone(),
+            symmetry_transforms: scalar.symmetry_transforms.clone(),
+            spacegroup_number: scalar.spacegroup_number,
+        })
+    }
+
     /// Materialize one local-potential radial/basis problem without entering
     /// the DFT XC/core cache used by [`ScfPhysics`].
     pub fn materialize_checkpoint_one_particle(
@@ -1018,6 +1186,7 @@ impl MaterialKernel {
                 weight,
                 solution: CheckpointKPointSolution::Collinear {
                     bases: Box::new(bases),
+                    eigenproblems: Collinear::new(scalar.up.eigenproblem, scalar.down.eigenproblem),
                     solutions,
                     up_occupations,
                     down_occupations,
@@ -1383,6 +1552,7 @@ impl MaterialKernel {
                     solutions,
                     up_occupations,
                     down_occupations,
+                    ..
                 } => {
                     if matches!(recipe.identity, ScfChannelIdentity::Kappa { .. }) {
                         return Err(MaterialKernelError::KappaBandCogUnavailableInScalar {
@@ -2150,6 +2320,53 @@ fn second_variation_blocks(
         .collect()
 }
 
+fn second_variation_blocks_from_potential(
+    basis: &ScalarIterationBasis,
+    potential: &RegionalPotential,
+) -> Result<Vec<SiteSpinOrbitBlock>, MaterialKernelError> {
+    if basis.radial_sites.len() != potential.scalar().muffin_tins().len() {
+        return Err(MaterialKernelError::TopologySiteCount {
+            component: "second-variation scalar potential",
+            expected: basis.radial_sites.len(),
+            actual: potential.scalar().muffin_tins().len(),
+        });
+    }
+    basis
+        .radial_sites
+        .iter()
+        .zip(&basis.recipe_sites)
+        .zip(&basis.density_sites)
+        .zip(potential.scalar().muffin_tins())
+        .map(|(((radials, recipe), density), field)| {
+            let monopole = field
+                .field()
+                .channel(0, 0)
+                .ok_or_else(|| MaterialKernelError::MissingMonopole("second variation".into()))?;
+            let spherical = monopole
+                .iter()
+                .map(|value| value.re / (4.0 * PI).sqrt())
+                .collect::<Vec<_>>();
+            let spin_orbit = SpexSpinOrbitPotential::new(&density.mesh, &spherical)?;
+            let shells = radials
+                .linearized
+                .iter()
+                .zip(&radials.local_orbitals)
+                .map(|(linearized, locals)| {
+                    let locals = locals
+                        .iter()
+                        .map(|local| local.orbital.clone())
+                        .collect::<Vec<_>>();
+                    spex_spin_orbit_radial_shell(&density.mesh, &spin_orbit, linearized, &locals)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(SiteSpinOrbitBlock::from_radial_shells(
+                &recipe.local_orbitals,
+                &shells,
+            )?)
+        })
+        .collect()
+}
+
 fn split_second_variation(
     solution: &crate::SecondVariationResult,
 ) -> Result<Collinear<GeneralizedEigensolution>, MaterialKernelError> {
@@ -2733,6 +2950,8 @@ pub enum MaterialKernelError {
     FeedbackPointCount { actual: usize, expected: usize },
     #[error("band feedback at k-point {point} requires a spinor first-variation solution")]
     FeedbackRequiresSpinor { point: usize },
+    #[error("band feedback at k-point {point} requires independent scalar KH spin channels")]
+    FeedbackRequiresScalar { point: usize },
     #[error(
         "feedback solve at k-point {point} returned {actual} bands, expected retained count {expected}"
     )]
@@ -2741,6 +2960,10 @@ pub enum MaterialKernelError {
         actual: usize,
         expected: usize,
     },
+    #[error("SOC second variation at k-point {point} requires a scalar KH band solution")]
+    SecondVariationRequiresScalarBands { point: usize },
+    #[error("SOC second variation at k-point {point} requires identical scalar KH spin channels")]
+    SecondVariationRequiresSpinDegenerate { point: usize },
     #[error(
         "scalar/second-variation route cannot consume transverse potential RMS ({x_rms}, {y_rms}) above {tolerance}"
     )]

@@ -1,7 +1,7 @@
 //! Frozen-orbital Hartree–Fock exchange from sampled-ζ Weinert Coulomb records.
 
 use crate::scalar_coulomb::{ScalarCoulombQRecord, ScalarCoulombResult};
-use crate::scalar_mpb::SecondVariationMpbResult;
+use crate::scalar_mpb::{ScalarMpbResult, SecondVariationMpbResult};
 use crate::scalar_product::{
     ScalarKMinusQ, ScalarProductInput, ScalarQSliceError, require_scalar_q_slice,
 };
@@ -296,6 +296,111 @@ pub fn build_spinor_mpb_exchange(
         .map(|input| input.k_minus_q.clone())
         .collect::<Vec<_>>();
     let maps = spinor_maps(&maps, first.pair_columns.n_k)?;
+    contract_exchange(first.pair_columns, &maps, &records, spec)
+}
+
+/// Build exact VV exchange for one independent scalar KH spin channel.
+pub fn build_scalar_mpb_exchange(
+    inputs: &[ScalarProductInput],
+    mpb: &[ScalarMpbResult],
+    spin: u8,
+    request: &CoulombRequest,
+    spec: &IsdfExchangeSpec,
+) -> Result<IsdfExchangeResult, IsdfExchangeError> {
+    let first = require_scalar_q_slice(inputs).map_err(scalar_q_slice_error)?;
+    if !first
+        .orbitals
+        .channels
+        .iter()
+        .any(|channel| channel.spin == spin)
+    {
+        return Err(IsdfExchangeError::ScalarSpin { spin });
+    }
+    if mpb.len() != inputs.len() {
+        return Err(IsdfExchangeError::MpbCount {
+            actual: mpb.len(),
+            expected: inputs.len(),
+        });
+    }
+    if request.reciprocal() != &first.reciprocal {
+        return Err(IsdfExchangeError::MpbContext { index: 0 });
+    }
+    let expected = first
+        .pair_columns
+        .n_columns()
+        .map_err(|_| IsdfExchangeError::MpbContext { index: 0 })?;
+    let mut ordered_vertices = Vec::with_capacity(mpb.len());
+    let mut operators = Vec::with_capacity(mpb.len());
+    for (q_index, (input, result)) in inputs.iter().zip(mpb).enumerate() {
+        if !result.frozen_input_matches(input)
+            || result.reciprocal != input.reciprocal
+            || result.pair_columns != input.pair_columns
+            || result.auxiliary.q != input.source.q
+            || result.auxiliary.partition != input.source.partition
+        {
+            return Err(IsdfExchangeError::MpbContext { index: q_index });
+        }
+        let selected = result
+            .vertices
+            .iter()
+            .filter(|vertex| vertex.spin == spin)
+            .collect::<Vec<_>>();
+        if selected.len() != expected {
+            return Err(IsdfExchangeError::MpbVertexCount {
+                q_index,
+                actual: selected.len(),
+                expected,
+            });
+        }
+        let mut columns = vec![None; expected];
+        for selected in selected {
+            if selected.column >= expected
+                || input.pair_columns.decode(selected.column)
+                    != (selected.k, selected.left_band, selected.right_band)
+                || selected.vertex.pair()
+                    != (OrbitalPair::Bloch {
+                        k_index: selected.k,
+                        left: selected.left_band,
+                        right: selected.right_band,
+                    })
+            {
+                return Err(IsdfExchangeError::MpbContext { index: q_index });
+            }
+            if columns[selected.column]
+                .replace(selected.vertex.clone())
+                .is_some()
+            {
+                return Err(IsdfExchangeError::MpbDuplicateColumn {
+                    q_index,
+                    column: selected.column,
+                });
+            }
+        }
+        ordered_vertices.push(
+            columns
+                .into_iter()
+                .enumerate()
+                .map(|(column, vertex)| {
+                    vertex.ok_or(IsdfExchangeError::MpbMissingColumn { q_index, column })
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+        operators.push(assemble_coulomb(&result.auxiliary, request)?);
+    }
+    let records = ordered_vertices
+        .iter()
+        .zip(&operators)
+        .map(|(vertices, operator)| RectangularExchangeRecord {
+            layout: valence_layout(first.pair_columns),
+            vertices,
+            operator,
+        })
+        .collect::<Vec<_>>();
+    let maps = inputs
+        .iter()
+        .map(|input| input.k_minus_q.clone())
+        .collect::<Vec<_>>();
+    let maps = scalar_maps(&maps, first.pair_columns.n_k)?;
     contract_exchange(first.pair_columns, &maps, &records, spec)
 }
 
