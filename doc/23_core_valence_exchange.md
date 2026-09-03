@@ -410,11 +410,22 @@ outer iteration rebuilds the Hartree potential and rematerializes the radial
 basis before starting a new inner loop, so feedback is never moved between
 incompatible radial frames.
 
-`GammaValenceHfSpec::fock_mixing` explicitly mixes consecutive lifted
-physical-basis exchange operators inside one fixed H0/S frame. It never mixes
-matrices expressed in different orbital gauges. This is a recorded Fock
-iteration control, not a silent fallback and not a replacement for the outer
-regional-density mixer.
+`GammaValenceHfSpec::fock_mixing` explicitly controls consecutive lifted
+physical-basis exchange operators inside one fixed H0/S frame. The
+`CommutatorDiis` path forms the density matrix $D=C f C^\dagger$, constructs
+the fresh Fock matrix $F=H_0+K[D]$, and uses $SDF-FDS$ as its CDIIS error.
+For a full regular mesh, the error blocks are weighted by the square root of
+the corresponding $k$ weight and concatenated before the constrained DIIS
+solve. The coefficients sum to one, so extrapolating only $K[D]$ is equivalent
+to extrapolating the full Fock matrix while keeping $H_0$ fixed. The error is
+always represented in the global basis rather than a changing orbital gauge.
+`QuasiNewtonDiis` additionally divides the commutator in the instantaneous
+orbital basis by $|\varepsilon_a-\varepsilon_i|+\lambda$ and lifts the result
+back to the same global basis before building the DIIS metric. This is a
+diagonal orbital-Hessian preconditioner, not a full Newton response or an
+evaluation of $\delta K[\delta P]$.
+This is a recorded Fock iteration control, not a silent fallback and not a
+replacement for the outer regional-density mixer.
 
 The driver reports the anti-Hermitian residual, Fock fixed-point residual,
 regional density RMS, electron count, exchange and total energies, the direct

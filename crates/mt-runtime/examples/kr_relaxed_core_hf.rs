@@ -42,9 +42,9 @@ const OUTER_MIXING_ALPHA: f64 = 0.1;
 const MAX_FOCK_ITERATIONS: usize = 32;
 const LOOSE_TOLERANCE: f64 = 1.0e100;
 const FOCK_DENSITY_TOLERANCE: f64 = 1.0e-5;
-const FOCK_FEEDBACK_TOLERANCE_HARTREE: f64 = 2.0e-5;
-const FOCK_MIXING: f64 = 1.0;
-const FOCK_PULAY_HISTORY: usize = 4;
+const FOCK_FEEDBACK_TOLERANCE_HARTREE: f64 = 2.0e-6;
+const FOCK_DIIS_HISTORY: usize = 8;
+const FOCK_DIIS_LEVEL_SHIFT_HARTREE: f64 = 0.25;
 const SECTOR_NUMERICAL_TOLERANCE_HARTREE: f64 = 1.0e-8;
 const MAXIMUM_CORE_SHELL_SPILL: f64 = 1.0;
 
@@ -53,6 +53,32 @@ const MAXIMUM_CORE_SHELL_SPILL: f64 = 1.0;
 enum HdloSelection {
     None,
     All,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum FockMixerSelection {
+    Cdiis,
+    QuasiNewtonCdiis,
+}
+
+impl FockMixerSelection {
+    fn parse(value: &str) -> Result<Self, Box<dyn Error>> {
+        match value {
+            "cdiis" => Ok(Self::Cdiis),
+            "quasi-newton-cdiis" => Ok(Self::QuasiNewtonCdiis),
+            _ => Err(invalid_input(format!(
+                "--fock-mixing must be cdiis or quasi-newton-cdiis, got {value:?}"
+            ))),
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Cdiis => "commutator-cdiis-global-feedback",
+            Self::QuasiNewtonCdiis => "quasi-newton-commutator-cdiis-global-feedback",
+        }
+    }
 }
 
 impl HdloSelection {
@@ -89,8 +115,9 @@ struct Cli {
     hdlo: HdloSelection,
     temperature: f64,
     max_fock_iterations: usize,
-    fock_mixing_alpha: f64,
-    fock_pulay_history: usize,
+    fock_mixing: FockMixerSelection,
+    fock_diis_history: usize,
+    fock_diis_level_shift: f64,
 }
 
 impl Default for Cli {
@@ -109,8 +136,9 @@ impl Default for Cli {
             hdlo: HdloSelection::None,
             temperature: 0.02,
             max_fock_iterations: MAX_FOCK_ITERATIONS,
-            fock_mixing_alpha: FOCK_MIXING,
-            fock_pulay_history: FOCK_PULAY_HISTORY,
+            fock_mixing: FockMixerSelection::Cdiis,
+            fock_diis_history: FOCK_DIIS_HISTORY,
+            fock_diis_level_shift: FOCK_DIIS_LEVEL_SHIFT_HARTREE,
         }
     }
 }
@@ -137,8 +165,11 @@ impl Cli {
                 "--hdlo" => cli.hdlo = HdloSelection::parse(&value)?,
                 "--temperature" => cli.temperature = parse_value(&name, &value)?,
                 "--fock-max-iterations" => cli.max_fock_iterations = parse_value(&name, &value)?,
-                "--fock-mixing-alpha" => cli.fock_mixing_alpha = parse_value(&name, &value)?,
-                "--fock-pulay-history" => cli.fock_pulay_history = parse_value(&name, &value)?,
+                "--fock-mixing" => cli.fock_mixing = FockMixerSelection::parse(&value)?,
+                "--fock-diis-history" => cli.fock_diis_history = parse_value(&name, &value)?,
+                "--fock-diis-level-shift" => {
+                    cli.fock_diis_level_shift = parse_value(&name, &value)?
+                }
                 _ => return Err(invalid_input(format!("unknown option {name:?}"))),
             }
         }
@@ -154,7 +185,6 @@ impl Cli {
             ("--field-g", self.field_g),
             ("--product-g", self.product_g),
             ("--temperature", self.temperature),
-            ("--fock-mixing-alpha", self.fock_mixing_alpha),
         ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(invalid_input(format!(
@@ -177,11 +207,13 @@ impl Cli {
         if self.max_fock_iterations < 2 {
             return Err(invalid_input("--fock-max-iterations must be at least 2"));
         }
-        if self.fock_mixing_alpha > 1.0 {
-            return Err(invalid_input("--fock-mixing-alpha must not exceed 1"));
+        if self.fock_diis_history < 2 {
+            return Err(invalid_input("--fock-diis-history must be at least 2"));
         }
-        if self.fock_pulay_history < 2 {
-            return Err(invalid_input("--fock-pulay-history must be at least 2"));
+        if !self.fock_diis_level_shift.is_finite() || self.fock_diis_level_shift < 0.0 {
+            return Err(invalid_input(
+                "--fock-diis-level-shift must be finite and nonnegative",
+            ));
         }
         if self.product_l_max > self.lexp || self.lexp > 12 {
             return Err(invalid_input(
@@ -259,8 +291,8 @@ struct ParameterManifest {
     fock_density_tolerance: f64,
     fock_feedback_tolerance_hartree: f64,
     fock_mixing_algorithm: &'static str,
-    fock_mixing_alpha: f64,
     fock_mixing_history: usize,
+    fock_diis_level_shift_hartree: Option<f64>,
     overlap_tolerance: f64,
     sector_numerical_tolerance_hartree: f64,
     maximum_core_shell_spill: f64,
@@ -652,9 +684,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             max_fock_iterations: cli.max_fock_iterations,
             fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
             fock_feedback_tolerance_hartree: FOCK_FEEDBACK_TOLERANCE_HARTREE,
-            fock_mixing_algorithm: "pulay-anderson-global-feedback",
-            fock_mixing_alpha: cli.fock_mixing_alpha,
-            fock_mixing_history: cli.fock_pulay_history,
+            fock_mixing_algorithm: cli.fock_mixing.as_str(),
+            fock_mixing_history: cli.fock_diis_history,
+            fock_diis_level_shift_hartree: match cli.fock_mixing {
+                FockMixerSelection::Cdiis => None,
+                FockMixerSelection::QuasiNewtonCdiis => Some(cli.fock_diis_level_shift),
+            },
             overlap_tolerance: DEFAULT_TOLERANCE,
             sector_numerical_tolerance_hartree: SECTOR_NUMERICAL_TOLERANCE_HARTREE,
             maximum_core_shell_spill: MAXIMUM_CORE_SHELL_SPILL,
@@ -697,9 +732,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         max_fock_iterations: cli.max_fock_iterations,
         fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
         fock_feedback_tolerance: Hartree(FOCK_FEEDBACK_TOLERANCE_HARTREE),
-        fock_mixing: FockMixing::PulayAnderson {
-            alpha: cli.fock_mixing_alpha,
-            history: cli.fock_pulay_history,
+        fock_mixing: match cli.fock_mixing {
+            FockMixerSelection::Cdiis => FockMixing::CommutatorDiis {
+                history: cli.fock_diis_history,
+            },
+            FockMixerSelection::QuasiNewtonCdiis => FockMixing::QuasiNewtonDiis {
+                history: cli.fock_diis_history,
+                level_shift: Hartree(cli.fock_diis_level_shift),
+            },
         },
         core: CoreFixedPotentialSpec {
             action_mixing: 1.0,

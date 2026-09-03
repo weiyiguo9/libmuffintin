@@ -16,7 +16,7 @@ use muffintin_dft::{
 use muffintin_operators::{
     OperatorError, lift_band_hermitian_feedback, solve_generalized_hermitian,
 };
-use muffintin_tensor::{Axis, DenseHermitianMatrix, TensorError, einsum};
+use muffintin_tensor::{Axis, ComplexTensor, DenseHermitianMatrix, TensorError, einsum};
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -49,21 +49,29 @@ const ELECTRON_COUNT_TOLERANCE: f64 = 1.0e-8;
 /// Mixing algorithm for the fixed-potential global exchange feedback.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FockMixing {
-    Linear { alpha: f64 },
-    PulayAnderson { alpha: f64, history: usize },
+    Linear {
+        alpha: f64,
+    },
+    PulayAnderson {
+        alpha: f64,
+        history: usize,
+    },
+    CommutatorDiis {
+        history: usize,
+    },
+    QuasiNewtonDiis {
+        history: usize,
+        level_shift: Hartree,
+    },
 }
 
 impl FockMixing {
-    const fn alpha(self) -> f64 {
-        match self {
-            Self::Linear { alpha } | Self::PulayAnderson { alpha, .. } => alpha,
-        }
-    }
-
     const fn history(self) -> Option<usize> {
         match self {
             Self::Linear { .. } => None,
-            Self::PulayAnderson { history, .. } => Some(history),
+            Self::PulayAnderson { history, .. }
+            | Self::CommutatorDiis { history }
+            | Self::QuasiNewtonDiis { history, .. } => Some(history),
         }
     }
 }
@@ -265,7 +273,9 @@ pub enum RelaxedCoreHfError {
     FockTolerance,
     #[error("relaxed-core HF fock_feedback_tolerance must be finite and positive")]
     FockFeedbackTolerance,
-    #[error("relaxed-core HF Fock mixer requires alpha in (0, 1] and Pulay history >= 2")]
+    #[error(
+        "relaxed-core HF Fock mixer requires alpha in (0, 1], nonlinear history >= 2, and a finite nonnegative level shift"
+    )]
     FockMixing,
     #[error("relaxed-core HF sector numerical tolerance must be finite and nonnegative")]
     SectorTolerance,
@@ -357,9 +367,11 @@ pub enum GammaValenceHfError {
     FockTolerance,
     #[error("valence HF fock_feedback_tolerance must be finite and positive")]
     FockFeedbackTolerance,
-    #[error("valence HF Fock mixer requires alpha in (0, 1] and Pulay history >= 2")]
+    #[error(
+        "valence HF Fock mixer requires alpha in (0, 1], nonlinear history >= 2, and a finite nonnegative level shift"
+    )]
     FockMixing,
-    #[error("valence HF Pulay feedback algebra produced a non-finite value")]
+    #[error("valence HF nonlinear feedback algebra produced a non-finite value")]
     FockMixingAlgebra,
     #[error("spectral radial-basis refinement did not settle after {passes} passes")]
     SpectralRefinement { passes: usize },
@@ -1014,6 +1026,7 @@ fn solve_relaxed_fixed_potential(
     for fock_iteration in 1..=spec.max_fock_iterations {
         let occupation =
             solve_occupations(bands.states(), valence_electrons, spec.config.occupations)?;
+        let occupation_rows = occupation_rows(&occupation.values, &bands)?;
         if outer_iteration == 1 && fock_iteration == 1 {
             let driver = rebuild_relaxed_feedback_frame(
                 physics,
@@ -1088,7 +1101,9 @@ fn solve_relaxed_fixed_potential(
             .unwrap_or(f64::INFINITY);
         last_feedback_residual = feedback_fixed_residual;
         let global_feedback = match &previous_global_feedback {
-            Some(previous) => feedback_mixer.mix(previous, &fresh_global_feedback)?,
+            Some(previous) => {
+                feedback_mixer.mix(&bands, &occupation_rows, previous, &fresh_global_feedback)?
+            }
             None => fresh_global_feedback.clone(),
         };
         let lifting_identity_residual =
@@ -1460,7 +1475,9 @@ fn solve_fixed_potential(
             .unwrap_or(f64::INFINITY);
         last_feedback_residual = feedback_fixed_residual;
         let global_feedback = match &previous_global_feedback {
-            Some(previous) => feedback_mixer.mix(previous, &fresh_global_feedback)?,
+            Some(previous) => {
+                feedback_mixer.mix(&bands, &occupation_rows, previous, &fresh_global_feedback)?
+            }
             None => fresh_global_feedback.clone(),
         };
         let lifting_identity_residual =
@@ -1627,8 +1644,8 @@ fn lift_global_feedback(
 
 #[derive(Clone, Debug)]
 struct FeedbackMixRecord {
-    input: Vec<DenseHermitianMatrix>,
-    residual: Vec<DenseHermitianMatrix>,
+    candidate: Vec<DenseHermitianMatrix>,
+    error: Vec<Complex64>,
 }
 
 #[derive(Clone, Debug)]
@@ -1647,28 +1664,49 @@ impl FeedbackMixer {
 
     fn mix(
         &mut self,
+        bands: &CheckpointBandSolution,
+        occupations: &[Vec<f64>],
         input: &[DenseHermitianMatrix],
         output: &[DenseHermitianMatrix],
     ) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
-        let alpha = self.mixing.alpha();
-        let Some(max_history) = self.mixing.history() else {
-            return mix_global_feedback(input, output, alpha);
+        let (candidate, error) = match self.mixing {
+            FockMixing::Linear { alpha } => {
+                return mix_global_feedback(input, output, alpha);
+            }
+            FockMixing::PulayAnderson { alpha, .. } => (
+                mix_global_feedback(input, output, alpha)?,
+                flatten_global_feedback(&subtract_global_feedback(input, output)?),
+            ),
+            FockMixing::CommutatorDiis { .. } => (
+                output.to_vec(),
+                commutator_diis_error(bands, occupations, output, None)?,
+            ),
+            FockMixing::QuasiNewtonDiis { level_shift, .. } => (
+                output.to_vec(),
+                commutator_diis_error(bands, occupations, output, Some(level_shift))?,
+            ),
         };
-        let record = FeedbackMixRecord {
-            input: input.to_vec(),
-            residual: subtract_global_feedback(input, output)?,
-        };
+        let max_history = self
+            .mixing
+            .history()
+            .expect("nonlinear Fock mixing has a history");
+        let record = FeedbackMixRecord { candidate, error };
         self.history.push(record);
         if self.history.len() > max_history {
             self.history.remove(0);
         }
         if self.history.len() == 1 {
-            return mix_global_feedback(input, output, alpha);
+            return Ok(self.history[0].candidate.clone());
         }
         let Some(coefficients) = feedback_pulay_coefficients(&self.history)? else {
-            return mix_global_feedback(input, output, alpha);
+            return Ok(self
+                .history
+                .last()
+                .expect("history is nonempty")
+                .candidate
+                .clone());
         };
-        combine_feedback_records(&self.history, &coefficients, alpha)
+        combine_feedback_records(&self.history, &coefficients)
     }
 }
 
@@ -1733,6 +1771,156 @@ fn subtract_global_feedback(
         .collect()
 }
 
+fn flatten_global_feedback(feedback: &[DenseHermitianMatrix]) -> Vec<Complex64> {
+    feedback
+        .iter()
+        .flat_map(DenseHermitianMatrix::to_host_row_major)
+        .collect()
+}
+
+fn commutator_diis_error(
+    bands: &CheckpointBandSolution,
+    occupations: &[Vec<f64>],
+    feedback: &[DenseHermitianMatrix],
+    level_shift: Option<Hartree>,
+) -> Result<Vec<Complex64>, GammaValenceHfError> {
+    if bands.points().len() != occupations.len() || bands.points().len() != feedback.len() {
+        return Err(GammaValenceHfError::ExchangeKIndex {
+            expected: bands.points().len(),
+            actual: occupations.len().min(feedback.len()),
+        });
+    }
+    let mut error = Vec::new();
+    for ((point, occupations), feedback) in bands.points().iter().zip(occupations).zip(feedback) {
+        let CheckpointKPointSolution::Spinor {
+            eigenproblem,
+            solution,
+            ..
+        } = &point.solution
+        else {
+            return Err(GammaValenceHfError::SpinorFirstVariation);
+        };
+        let basis_count = solution.eigenvectors.rows();
+        let band_count = solution.eigenvectors.columns();
+        if occupations.len() != band_count {
+            return Err(GammaValenceHfError::ExchangeKIndex {
+                expected: band_count,
+                actual: occupations.len(),
+            });
+        }
+        if feedback.dimension() != basis_count {
+            return Err(GammaValenceHfError::ExchangeKIndex {
+                expected: basis_count,
+                actual: feedback.dimension(),
+            });
+        }
+        let conjugate = solution.eigenvectors.as_tensor().conjugate();
+        let fock = DenseHermitianMatrix::from_upper_triangle(
+            basis_count,
+            Axis::GlobalBasis,
+            |row, column| eigenproblem.hamiltonian.at(row, column) + feedback.at(row, column),
+        )?;
+        let weight = point.weight().sqrt();
+        if let Some(level_shift) = level_shift {
+            let projected_fock = einsum(
+                "ia,ij,jb->ab",
+                &[
+                    &conjugate,
+                    fock.as_tensor(),
+                    solution.eigenvectors.as_tensor(),
+                ],
+            )?
+            .to_host_row_major();
+            let mut preconditioned = Vec::with_capacity(band_count * band_count);
+            for row in 0..band_count {
+                for column in 0..band_count {
+                    let occupation_difference = occupations[row] - occupations[column];
+                    if occupation_difference == 0.0 {
+                        preconditioned.push(Complex64::default());
+                        continue;
+                    }
+                    let denominator = (solution.eigenvalues[row].get()
+                        - solution.eigenvalues[column].get())
+                    .abs()
+                        + level_shift.get();
+                    if denominator == 0.0 {
+                        return Err(GammaValenceHfError::FockMixingAlgebra);
+                    }
+                    preconditioned.push(
+                        occupation_difference * projected_fock[row * band_count + column]
+                            / denominator,
+                    );
+                }
+            }
+            let preconditioned = ComplexTensor::from_host_row_major(
+                &[band_count, band_count],
+                &[Axis::Band, Axis::Band],
+                preconditioned,
+            )?;
+            let rotated = einsum(
+                "ia,ab,jb->ij",
+                &[
+                    solution.eigenvectors.as_tensor(),
+                    &preconditioned,
+                    &conjugate,
+                ],
+            )?;
+            error.extend(
+                einsum(
+                    "ij,jk,kl->il",
+                    &[
+                        eigenproblem.overlap.as_tensor(),
+                        &rotated,
+                        eigenproblem.overlap.as_tensor(),
+                    ],
+                )?
+                .to_host_row_major()
+                .into_iter()
+                .map(|value| weight * value),
+            );
+        } else {
+            let occupation_tensor = ComplexTensor::from_host_row_major(
+                &[band_count],
+                &[Axis::Band],
+                occupations
+                    .iter()
+                    .map(|&value| Complex64::new(value, 0.0))
+                    .collect(),
+            )?;
+            let density = einsum(
+                "ia,a,ja->ij",
+                &[
+                    solution.eigenvectors.as_tensor(),
+                    &occupation_tensor,
+                    &conjugate,
+                ],
+            )?;
+            let sdf = einsum(
+                "ij,jk,kl->il",
+                &[eigenproblem.overlap.as_tensor(), &density, fock.as_tensor()],
+            )?
+            .to_host_row_major();
+            for row in 0..basis_count {
+                for column in 0..basis_count {
+                    error.push(
+                        weight
+                            * (sdf[column * basis_count + row].conj()
+                                - sdf[row * basis_count + column]),
+                    );
+                }
+            }
+        }
+    }
+    if error
+        .iter()
+        .all(|value| value.re.is_finite() && value.im.is_finite())
+    {
+        Ok(error)
+    } else {
+        Err(GammaValenceHfError::FockMixingAlgebra)
+    }
+}
+
 fn require_feedback_layout(
     left: &[DenseHermitianMatrix],
     right: &[DenseHermitianMatrix],
@@ -1773,7 +1961,7 @@ fn feedback_pulay_coefficients(
     let mut constrained = vec![vec![0.0; dimension]; dimension];
     for row in 0..number {
         for column in 0..=row {
-            let value = feedback_inner_product(&history[row].residual, &history[column].residual)?;
+            let value = feedback_error_inner_product(&history[row].error, &history[column].error)?;
             constrained[row][column] = value;
             constrained[column][row] = value;
         }
@@ -1785,19 +1973,18 @@ fn feedback_pulay_coefficients(
     Ok(solve_feedback_dense(constrained, right)?.map(|solution| solution[..number].to_vec()))
 }
 
-fn feedback_inner_product(
-    left: &[DenseHermitianMatrix],
-    right: &[DenseHermitianMatrix],
+fn feedback_error_inner_product(
+    left: &[Complex64],
+    right: &[Complex64],
 ) -> Result<f64, GammaValenceHfError> {
-    require_feedback_layout(left, right)?;
-    let mut value = 0.0;
-    for (left, right) in left.iter().zip(right) {
-        for row in 0..left.dimension() {
-            for column in 0..left.dimension() {
-                value += (left.at(row, column).conj() * right.at(row, column)).re;
-            }
-        }
+    if left.len() != right.len() {
+        return Err(GammaValenceHfError::FockMixingAlgebra);
     }
+    let value = left
+        .iter()
+        .zip(right)
+        .map(|(left, right)| (left.conj() * right).re)
+        .sum::<f64>();
     if value.is_finite() {
         Ok(value)
     } else {
@@ -1808,12 +1995,11 @@ fn feedback_inner_product(
 fn combine_feedback_records(
     history: &[FeedbackMixRecord],
     coefficients: &[f64],
-    alpha: f64,
 ) -> Result<Vec<DenseHermitianMatrix>, GammaValenceHfError> {
-    let k_count = history[0].input.len();
+    let k_count = history[0].candidate.len();
     let mut mixed = Vec::with_capacity(k_count);
     for k in 0..k_count {
-        let dimension = history[0].input[k].dimension();
+        let dimension = history[0].candidate[k].dimension();
         mixed.push(DenseHermitianMatrix::from_upper_triangle(
             dimension,
             Axis::GlobalBasis,
@@ -1821,11 +2007,7 @@ fn combine_feedback_records(
                 history
                     .iter()
                     .zip(coefficients)
-                    .map(|(record, &coefficient)| {
-                        coefficient
-                            * (record.input[k].at(row, column)
-                                - alpha * record.residual[k].at(row, column))
-                    })
+                    .map(|(record, &coefficient)| coefficient * record.candidate[k].at(row, column))
                     .sum()
             },
         )?);
@@ -2294,11 +2476,17 @@ fn density_mixer(spec: ScfMixing) -> Result<DensityMixer, MixingError> {
 }
 
 fn valid_fock_mixing(mixing: FockMixing) -> bool {
-    let alpha = mixing.alpha();
-    alpha.is_finite()
-        && alpha > 0.0
-        && alpha <= 1.0
-        && mixing.history().is_none_or(|history| history >= 2)
+    match mixing {
+        FockMixing::Linear { alpha } => alpha.is_finite() && alpha > 0.0 && alpha <= 1.0,
+        FockMixing::PulayAnderson { alpha, history } => {
+            alpha.is_finite() && alpha > 0.0 && alpha <= 1.0 && history >= 2
+        }
+        FockMixing::CommutatorDiis { history } => history >= 2,
+        FockMixing::QuasiNewtonDiis {
+            history,
+            level_shift,
+        } => history >= 2 && level_shift.get().is_finite() && level_shift.get() >= 0.0,
+    }
 }
 
 fn validate_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfError> {
@@ -2322,8 +2510,7 @@ fn validate_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfError> {
     if !spec.fock_density_tolerance.is_finite() || spec.fock_density_tolerance <= 0.0 {
         return Err(GammaValenceHfError::FockTolerance);
     }
-    if !spec.fock_feedback_tolerance.get().is_finite()
-        || spec.fock_feedback_tolerance.get() <= 0.0
+    if !spec.fock_feedback_tolerance.get().is_finite() || spec.fock_feedback_tolerance.get() <= 0.0
     {
         return Err(GammaValenceHfError::FockFeedbackTolerance);
     }
@@ -2371,8 +2558,7 @@ fn validate_relaxed_core_spec(spec: &RelaxedCoreHfSpec) -> Result<f64, RelaxedCo
     if !spec.fock_density_tolerance.is_finite() || spec.fock_density_tolerance <= 0.0 {
         return Err(RelaxedCoreHfError::FockTolerance);
     }
-    if !spec.fock_feedback_tolerance.get().is_finite()
-        || spec.fock_feedback_tolerance.get() <= 0.0
+    if !spec.fock_feedback_tolerance.get().is_finite() || spec.fock_feedback_tolerance.get() <= 0.0
     {
         return Err(RelaxedCoreHfError::FockFeedbackTolerance);
     }

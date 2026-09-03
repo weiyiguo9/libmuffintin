@@ -108,7 +108,10 @@ fn gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals() {
         max_fock_iterations: 32,
         fock_density_tolerance: 1.0e-7,
         fock_feedback_tolerance: Hartree(1.0e-8),
-        fock_mixing: FockMixing::Linear { alpha: 0.5 },
+        fock_mixing: FockMixing::QuasiNewtonDiis {
+            history: 8,
+            level_shift: Hartree(0.25),
+        },
     };
     let result = run_gamma_valence_hf(&mut live_physics, &hf_spec).unwrap();
     assert!(result.exchange_rebuilds >= 2);

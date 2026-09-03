@@ -50,9 +50,13 @@ cargo run -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
 
 These defaults are the deliberately loose P0 smoke profile: no HDLOs,
 $T=0.02$ Hartree, at most two outer and core steps, and at most 32 Fock
-iterations. The outer loop mixes only 0.1 of the fresh valence density; the
-core density is still replaced without mixing. Completion demonstrates that
-the production pipeline executed; it is not a claim of physical convergence.
+iterations. The fixed-potential Fock loop uses global-basis commutator CDIIS
+with history eight. `--fock-mixing quasi-newton-cdiis` selects the optional
+diagonal orbital-energy preconditioned variant; `--fock-diis-history` changes
+the history and `--fock-diis-level-shift` changes its nonnegative level shift
+in Hartree. The outer loop mixes only 0.1 of the fresh valence density; the core
+density is still replaced without mixing. Completion demonstrates that the
+production pipeline executed; it is not a claim of physical convergence.
 `--field-g 4.5` sets the independent
 atomic-start regional-field cutoff in inverse bohr, while `--orbital-g 1`
 remains the orbital-basis cutoff. The field angular cutoff is
