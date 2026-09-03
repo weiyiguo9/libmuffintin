@@ -908,6 +908,14 @@ HF or a matched-Hamiltonian variational bound. It does not support
 attributing the preceding approximately 2.48 Ha error to frozen LDA core
 without further evidence.
 
+Splitting that same isolated LDA determinant into the 28 occupied core and
+8 valence electrons (`97188a9`) gives exchange energies CC $-90.843455$ Ha,
+CV $-1.132983$ Ha, and VV $-2.926180$ Ha. The corresponding Hartree terms
+are CC $1017.352676$ Ha, CV $149.593147$ Ha, and VV $15.696265$ Ha;
+their sum reproduces the total atomic Hartree expectation. These are
+sector diagnostics on one fixed determinant, not sector targets for a
+different, unconverged LAPW density.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
