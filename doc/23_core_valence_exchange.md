@@ -503,6 +503,11 @@ Diagnostics retain separate scalar and spinor iteration/rebuild counts, the
 commutator residual, the feedback change, and the scalar-to-spinor density
 change.
 
+The spinor eigenvalue and total-energy identity gates scale with the electron
+count and the same commutator tolerance. The scalar-source identities remain
+tied to the scalar feedback tolerance because that loop retains its
+fresh-feedback convergence contract.
+
 Frozen core remains a separate radial sidecar and does not enlarge the VV MPB
 or THC orbital span. Its spherical scalar-average action is used only in the
 source solve; the SOC frame replaces it by the complete spin-resolved static

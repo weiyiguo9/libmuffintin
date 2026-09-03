@@ -809,6 +809,8 @@ fn run_kh_soc_valence_hf_inner(
         )?;
         let scalar_identity_tolerance =
             IDENTITY_TOLERANCE.max(valence_electrons.max(1.0) * spec.fock_feedback_tolerance.get());
+        let spinor_identity_tolerance = IDENTITY_TOLERANCE
+            .max(valence_electrons.max(1.0) * spec.fock_commutator_tolerance.get());
         require_gate(
             "scalar exchange energy identity",
             scalar_energy.exchange_identity_residual,
@@ -880,12 +882,12 @@ fn run_kh_soc_valence_hf_inner(
         require_gate(
             "spinor eigenvalue identity",
             energy.eigenvalue_identity_residual,
-            scalar_identity_tolerance,
+            spinor_identity_tolerance,
         )?;
         require_gate(
             "spinor HF total-energy identity",
             energy.total_identity_residual,
-            scalar_identity_tolerance,
+            spinor_identity_tolerance,
         )?;
         let energy_change = previous_total
             .map(|previous: Hartree| Hartree((energy.total.get() - previous.get()).abs()));
