@@ -190,16 +190,17 @@ flowchart TD
 ### 2.1 Scalar product-input construction
 
 The input is a validated V2 checkpoint, an `ScfConfig` whose relativity is
-scalar Koelling–Harmon, and a requested transfer in primitive reciprocal
-coordinates $q_{\mathrm{in}}$. The bridge materializes the frozen-checkpoint
-iteration basis, solves the regular full-BZ scalar eigenproblem, folds $q$ by
-section 1.1, and rejects a folded $k-q$ that is not on the regular mesh. It
-then assembles one bundle — bundle contents are section 3.2 — from the exact
-scalar iteration bases, the per-spin per $k$ eigensolution, and the exact
-compiled basis used by the solve; this bundle does not carry coefficients or
-the compiled basis on the orbital-pair source itself. SCF state is not the
-orbital source; the runtime bridge consumes each solved k-point's band
-solution directly.
+scalar Koelling–Harmon or nonmagnetic SOC second variation, and a requested
+transfer in primitive reciprocal coordinates $q_{\mathrm{in}}$. The bridge
+materializes the frozen-checkpoint iteration basis, solves the regular full-BZ
+eigenproblem, folds $q$ by section 1.1, and rejects a folded $k-q$ that is not
+on the regular mesh. It then assembles one bundle — bundle contents are section
+3.2 — from the exact scalar iteration bases, the two spin components at each
+$k$, and the exact compiled basis used by the solve. `ScalarFrozenOrbitals`
+records the relativistic route, so a scalar and second-variation frame cannot
+share a frozen context accidentally. Full first variation remains a typed
+rejection. SCF state is not the orbital source; the live-band constructor
+consumes each solved k-point's band solution directly without re-solving H0.
 
 ### 2.2 Scalar mixed-product assembly
 
@@ -216,6 +217,14 @@ One accumulator sums those primitive terms into a single checked vertex per
 selection; the bridge does not build a complete primitive vertex per
 basis-pair term. Empty selection, a spin/$k$/band outside the frozen input,
 or an incompatible pair-column layout is a typed stage-boundary rejection.
+
+For SOC second variation, `build_second_variation_mpb` contracts both Pauli
+components on that same raw scalar product space and sums them before sealing
+one vertex for each spinor band pair. Its overlap cutoff uses `nspin = 1`;
+`build_second_variation_mpb_exchange` then requires every VV column, validates
+the frozen input identity, and contracts the exact Weinert MPB Coulomb body.
+It does not reinterpret the second-variation orbitals as two independent
+collinear exchange manifolds.
 
 ### 2.3 Scalar adaptive THC selection and fit
 

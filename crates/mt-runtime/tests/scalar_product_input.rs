@@ -5,10 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use muffintin::{CheckpointPhysics, CheckpointPhysicsError, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT};
 use muffintin_core::{Bohr, Hartree, InverseBohr, ReciprocalLattice};
 use muffintin_dft::{
-    LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
-    ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfConvergence,
-    ScfCoreSite, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations, ScfRelativity,
-    XcFunctional,
+    FirstVariationWindow, LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis,
+    ScfChannelIdentity, ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig,
+    ScfConvergence, ScfCoreSite, ScfExchangeCorrelation, ScfKMesh, ScfMixing, ScfOccupations,
+    ScfRelativity, XcFunctional,
 };
 use muffintin_io::{
     AngularBasis, BasisHints, CheckpointMeta, CheckpointV1, CheckpointV2, Complex64V1,
@@ -216,15 +216,40 @@ fn support_indices(input: &muffintin::ScalarProductInput) -> Vec<[i32; 3]> {
 }
 
 #[test]
-fn scalar_product_input_rejects_non_scalar_relativity() {
+fn scalar_product_input_rejects_full_spinor_relativity() {
     let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
     let mut config = scalar_config([1, 1, 1], 0.5);
     config.relativity = ScfRelativity::SpinorFirstVariation;
     let error = physics.scalar_product_input(&config, [0.0; 3]).unwrap_err();
     assert!(matches!(
         error,
-        CheckpointPhysicsError::ScalarProductRequiresScalarRelativity
+        CheckpointPhysicsError::ScalarProductRejectsSpinorFirstVariation
     ));
+}
+
+#[test]
+fn q0_second_variation_product_input_retains_pauli_components() {
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
+    let mut config = scalar_config([1, 1, 1], 0.5);
+    config.relativity = ScfRelativity::SocSecondVariation {
+        window: FirstVariationWindow::new(0, 1).unwrap(),
+    };
+    let input = physics.scalar_product_input(&config, [0.0; 3]).unwrap();
+
+    assert_eq!(input.orbitals.relativity, config.relativity);
+    assert_eq!(input.orbitals.channels.len(), 2);
+    assert_eq!(input.orbitals.band_window.count, 2);
+    assert!(
+        input
+            .orbitals
+            .channels
+            .iter()
+            .all(|channel| channel.eigenvectors[0].columns() == 2)
+    );
+    assert_eq!(
+        input.source.provenance.reference.as_deref(),
+        Some("checkpoint-dft-frozen-second-variation-product-input")
+    );
 }
 
 #[test]

@@ -73,8 +73,8 @@ pub use input::{
 };
 pub use isdf_exchange::{
     GammaExchangeTreatment, IsdfExchangeBandMatrix, IsdfExchangeError, IsdfExchangeResult,
-    IsdfExchangeSpec, build_scalar_isdf_exchange, build_spinor_isdf_exchange,
-    build_spinor_mpb_exchange,
+    IsdfExchangeSpec, build_scalar_isdf_exchange, build_second_variation_mpb_exchange,
+    build_spinor_isdf_exchange, build_spinor_mpb_exchange,
 };
 pub use muffintin_dft::{ScalarRadialSamples, ScfKSamplingProvenance};
 pub use muffintin_prodbasis::thc::RankPolicy;
@@ -92,8 +92,10 @@ pub use scalar_coulomb::{
 };
 pub use scalar_mldump::{ScalarMldumpError, write_scalar_mldump};
 pub use scalar_mpb::{
-    SCALAR_MPB_NSPIN, ScalarMpbError, ScalarMpbPairVertex, ScalarMpbResult, ScalarMpbSelection,
-    ScalarMpbSpec, build_scalar_mpb,
+    SCALAR_MPB_NSPIN, SECOND_VARIATION_MPB_NSPIN, ScalarMpbError, ScalarMpbPairVertex,
+    ScalarMpbResult, ScalarMpbSelection, ScalarMpbSpec, SecondVariationMpbPairVertex,
+    SecondVariationMpbResult, SecondVariationMpbSelection, SecondVariationMpbSpec,
+    build_scalar_mpb, build_second_variation_mpb,
 };
 pub use scalar_product::{
     SCALAR_RADIAL_LO0, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarBandWindow, ScalarFrozenOrbitals,

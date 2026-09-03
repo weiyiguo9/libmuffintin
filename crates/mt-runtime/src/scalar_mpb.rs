@@ -3,6 +3,7 @@
 use crate::scalar_product::{ScalarProductInput, ScalarSpinChannel};
 use crate::site_coords::site_coordinate;
 use muffintin_core::{InverseBohr, ReciprocalLattice};
+use muffintin_dft::ScfRelativity;
 use muffintin_envelope::site_translation_phase;
 use muffintin_operators::lapw::CompiledBasis;
 use muffintin_operators::{CompiledSiteProjection, OperatorError};
@@ -19,6 +20,8 @@ use thiserror::Error;
 
 /// SPEX overlap-cutoff spin factor for collinear scalar mixed-product construction (`nspin = 2`).
 pub const SCALAR_MPB_NSPIN: f64 = 2.0;
+/// SPEX overlap-cutoff spin factor for one Pauli-spinor second-variation manifold.
+pub const SECOND_VARIATION_MPB_NSPIN: f64 = 1.0;
 
 /// Explicit mixed-product construction and same-spin band-pair selection.
 #[derive(Clone, Debug, PartialEq)]
@@ -56,6 +59,17 @@ pub struct ScalarMpbResult {
     pub auxiliary: CompiledAuxiliaryBasis,
     /// Selected band-pair vertices, in spec order.
     pub vertices: Vec<ScalarMpbPairVertex>,
+    /// Authoritative reciprocal lattice copied from the frozen input.
+    pub reciprocal: ReciprocalLattice,
+    /// Pair-column layout copied from the frozen input.
+    pub pair_columns: muffintin_prodbasis::PairColumnLayout,
+    frozen_input: ScalarProductInput,
+}
+
+impl ScalarMpbResult {
+    pub(crate) fn frozen_input_matches(&self, input: &ScalarProductInput) -> bool {
+        &self.frozen_input == input
+    }
 }
 
 /// One selected same-spin band-pair expansion onto the retained MPB.
@@ -72,6 +86,51 @@ pub struct ScalarMpbPairVertex {
     pub left_band: usize,
     pub right_band: usize,
     pub vertex: PairVertex,
+}
+
+/// Pauli-spinor band-pair selection for SOC second variation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SecondVariationMpbSelection {
+    pub k: usize,
+    pub left_band: usize,
+    pub right_band: usize,
+}
+
+/// Mixed-product construction for Pauli spinors represented on a scalar KH basis.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SecondVariationMpbSpec {
+    pub lattice: ReciprocalLattice,
+    pub product_l_max: u32,
+    pub product_g_max: InverseBohr,
+    pub overlap_tolerance: f64,
+    pub selections: Vec<SecondVariationMpbSelection>,
+}
+
+/// One SOC second-variation pair vertex after summing its two Pauli components.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SecondVariationMpbPairVertex {
+    pub k: usize,
+    pub column: usize,
+    pub left_band: usize,
+    pub right_band: usize,
+    pub vertex: PairVertex,
+}
+
+/// Exact scalar-radial MPB and Pauli-summed pair vertices.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SecondVariationMpbResult {
+    pub raw: RawProductSpace,
+    pub auxiliary: CompiledAuxiliaryBasis,
+    pub reciprocal: ReciprocalLattice,
+    pub pair_columns: muffintin_prodbasis::PairColumnLayout,
+    pub vertices: Vec<SecondVariationMpbPairVertex>,
+    frozen_input: ScalarProductInput,
+}
+
+impl SecondVariationMpbResult {
+    pub(crate) fn frozen_input_matches(&self, input: &ScalarProductInput) -> bool {
+        &self.frozen_input == input
+    }
 }
 
 /// Scalar mixed-product stage-boundary error.
@@ -94,6 +153,8 @@ pub enum ScalarMpbError {
     },
     #[error("scalar MPB pair-column layout is incompatible with the frozen orbitals")]
     IncompatiblePairLayout,
+    #[error("Pauli-summed MPB vertices require SOC second-variation orbitals")]
+    RequiresSecondVariation,
 }
 
 /// Construct the SPEX mixed-product basis and selected real-orbital vertices.
@@ -149,6 +210,107 @@ pub fn build_scalar_mpb(
         raw,
         auxiliary,
         vertices,
+        reciprocal: input.reciprocal,
+        pair_columns: input.pair_columns,
+        frozen_input: input.clone(),
+    })
+}
+
+/// Construct Pauli-spinor pair vertices by summing the up/down components of
+/// every SOC second-variation orbital on one common scalar mixed-product basis.
+pub fn build_second_variation_mpb(
+    input: &ScalarProductInput,
+    spec: &SecondVariationMpbSpec,
+) -> Result<SecondVariationMpbResult, ScalarMpbError> {
+    if !matches!(
+        input.orbitals.relativity,
+        ScfRelativity::SocSecondVariation { .. }
+    ) {
+        return Err(ScalarMpbError::RequiresSecondVariation);
+    }
+    if spec.selections.is_empty() {
+        return Err(ScalarMpbError::EmptySelection);
+    }
+    require_compatible_layout(input)?;
+    for selection in &spec.selections {
+        for spin in [0, 1] {
+            require_selection(
+                input,
+                ScalarMpbSelection {
+                    spin,
+                    k: selection.k,
+                    left_band: selection.left_band,
+                    right_band: selection.right_band,
+                },
+            )?;
+        }
+    }
+    let (raw, _) = spex_mixed_product_basis(
+        &input.source,
+        spec.product_l_max,
+        spec.product_g_max,
+        &spec.lattice,
+    )?;
+    let auxiliary = apply_overlap_cutoff(
+        &raw,
+        &input.source,
+        spec.overlap_tolerance,
+        SECOND_VARIATION_MPB_NSPIN,
+        &spec.lattice,
+        spec.product_g_max,
+    )?;
+    let relative_g_by_index = input
+        .source
+        .interstitial_pair_support
+        .components
+        .iter()
+        .map(|component| (component.g_relative.index, component.g_relative))
+        .collect::<HashMap<_, _>>();
+    let mut vertices = Vec::with_capacity(spec.selections.len());
+    for selection in &spec.selections {
+        let pair = OrbitalPair::Bloch {
+            k_index: selection.k,
+            left: selection.left_band,
+            right: selection.right_band,
+        };
+        let mut coefficients = vec![num_complex::Complex64::default(); auxiliary.dimension()];
+        for spin in [0, 1] {
+            let component = contract_selection(
+                input,
+                &raw,
+                &auxiliary,
+                &relative_g_by_index,
+                ScalarMpbSelection {
+                    spin,
+                    k: selection.k,
+                    left_band: selection.left_band,
+                    right_band: selection.right_band,
+                },
+            )?;
+            for (total, value) in coefficients.iter_mut().zip(component.vertex.coefficients()) {
+                *total += value;
+            }
+        }
+        vertices.push(SecondVariationMpbPairVertex {
+            k: selection.k,
+            column: input.pair_columns.encode(
+                selection.k,
+                selection.left_band,
+                selection.right_band,
+            ),
+            left_band: selection.left_band,
+            right_band: selection.right_band,
+            vertex: PairVertex::from_auxiliary(&auxiliary, pair, coefficients)
+                .map_err(MpbError::from)?,
+        });
+    }
+    Ok(SecondVariationMpbResult {
+        raw,
+        auxiliary,
+        reciprocal: input.reciprocal,
+        pair_columns: input.pair_columns,
+        vertices,
+        frozen_input: input.clone(),
     })
 }
 

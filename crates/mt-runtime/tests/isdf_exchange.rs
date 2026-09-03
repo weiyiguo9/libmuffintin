@@ -2,12 +2,17 @@
 
 use muffintin::{
     CheckpointPhysics, GammaExchangeTreatment, IsdfExchangeError, IsdfExchangeSpec,
-    NaturalThcGridError, NaturalThcGridSpec, ScalarThcError, build_natural_thc_parent_grid,
-    build_scalar_coulomb, build_scalar_isdf_exchange, build_scalar_thc, build_spinor_coulomb,
-    build_spinor_isdf_exchange, build_spinor_thc,
+    NaturalThcGridError, NaturalThcGridSpec, ScalarThcError, SecondVariationMpbSelection,
+    SecondVariationMpbSpec, build_natural_thc_parent_grid, build_scalar_coulomb,
+    build_scalar_isdf_exchange, build_scalar_thc, build_second_variation_mpb,
+    build_second_variation_mpb_exchange, build_spinor_coulomb, build_spinor_isdf_exchange,
+    build_spinor_thc,
 };
 use muffintin_core::{Bohr, Cell, ReciprocalLattice};
+use muffintin_coulomb::assemble_coulomb;
+use muffintin_dft::{FirstVariationWindow, ScfRelativity};
 use muffintin_operators::lapw::Provenance;
+use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
 use num_complex::Complex64;
 
 #[path = "scalar_hydrogen.rs"]
@@ -27,6 +32,52 @@ fn occupied_first_band(n_k: usize, n_bands: usize) -> IsdfExchangeSpec {
         occupations,
         gamma: GammaExchangeTreatment::FiniteBody,
     }
+}
+
+#[test]
+fn second_variation_mpb_exchange_contracts_pauli_summed_vertices() {
+    let physics = CheckpointPhysics::new(&scalar_hydrogen::hydrogen_checkpoint()).unwrap();
+    let mut config = scalar_hydrogen::scalar_config([1, 1, 1], 0.5);
+    config.relativity = ScfRelativity::SocSecondVariation {
+        window: FirstVariationWindow::new(0, 1).unwrap(),
+    };
+    let input = physics.scalar_product_input(&config, [0.0; 3]).unwrap();
+    let n_orb = input.pair_columns.n_orb;
+    let mpb = build_second_variation_mpb(
+        &input,
+        &SecondVariationMpbSpec {
+            lattice: input.reciprocal,
+            product_l_max: 2,
+            product_g_max: muffintin_core::InverseBohr(1.5),
+            overlap_tolerance: DEFAULT_TOLERANCE,
+            selections: (0..n_orb)
+                .flat_map(|left_band| {
+                    (0..n_orb).map(move |right_band| SecondVariationMpbSelection {
+                        k: 0,
+                        left_band,
+                        right_band,
+                    })
+                })
+                .collect(),
+        },
+    )
+    .unwrap();
+    let coulomb_spec = scalar_hydrogen::coulomb_spec();
+    let request = &coulomb_spec.request;
+    let result = build_second_variation_mpb_exchange(
+        std::slice::from_ref(&input),
+        std::slice::from_ref(&mpb),
+        request,
+        &occupied_first_band(1, n_orb),
+    )
+    .unwrap();
+    let operator = assemble_coulomb(&mpb.auxiliary, request).unwrap();
+    let direct = operator
+        .quadratic_form(&mpb.vertices[0].vertex, &mpb.vertices[0].vertex)
+        .unwrap();
+
+    assert!((result.exchange_energy.get() + 0.5 * direct.re).abs() < 1.0e-10);
+    assert!(result.maximum_antihermitian_residual < 1.0e-10);
 }
 
 #[test]

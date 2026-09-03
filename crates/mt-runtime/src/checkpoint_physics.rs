@@ -500,8 +500,12 @@ pub enum CheckpointPhysicsError {
     NonFiniteKPoint([f64; 3]),
     #[error("regular k-point set is empty")]
     EmptyKPointSet,
-    #[error("scalar product input requires scalar Koelling-Harmon relativity")]
-    ScalarProductRequiresScalarRelativity,
+    #[error("scalar-radial product input rejects full spinor first variation")]
+    ScalarProductRejectsSpinorFirstVariation,
+    #[error(
+        "scalar product k-mesh, compiled bases, eigenvectors, energies, available-band counts, and k-q map must share one ordered k slice"
+    )]
+    ScalarProductKSliceMismatch,
     #[error(
         "spinor product input requires ScfRelativity::SpinorFirstVariation, not scalar Koelling-Harmon"
     )]

@@ -74,6 +74,9 @@ pub struct ScalarSpinChannel {
 /// [`AuxiliarySource`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarFrozenOrbitals {
+    /// Scalar KH or Pauli-spinor SOC second-variation route represented on
+    /// the same scalar radial and compiled-basis coordinates.
+    pub relativity: ScfRelativity,
     pub k_fractional: Vec<[f64; 3]>,
     pub channels: Vec<ScalarSpinChannel>,
     pub band_window: ScalarBandWindow,
@@ -103,14 +106,15 @@ impl CheckpointPhysics {
     /// The emitted [`TransferQ`] stores $q_{\mathrm{canonical}}$ in $[0,1)^3$
     /// with $q_{\mathrm{in}}=q_{\mathrm{canonical}}+G_{\mathrm{transfer}}$.
     /// Each k-point is mapped with $q_{\mathrm{canonical}}$; off-mesh folded
-    /// targets are rejected. Relativity must be scalar Koelling--Harmon.
+    /// targets are rejected. Relativity may be scalar Koelling--Harmon or its
+    /// nonmagnetic SOC second variation; full first variation is rejected.
     pub fn scalar_product_input(
         &self,
         config: &ScfConfig,
         q_fractional: [f64; 3],
     ) -> Result<ScalarProductInput, CheckpointPhysicsError> {
-        if config.relativity != ScfRelativity::Scalar {
-            return Err(CheckpointPhysicsError::ScalarProductRequiresScalarRelativity);
+        if config.relativity == ScfRelativity::SpinorFirstVariation {
+            return Err(CheckpointPhysicsError::ScalarProductRejectsSpinorFirstVariation);
         }
         let transfer = canonical_transfer_q(q_fractional, *self.reciprocal())?;
         let meshes = self.kernel.channel_meshes(&config.basis)?;
@@ -142,9 +146,45 @@ impl CheckpointPhysics {
             self.frozen_potential(),
             &basis,
             &k_fractional,
-            ScfRelativity::Scalar,
+            config.relativity,
         )?;
-        emit_scalar_product_input(self, &bands, &k_fractional, transfer.q, k_minus_q)
+        emit_scalar_product_input(
+            self,
+            &bands,
+            &k_fractional,
+            transfer.q,
+            k_minus_q,
+            config.relativity,
+        )
+    }
+
+    /// Build a scalar-radial product input from one current live scalar or
+    /// SOC second-variation band solution without re-solving the local H0.
+    pub fn scalar_product_input_from_bands(
+        &self,
+        bands: &CheckpointBandSolution,
+        k_fractional: &[[f64; 3]],
+        q_fractional: [f64; 3],
+        relativity: ScfRelativity,
+    ) -> Result<ScalarProductInput, CheckpointPhysicsError> {
+        if relativity == ScfRelativity::SpinorFirstVariation {
+            return Err(CheckpointPhysicsError::ScalarProductRejectsSpinorFirstVariation);
+        }
+        if bands.points().len() != k_fractional.len() || k_fractional.is_empty() {
+            return Err(CheckpointPhysicsError::ScalarProductKSliceMismatch);
+        }
+        let transfer = canonical_transfer_q(q_fractional, *self.reciprocal())?;
+        let mut k_minus_q = Vec::with_capacity(k_fractional.len());
+        for (k_index, &k_frac) in k_fractional.iter().enumerate() {
+            let mapped =
+                map_k_minus_q(k_index, k_frac, transfer, k_fractional, *self.reciprocal())?;
+            k_minus_q.push(ScalarKMinusQ {
+                k_index: mapped.k_index,
+                kq_index: mapped.kq_index,
+                umklapp: mapped.umklapp,
+            });
+        }
+        emit_scalar_product_input(self, bands, k_fractional, transfer.q, k_minus_q, relativity)
     }
 }
 
@@ -154,6 +194,7 @@ fn emit_scalar_product_input(
     k_fractional: &[[f64; 3]],
     q: TransferQ,
     k_minus_q: Vec<ScalarKMinusQ>,
+    relativity: ScfRelativity,
 ) -> Result<ScalarProductInput, CheckpointPhysicsError> {
     let n_k = k_fractional.len();
     let mut channels = Vec::with_capacity(2);
@@ -233,12 +274,22 @@ fn emit_scalar_product_input(
         interstitial_pair_support,
         Provenance {
             recipe: None,
-            reference: Some("checkpoint-dft-frozen-scalar-product-input".to_owned()),
+            reference: Some(
+                match relativity {
+                    ScfRelativity::Scalar => "checkpoint-dft-frozen-scalar-product-input",
+                    ScfRelativity::SocSecondVariation { .. } => {
+                        "checkpoint-dft-frozen-second-variation-product-input"
+                    }
+                    ScfRelativity::SpinorFirstVariation => unreachable!(),
+                }
+                .to_owned(),
+            ),
         },
     )?;
     Ok(ScalarProductInput {
         source,
         orbitals: ScalarFrozenOrbitals {
+            relativity,
             k_fractional: k_fractional.to_vec(),
             channels,
             band_window: ScalarBandWindow {
