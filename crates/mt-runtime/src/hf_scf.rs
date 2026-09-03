@@ -616,9 +616,9 @@ pub fn run_gamma_relaxed_core_hf(
 /// Run unified relaxed-core spinor HF on one explicit full regular BZ mesh.
 ///
 /// The outer state retains valence, core, and total densities separately.
-/// Only the valence component enters the configured mixer; every core density
-/// is synthesized from the freshly relaxed sidecars and replaces the preceding
-/// core density without mixing.
+/// The complete total density enters the configured mixer. Core orbitals are
+/// still solved freshly at every outer step; after mixing, their fresh density
+/// is subtracted from the mixed total density to recover the next valence input.
 pub fn run_relaxed_core_hf(
     physics: &mut CheckpointPhysics,
     spec: &RelaxedCoreHfSpec,
@@ -781,8 +781,8 @@ pub fn run_relaxed_core_hf(
         let mut next_valence = None;
         let mut next_total = None;
         if !converged {
-            let mixed_valence = mixer.mix(&valence_density, &valence_output)?.density;
-            let mixed_total = sum_density(&mixed_valence, &fresh_core_density)?;
+            let mixed_total = mixer.mix(&total_density, &total_output)?.density;
+            let mixed_valence = mixed_total.difference(&fresh_core_density)?;
             next_valence = Some(mixed_valence);
             next_total = Some(mixed_total);
         }

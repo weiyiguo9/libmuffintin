@@ -594,9 +594,10 @@ M3c is the implemented full merge. `RelaxedCoreHfSpec`,
 regular-mesh engine. `run_gamma_relaxed_core_hf` checks only the $1\times1\times1$
 zero-shift full mesh and explicit `FiniteBody` policy before calling that same
 engine. The driver combines Track A2 with the relaxed Fock core, gives the
-valence equation VV+CV feedback and the core equation CC+VC feedback, replaces
-the core density fresh on every outer iteration, and mixes only the valence
-density. Every live orbital update rebuilds VV, CV, VC, and CC from one complete
+valence equation VV+CV feedback and the core equation CC+VC feedback, rebuilds
+the core density fresh on every outer iteration, and mixes the complete total
+density. The fresh core density is subtracted from the mixed total to recover
+the next valence input. Every live orbital update rebuilds VV, CV, VC, and CC from one complete
 canonical $q$ slice carrying the same fresh core sidecars. Final $\delta_c$
 diagnostics are formed from that final rebuilt frame rather than the bootstrap
 or pre-update sidecars.

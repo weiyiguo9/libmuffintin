@@ -54,15 +54,40 @@ iterations. The fixed-potential Fock loop uses global-basis commutator CDIIS
 with history eight. `--fock-mixing quasi-newton-cdiis` selects the optional
 diagonal orbital-energy preconditioned variant; `--fock-diis-history` changes
 the history and `--fock-diis-level-shift` changes its nonnegative level shift
-in Hartree. The outer loop mixes only 0.1 of the fresh valence density; the core
-density is still replaced without mixing. Completion demonstrates that the
-production pipeline executed; it is not a claim of physical convergence.
+in Hartree. The outer loop mixes the complete total regional density. Relaxed
+core orbitals are still solved freshly at every outer step; their fresh density
+is subtracted from the mixed total density to recover the next valence input.
+Completion demonstrates that the production pipeline executed; it is not a
+claim of physical convergence.
 `--field-g 4.5` sets the independent
 atomic-start regional-field cutoff in inverse bohr, while `--orbital-g 1`
 remains the orbital-basis cutoff. The field angular cutoff is
 `2 * (orbital_lmax + 1)` so the Dirac small-component products retain their
 complete channel layout. The 2401-point muffin-tin mesh resolves the separate
 full-space and muffin-tin core norm quadratures used by the spill gate.
+
+For a bounded production-convergence attempt, set the outer and core gates
+explicitly together with the larger orbital and product bases:
+
+```sh
+cargo run --release -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
+  --out kr-relaxed-core-hf-production \
+  --box 8 --orbital-g 2 --field-g 4.5 --orbital-lmax 4 \
+  --product-g 2 --product-lmax 4 --lexp 4 \
+  --rmt 2 --radial-points 2401 --hdlo all --temperature 1e-6 \
+  --outer-mixing pulay --outer-mixing-alpha 0.1 --outer-mixing-history 8 \
+  --outer-max-iterations 64 --outer-energy-tolerance 1e-7 \
+  --outer-density-tolerance 1e-6 \
+  --core-max-iterations 32 --core-energy-tolerance 1e-8 \
+  --core-radial-tolerance 1e-8 \
+  --fock-max-iterations 128 --fock-mixing cdiis --fock-diis-history 8
+```
+
+The program returns a result only after the configured energy, total-density,
+inner-Fock, and core gates pass. Output status
+`configured_convergence_reached` therefore means the recorded controls passed;
+whether those controls are physically adequate remains part of the basis, box,
+and tolerance convergence study.
 
 The output directory contains:
 

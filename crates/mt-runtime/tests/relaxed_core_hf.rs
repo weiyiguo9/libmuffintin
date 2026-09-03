@@ -69,7 +69,7 @@ fn closed_shell_core_valence_setup() -> (muffintin_io::CheckpointV2, RelaxedCore
 }
 
 #[test]
-fn neutral_closed_shell_replaces_core_mixes_only_valence_and_keeps_gamma_parity() {
+fn neutral_closed_shell_mixes_total_density_and_keeps_gamma_parity() {
     let (checkpoint, spec) = closed_shell_core_valence_setup();
     let mut gamma_physics = CheckpointPhysics::new(&checkpoint).unwrap();
     let gamma = run_gamma_relaxed_core_hf(&mut gamma_physics, &spec).unwrap();

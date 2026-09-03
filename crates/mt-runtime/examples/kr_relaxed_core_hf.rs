@@ -39,6 +39,7 @@ const MINIMUM_ANGULAR_GRID_POINTS: usize = 50;
 const OUTER_MAX_ITERATIONS: usize = 2;
 const CORE_MAX_ITERATIONS: usize = 2;
 const OUTER_MIXING_ALPHA: f64 = 0.1;
+const OUTER_MIXING_HISTORY: usize = 8;
 const MAX_FOCK_ITERATIONS: usize = 32;
 const LOOSE_TOLERANCE: f64 = 1.0e100;
 const FOCK_DENSITY_TOLERANCE: f64 = 1.0e-5;
@@ -60,6 +61,39 @@ enum HdloSelection {
 enum FockMixerSelection {
     Cdiis,
     QuasiNewtonCdiis,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum OuterMixerSelection {
+    Linear,
+    Pulay,
+}
+
+impl OuterMixerSelection {
+    fn parse(value: &str) -> Result<Self, Box<dyn Error>> {
+        match value {
+            "linear" => Ok(Self::Linear),
+            "pulay" => Ok(Self::Pulay),
+            _ => Err(invalid_input(format!(
+                "--outer-mixing must be linear or pulay, got {value:?}"
+            ))),
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Linear => "linear-total-density",
+            Self::Pulay => "pulay-anderson-total-density",
+        }
+    }
+
+    const fn build(self, alpha: f64, history: usize) -> ScfMixing {
+        match self {
+            Self::Linear => ScfMixing::Linear { alpha },
+            Self::Pulay => ScfMixing::PulayAnderson { alpha, history },
+        }
+    }
 }
 
 impl FockMixerSelection {
@@ -114,6 +148,15 @@ struct Cli {
     radial_points: usize,
     hdlo: HdloSelection,
     temperature: f64,
+    outer_max_iterations: usize,
+    outer_energy_tolerance: f64,
+    outer_density_tolerance: f64,
+    outer_mixing: OuterMixerSelection,
+    outer_mixing_alpha: f64,
+    outer_mixing_history: usize,
+    core_max_iterations: usize,
+    core_energy_tolerance: f64,
+    core_radial_tolerance: f64,
     max_fock_iterations: usize,
     fock_mixing: FockMixerSelection,
     fock_diis_history: usize,
@@ -135,6 +178,15 @@ impl Default for Cli {
             radial_points: 2_401,
             hdlo: HdloSelection::None,
             temperature: 0.02,
+            outer_max_iterations: OUTER_MAX_ITERATIONS,
+            outer_energy_tolerance: LOOSE_TOLERANCE,
+            outer_density_tolerance: LOOSE_TOLERANCE,
+            outer_mixing: OuterMixerSelection::Pulay,
+            outer_mixing_alpha: OUTER_MIXING_ALPHA,
+            outer_mixing_history: OUTER_MIXING_HISTORY,
+            core_max_iterations: CORE_MAX_ITERATIONS,
+            core_energy_tolerance: LOOSE_TOLERANCE,
+            core_radial_tolerance: LOOSE_TOLERANCE,
             max_fock_iterations: MAX_FOCK_ITERATIONS,
             fock_mixing: FockMixerSelection::Cdiis,
             fock_diis_history: FOCK_DIIS_HISTORY,
@@ -164,6 +216,23 @@ impl Cli {
                 "--radial-points" => cli.radial_points = parse_value(&name, &value)?,
                 "--hdlo" => cli.hdlo = HdloSelection::parse(&value)?,
                 "--temperature" => cli.temperature = parse_value(&name, &value)?,
+                "--outer-max-iterations" => cli.outer_max_iterations = parse_value(&name, &value)?,
+                "--outer-energy-tolerance" => {
+                    cli.outer_energy_tolerance = parse_value(&name, &value)?
+                }
+                "--outer-density-tolerance" => {
+                    cli.outer_density_tolerance = parse_value(&name, &value)?
+                }
+                "--outer-mixing" => cli.outer_mixing = OuterMixerSelection::parse(&value)?,
+                "--outer-mixing-alpha" => cli.outer_mixing_alpha = parse_value(&name, &value)?,
+                "--outer-mixing-history" => cli.outer_mixing_history = parse_value(&name, &value)?,
+                "--core-max-iterations" => cli.core_max_iterations = parse_value(&name, &value)?,
+                "--core-energy-tolerance" => {
+                    cli.core_energy_tolerance = parse_value(&name, &value)?
+                }
+                "--core-radial-tolerance" => {
+                    cli.core_radial_tolerance = parse_value(&name, &value)?
+                }
                 "--fock-max-iterations" => cli.max_fock_iterations = parse_value(&name, &value)?,
                 "--fock-mixing" => cli.fock_mixing = FockMixerSelection::parse(&value)?,
                 "--fock-diis-history" => cli.fock_diis_history = parse_value(&name, &value)?,
@@ -185,6 +254,11 @@ impl Cli {
             ("--field-g", self.field_g),
             ("--product-g", self.product_g),
             ("--temperature", self.temperature),
+            ("--outer-energy-tolerance", self.outer_energy_tolerance),
+            ("--outer-density-tolerance", self.outer_density_tolerance),
+            ("--outer-mixing-alpha", self.outer_mixing_alpha),
+            ("--core-energy-tolerance", self.core_energy_tolerance),
+            ("--core-radial-tolerance", self.core_radial_tolerance),
         ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(invalid_input(format!(
@@ -203,6 +277,18 @@ impl Cli {
         }
         if self.radial_points < 2 {
             return Err(invalid_input("--radial-points must be at least 2"));
+        }
+        if self.outer_max_iterations < 2 {
+            return Err(invalid_input("--outer-max-iterations must be at least 2"));
+        }
+        if self.outer_mixing_alpha > 1.0 {
+            return Err(invalid_input("--outer-mixing-alpha must not exceed 1"));
+        }
+        if self.outer_mixing_history < 2 {
+            return Err(invalid_input("--outer-mixing-history must be at least 2"));
+        }
+        if self.core_max_iterations == 0 {
+            return Err(invalid_input("--core-max-iterations must be positive"));
         }
         if self.max_fock_iterations < 2 {
             return Err(invalid_input("--fock-max-iterations must be at least 2"));
@@ -278,7 +364,9 @@ struct ParameterManifest {
     gamma_exchange: &'static str,
     relativity: &'static str,
     exchange_correlation: &'static str,
+    outer_mixing_algorithm: &'static str,
     outer_mixing_alpha: f64,
+    outer_mixing_history: Option<usize>,
     outer_energy_tolerance_hartree: f64,
     outer_density_tolerance: f64,
     outer_max_iterations: usize,
@@ -592,14 +680,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             functional: XcFunctional::LdaPw92,
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
         },
-        mixing: ScfMixing::Linear {
-            alpha: OUTER_MIXING_ALPHA,
-        },
+        mixing: cli
+            .outer_mixing
+            .build(cli.outer_mixing_alpha, cli.outer_mixing_history),
         relativity: ScfRelativity::SpinorFirstVariation,
         convergence: ScfConvergence {
-            energy_tolerance: Hartree(LOOSE_TOLERANCE),
-            density_tolerance: LOOSE_TOLERANCE,
-            max_iterations: OUTER_MAX_ITERATIONS,
+            energy_tolerance: Hartree(cli.outer_energy_tolerance),
+            density_tolerance: cli.outer_density_tolerance,
+            max_iterations: cli.outer_max_iterations,
         },
         core_sites: vec![ScfCoreSite {
             id: SITE_ID.to_owned(),
@@ -632,8 +720,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (git_sha, git_dirty) = git_provenance()?;
     let manifest = Manifest {
-        schema_version: 1,
-        status: "prepared_smoke",
+        schema_version: 2,
+        status: "prepared",
         system: SystemManifest {
             element: "Kr",
             atomic_number: KR_Z,
@@ -672,15 +760,20 @@ fn main() -> Result<(), Box<dyn Error>> {
             gamma_exchange: "finite-body",
             relativity: "spinor-first-variation with fully-relativistic Dirac radial equation",
             exchange_correlation: "LDA-PW92 local-spin-frame",
-            outer_mixing_alpha: OUTER_MIXING_ALPHA,
-            outer_energy_tolerance_hartree: LOOSE_TOLERANCE,
-            outer_density_tolerance: LOOSE_TOLERANCE,
-            outer_max_iterations: OUTER_MAX_ITERATIONS,
+            outer_mixing_algorithm: cli.outer_mixing.as_str(),
+            outer_mixing_alpha: cli.outer_mixing_alpha,
+            outer_mixing_history: match cli.outer_mixing {
+                OuterMixerSelection::Linear => None,
+                OuterMixerSelection::Pulay => Some(cli.outer_mixing_history),
+            },
+            outer_energy_tolerance_hartree: cli.outer_energy_tolerance,
+            outer_density_tolerance: cli.outer_density_tolerance,
+            outer_max_iterations: cli.outer_max_iterations,
             core_action_mixing: 1.0,
-            core_energy_tolerance_hartree: LOOSE_TOLERANCE,
-            core_radial_tolerance: LOOSE_TOLERANCE,
+            core_energy_tolerance_hartree: cli.core_energy_tolerance,
+            core_radial_tolerance: cli.core_radial_tolerance,
             core_vc_imaginary_tolerance: 1.0e-8,
-            core_max_iterations: CORE_MAX_ITERATIONS,
+            core_max_iterations: cli.core_max_iterations,
             max_fock_iterations: cli.max_fock_iterations,
             fock_density_tolerance: FOCK_DENSITY_TOLERANCE,
             fock_feedback_tolerance_hartree: FOCK_FEEDBACK_TOLERANCE_HARTREE,
@@ -743,10 +836,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         },
         core: CoreFixedPotentialSpec {
             action_mixing: 1.0,
-            energy_tolerance: Hartree(LOOSE_TOLERANCE),
-            radial_tolerance: LOOSE_TOLERANCE,
+            energy_tolerance: Hartree(cli.core_energy_tolerance),
+            radial_tolerance: cli.core_radial_tolerance,
             vc_imaginary_tolerance: 1.0e-8,
-            max_iterations: CORE_MAX_ITERATIONS,
+            max_iterations: cli.core_max_iterations,
         },
         sector_numerical_tolerance: Hartree(SECTOR_NUMERICAL_TOLERANCE_HARTREE),
         maximum_core_shell_spill: MAXIMUM_CORE_SHELL_SPILL,
@@ -755,7 +848,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let result = run_gamma_relaxed_core_hf(&mut physics, &spec)?;
 
     let iterations = IterationsFile {
-        status: "smoke_completed",
+        status: "configured_convergence_reached",
         iterations: result.diagnostics.iter().map(iteration_record).collect(),
     };
     write_toml(&cli.out.join("iterations.toml"), &iterations)?;
@@ -771,13 +864,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "hf.driver".to_owned(),
                 "run_gamma_relaxed_core_hf".to_owned(),
             ),
-            ("hf.status".to_owned(), "smoke_completed".to_owned()),
+            (
+                "hf.status".to_owned(),
+                "configured_convergence_reached".to_owned(),
+            ),
         ]),
     )?;
     write_checkpoint(&cli.out.join("final-checkpoint.toml"), &final_checkpoint)?;
 
     println!(
-        "status=smoke_completed out={} total_energy_hartree={} outer_iterations={} exchange_rebuilds={}",
+        "status=configured_convergence_reached out={} total_energy_hartree={} outer_iterations={} exchange_rebuilds={}",
         cli.out.display(),
         result.total_energy.get(),
         result.diagnostics.len(),
@@ -1060,7 +1156,7 @@ fn result_record(result: &RelaxedCoreHfResult) -> ResultFile {
     let exchange = &result.sector_exchange;
     let comparison = &result.core_valence_comparison;
     ResultFile {
-        status: "smoke_completed",
+        status: "configured_convergence_reached",
         total_energy_hartree: result.total_energy.get(),
         sector_energies: SectorEnergies {
             vv_hartree: exchange.exchange_vv.get(),
