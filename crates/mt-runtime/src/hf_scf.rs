@@ -17,7 +17,7 @@ use muffintin_dft::{
 };
 use muffintin_operators::{
     Collinear, OperatorError, SecondVariationMixing, lift_band_hermitian_feedback,
-    solve_generalized_hermitian,
+    solve_generalized_hermitian, solve_real_symmetric,
 };
 use muffintin_tensor::{Axis, ComplexTensor, DenseHermitianMatrix, TensorError, einsum};
 use num_complex::Complex64;
@@ -54,6 +54,7 @@ use crate::{
 const SPECTRAL_REFINEMENT_PASSES: usize = 16;
 const IDENTITY_TOLERANCE: f64 = 2.0e-8;
 const ELECTRON_COUNT_TOLERANCE: f64 = 1.0e-8;
+const DIIS_LINEAR_DEPENDENCE_TOLERANCE: f64 = 1.0e-14;
 
 /// Mixing algorithm for the fixed-potential global exchange feedback.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -3315,7 +3316,8 @@ fn feedback_pulay_coefficients(
     }
     let mut right = vec![0.0; dimension];
     right[number] = 1.0;
-    Ok(solve_feedback_dense(constrained, right)?.map(|solution| solution[..number].to_vec()))
+    Ok(solve_feedback_pseudoinverse(constrained, right)?
+        .map(|solution| solution[..number].to_vec()))
 }
 
 fn feedback_error_inner_product(
@@ -3361,64 +3363,43 @@ fn combine_feedback_records(
     Ok(mixed)
 }
 
-fn solve_feedback_dense(
-    mut matrix: Vec<Vec<f64>>,
-    mut right: Vec<f64>,
+fn solve_feedback_pseudoinverse(
+    matrix: Vec<Vec<f64>>,
+    right: Vec<f64>,
 ) -> Result<Option<Vec<f64>>, GammaValenceHfError> {
     let dimension = right.len();
-    if matrix.iter().flatten().any(|value| !value.is_finite())
+    if dimension == 0
+        || matrix.len() != dimension
+        || matrix.iter().any(|row| row.len() != dimension)
+        || matrix.iter().flatten().any(|value| !value.is_finite())
         || right.iter().any(|value| !value.is_finite())
     {
         return Err(GammaValenceHfError::FockMixingAlgebra);
     }
-    let scale = matrix
-        .iter()
-        .flatten()
-        .chain(&right)
-        .map(|value| value.abs())
-        .fold(0.0, f64::max);
-    if scale == 0.0 {
-        return Ok(None);
-    }
-    let tolerance = 256.0 * f64::EPSILON * scale * dimension.max(1) as f64;
-    for column in 0..dimension {
-        let pivot = (column..dimension)
-            .max_by(|&left, &right_row| {
-                matrix[left][column]
-                    .abs()
-                    .total_cmp(&matrix[right_row][column].abs())
-            })
-            .expect("the constrained Pulay matrix is nonempty");
-        if matrix[pivot][column].abs() <= tolerance {
-            return Ok(None);
-        }
-        matrix.swap(column, pivot);
-        right.swap(column, pivot);
-        for row in column + 1..dimension {
-            let factor = matrix[row][column] / matrix[column][column];
-            matrix[row][column] = 0.0;
-            let (upper, lower) = matrix.split_at_mut(row);
-            let pivot_tail = &upper[column][column + 1..];
-            let target_tail = &mut lower[0][column + 1..];
-            for (target, &pivot_entry) in target_tail.iter_mut().zip(pivot_tail) {
-                *target -= factor * pivot_entry;
-            }
-            right[row] -= factor * right[column];
-        }
-    }
+    let eigen = solve_real_symmetric(dimension, |row, column| matrix[row][column])?;
     let mut solution = vec![0.0; dimension];
-    for row in (0..dimension).rev() {
-        let tail = matrix[row][row + 1..]
-            .iter()
-            .zip(&solution[row + 1..])
-            .map(|(coefficient, value)| coefficient * value)
-            .sum::<f64>();
-        solution[row] = (right[row] - tail) / matrix[row][row];
-        if !solution[row].is_finite() {
-            return Err(GammaValenceHfError::FockMixingAlgebra);
+    let mut retained = 0;
+    for column in 0..dimension {
+        let eigenvalue = eigen.eigenvalues[column];
+        if eigenvalue.abs() <= DIIS_LINEAR_DEPENDENCE_TOLERANCE {
+            continue;
+        }
+        retained += 1;
+        let projection = (0..dimension)
+            .map(|row| eigen.eigenvectors[row + column * dimension] * right[row])
+            .sum::<f64>()
+            / eigenvalue;
+        for (row, value) in solution.iter_mut().enumerate() {
+            *value += eigen.eigenvectors[row + column * dimension] * projection;
         }
     }
-    Ok(Some(solution))
+    if retained == 0 {
+        Ok(None)
+    } else if solution.iter().all(|value| value.is_finite()) {
+        Ok(Some(solution))
+    } else {
+        Err(GammaValenceHfError::FockMixingAlgebra)
+    }
 }
 
 fn global_feedback_difference(
@@ -4351,6 +4332,28 @@ fn require_relaxed_gate(
 mod tests {
     use super::*;
     use muffintin_tensor::DenseEigenvectors;
+
+    #[test]
+    fn diis_pseudoinverse_retains_constraint_with_dependent_errors() {
+        let error = vec![Complex64::new(1.0, 0.0), Complex64::new(0.0, 2.0)];
+        let history = vec![
+            FeedbackMixRecord {
+                candidate: Vec::new(),
+                error: error.clone(),
+            },
+            FeedbackMixRecord {
+                candidate: Vec::new(),
+                error,
+            },
+        ];
+
+        let coefficients = feedback_pulay_coefficients(&history).unwrap().unwrap();
+
+        assert_eq!(coefficients.len(), 2);
+        assert!((coefficients.iter().sum::<f64>() - 1.0).abs() < 1.0e-12);
+        assert!((coefficients[0] - 0.5).abs() < 1.0e-12);
+        assert!((coefficients[1] - 0.5).abs() < 1.0e-12);
+    }
 
     #[test]
     fn physical_feedback_residual_is_invariant_under_band_gauge_rotation() {

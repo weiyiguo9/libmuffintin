@@ -423,6 +423,11 @@ the corresponding $k$ weight and concatenated before the constrained DIIS
 solve. The coefficients sum to one, so extrapolating only $K[D]$ is equivalent
 to extrapolating the full Fock matrix while keeping $H_0$ fixed. The error is
 always represented in the global basis rather than a changing orbital gauge.
+The constrained DIIS matrix is solved by a real-symmetric eigendecomposition;
+directions with eigenvalue magnitude at most $10^{-14}$ are removed before
+forming the pseudoinverse. Linearly dependent histories therefore retain the
+remaining Pulay subspace instead of silently falling back to the latest raw
+Fock operator.
 `QuasiNewtonDiis` additionally divides the commutator in the instantaneous
 orbital basis by $|\varepsilon_a-\varepsilon_i|+\lambda$ and lifts the result
 back to the same global basis before building the DIIS metric. This is a
