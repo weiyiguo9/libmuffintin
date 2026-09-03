@@ -164,6 +164,7 @@ pub fn run_frozen_core_hf(
             &fresh,
             None,
             FeedbackChannel::Spinor,
+            None,
         )?);
         let feedback_residual = previous_feedback
             .as_ref()

@@ -417,23 +417,40 @@ incompatible radial frames.
 `GammaValenceHfSpec::fock_mixing` explicitly controls consecutive lifted
 physical-basis exchange operators inside one fixed H0/S frame. The
 `CommutatorDiis` path forms the density matrix $D=C f C^\dagger$, constructs
-the fresh Fock matrix $F=H_0+K[D]$, and uses $SDF-FDS$ as its CDIIS error.
+the fresh Fock matrix $F=H_0+K[D]$, and uses its active-space commutator
+as the CDIIS error. A fixed reference $C_0$ is taken from the first CDIIS
+record, with $C_0^\dagger S C_0=I$. It spans exactly the retained allowed
+space, including the core-null constraint when present. With
+$U=C_0^\dagger S C$ and $F_b=C^\dagger F C$, the stored residual is
+
+```math
+R_0=U[f,F_b]U^\dagger.
+```
+
+This is the projected commutator in a fixed orthonormal frame, analogous to
+PySCF's `Corth` metric. It removes raw LAPW coordinate scaling from the
+DIIS inner product without comparing errors in changing orbital gauges.
 For a full regular mesh, the error blocks are weighted by the square root of
 the corresponding $k$ weight and concatenated before the constrained DIIS
 solve. The coefficients sum to one, so extrapolating only $K[D]$ is equivalent
-to extrapolating the full Fock matrix while keeping $H_0$ fixed. The error is
-always represented in the global basis rather than a changing orbital gauge.
+to extrapolating the full Fock matrix while keeping $H_0$ fixed. Fock
+candidates remain in their original global basis; only the error metric is
+changed. The reference is discarded with the mixer whenever a new radial
+or core frame starts. The second-variation spinor mixer already uses a
+fixed orthonormal scalar-state frame and is unchanged.
 Both commutator variants may delay DIIS by an explicit number of startup
 updates. During that interval the fresh feedback is damped against the prior
 feedback; no startup vector is inserted into the later DIIS history. Zero
 startup steps and zero damping recover immediate CDIIS.
 `QuasiNewtonDiis` additionally divides the commutator in the instantaneous
-orbital basis by $|\varepsilon_a-\varepsilon_i|+\lambda$ and lifts the result
-back to the same global basis before building the DIIS metric. This is a
+orbital basis by $|\varepsilon_a-\varepsilon_i|+\lambda$ and rotates the result
+back to the same reference frame before building the DIIS metric. This is a
 diagonal orbital-Hessian preconditioner, not a full Newton response or an
 evaluation of $\delta K[\delta P]$.
 This is a recorded Fock iteration control, not a silent fallback and not a
 replacement for the outer regional-density mixer.
+Physical residual diagnostics and convergence gates retain their existing
+unmixed, unpreconditioned definition; this metric change does not relax them.
 
 The driver reports the anti-Hermitian residual, Fock fixed-point residual,
 regional density RMS, electron count, exchange and total energies, the direct

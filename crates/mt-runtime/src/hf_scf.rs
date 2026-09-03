@@ -3108,6 +3108,8 @@ struct FeedbackMixer {
     mixing: FockMixing,
     history: Vec<FeedbackMixRecord>,
     updates: usize,
+    /// S C_ref from the first CDIIS record; C_ref spans the fixed allowed space.
+    reference_overlap_vectors: Vec<ComplexTensor>,
 }
 
 impl FeedbackMixer {
@@ -3116,6 +3118,7 @@ impl FeedbackMixer {
             mixing,
             history: Vec::new(),
             updates: 0,
+            reference_overlap_vectors: Vec::new(),
         }
     }
 
@@ -3213,11 +3216,25 @@ impl FeedbackMixer {
             ),
             FockMixing::CommutatorDiis { .. } => (
                 output.to_vec(),
-                commutator_diis_error(bands, occupations, output, None, channel)?,
+                commutator_diis_error(
+                    bands,
+                    occupations,
+                    output,
+                    None,
+                    channel,
+                    Some(&mut self.reference_overlap_vectors),
+                )?,
             ),
             FockMixing::QuasiNewtonDiis { level_shift, .. } => (
                 output.to_vec(),
-                commutator_diis_error(bands, occupations, output, Some(level_shift), channel)?,
+                commutator_diis_error(
+                    bands,
+                    occupations,
+                    output,
+                    Some(level_shift),
+                    channel,
+                    Some(&mut self.reference_overlap_vectors),
+                )?,
             ),
         };
         self.push_and_combine(candidate, error)
@@ -3354,6 +3371,7 @@ fn commutator_diis_error(
     feedback: &[DenseHermitianMatrix],
     level_shift: Option<Hartree>,
     channel: FeedbackChannel,
+    mut reference_overlap_vectors: Option<&mut Vec<ComplexTensor>>,
 ) -> Result<Vec<Complex64>, GammaValenceHfError> {
     if bands.points().len() != occupations.len() || bands.points().len() != feedback.len() {
         return Err(GammaValenceHfError::ExchangeKIndex {
@@ -3362,7 +3380,13 @@ fn commutator_diis_error(
         });
     }
     let mut error = Vec::new();
-    for ((point, occupations), feedback) in bands.points().iter().zip(occupations).zip(feedback) {
+    for (k, ((point, occupations), feedback)) in bands
+        .points()
+        .iter()
+        .zip(occupations)
+        .zip(feedback)
+        .enumerate()
+    {
         let (eigenproblem, solution) = match (channel, &point.solution) {
             (
                 FeedbackChannel::Spinor,
@@ -3419,7 +3443,7 @@ fn commutator_diis_error(
                 basis.core_orthogonalization.is_some()
             }
         };
-        if level_shift.is_some() || core_constrained {
+        if level_shift.is_some() || core_constrained || reference_overlap_vectors.is_some() {
             let projected_fock = einsum(
                 "ia,ij,jb->ab",
                 &[
@@ -3455,15 +3479,36 @@ fn commutator_diis_error(
                 &[Axis::Band, Axis::Band],
                 preconditioned,
             )?;
-            let rotated = einsum(
-                "ia,ab,jb->ij",
-                &[
-                    solution.eigenvectors.as_tensor(),
-                    &preconditioned,
-                    &conjugate,
-                ],
-            )?;
-            error.extend(
+            let represented = if let Some(reference) = reference_overlap_vectors.as_deref_mut() {
+                if reference.len() == k {
+                    reference.push(einsum(
+                        "ij,jb->ib",
+                        &[
+                            eigenproblem.overlap.as_tensor(),
+                            solution.eigenvectors.as_tensor(),
+                        ],
+                    )?);
+                }
+                // U = C_ref^dagger S C maps the instantaneous orbital residual
+                // into one fixed orthonormal active frame, not the raw AO metric.
+                let rotation = einsum(
+                    "ia,ib->ab",
+                    &[&reference[k].conjugate(), solution.eigenvectors.as_tensor()],
+                )?;
+                einsum(
+                    "ia,ab,jb->ij",
+                    &[&rotation, &preconditioned, &rotation.conjugate()],
+                )?
+            } else {
+                // Keep the existing physical diagnostic and acceptance metric.
+                let rotated = einsum(
+                    "ia,ab,jb->ij",
+                    &[
+                        solution.eigenvectors.as_tensor(),
+                        &preconditioned,
+                        &conjugate,
+                    ],
+                )?;
                 einsum(
                     "ij,jk,kl->il",
                     &[
@@ -3472,9 +3517,12 @@ fn commutator_diis_error(
                         eigenproblem.overlap.as_tensor(),
                     ],
                 )?
-                .to_host_row_major()
-                .into_iter()
-                .map(|value| weight * value),
+            };
+            error.extend(
+                represented
+                    .to_host_row_major()
+                    .into_iter()
+                    .map(|value| weight * value),
             );
         } else {
             let occupation_tensor = ComplexTensor::from_host_row_major(
