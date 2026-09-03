@@ -60,11 +60,12 @@ pub use dft_scf::{
 };
 pub use error::{InputError, InputValidationError};
 pub use hf_scf::{
-    FockMixing, GammaValenceHfError, GammaValenceHfIterationDiagnostic, GammaValenceHfResult,
+    CoreValenceHfError, FockMixing, FrozenCoreHfIterationDiagnostic, FrozenCoreHfResult,
+    FrozenCoreHfSpec, GammaValenceHfError, GammaValenceHfIterationDiagnostic, GammaValenceHfResult,
     GammaValenceHfSpec, KhSocCoreTreatment, KhSocHartreeUpdate, KhSocValenceHfError,
     KhSocValenceHfIterationDiagnostic, KhSocValenceHfResult, KhSocValenceHfSpec,
-    RelaxedCoreHfError, RelaxedCoreHfIterationDiagnostic, RelaxedCoreHfResult, RelaxedCoreHfSpec,
-    ValenceHfError, ValenceHfIterationDiagnostic, ValenceHfResult, ValenceHfSpec,
+    RelaxedCoreHfIterationDiagnostic, RelaxedCoreHfResult, RelaxedCoreHfSpec, ValenceHfError,
+    ValenceHfIterationDiagnostic, ValenceHfResult, ValenceHfSpec, run_frozen_core_hf,
     run_gamma_kh_soc_valence_hf, run_gamma_relaxed_core_hf, run_gamma_valence_hf,
     run_kh_soc_valence_hf, run_relaxed_core_hf, run_valence_hf,
 };

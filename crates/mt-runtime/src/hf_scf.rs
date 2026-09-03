@@ -1,5 +1,10 @@
 //! Full-regular-BZ spinor-first valence Hartree--Fock SCF.
 
+mod frozen_core;
+pub use frozen_core::{
+    FrozenCoreHfIterationDiagnostic, FrozenCoreHfResult, FrozenCoreHfSpec, run_frozen_core_hf,
+};
+
 use muffintin_core::{FourierLayout, Hartree, InverseBohr};
 use muffintin_coulomb::{
     CoreCoreFockError, CoreCoreFockShell, CoulombOperator, CoulombRequest, HartreeError,
@@ -385,34 +390,50 @@ pub struct RelaxedCoreHfResult {
     pub diagnostics: Vec<RelaxedCoreHfIterationDiagnostic>,
 }
 
-/// Invalid relaxed-core controls or a failed bounded HF solve.
+/// Invalid core-valence HF controls or a failed frozen/relaxed-core solve.
 #[derive(Debug, Error)]
-pub enum RelaxedCoreHfError {
+pub enum CoreValenceHfError {
+    #[error("failed to write frozen-core HF iteration: {0}")]
+    IterationOutput(#[from] std::io::Error),
+    #[error("frozen-core HF commutator tolerance must be finite and positive")]
+    CommutatorTolerance,
+    #[error("frozen-core HF virtual level shift must be finite and nonnegative")]
+    VirtualLevelShift,
+    #[error(
+        "coupled frozen-core HF failed after {iterations} iterations: energy change {energy_change} Ha, density residual {density_residual}, commutator {commutator_residual} Ha, active feedback {feedback_residual} Ha"
+    )]
+    FrozenNotConverged {
+        iterations: usize,
+        energy_change: f64,
+        density_residual: f64,
+        commutator_residual: f64,
+        feedback_residual: f64,
+    },
     #[error("Gamma relaxed-core HF requires a 1x1x1 full k mesh with zero shift")]
     GammaMesh,
     #[error("Gamma relaxed-core HF requires explicit FiniteBody exchange")]
     GammaFiniteBody,
-    #[error("relaxed-core HF requires an explicit full regular Brillouin-zone mesh")]
+    #[error("core-valence HF requires an explicit full regular Brillouin-zone mesh")]
     SymmetryReduction,
-    #[error("relaxed-core HF regular k mesh cannot define its canonical q topology")]
+    #[error("core-valence HF regular k mesh cannot define its canonical q topology")]
     QTopology,
-    #[error("relaxed-core HF requires ScfRelativity::SpinorFirstVariation")]
+    #[error("core-valence HF requires ScfRelativity::SpinorFirstVariation")]
     SpinorFirstVariation,
-    #[error("relaxed-core HF requires at least one occupied core state")]
+    #[error("core-valence HF requires at least one occupied core state")]
     CoreStates,
-    #[error("relaxed-core HF total electron count must exceed its core electron count")]
+    #[error("core-valence HF total electron count must exceed its core electron count")]
     ValenceElectronCount,
-    #[error("relaxed-core HF max_fock_iterations must be at least two")]
+    #[error("core-valence HF Fock iteration limit must be at least two")]
     FockIterations,
     #[error("relaxed-core HF fock_density_tolerance must be finite and positive")]
     FockTolerance,
-    #[error("relaxed-core HF fock_feedback_tolerance must be finite and positive")]
+    #[error("core-valence HF feedback tolerance must be finite and positive")]
     FockFeedbackTolerance,
     #[error(
-        "relaxed-core HF Fock mixer requires alpha in (0, 1], nonlinear history >= 2, and a finite nonnegative level shift"
+        "core-valence HF Fock mixer requires alpha in (0, 1], nonlinear history >= 2, and a finite nonnegative level shift"
     )]
     FockMixing,
-    #[error("relaxed-core HF sector numerical tolerance must be finite and nonnegative")]
+    #[error("core-valence HF sector numerical tolerance must be finite and nonnegative")]
     SectorTolerance,
     #[error("relaxed-core HF maximum core-shell spill must be finite and nonnegative")]
     CoreSpillTolerance,
@@ -1094,16 +1115,16 @@ pub fn run_gamma_kh_soc_valence_hf(
 pub fn run_gamma_relaxed_core_hf(
     physics: &mut CheckpointPhysics,
     spec: &RelaxedCoreHfSpec,
-) -> Result<RelaxedCoreHfResult, RelaxedCoreHfError> {
+) -> Result<RelaxedCoreHfResult, CoreValenceHfError> {
     let mesh = spec.config.k_mesh;
     if mesh.divisions != [1, 1, 1]
         || mesh.shift != [0.0; 3]
         || mesh.reduction != ScfKReduction::Full
     {
-        return Err(RelaxedCoreHfError::GammaMesh);
+        return Err(CoreValenceHfError::GammaMesh);
     }
     if spec.gamma != GammaExchangeTreatment::FiniteBody {
-        return Err(RelaxedCoreHfError::GammaFiniteBody);
+        return Err(CoreValenceHfError::GammaFiniteBody);
     }
     run_relaxed_core_hf(physics, spec)
 }
@@ -1117,12 +1138,12 @@ pub fn run_gamma_relaxed_core_hf(
 pub fn run_relaxed_core_hf(
     physics: &mut CheckpointPhysics,
     spec: &RelaxedCoreHfSpec,
-) -> Result<RelaxedCoreHfResult, RelaxedCoreHfError> {
+) -> Result<RelaxedCoreHfResult, CoreValenceHfError> {
     let valence_electrons = validate_relaxed_core_spec(spec)?;
     let _ = ScfLoop::new(spec.config.clone(), None)?;
     let k_fractional = muffintin_dft::regular_k_points(spec.config.k_mesh)?;
     let q_fractional =
-        canonical_q_points(&k_fractional).map_err(|_| RelaxedCoreHfError::QTopology)?;
+        canonical_q_points(&k_fractional).map_err(|_| CoreValenceHfError::QTopology)?;
     let mut mixer = density_mixer(spec.config.mixing)?;
     let initial = physics.kernel.initial_density_components(&spec.config)?;
     let mut valence_density = initial.valence;
@@ -1374,7 +1395,7 @@ pub fn run_relaxed_core_hf(
     let last = diagnostics
         .last()
         .expect("positive validated outer iteration count");
-    Err(RelaxedCoreHfError::NotConverged {
+    Err(CoreValenceHfError::NotConverged {
         iterations: diagnostics.len(),
         energy_change: last
             .energy_change
@@ -1482,7 +1503,7 @@ fn solve_h0_bands(
 }
 
 #[derive(Clone)]
-struct RelaxedSectorFrame {
+struct CoreSectorFrame {
     inputs: Vec<SpinorProductInput>,
     core_mpb: Vec<SpinorExchangeMpbResult>,
     occupations: SectorOccupations,
@@ -1490,23 +1511,31 @@ struct RelaxedSectorFrame {
 }
 
 #[derive(Clone)]
-struct RelaxedFeedbackFrame {
+struct CoreFeedbackFrame {
     inputs: Vec<SpinorProductInput>,
     occupations: SectorOccupations,
     exchange: FrozenSpinorValenceFeedbackExchange,
 }
 
-struct RelaxedExchangeCache {
+struct CoreExchangeCache {
     vv_bases: Vec<SpinorMpbBasis>,
     vv_operators: Vec<CoulombOperator>,
     core_bases: Vec<SpinorExchangeMpbBasis>,
     core_operators: Vec<CoulombOperator>,
 }
 
+struct CoreExchangeSpec<'a> {
+    product_l_max: u32,
+    product_g_max: InverseBohr,
+    overlap_tolerance: f64,
+    coulomb: &'a CoulombRequest,
+    gamma: GammaExchangeTreatment,
+}
+
 struct RelaxedFixedPotentialResult {
     bands: CheckpointBandSolution,
     occupation: OccupationSolution,
-    exchange: RelaxedSectorFrame,
+    exchange: CoreSectorFrame,
     fock_iterations: usize,
     exchange_rebuilds: usize,
     fixed_point_residual: f64,
@@ -1525,7 +1554,14 @@ fn solve_relaxed_fixed_potential(
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
     core_sidecars: &[CoreShellOrbitals],
-) -> Result<RelaxedFixedPotentialResult, RelaxedCoreHfError> {
+) -> Result<RelaxedFixedPotentialResult, CoreValenceHfError> {
+    let exchange_spec = CoreExchangeSpec {
+        product_l_max: spec.product_l_max,
+        product_g_max: spec.product_g_max,
+        overlap_tolerance: spec.overlap_tolerance,
+        coulomb: &spec.coulomb,
+        gamma: spec.gamma,
+    };
     let mut rebuilds = 0;
     let mut first_global_solve_identity_residual = None;
     let mut last_residual = f64::INFINITY;
@@ -1542,9 +1578,9 @@ fn solve_relaxed_fixed_potential(
             solve_occupations(bands.states(), valence_electrons, spec.config.occupations)?;
         let occupation_rows = occupation_rows(&occupation.values, &bands)?;
         if outer_iteration == 1 && fock_iteration == 1 {
-            let driver = rebuild_relaxed_feedback_frame(
+            let driver = rebuild_core_feedback_frame(
                 physics,
-                spec,
+                &exchange_spec,
                 &bands,
                 &occupation,
                 k_fractional,
@@ -1585,7 +1621,7 @@ fn solve_relaxed_fixed_potential(
             bands = solved;
             previous_global_feedback = Some(global_feedback);
             if fock_iteration == spec.max_fock_iterations {
-                return Err(RelaxedCoreHfError::FockNotConverged {
+                return Err(CoreValenceHfError::FockNotConverged {
                     outer_iteration,
                     iterations: fock_iteration,
                     density_residual: last_residual,
@@ -1595,9 +1631,9 @@ fn solve_relaxed_fixed_potential(
             continue;
         }
 
-        let rebuilt = rebuild_relaxed_feedback_frame(
+        let rebuilt = rebuild_core_feedback_frame(
             physics,
-            spec,
+            &exchange_spec,
             &bands,
             &occupation,
             k_fractional,
@@ -1643,7 +1679,7 @@ fn solve_relaxed_fixed_potential(
         if last_residual <= spec.fock_density_tolerance
             && feedback_fixed_residual <= spec.fock_feedback_tolerance.get()
         {
-            let exchange = complete_relaxed_sector_frame(spec, rebuilt)?;
+            let exchange = complete_core_sector_frame(&exchange_spec, rebuilt)?;
             return Ok(RelaxedFixedPotentialResult {
                 bands,
                 occupation,
@@ -1659,7 +1695,7 @@ fn solve_relaxed_fixed_potential(
         bands = solved;
         previous_global_feedback = Some(global_feedback);
     }
-    Err(RelaxedCoreHfError::FockNotConverged {
+    Err(CoreValenceHfError::FockNotConverged {
         outer_iteration,
         iterations: spec.max_fock_iterations,
         density_residual: last_residual,
@@ -1667,19 +1703,19 @@ fn solve_relaxed_fixed_potential(
     })
 }
 
-fn rebuild_relaxed_feedback_frame(
+fn rebuild_core_feedback_frame(
     physics: &CheckpointPhysics,
-    spec: &RelaxedCoreHfSpec,
+    spec: &CoreExchangeSpec<'_>,
     bands: &CheckpointBandSolution,
     occupation: &OccupationSolution,
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
     core_sidecars: &[CoreShellOrbitals],
-    cache: &mut Option<RelaxedExchangeCache>,
-) -> Result<RelaxedFeedbackFrame, RelaxedCoreHfError> {
+    cache: &mut Option<CoreExchangeCache>,
+) -> Result<CoreFeedbackFrame, CoreValenceHfError> {
     let inputs =
         build_q_inputs_with_cores(physics, bands, k_fractional, q_fractional, core_sidecars)?;
-    let first = inputs.first().ok_or(RelaxedCoreHfError::QTopology)?;
+    let first = inputs.first().ok_or(CoreValenceHfError::QTopology)?;
     let n_k = first.pair_columns.n_k;
     let n_orb = first.pair_columns.n_orb;
     let occupations = sector_occupations(bands, occupation, &inputs, spec.gamma)?;
@@ -1728,7 +1764,7 @@ fn rebuild_relaxed_feedback_frame(
             .map(|basis| assemble_coulomb(&basis.auxiliary, &spec.coulomb))
             .collect::<Result<Vec<_>, _>>()
             .map_err(FrozenSpinorSectorExchangeError::from)?;
-        *cache = Some(RelaxedExchangeCache {
+        *cache = Some(CoreExchangeCache {
             vv_bases,
             vv_operators,
             core_bases,
@@ -1758,17 +1794,17 @@ fn rebuild_relaxed_feedback_frame(
         &spec.coulomb,
         &occupations,
     )?;
-    Ok(RelaxedFeedbackFrame {
+    Ok(CoreFeedbackFrame {
         inputs,
         occupations,
         exchange,
     })
 }
 
-fn complete_relaxed_sector_frame(
-    spec: &RelaxedCoreHfSpec,
-    feedback: RelaxedFeedbackFrame,
-) -> Result<RelaxedSectorFrame, RelaxedCoreHfError> {
+fn complete_core_sector_frame(
+    spec: &CoreExchangeSpec<'_>,
+    feedback: CoreFeedbackFrame,
+) -> Result<CoreSectorFrame, CoreValenceHfError> {
     let core_mpb = feedback
         .inputs
         .iter()
@@ -1790,7 +1826,7 @@ fn complete_relaxed_sector_frame(
         &feedback.occupations,
         feedback.exchange.vv,
     )?;
-    Ok(RelaxedSectorFrame {
+    Ok(CoreSectorFrame {
         inputs: feedback.inputs,
         core_mpb,
         occupations: feedback.occupations,
@@ -1804,7 +1840,7 @@ fn build_q_inputs_with_cores(
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
     core_sidecars: &[CoreShellOrbitals],
-) -> Result<Vec<SpinorProductInput>, RelaxedCoreHfError> {
+) -> Result<Vec<SpinorProductInput>, CoreValenceHfError> {
     q_fractional
         .iter()
         .map(|&q| {
@@ -1820,8 +1856,8 @@ fn sector_occupations(
     occupation: &OccupationSolution,
     inputs: &[SpinorProductInput],
     gamma: GammaExchangeTreatment,
-) -> Result<SectorOccupations, RelaxedCoreHfError> {
-    let first = inputs.first().ok_or(RelaxedCoreHfError::QTopology)?;
+) -> Result<SectorOccupations, CoreValenceHfError> {
+    let first = inputs.first().ok_or(CoreValenceHfError::QTopology)?;
     Ok(SectorOccupations {
         k_weights: k_weights_relaxed(bands)?,
         valence: occupation_rows_relaxed(&occupation.values, bands)?,
@@ -1837,9 +1873,9 @@ fn sector_occupations(
 
 fn relaxed_valence_feedback(
     exchange: &FrozenSpinorValenceFeedbackExchange,
-) -> Result<Vec<DenseHermitianMatrix>, RelaxedCoreHfError> {
+) -> Result<Vec<DenseHermitianMatrix>, CoreValenceHfError> {
     if exchange.vv.target_matrices.len() != exchange.cv.target_matrices.len() {
-        return Err(RelaxedCoreHfError::ExchangeKIndex {
+        return Err(CoreValenceHfError::ExchangeKIndex {
             expected: exchange.vv.target_matrices.len(),
             actual: exchange.cv.target_matrices.len(),
         });
@@ -1852,7 +1888,7 @@ fn relaxed_valence_feedback(
         .enumerate()
         .map(|(k, (vv, cv))| {
             if vv.k_index() != k || cv.k_index() != k {
-                return Err(RelaxedCoreHfError::ExchangeKIndex {
+                return Err(CoreValenceHfError::ExchangeKIndex {
                     expected: k,
                     actual: if vv.k_index() != k {
                         vv.k_index()
@@ -1862,7 +1898,7 @@ fn relaxed_valence_feedback(
                 });
             }
             if vv.n_bands() != cv.n_bands() {
-                return Err(RelaxedCoreHfError::ExchangeKIndex {
+                return Err(CoreValenceHfError::ExchangeKIndex {
                     expected: vv.n_bands(),
                     actual: cv.n_bands(),
                 });
@@ -4192,7 +4228,7 @@ fn relaxed_energy_diagnostic(
     exchange: &FrozenSpinorSectorExchange,
     electrostatic: &muffintin_dft::RegionalElectrostaticResult,
     core_h0_trace: Hartree,
-) -> Result<RelaxedEnergyDiagnostic, RelaxedCoreHfError> {
+) -> Result<RelaxedEnergyDiagnostic, CoreValenceHfError> {
     let rows = occupation_rows_relaxed(&occupation.values, bands)?;
     let mut valence_h0_trace = 0.0;
     for (k, point) in bands.points().iter().enumerate() {
@@ -4203,7 +4239,7 @@ fn relaxed_energy_diagnostic(
             ..
         } = &point.solution
         else {
-            return Err(RelaxedCoreHfError::SpinorFirstVariation);
+            return Err(CoreValenceHfError::SpinorFirstVariation);
         };
         let conjugate = solution.eigenvectors.as_tensor().conjugate();
         let projected_h0 = DenseHermitianMatrix::from_tensor(einsum(
@@ -4324,7 +4360,7 @@ fn sum_kh_density(
 fn synthesize_core_density(
     template: &RegionalDensity,
     sidecars: &[CoreShellOrbitals],
-) -> Result<RegionalDensity, RelaxedCoreHfError> {
+) -> Result<RegionalDensity, CoreValenceHfError> {
     let mut density = template.zero_like();
     for sidecar in sidecars {
         let contribution = build_regional_core_contribution_from_sidecar(sidecar, template)?;
@@ -4336,7 +4372,7 @@ fn synthesize_core_density(
 fn sum_density(
     left: &RegionalDensity,
     right: &RegionalDensity,
-) -> Result<RegionalDensity, RelaxedCoreHfError> {
+) -> Result<RegionalDensity, CoreValenceHfError> {
     let mut sum = left.clone();
     sum.add_scaled(1.0, right)?;
     Ok(sum)
@@ -4368,17 +4404,17 @@ fn maximum_sector_antihermitian(exchange: &FrozenSpinorSectorExchange) -> f64 {
 fn occupation_rows_relaxed(
     flat: &[f64],
     bands: &CheckpointBandSolution,
-) -> Result<Vec<Vec<f64>>, RelaxedCoreHfError> {
+) -> Result<Vec<Vec<f64>>, CoreValenceHfError> {
     Ok(occupation_rows(flat, bands)?)
 }
 
 fn spinor_energies_relaxed(
     bands: &CheckpointBandSolution,
-) -> Result<Vec<Vec<Hartree>>, RelaxedCoreHfError> {
+) -> Result<Vec<Vec<Hartree>>, CoreValenceHfError> {
     Ok(spinor_energies(bands)?)
 }
 
-fn k_weights_relaxed(bands: &CheckpointBandSolution) -> Result<Vec<f64>, RelaxedCoreHfError> {
+fn k_weights_relaxed(bands: &CheckpointBandSolution) -> Result<Vec<f64>, CoreValenceHfError> {
     Ok(k_weights(bands)?)
 }
 
@@ -4633,12 +4669,12 @@ fn validate_gamma_spec(spec: &GammaValenceHfSpec) -> Result<(), GammaValenceHfEr
     Ok(())
 }
 
-fn validate_relaxed_core_spec(spec: &RelaxedCoreHfSpec) -> Result<f64, RelaxedCoreHfError> {
+fn validate_relaxed_core_spec(spec: &RelaxedCoreHfSpec) -> Result<f64, CoreValenceHfError> {
     if spec.config.k_mesh.reduction != ScfKReduction::Full {
-        return Err(RelaxedCoreHfError::SymmetryReduction);
+        return Err(CoreValenceHfError::SymmetryReduction);
     }
     if spec.config.relativity != ScfRelativity::SpinorFirstVariation {
-        return Err(RelaxedCoreHfError::SpinorFirstVariation);
+        return Err(CoreValenceHfError::SpinorFirstVariation);
     }
     let core_electrons: f64 = spec
         .config
@@ -4648,32 +4684,32 @@ fn validate_relaxed_core_spec(spec: &RelaxedCoreHfSpec) -> Result<f64, RelaxedCo
         .map(|state| state.occupation)
         .sum();
     if !core_electrons.is_finite() || core_electrons <= 0.0 {
-        return Err(RelaxedCoreHfError::CoreStates);
+        return Err(CoreValenceHfError::CoreStates);
     }
     let valence_electrons = spec.config.electron_count - core_electrons;
     if !valence_electrons.is_finite() || valence_electrons <= 0.0 {
-        return Err(RelaxedCoreHfError::ValenceElectronCount);
+        return Err(CoreValenceHfError::ValenceElectronCount);
     }
     if spec.max_fock_iterations < 2 {
-        return Err(RelaxedCoreHfError::FockIterations);
+        return Err(CoreValenceHfError::FockIterations);
     }
     if !spec.fock_density_tolerance.is_finite() || spec.fock_density_tolerance <= 0.0 {
-        return Err(RelaxedCoreHfError::FockTolerance);
+        return Err(CoreValenceHfError::FockTolerance);
     }
     if !spec.fock_feedback_tolerance.get().is_finite() || spec.fock_feedback_tolerance.get() <= 0.0
     {
-        return Err(RelaxedCoreHfError::FockFeedbackTolerance);
+        return Err(CoreValenceHfError::FockFeedbackTolerance);
     }
     if !valid_fock_mixing(spec.fock_mixing) {
-        return Err(RelaxedCoreHfError::FockMixing);
+        return Err(CoreValenceHfError::FockMixing);
     }
     if !spec.sector_numerical_tolerance.get().is_finite()
         || spec.sector_numerical_tolerance.get() < 0.0
     {
-        return Err(RelaxedCoreHfError::SectorTolerance);
+        return Err(CoreValenceHfError::SectorTolerance);
     }
     if !spec.maximum_core_shell_spill.is_finite() || spec.maximum_core_shell_spill < 0.0 {
-        return Err(RelaxedCoreHfError::CoreSpillTolerance);
+        return Err(CoreValenceHfError::CoreSpillTolerance);
     }
     Ok(valence_electrons)
 }
@@ -4702,11 +4738,11 @@ fn require_relaxed_gate(
     gate: &'static str,
     residual: f64,
     tolerance: f64,
-) -> Result<(), RelaxedCoreHfError> {
+) -> Result<(), CoreValenceHfError> {
     if residual.is_finite() && residual <= tolerance {
         Ok(())
     } else {
-        Err(RelaxedCoreHfError::Gate {
+        Err(CoreValenceHfError::Gate {
             gate,
             residual,
             tolerance,
