@@ -186,6 +186,16 @@ For regional scalar fields, let $\langle a,b\rangle_R$ denote the muffin-tin rad
 
 When $m_x=m_y=0$, this reduces exactly to the previous sum of explicit up/down metrics. Every mixer and the reported density RMS uses this metric; serialized coefficient order is never treated as a Euclidean physical norm.
 
+The interstitial metric caches the analytic step coefficient for each exact
+integer reciprocal difference within one contraction. It does not allocate
+a dense $G,G'$ overlap matrix or change the summation order, absolute-error
+scale, or physical metric. A translated-sphere comparison with 4385 Fourier
+modes gave bitwise-identical complex sums and absolute scales; the uncached
+and cached calls took 1.016 and 0.388 seconds respectively. This is a
+single-contraction timing, not an SCF convergence or scaling claim. The
+temporary comparison is retained in
+`/tmp/libmuffintin-regional-metric-benchmark-98547bc.patch` and its `.log`.
+
 ## 4. Four-component core density
 
 Each automatically selected bound-core channel is identified by principal quantum number, signed Dirac $\kappa$, and its FLEUR occupation not exceeding $2|\kappa|$. User overrides are applied before the core count is formed. The solver isolates a unique bracket below the outer continuum with the required large-component node count, performs the two-sided four-component Dirac solve on an extended physical radial potential, and reports explicit `NotFound` or `Ambiguous` failures rather than selecting a root heuristically.

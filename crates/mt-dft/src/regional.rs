@@ -8,7 +8,7 @@ use muffintin_operators::lapw::{InterstitialPauliPotential, InterstitialPotentia
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
 use muffintin_symmetry::CrystalSymmetryTransform;
 use num_complex::Complex64;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, hash_map::Entry};
 use std::f64::consts::{PI, TAU};
 use thiserror::Error;
 
@@ -948,6 +948,7 @@ fn interstitial_inner_product(
     let volume = geometry.cell_volume().get();
     let mut total = Complex64::new(0.0, 0.0);
     let mut absolute_scale = 0.0;
+    let mut step_coefficients = HashMap::new();
     for (left_vector, &left_value) in left.field.iter() {
         for (right_vector, &right_value) in right.field.iter() {
             let difference = [
@@ -964,7 +965,12 @@ fn interstitial_inner_product(
                     });
                 }
             };
-            let theta = geometry.coefficient(reciprocal.cartesian(difference))?;
+            let theta = match step_coefficients.entry(difference) {
+                Entry::Occupied(entry) => *entry.get(),
+                Entry::Vacant(entry) => {
+                    *entry.insert(geometry.coefficient(reciprocal.cartesian(difference))?)
+                }
+            };
             let term = volume * left_value.conj() * theta * right_value;
             total += term;
             absolute_scale += term.norm();
