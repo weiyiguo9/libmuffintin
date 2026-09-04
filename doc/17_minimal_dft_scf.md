@@ -167,7 +167,7 @@ terms, then evaluates `einsum("ap,pr->ar")` through TBLIS. The tensor axes are
 `FieldChannel`, `PairColumn`, and `RadialPoint`. No radial, angular, or Pauli
 channel is truncated by this reordering.
 
-A synthetic 294-orbital, 2401-point kernel comparison against the previous
+A synthetic 294-orbital, 2401-point contraction-prototype comparison against the previous
 pair-by-pair implementation used 780 radial pairs and 900 field channels.
 The maximum coefficient difference was $2.84\times10^{-14}$. With two Rayon
 threads and one BLIS/OpenMP thread, the measured calls took 2.700 and 0.684

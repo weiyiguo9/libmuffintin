@@ -1002,6 +1002,21 @@ checkout state, whereas this diagnostic binary was built with the explicitly
 retained instrumentation patch. The manifest is not rewritten to hide that
 distinction.
 
+The optimized production executable at `037674d` was then compared with the
+preceding field-cutoff-12 run at identical physical and SCF parameters. Its
+first two total energies, $-2787.8209177165727$ and $-2788.995940138764$ Ha,
+match the baseline as printed. Core local traces differ by at most
+$6.83\times10^{-13}$ Ha; VV/CV/CC energies, density residuals, and commutators
+agree to floating-point precision. The active-feedback maximum in the current
+band frame differs, so this is not an all-fields bitwise identity claim.
+The baseline used two Rayon threads and the optimized run four; this prefix
+comparison is not a controlled whole-SCF timing ratio. The baseline was
+deliberately stopped after that check, and the optimized run was retained for
+the unconverged HF calculation. Evidence is stored in
+`/tmp/libmuffintin-kr-field12-prefix-comparison-037674d.json` and the baseline
+output directory's `STOPPED.md`. No GTO benchmark acceptance follows from
+matching this short prefix.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
