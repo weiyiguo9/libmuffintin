@@ -925,6 +925,43 @@ their sum reproduces the total atomic Hartree expectation. These are
 sector diagnostics on one fixed determinant, not sector targets for a
 different, unconverged LAPW density.
 
+Fixed-basis directional derivatives at `0afaa01` exposed a local-energy/Fock
+inconsistency before further mixer changes. The Kr probes used orbital cutoff
+3, product cutoff 6, field cutoff 8 (inverse bohr), angular cutoffs 6,
+`LEXP=18`, 2401 radial points, and the smoothed spherical exchange body.
+Each probe perturbed one occupied–virtual direction of the reference
+Hamiltonian, solved within its unchanged allowed space, rebuilt the density
+and exchange, and compared a central energy derivative against
+$\mathrm{Tr}(\delta D F_0)$ with fixed closed-shell occupations.
+
+| Probe | Step (Ha) | Energy derivative | Fock derivative | Difference |
+|---|---|---|---|---|
+| Original energy/Fock | 0.001 | -0.101699746210 | -0.133021677477 | 0.031321931267 |
+| Same direction, half step | 0.0005 | -0.101699598417 | -0.133021682883 | 0.031322084466 |
+| Sector-resolved diagnostic | 0.0005 | -0.099220366792 | -0.130702859228 | 0.031482492436 |
+| Physical cell-mean gauge and MT backgrounds | 0.0005 | -0.100065477909 | -0.100399951184 | 0.000334473275 |
+
+The last two probes selected their own largest occupied–virtual Fock entry;
+they are not identical-direction or identical-radial-frame comparisons.
+In the sector-resolved probe, VV and CV derivatives separately agree with
+their Fock expectations, while the physical core radial potential derivative
+agrees with its regional density pairing to about $10^{-7}$. The large
+discrepancy instead comes from the electronic Hartree derivative. The
+background and gauge correction is described in [17](17_minimal_dft_scf.md).
+The remaining $3.34\times10^{-4}$ derivative discrepancy at field cutoff 8
+is still above the intended accuracy and has not been attributed solely to
+Fourier truncation or accepted as converged. It must be resolved before
+energy-driven ADIIS/EDIIS or a GTO total-energy comparison is accepted.
+
+The production-style `0afaa01` SCF probe was deliberately stopped after this
+diagnosis; it did not time out or satisfy the HF acceptance gates. Diagnostic
+patches and logs are retained outside the repository under
+`/tmp/libmuffintin-kr-gradient-components-0afaa01.patch`,
+`/tmp/libmuffintin-kr-frozen-gradient-components-0afaa01-probe1.log`, and
+`/tmp/libmuffintin-kr-gradient-physical-gauge-0afaa01.patch` with the matching
+`/tmp/libmuffintin-kr-frozen-gradient-physical-gauge-0afaa01-probe1.log`.
+Temporary instrumentation is not part of the production source.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
