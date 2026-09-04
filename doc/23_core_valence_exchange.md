@@ -987,6 +987,21 @@ its patch and log are
 `/tmp/libmuffintin-kr-local-gradient-511aa24.patch` and
 `/tmp/libmuffintin-kr-local-gradient-511aa24-probe1.log`.
 
+The subsequent full-Fock probe at `397b985`, now prepared with field cutoff
+12, selected occupied band 3 and virtual band 527 (reference gap
+6.046081156819 Ha). At step 0.0005 Ha it gave total-energy derivative
+$-0.129000303787$ and Fock derivative $-0.129007155326$, a difference of
+$6.85\times10^{-6}$. VV and CV exchange derivatives again separately agree
+with their Fock expectations. This is one complete directional check in the
+higher-cutoff frame, not a uniform error bound over every rotation or a
+self-consistent solution. The instrumented executable and patch are
+`/tmp/libmuffintin-kr-full-gradient-397b985` and its `.patch`; the log is
+`/tmp/libmuffintin-kr-full-gradient-field12-397b985-probe1.log`. Its output
+directory includes `EXECUTABLE_PROVENANCE.md`: the harness records the runtime
+checkout state, whereas this diagnostic binary was built with the explicitly
+retained instrumentation patch. The manifest is not rewritten to hide that
+distinction.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
