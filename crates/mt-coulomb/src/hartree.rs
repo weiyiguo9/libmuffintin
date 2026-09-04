@@ -200,8 +200,8 @@ pub enum PeriodicChargeTreatment {
     /// must be neutral within the stated absolute charge tolerance.
     RequireNeutral { tolerance: f64 },
     /// The source is a positive electronic number density. Its nonzero cell
-    /// charge is cancelled by a uniform background, which changes only the
-    /// `G=0` source coefficient. This returns the electronic Hartree potential;
+    /// charge is cancelled by a uniform background in both the interstitial
+    /// and muffin-tin Poisson equations. This returns the electronic Hartree potential;
     /// the attractive nuclear external potential is deliberately separate and
     /// must be added by the DFT Hamiltonian.
     ElectronicWithUniformBackground,
@@ -240,8 +240,8 @@ impl WeinertHartreeSpec {
     /// Construct an electronic-Hartree specification.
     ///
     /// Positive electron number density need not be neutral. A uniform
-    /// background removes its constant source mode, the raw potential uses
-    /// `V(G=0)=0`, and nuclear attraction remains a separate external
+    /// background removes its constant source mode, the physical regional
+    /// potential has zero cell mean, and nuclear attraction remains a separate external
     /// potential owned by the DFT Hamiltonian.
     pub fn electronic(pseudocharge_order: u32) -> Result<Self, HartreeError> {
         validate_pseudocharge_order(pseudocharge_order)?;
@@ -274,10 +274,10 @@ impl Default for WeinertHartreeSpec {
 /// Gauge applied to the raw periodic Hartree potential.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HartreeGauge {
-    /// The `G=0` coefficient of the unmasked interstitial Fourier continuation
-    /// is exactly zero. This fixes its cell average, not the average after
-    /// multiplying by the interstitial step function.
-    ZeroInterstitialFourierMean,
+    /// The physical potential, integrated over the muffin tins and the
+    /// step-function-restricted interstitial, has zero cell mean. The Fourier
+    /// continuation's `G=0` coefficient need not vanish.
+    ZeroCellMean,
 }
 
 /// Angular radial Hartree potential for one muffin-tin sphere.
@@ -427,7 +427,7 @@ impl RawNuclearPotential {
         &self.interstitial
     }
 
-    /// The same zero-mean Fourier gauge used by the electronic Hartree solve.
+    /// The same zero physical cell-mean gauge used by the electronic Hartree solve.
     pub const fn gauge(&self) -> HartreeGauge {
         self.gauge
     }
@@ -470,7 +470,7 @@ impl RawElectrostaticPotential {
         &self.interstitial
     }
 
-    /// Common zero-mean Fourier gauge.
+    /// Common zero physical cell-mean gauge.
     pub const fn gauge(&self) -> HartreeGauge {
         self.gauge
     }
@@ -549,8 +549,9 @@ pub enum HartreeError {
 /// Strict mode rejects a nonneutral total source. Electronic mode instead adds
 /// a uniform compensating background and returns only the repulsive electronic
 /// Hartree potential; it does not manufacture a nuclear external potential.
-/// In both modes the raw interstitial `G=0` potential is exactly zero, fixing
-/// the energy gauge. Finite `G` coefficients are
+/// In both modes the physical regional potential has zero cell mean. The
+/// Fourier continuation's constant is fixed after the MT reconstruction, not
+/// independently of its density-dependent cell integral. Finite `G` coefficients are
 /// $4\pi\tilde\rho_G/G^2$ in Hartree, and each muffin-tin Green-function
 /// solution is matched to that Fourier potential on its sphere boundary.
 pub fn solve_weinert_hartree(
@@ -585,18 +586,25 @@ pub fn solve_weinert_hartree(
     // The compensated constant source has no periodic Poisson inverse. Set it
     // exactly to zero after recording the physical source and compensation.
     pseudo_density[zero] = Complex64::default();
-    let potential_coefficients = hartree_fourier(density.interstitial.layout(), &pseudo_density)?;
+    let mut potential_coefficients =
+        hartree_fourier(density.interstitial.layout(), &pseudo_density)?;
+    let mut muffin_tins = muffin_tin_potentials(density, &potential_coefficients)?;
+    complete_periodic_potential(
+        density,
+        &mut muffin_tins,
+        &mut potential_coefficients,
+        background_density,
+    )?;
     let potential_field = HermitianFourierField::new(
         density.interstitial.layout().clone(),
         potential_coefficients.clone(),
     )?;
-    let muffin_tins = muffin_tin_potentials(density, &potential_coefficients)?;
     Ok(RawHartreePotential {
         muffin_tins,
         interstitial: InterstitialHartreePotential {
             field: potential_field,
         },
-        gauge: HartreeGauge::ZeroInterstitialFourierMean,
+        gauge: HartreeGauge::ZeroCellMean,
         charge_treatment: spec.charge_treatment,
         source_charge: total_charge,
         neutralizing_background_density: background_density,
@@ -609,7 +617,8 @@ pub fn solve_weinert_hartree(
 /// `template.geometry()`. The interstitial field uses each nucleus's normalized
 /// Weinert pseudocharge with the same polynomial order as the electronic
 /// Hartree solve. The exact point singularity is restored in its MT sphere.
-/// The pseudocharge Fourier potential is exactly zero for `G=0`.
+/// The positive uniform background is retained inside MT spheres, and the
+/// reconstructed physical potential has zero cell mean.
 /// The template supplies only basis-neutral geometry,
 /// radial meshes/angular cutoffs, and the exact Hermitian Fourier layout; its
 /// density values are not used.
@@ -629,19 +638,76 @@ pub fn solve_periodic_nuclear_potential(
             return Err(HartreeError::InvalidNuclearCharge { site, charge });
         }
     }
-    let coefficients = nuclear_fourier_coefficients(template, nuclear_charges, spec)?;
+    let mut coefficients = nuclear_fourier_coefficients(template, nuclear_charges, spec)?;
+    let source_charge = -nuclear_charges.iter().sum::<f64>();
+    let background_density = -source_charge / template.geometry.cell_volume().get();
+    let mut muffin_tins = nuclear_muffin_tin_potentials(template, nuclear_charges, &coefficients)?;
+    complete_periodic_potential(
+        template,
+        &mut muffin_tins,
+        &mut coefficients,
+        background_density,
+    )?;
     let field =
         HermitianFourierField::new(template.interstitial.layout().clone(), coefficients.clone())?;
-    let muffin_tins = nuclear_muffin_tin_potentials(template, nuclear_charges, &coefficients)?;
-    let source_charge = -nuclear_charges.iter().sum::<f64>();
     Ok(RawNuclearPotential {
         muffin_tins,
         interstitial: InterstitialHartreePotential { field },
-        gauge: HartreeGauge::ZeroInterstitialFourierMean,
+        gauge: HartreeGauge::ZeroCellMean,
         nuclear_charges: nuclear_charges.to_vec(),
         source_charge,
-        neutralizing_background_density: -source_charge / template.geometry.cell_volume().get(),
+        neutralizing_background_density: background_density,
     })
+}
+
+/// Complete the background Poisson solution inside each sphere, then fix one
+/// density-independent gauge for the physical (not pseudocharge) potential.
+fn complete_periodic_potential(
+    template: &WeinertChargeDensity,
+    muffin_tins: &mut [MuffinTinHartreePotential],
+    fourier: &mut [Complex64],
+    background_density: f64,
+) -> Result<(), HartreeError> {
+    let sqrt_four_pi = (4.0 * PI).sqrt();
+    let volume = template.geometry.cell_volume().get();
+    let mut integral = 0.0;
+    for site in muffin_tins.iter_mut() {
+        let radius_squared = site.mesh.last().get().powi(2);
+        let mut samples = Vec::with_capacity(site.mesh.len());
+        for (value, radius) in site.coefficients[..site.mesh.len()]
+            .iter_mut()
+            .zip(site.mesh.radii())
+        {
+            let r_squared = radius.get().powi(2);
+            value.real += Hartree(
+                sqrt_four_pi * 2.0 * PI / 3.0 * background_density * (radius_squared - r_squared),
+            );
+            samples.push(sqrt_four_pi * value.real.get() * r_squared);
+        }
+        integral += site.mesh.integrate(&samples)?;
+    }
+    for (g, value) in template
+        .interstitial
+        .layout()
+        .vectors()
+        .iter()
+        .zip(fourier.iter())
+    {
+        integral += volume * (template.geometry.coefficient_for_g(g)?.conj() * value).re;
+    }
+    let mean = integral / volume;
+    let zero = template
+        .interstitial
+        .layout()
+        .index([0; 3])
+        .expect("regional density requires G=0");
+    fourier[zero] -= Complex64::new(mean, 0.0);
+    for site in muffin_tins {
+        for value in &mut site.coefficients[..site.mesh.len()] {
+            value.real -= Hartree(sqrt_four_pi * mean);
+        }
+    }
+    Ok(())
 }
 
 fn nuclear_fourier_coefficients(

@@ -177,7 +177,7 @@ The frozen-checkpoint bootstrap copies the physical muffin-tin monopole and obta
 
 Weinert is a general Coulomb/Poisson component in `libmuffintin-coulomb`, not a DFT-owned algorithm. Its public inputs are geometry, muffin-tin multipoles, a Hermitian Fourier charge field, and an explicit constant-mode treatment; it has no dependency on SCF, occupations, XC, or `libmuffintin-dft`. The DFT adapter only converts a regional electronic density and periodic nuclei to that reusable boundary, evaluates DFT energy contractions, and masks the returned operator potential. It does not route a charge density through `CompiledAuxiliaryBasis` and does not create a second Coulomb convention.
 
-Positive electron number density first produces the repulsive electronic Hartree potential. Its $G=0$ source is removed by an explicit uniform-background treatment and its pseudocharge potential gauge is $V_{G=0}=0$. Periodic point nuclei use the same Weinert polynomial order $N$ and normalized spherical pseudocharges. For $G\ne0$,
+Positive electron number density first produces the repulsive electronic Hartree potential. Its constant source is removed by an explicit uniform background in both regions. The reconstructed physical potential, not its pseudocharge Fourier continuation, has zero cell mean. Periodic point nuclei use the same Weinert polynomial order $N$ and normalized spherical pseudocharges. For $G\ne0$,
 
 ```math
 V_{\mathrm{nuc},G}=-\frac{4\pi}{\Omega G^2}\sum_s Z_s e^{-iG\cdot R_s}F_N(GR_{\mathrm{MT},s}),
@@ -196,11 +196,33 @@ Fourier fields. `solve_periodic_nuclear_potential` therefore takes an explicit
 `WeinertHartreeSpec`, and the regional adapter passes the same specification
 to both electronic and nuclear solves.
 
-Outside a sphere the zero-mean pseudocharge potential differs from the
-zero-mean point-charge Ewald potential by the known constant
-$-2\pi Z R_{\mathrm{MT}}^2/[\Omega(2N+5)]$. The finite $G$ Ewald comparison
-includes this gauge shift; it is not removed selectively from energies or
-orbitals. The common regional energy functional keeps the same gauge.
+The Fourier continuation is initially solved with its constant coefficient
+set to zero. That alone does not fix a density-independent physical gauge:
+replacing the pseudocharge potential inside each sphere changes the cell
+integral. In a charged electronic subsystem this would break the reciprocity
+needed for $\delta E_H=\int\delta n\,V_H$, even at fixed electron number.
+For source charge $Q$ and background $b=-Q/\Omega$, the completion is
+
+```math
+\Delta V_{00,s}(r)=\sqrt{4\pi}\,\frac{2\pi b}{3}
+\left(R_{\mathrm{MT},s}^2-r^2\right),
+\qquad
+\bar V=\frac{1}{\Omega}\left[
+\sum_s\sqrt{4\pi}\int_0^{R_{\mathrm{MT},s}}V_{00,s}(r)r^2\,dr
++\Omega\sum_G\Theta_G^* V_G\right],
+\qquad V\leftarrow V-\bar V.
+```
+
+The background correction vanishes at the matching boundary. Its electronic
+and nuclear contributions cancel in a neutral total source. The final constant
+is applied to both the Fourier continuation and every MT monopole. The public
+gauge is `HartreeGauge::ZeroCellMean`; the former
+`ZeroInterstitialFourierMean` contract is removed. The finite $G$ nuclear
+comparison now uses the ordinary zero-mean Ewald potential without an extra
+pseudocharge gauge shift. The regular nuclear potential used by $E_{II}$
+includes the background's value at the nucleus, not only its boundary value.
+Finite Fourier and radial quadratures still require convergence; fixing the
+gauge alone does not make a truncated Weinert reconstruction exactly reciprocal.
 
 The energy adapter evaluates $C=\int n(V_H+V_{\mathrm{nuc}})$, $M=E_{en}+2E_{II}$, $E_H=\tfrac12\int nV_H$, $E_{en}=\int nV_{\mathrm{nuc}}$, and $E_{II}$ in one common gauge. Discrete muffin-tin and Fourier boundary values are matched using the actual Poisson mesh endpoint, not a second independently rounded multipole quadrature.
 

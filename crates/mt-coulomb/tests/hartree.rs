@@ -138,7 +138,7 @@ fn empty_sphere_fourier_mode_is_raw_four_pi_over_g_squared() {
             .as_complex(),
         Complex64::default()
     );
-    assert_eq!(potential.gauge(), HartreeGauge::ZeroInterstitialFourierMean);
+    assert_eq!(potential.gauge(), HartreeGauge::ZeroCellMean);
 }
 
 #[test]
@@ -221,17 +221,32 @@ fn periodic_nucleus_has_weinert_fourier_form_and_minus_z_over_r_core() {
     )
     .unwrap();
 
-    assert_eq!(nuclear.gauge(), HartreeGauge::ZeroInterstitialFourierMean);
+    assert_eq!(nuclear.gauge(), HartreeGauge::ZeroCellMean);
     assert_eq!(nuclear.nuclear_charges(), &[charge]);
     assert_eq!(nuclear.source_charge(), -charge);
     assert!((nuclear.neutralizing_background_density() - charge / LATTICE.powi(3)).abs() < 1.0e-15);
-    assert_eq!(
-        nuclear
-            .interstitial()
-            .coefficient([0, 0, 0])
-            .unwrap()
-            .as_complex(),
-        Complex64::default()
+    let mt = &nuclear.muffin_tins()[0];
+    let samples = mt
+        .channel(0, 0)
+        .unwrap()
+        .iter()
+        .zip(mt.mesh().radii())
+        .map(|(v, r)| (4.0 * PI).sqrt() * v.real().get() * r.get().powi(2))
+        .collect::<Vec<_>>();
+    let mut cell_integral = mt.mesh().integrate(&samples).unwrap();
+    for g in layout.vectors() {
+        cell_integral += LATTICE.powi(3)
+            * (template.geometry().coefficient_for_g(g).unwrap().conj()
+                * nuclear
+                    .interstitial()
+                    .coefficient(g.index)
+                    .unwrap()
+                    .as_complex())
+            .re;
+    }
+    assert!(
+        cell_integral.abs() < 1.0e-8,
+        "physical cell integral {cell_integral}"
     );
     let g = layout
         .vectors()
@@ -262,7 +277,10 @@ fn periodic_nucleus_has_weinert_fourier_form_and_minus_z_over_r_core() {
     let second = 35;
     let physical_difference =
         (monopole[first].real().get() - monopole[second].real().get()) / (4.0 * PI).sqrt();
-    let expected_difference = -charge * (1.0 / radii[first].get() - 1.0 / radii[second].get());
+    let expected_difference = -charge * (1.0 / radii[first].get() - 1.0 / radii[second].get())
+        - 2.0 * PI / 3.0
+            * nuclear.neutralizing_background_density()
+            * (radii[first].get().powi(2) - radii[second].get().powi(2));
     assert!((physical_difference - expected_difference).abs() < 1.0e-9);
 }
 
@@ -359,7 +377,7 @@ fn electronic_and_nuclear_parts_add_to_a_neutral_total_source() {
         (electronic.source_charge() - nuclear.nuclear_charges().iter().sum::<f64>()).abs()
             < 2.0e-12
     );
-    assert_eq!(total.gauge(), HartreeGauge::ZeroInterstitialFourierMean);
+    assert_eq!(total.gauge(), HartreeGauge::ZeroCellMean);
     assert!(total.source_charge().abs() < 2.0e-12);
     assert!(total.neutralizing_background_density().abs() < 2.0e-15);
     for g in layout.vectors() {
@@ -385,8 +403,10 @@ fn electronic_and_nuclear_parts_add_to_a_neutral_total_source() {
 }
 
 #[test]
-fn weinert_nuclear_sum_matches_ewald_in_the_pseudocharge_gauge() {
-    let layout = layout(18.0);
+fn weinert_nuclear_sum_matches_ewald_in_the_physical_cell_gauge() {
+    // Resolve the Fourier boundary and the reconstructed cell-mean shift;
+    // the latter is also cutoff-dependent at finite pseudocharge resolution.
+    let layout = layout(32.0);
     let template = zero_template(CENTER, layout.clone(), 0);
     let charge = 1.0;
     let nuclear = solve_periodic_nuclear_potential(
@@ -425,11 +445,8 @@ fn weinert_nuclear_sum_matches_ewald_in_the_pseudocharge_gauge() {
         },
     )
     .unwrap();
-    // Removing the pseudocharge G=0 potential shifts the outside potential by
-    // -2*pi*Z*<r^2>/(3*Omega), with <r^2>=3*R^2/(2*N+5).
-    let gauge_shift = -2.0 * PI * charge * RADIUS.powi(2) / (13.0 * LATTICE.powi(3));
     assert!(
-        (fourier_value + charge * ewald.value - gauge_shift).norm() < 1.0e-6,
+        (fourier_value + charge * ewald.value).norm() < 1.0e-6,
         "finite-G {fourier_value}, Ewald {}",
         -charge * ewald.value
     );

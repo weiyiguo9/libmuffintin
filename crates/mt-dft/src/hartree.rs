@@ -408,7 +408,12 @@ fn nuclear_nuclear_energy(
             .last()
             .ok_or(RegionalElectrostaticError::MissingNuclearMonopole { site })?
             .as_complex();
-        let regular = surface / (4.0 * PI).sqrt() + charge / potential.mesh().last().get();
+        let radius = potential.mesh().last().get();
+        // The nuclear background contributes a quadratic monopole that
+        // vanishes at the boundary but not at the nucleus.
+        let regular = surface / (4.0 * PI).sqrt()
+            + charge / radius
+            + 2.0 * PI / 3.0 * nuclear.neutralizing_background_density() * radius.powi(2);
         if regular.im.abs() > REALITY_TOLERANCE * regular.norm().max(1.0) {
             return Err(RegionalElectrostaticError::NonRealEnergy {
                 quantity: "regular nuclear potential",
