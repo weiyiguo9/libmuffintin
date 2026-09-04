@@ -962,6 +962,31 @@ patches and logs are retained outside the repository under
 `/tmp/libmuffintin-kr-frozen-gradient-physical-gauge-0afaa01-probe1.log`.
 Temporary instrumentation is not part of the production source.
 
+A follow-up at `511aa24` isolates the local electrostatic derivative while
+holding the reference LAPW frame, both perturbed orbital coefficient sets,
+occupations, and core $P/Q$ fixed. Only the density/potential Fourier layout
+and the matching representation of the retained core tail change. The same
+largest local occupied–virtual direction (bands 3 and 15, reference gap
+0.597737165137 Ha) and step 0.0005 Ha are used at all three cutoffs.
+
+| Field cutoff (inverse bohr) | Local energy derivative | Local Fock derivative | Difference |
+|---|---|---|---|
+| 8 | -0.551369971618 | -0.551289087827 | -0.000080883791 |
+| 10 | -0.551257184270 | -0.551234264236 | -0.000022920034 |
+| 12 | -0.551222883587 | -0.551218528408 | -0.000004355179 |
+
+This controlled direction demonstrates a finite-field-cutoff contribution to
+the residual after fixing the gauge. Replacing the physical core local trace
+by its represented-density pairing gives a derivative discrepancy of
+$-3.12\times10^{-6}$ at cutoff 12, compared with $-4.36\times10^{-6}$ for
+the reported local energy; no such replacement is made in production.
+These are directional consistency diagnostics, not a bound for every
+occupied–virtual direction, an accepted SCF solution, or a production-basis
+GTO comparison. The standalone diagnostic finished in 185.11 seconds;
+its patch and log are
+`/tmp/libmuffintin-kr-local-gradient-511aa24.patch` and
+`/tmp/libmuffintin-kr-local-gradient-511aa24-probe1.log`.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
