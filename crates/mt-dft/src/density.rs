@@ -23,6 +23,7 @@ use num_complex::Complex64;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::f64::consts::PI;
+use std::sync::Arc;
 use thiserror::Error;
 
 const WEIGHT_TOLERANCE: f64 = 4096.0 * f64::EPSILON;
@@ -79,8 +80,8 @@ pub struct FullSpinorDensitySiteBasis {
 struct SpinorDensityContraction {
     harmonics: Vec<Lm>,
     terms: [Vec<Vec<SpinorDensityTerm>>; 4],
-    radial_p: Vec<f64>,
-    radial_q: Vec<f64>,
+    radial_products: Arc<Vec<Complex64>>,
+    radial_pair_count: usize,
     radial_count: usize,
 }
 
@@ -88,6 +89,7 @@ struct SpinorDensityContraction {
 struct SpinorDensityTerm {
     left: usize,
     right: usize,
+    radial_pair: usize,
     pp: Complex64,
     qq: Complex64,
 }
@@ -198,6 +200,29 @@ impl FullSpinorDensitySiteBasis {
 
 impl SpinorDensityContraction {
     fn compile(mesh: &ExponentialMesh, orbitals: &[SpinorSphereOrbital]) -> Self {
+        // Magnetic channels share radials. Identify only exact sample matches;
+        // no angular channel or small component is screened out.
+        let mut radial_ids = BTreeMap::new();
+        let mut representatives = Vec::new();
+        let orbital_radials = orbitals
+            .iter()
+            .enumerate()
+            .map(|(index, orbital)| {
+                let key = orbital
+                    .p()
+                    .iter()
+                    .chain(orbital.q())
+                    .map(|value| value.to_bits())
+                    .collect::<Vec<_>>();
+                let next = representatives.len();
+                *radial_ids.entry(key).or_insert_with(|| {
+                    representatives.push(index);
+                    next
+                })
+            })
+            .collect::<Vec<_>>();
+        let radial_count = representatives.len();
+        let radial_pair_count = radial_count * (radial_count + 1) / 2;
         let l_max = orbitals
             .iter()
             .flat_map(|left| {
@@ -231,6 +256,11 @@ impl SpinorDensityContraction {
                             terms[component][harmonic].push(SpinorDensityTerm {
                                 left,
                                 right,
+                                radial_pair: {
+                                    let a = orbital_radials[left].min(orbital_radials[right]);
+                                    let b = orbital_radials[left].max(orbital_radials[right]);
+                                    a * (2 * radial_count - a + 1) / 2 + b - a
+                                },
                                 pp: angular.pp[component],
                                 qq: angular.qq[component],
                             });
@@ -239,31 +269,33 @@ impl SpinorDensityContraction {
                 }
             }
         }
-        let radial_p = orbitals
-            .iter()
-            .flat_map(|orbital| {
-                orbital
-                    .p()
-                    .iter()
-                    .zip(mesh.radii())
-                    .map(|(&value, radius)| value / radius.get())
-            })
-            .collect();
-        let radial_q = orbitals
-            .iter()
-            .flat_map(|orbital| {
-                orbital
-                    .q()
-                    .iter()
-                    .zip(mesh.radii())
-                    .map(|(&value, radius)| value / radius.get())
-            })
-            .collect();
+        let mut radial_products = Vec::with_capacity(2 * radial_pair_count * mesh.len());
+        for small in [false, true] {
+            for (a, &left) in representatives.iter().enumerate() {
+                let left = if small {
+                    orbitals[left].q()
+                } else {
+                    orbitals[left].p()
+                };
+                for &right in &representatives[a..] {
+                    let right = if small {
+                        orbitals[right].q()
+                    } else {
+                        orbitals[right].p()
+                    };
+                    radial_products.extend(left.iter().zip(right).zip(mesh.radii()).map(
+                        |((&left, &right), radius)| {
+                            Complex64::new((left / radius.get()) * (right / radius.get()), 0.0)
+                        },
+                    ));
+                }
+            }
+        }
         Self {
             harmonics,
             terms,
-            radial_p,
-            radial_q,
+            radial_products: Arc::new(radial_products),
+            radial_pair_count,
             radial_count: mesh.len(),
         }
     }
@@ -601,7 +633,7 @@ pub fn synthesize_full_spinor_valence_density(
             // The pair density of two site orbitals does not depend on the
             // band, so contract the occupied bands into one site density
             // matrix element and project each orbital pair once.
-            let site_density = synthesize_spinor_site_density(site, &density_matrix);
+            let site_density = synthesize_spinor_site_density(site, &density_matrix)?;
             for component in 0..4 {
                 merge_sphere_accumulator(
                     &mut muffin_tins[component][site_index],
@@ -670,45 +702,48 @@ pub fn synthesize_full_spinor_valence_density(
 fn synthesize_spinor_site_density(
     site: &FullSpinorDensitySiteBasis,
     density_matrix: &ComplexTensor,
-) -> [BTreeMap<Lm, Vec<Complex64>>; 4] {
+) -> Result<[BTreeMap<Lm, Vec<Complex64>>; 4], DensityError> {
     let contraction = &site.contraction;
     let orbital_count = site.orbitals.len();
     let density_matrix = density_matrix.to_host_row_major();
     let harmonic_count = contraction.harmonics.len();
-    let blocks = (0..4 * harmonic_count)
+    let pair_count = contraction.radial_pair_count;
+    let coefficients = (0..4 * harmonic_count)
         .into_par_iter()
-        .map(|block| {
+        .flat_map_iter(|block| {
             let component = block / harmonic_count;
             let harmonic = block % harmonic_count;
-            let mut values = vec![Complex64::default(); contraction.radial_count];
+            let mut values = vec![Complex64::default(); 2 * pair_count];
             for term in &contraction.terms[component][harmonic] {
                 let coefficient = density_matrix[term.left * orbital_count + term.right];
                 if coefficient == Complex64::default() {
                     continue;
                 }
-                let pp = coefficient * term.pp;
-                let qq = coefficient * term.qq;
-                let left_p = &contraction.radial_p[term.left * contraction.radial_count
-                    ..(term.left + 1) * contraction.radial_count];
-                let right_p = &contraction.radial_p[term.right * contraction.radial_count
-                    ..(term.right + 1) * contraction.radial_count];
-                let left_q = &contraction.radial_q[term.left * contraction.radial_count
-                    ..(term.left + 1) * contraction.radial_count];
-                let right_q = &contraction.radial_q[term.right * contraction.radial_count
-                    ..(term.right + 1) * contraction.radial_count];
-                for radial in 0..contraction.radial_count {
-                    values[radial] += pp * left_p[radial] * right_p[radial]
-                        + qq * left_q[radial] * right_q[radial];
-                }
+                values[term.radial_pair] += coefficient * term.pp;
+                values[pair_count + term.radial_pair] += coefficient * term.qq;
             }
-            (component, contraction.harmonics[harmonic], values)
+            values
         })
         .collect::<Vec<_>>();
+    let coefficients = ComplexTensor::from_host_row_major(
+        &[4 * harmonic_count, 2 * pair_count],
+        &[Axis::FieldChannel, Axis::PairColumn],
+        coefficients,
+    )?;
+    let products = ComplexTensor::from_host_row_major(
+        &[2 * pair_count, contraction.radial_count],
+        &[Axis::PairColumn, Axis::RadialPoint],
+        contraction.radial_products.as_ref().clone(),
+    )?;
+    let values = einsum("ap,pr->ar", &[&coefficients, &products])?.to_host_row_major();
     let mut density: [BTreeMap<Lm, Vec<Complex64>>; 4] = std::array::from_fn(|_| BTreeMap::new());
-    for (component, harmonic, values) in blocks {
-        density[component].insert(harmonic, values);
+    for (block, values) in values.chunks_exact(contraction.radial_count).enumerate() {
+        density[block / harmonic_count].insert(
+            contraction.harmonics[block % harmonic_count],
+            values.to_vec(),
+        );
     }
-    density
+    Ok(density)
 }
 
 /// Complete-shell four-component core density on a muffin-tin mesh.

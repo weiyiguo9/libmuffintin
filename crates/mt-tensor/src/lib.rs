@@ -67,6 +67,10 @@ pub enum Axis {
     PairColumn,
     /// Explicit core spin-orbital index within one site block.
     CoreOrbital,
+    /// Regional scalar/Pauli field component and spherical-harmonic channel.
+    FieldChannel,
+    /// Samples on a site's radial mesh.
+    RadialPoint,
 }
 
 /// Contiguous host layout of a dense tensor.

@@ -150,6 +150,33 @@ A collinear density is the exact subset $n=n_\uparrow+n_\downarrow$, $m_z=n_\upa
 
 For scalar LAPW eigenvectors, the muffin-tin coefficients are formed after the unique compiled site projection. Large and scalar-relativistic small radial products enter separately. The interstitial term uses the exact plane-wave difference $G_{\mathrm{right}}-G_{\mathrm{left}}$, the cell normalization $1/\Omega$, explicit k weights, and band occupations. Full-spinor synthesis retains all physical $P/Q$ pair products and both interstitial Pauli components, so transverse magnetization remains in the same `RegionalDensity` used by mixing, convergence, XC, restart, and the next Hamiltonian.
 
+Magnetic channels with bitwise-identical $P,Q$ samples share one radial
+identifier. Their real radial products can be indexed by unordered radial
+pairs without identifying the ordered spin-angular coefficients. With $A$
+denoting a Pauli component and harmonic, the MT synthesis factors as
+
+```math
+\rho_A(r)=\sum_p W^P_{Ap}\,\frac{P_{p_1}(r)P_{p_2}(r)}{r^2}
+          +\sum_p W^Q_{Ap}\,\frac{Q_{p_1}(r)Q_{p_2}(r)}{r^2}.
+```
+
+`SpinorDensityContraction` compiles the exact radial-pair products once and
+shares their immutable storage across cloned site descriptors. Each synthesis
+only sums the current site density matrix against the retained ordered angular
+terms, then evaluates `einsum("ap,pr->ar")` through TBLIS. The tensor axes are
+`FieldChannel`, `PairColumn`, and `RadialPoint`. No radial, angular, or Pauli
+channel is truncated by this reordering.
+
+A synthetic 294-orbital, 2401-point kernel comparison against the previous
+pair-by-pair implementation used 780 radial pairs and 900 field channels.
+The maximum coefficient difference was $2.84\times10^{-14}$. With two Rayon
+threads and one BLIS/OpenMP thread, the measured calls took 2.700 and 0.684
+seconds; the shared product table occupied 59,928,960 bytes. These are
+single-call kernel timings under concurrent HF load, not a whole-SCF speedup.
+The temporary comparison source and log are retained as
+`/tmp/libmuffintin-spinor-density-benchmark-397b985.patch` and
+`/tmp/libmuffintin-spinor-density-benchmark-397b985.log`.
+
 For regional scalar fields, let $\langle a,b\rangle_R$ denote the muffin-tin radial integral plus the interstitial step-function contraction. The density metric is the Pauli trace
 
 ```math
