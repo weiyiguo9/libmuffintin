@@ -258,8 +258,9 @@ impl<'a> CoulombVertexContractor<'a> {
     ///
     /// `vertices` is occupied-major with `n_target` consecutive target
     /// columns per occupied state. The operator is applied to all columns in
-    /// one dense contraction; only the equal-occupied target blocks are then
-    /// accumulated. This avoids rebuilding and applying the same resident
+    /// one dense contraction; the equal-occupied sum is a second contraction
+    /// over auxiliary and occupied axes, not a scalar target-pair loop.
+    /// This avoids rebuilding and applying the same resident
     /// Coulomb tensor once per occupied state.
     pub fn weighted_occupied_quadratic_sum(
         &self,
@@ -285,23 +286,21 @@ impl<'a> CoulombVertexContractor<'a> {
         let columns = self.column_block(vertices)?;
         let applied = einsum("ab,bj->aj", &[&self.matrix, &columns])?.to_host_row_major();
         let n_auxiliary = self.operator.dimension();
-        let n_columns = vertices.len();
-        let mut result = vec![Complex64::default(); n_target * n_target];
-        for auxiliary in 0..n_auxiliary {
-            let applied_row = &applied[auxiliary * n_columns..(auxiliary + 1) * n_columns];
-            for (occupied, &weight) in occupied_weights.iter().enumerate() {
-                let base = occupied * n_target;
-                for left_target in 0..n_target {
-                    let left =
-                        vertices[base + left_target].coefficients()[auxiliary].conj() * weight;
-                    let output = &mut result[left_target * n_target..(left_target + 1) * n_target];
-                    for right_target in 0..n_target {
-                        output[right_target] += left * applied_row[base + right_target];
-                    }
-                }
+        let mut weighted_left = columns.to_host_row_major();
+        drop(columns);
+        for (row, &weight) in weighted_left
+            .chunks_exact_mut(n_target)
+            .zip(occupied_weights.iter().cycle())
+        {
+            for coefficient in row {
+                *coefficient = coefficient.conj() * weight;
             }
         }
-        Ok(result)
+        let shape = [n_auxiliary, occupied_weights.len(), n_target];
+        let axes = [Axis::Auxiliary, Axis::Band, Axis::Band];
+        let weighted_left = ComplexTensor::from_host_row_major(&shape, &axes, weighted_left)?;
+        let applied = ComplexTensor::from_host_row_major(&shape, &axes, applied)?;
+        Ok(einsum("aoi,aoj->ij", &[&weighted_left, &applied])?.to_host_row_major())
     }
 
     /// Auxiliary-major matrix of the requested vertex coefficients.

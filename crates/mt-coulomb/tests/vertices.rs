@@ -17,6 +17,56 @@ fn apply_matches_quadratic_form_on_a_unit_vector() {
     assert_eq!(applied.len(), operator.dimension());
     let quadratic = operator.quadratic_form(&vertex, &vertex).unwrap();
     assert!((quadratic - operator.element(0, 0).unwrap()).norm() < 1.0e-12);
+
+    // Unequal occupations and complex columns distinguish conjugation and
+    // equal-occupied reduction from a full pair-column Gram matrix.
+    let weights = [0.2, 0.7];
+    let targets = 3;
+    let vertices = (0..weights.len() * targets)
+        .map(|column| {
+            PairVertex::from_auxiliary(
+                &auxiliary,
+                OrbitalPair::Bloch {
+                    k_index: 0,
+                    left: column / targets,
+                    right: column % targets,
+                },
+                (0..auxiliary.dimension())
+                    .map(|a| {
+                        num_complex::Complex64::new(
+                            ((a + 2 * column + 1) as f64).sin() * 0.1,
+                            ((2 * a + column + 1) as f64).cos() * 0.1,
+                        )
+                    })
+                    .collect(),
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let references = vertices.iter().collect::<Vec<_>>();
+    let contracted = operator
+        .contractor()
+        .unwrap()
+        .weighted_occupied_quadratic_sum(&references, &weights, targets)
+        .unwrap();
+    for left in 0..targets {
+        for right in 0..targets {
+            let expected = weights
+                .iter()
+                .enumerate()
+                .map(|(occupied, weight)| {
+                    weight
+                        * operator
+                            .quadratic_form(
+                                &vertices[occupied * targets + left],
+                                &vertices[occupied * targets + right],
+                            )
+                            .unwrap()
+                })
+                .sum::<num_complex::Complex64>();
+            assert!((contracted[left * targets + right] - expected).norm() < 1.0e-11);
+        }
+    }
 }
 
 #[test]
