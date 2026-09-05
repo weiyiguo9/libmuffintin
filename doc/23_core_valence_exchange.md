@@ -1088,6 +1088,36 @@ direct quadratic forms, and the full small-fixture sector identities pass.
 The 1970.61 s measurement predates this optimization; no whole-SCF speedup
 factor has yet been measured.
 
+The next basis probe follows the FLEUR angular guideline
+$l_{\max}\simeq K_{\max}R_{\mathrm{MT}}$: orbital cutoff 4 and $l_{\max}=8$
+at MT radius 2, with field cutoff 12. The harness consequently raises the
+field harmonic cutoff from 14 to 18. Product and exchange Fourier cutoffs
+remain 6 for this step and require independent convergence; these are not
+FLEUR's `lnonsph` parameter. The local FLEUR input generator implements this
+angular relation in `inpgen2/make_atomic_defaults.f90:131` and defaults the
+density cutoff to three times the orbital cutoff in `make_defaults.f90:83`.
+See also the [FLEUR parameter-convergence tutorial](https://www.flapw.de/Fleur-v26/DFT-2021-tut/parameterConvergence/).
+
+The `9588b26` probe passed core initialization after the endpoint-shooting
+scale correction in [06](06_dirac_4c_core_and_valence.md), reaching two HF
+steps with energies -2787.616543822045 and -2787.678225396866 Ha. It was
+deliberately stopped, not accepted, after a sample measured 14.7 GB physical
+footprint and 34.2 GB peak on the 24 GiB host. The sample is
+`/tmp/libmuffintin-kr-orbital4-l8-9588b26-iteration.sample.txt`; the unchanged
+manifest and prefix are in
+`/tmp/libmuffintin-kr-sra-frozen-field12-orbital4-l8-9588b26-run1`, with an
+explicit `STOPPED.md`.
+
+The scalar and spinor static MT vertex caches now store only the MT auxiliary
+prefix, eliminating exactly zero interstitial rows. The CV site tensors use
+the same restriction. Public vertices retain their complete MT/interstitial
+layout, and neither the product span nor any physical cutoff changes. For
+$N_I$ interstitial modes and $N_s$ site coordinates, the VV cache avoids
+$16N_I N_s^2$ bytes per site, and CV avoids $16N_I N_c N_s$ bytes. These are
+allocation counts, not measured peak-RSS reductions. All 15 scalar/spinor
+MPB tests passed after this change; production memory and prefix parity must
+be measured on the replacement run.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
