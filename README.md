@@ -1,7 +1,7 @@
 # libmuffintin
 
 <p align="center">
-  <img src="https://cdn.jsdelivr.net/gh/weiyiguo9/libmuffintin@main/assets/libmuffintin-logo.webp" alt="libmuffintin logo" width="300">
+  <img src="https://cdn.jsdelivr.net/gh/weiyiguo9/libmuffintin@main/assets/libmuffintin-logo.svg" alt="libmuffintin logo" width="300">
 </p>
 
 `libmuffintin` is a memory-safe experimental Rust library for algebra shared by
