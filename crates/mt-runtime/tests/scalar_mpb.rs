@@ -6,7 +6,7 @@ use muffintin::{
     CheckpointPhysics, SCALAR_MPB_NSPIN, SCALAR_RADIAL_U, SCALAR_RADIAL_UDOT, ScalarMpbError,
     ScalarMpbSelection, ScalarMpbSpec, build_scalar_mpb,
 };
-use muffintin_core::{Hartree, InverseBohr};
+use muffintin_core::{Hartree, InverseBohr, lm_from_index};
 use muffintin_dft::{
     LinearizationEnergyGenerator, NoncollinearXcRoute, ScfBasis, ScfChannelIdentity,
     ScfChannelProvenance, ScfChannelRecipe, ScfChannelTreatment, ScfConfig, ScfConvergence,
@@ -20,12 +20,12 @@ use muffintin_io::{
     LinearizationV1, PotentialChannelV1, PotentialConventionV1, PotentialRadialQuantityV1,
     RadialEquationTag, SiteSpinV1, SiteV1, SphericalChannelConvention, SpinTag,
 };
+use muffintin_operators::CompiledSiteProjection;
 use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
 use muffintin_prodbasis::{CompiledAuxiliaryBasis, OrbitalPair};
 use num_complex::Complex64;
 
-fn hydrogen_checkpoint() -> CheckpointV2 {
-    let point_count = 61;
+fn hydrogen_checkpoint(point_count: usize) -> CheckpointV2 {
     let first: f64 = 1.0e-4;
     let radius: f64 = 1.0;
     let increment = (radius / first).ln() / (point_count - 1) as f64;
@@ -281,11 +281,13 @@ fn max_abs_diff(left: &[Complex64], right: &[Complex64]) -> f64 {
 
 #[test]
 fn q0_scalar_mpb_bridge_emits_raw_retained_and_real_vertex() {
-    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint(241)).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
-    let result = build_scalar_mpb(&input, &mpb_spec(*physics.reciprocal(), 0)).unwrap();
+    let mut spec = mpb_spec(*physics.reciprocal(), 0);
+    spec.overlap_tolerance = 1.0e-12;
+    let result = build_scalar_mpb(&input, &spec).unwrap();
 
     assert_eq!(result.raw.q, input.source.q);
     assert_eq!(result.auxiliary.q, input.source.q);
@@ -299,7 +301,7 @@ fn q0_scalar_mpb_bridge_emits_raw_retained_and_real_vertex() {
         .and_then(|payload| payload.cutoff)
         .expect("TOL record");
     assert_eq!(cutoff.nspin_factor, SCALAR_MPB_NSPIN);
-    assert_eq!(cutoff.value, DEFAULT_TOLERANCE);
+    assert_eq!(cutoff.value, spec.overlap_tolerance);
     assert!(
         input.source.radials[0]
             .valence
@@ -335,6 +337,80 @@ fn q0_scalar_mpb_bridge_emits_raw_retained_and_real_vertex() {
         result.auxiliary.dimension()
     );
     assert_eq!(record.vertex.mt().len(), result.auxiliary.mt_dimension());
+    // This fixture has APW u/udot coordinates only. Compare the MPB integral
+    // with raw LAPW coefficients and physical radials, not normalized products.
+    let channel = &input.orbitals.channels[0];
+    let projected = CompiledSiteProjection::scalar(&channel.bases[0], 0)
+        .unwrap()
+        .project_eigenvectors(&channel.eigenvectors[0])
+        .unwrap();
+    let site = &input.source.radials[0];
+    let mut physical_mt = Complex64::default();
+    for left in 0..projected.coordinate_count() {
+        let left_lm = lm_from_index(left / 2);
+        let a = &site
+            .valence
+            .iter()
+            .find(|radial| {
+                radial.l == left_lm.l && radial.n == left % 2 && radial.spin == channel.spin
+            })
+            .unwrap()
+            .samples;
+        for right in 0..projected.coordinate_count() {
+            if left / 2 != right / 2 {
+                continue;
+            }
+            let b = &site
+                .valence
+                .iter()
+                .find(|radial| {
+                    radial.l == left_lm.l && radial.n == right % 2 && radial.spin == channel.spin
+                })
+                .unwrap()
+                .samples;
+            let overlap = site
+                .mesh
+                .integrate(
+                    &a.large
+                        .iter()
+                        .zip(&b.large)
+                        .enumerate()
+                        .map(|(i, (ap, bp))| {
+                            ap * bp
+                                + match (&a.small, &b.small) {
+                                    (Some(aq), Some(bq)) => aq[i] * bq[i],
+                                    _ => 0.0,
+                                }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
+            physical_mt += projected.at(left, 0).conj() * projected.at(right, 0) * overlap;
+        }
+    }
+    let mut mpb_mt = Complex64::default();
+    for block in &result.auxiliary.mixed_product().unwrap().sites {
+        for mode in block.modes.iter().filter(|mode| mode.l == 0) {
+            let index = result.auxiliary.mt_index(block.site, 0, 0, mode.n).unwrap();
+            let integral = block
+                .mesh
+                .integrate(
+                    &mode
+                        .radial
+                        .iter()
+                        .zip(block.mesh.radii())
+                        .map(|(radial, r)| radial * r.get())
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap()
+                * (4.0 * std::f64::consts::PI).sqrt();
+            mpb_mt += record.vertex.coefficients()[index] * integral;
+        }
+    }
+    assert!(
+        (mpb_mt - physical_mt).norm() < 1.0e-8,
+        "MPB {mpb_mt}, physical {physical_mt}"
+    );
     assert_eq!(
         record.vertex.interstitial().len(),
         result.auxiliary.interstitial_dimension()
@@ -359,7 +435,7 @@ fn q0_scalar_mpb_bridge_emits_raw_retained_and_real_vertex() {
 
 #[test]
 fn finite_q_scalar_mpb_uses_canonical_q_and_wraps() {
-    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint(61)).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([2, 1, 1], 0.5), [1.5, 0.0, 0.0])
         .unwrap();
@@ -416,7 +492,7 @@ fn finite_q_scalar_mpb_uses_canonical_q_and_wraps() {
 
 #[test]
 fn selected_vertex_plane_wave_theta_sum_matches_independent_oracle() {
-    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint(61)).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([2, 1, 1], 1.0), [1.5, 0.0, 0.0])
         .unwrap();
@@ -479,7 +555,7 @@ fn selected_vertex_plane_wave_theta_sum_matches_independent_oracle() {
 
 #[test]
 fn scalar_mpb_rejects_empty_or_incompatible_selection() {
-    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint(61)).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 0.5), [0.0; 3])
         .unwrap();
@@ -523,7 +599,7 @@ fn scalar_mpb_rejects_empty_or_incompatible_selection() {
 
 #[test]
 fn batched_scalar_mpb_preserves_selection_order_and_coefficients() {
-    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint(61)).unwrap();
     let input = physics
         .scalar_product_input(&scalar_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();

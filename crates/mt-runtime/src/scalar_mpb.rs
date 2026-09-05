@@ -584,9 +584,65 @@ fn project_k_sites(
             CompiledSiteProjection::scalar(left_basis, site)?.project_eigenvectors(left_ev)?;
         let right =
             CompiledSiteProjection::scalar(right_basis, site)?.project_eigenvectors(right_ev)?;
-        sites.push(ProjectedSitePair { left, right });
+        sites.push(ProjectedSitePair {
+            left: normalized_mpb_site_projection(input, left_basis, site, spin, left)?,
+            right: normalized_mpb_site_projection(input, right_basis, site, spin, right)?,
+        });
     }
     Ok(sites)
+}
+
+/// Raw MPB pairs use individually normalized radials, unlike LAPW projection
+/// rows. Apply d_hat=sqrt(N)*d only to the MT coordinates, not the PW part.
+fn normalized_mpb_site_projection(
+    input: &ScalarProductInput,
+    basis: &CompiledBasis,
+    site: usize,
+    spin: u8,
+    projected: SiteOrbitalCoefficients,
+) -> Result<SiteOrbitalCoefficients, ScalarMpbError> {
+    let coordinates = projected.coordinate_count();
+    let bands = projected.band_count();
+    let mut values = projected.to_host_row_major();
+    let radials = &input.source.radials[site];
+    for (coordinate, row) in values.chunks_exact_mut(bands).enumerate() {
+        let (id, _) = site_coordinate(basis, site, spin, coordinate)
+            .ok_or(ScalarMpbError::IncompatiblePairLayout)?;
+        let radial = radials
+            .valence
+            .iter()
+            .find(|radial| radial.l == id.l && radial.n == id.n && radial.spin == id.spin)
+            .ok_or(ScalarMpbError::IncompatiblePairLayout)?;
+        let integrand = radial
+            .samples
+            .large
+            .iter()
+            .enumerate()
+            .map(|(index, p)| {
+                p * p
+                    + radial
+                        .samples
+                        .small
+                        .as_ref()
+                        .map_or(0.0, |q| q[index] * q[index])
+            })
+            .collect::<Vec<_>>();
+        let scale = radials
+            .mesh
+            .integrate(&integrand)
+            .map_err(MpbError::from)?
+            .sqrt();
+        for value in row {
+            *value *= scale;
+        }
+    }
+    Ok(SiteOrbitalCoefficients::from_tensor(
+        ComplexTensor::from_host_row_major(
+            &[coordinates, bands],
+            &[Axis::SiteCoordinate, Axis::Band],
+            values,
+        )?,
+    )?)
 }
 
 fn compile_mt_coordinate_tensors(
