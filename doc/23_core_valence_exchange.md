@@ -368,6 +368,72 @@ CV exchange is adequate under a spill gate. This repository's M3c also mixes
 only valence density and replaces core density fresh. The inspected
 `src/mixro1.F` instead mixes total density and is not evidence for that choice.
 
+### 3.4 Reproducible frozen-core Kr kernel controls
+
+`kr_relaxed_core_hf` keeps its inexpensive smoke defaults. Invoking it without
+options, or with only `--out`, prints a warning on stderr; this configuration
+is not suitable for physical assessment. The following is a physical-diagnostic
+configuration, not an accepted or fully converged production reference.
+Run from the repository root, after building the release example:
+
+```sh
+export TBLIS_DIR="$(brew --prefix tblis)" # local macOS build only
+export HDF5_DIR="$(brew --prefix hdf5)"  # local macOS build only
+cargo build --release --locked -p libmuffintin-runtime --example kr_relaxed_core_hf
+
+BOX=8
+OMEGA=1.6
+OUT=/tmp/libmuffintin-kr-omega16-run1
+./target/release/examples/kr_relaxed_core_hf \
+  --relativity spinor-frozen --box "$BOX" --rmt 2 --radial-points 2401 \
+  --orbital-g 3 --orbital-lmax 6 --field-g 12 \
+  --product-g 6 --product-lmax 6 --lexp 18 \
+  --exchange-coulomb smoothed-spencer-alavi-sphere \
+  --fock-fourier-g 6 --fock-smoothing-omega "$OMEGA" \
+  --hdlo all --temperature 1e-6 \
+  --fock-mixing cdiis --fock-diis-history 8 --fock-diis-startup-steps 2 \
+  --fock-diis-damping 0.5 --spinor-virtual-level-shift 0.1 \
+  --fock-max-iterations 128 --fock-density-tolerance 1e-5 \
+  --fock-feedback-tolerance 1e-5 --fock-commutator-tolerance 1e-5 \
+  --outer-max-iterations 2 --outer-energy-tolerance 1e-5 \
+  --out "$OUT"
+```
+
+The CLI spelling `--fock-mixing cdiis` serializes as
+`commutator-cdiis-global-feedback`. The angular field cutoff is derived as
+`2 * (orbital_lmax + 1)`, hence 14 here; the MPB overlap tolerance remains
+`1e-4`. Keep these settings fixed across fresh, independently initialized runs.
+Use a new output directory for each run, and record the source revision,
+binary hash, command, thread environment, elapsed time, and peak RSS alongside
+the manifest, iteration trace, and result.
+
+| Control | `BOX` | `OMEGA` | Output / execution constraint |
+|---|---|---|---|
+| Matched baseline | 8 | 0.8 | Existing `/tmp/libmuffintin-kr-sra-frozen-field12-9b179f7-run1`; VV = −2.077387792151461 Ha |
+| Smoothing only | 8 | 1.6 | Command above; orbital and product basis settings unchanged |
+| Box only | 12 | 0.8 | Set these variables before the same command; use a fresh `/scratch-shared` output on Rome, never the 24 GiB Mac |
+
+The box control is relative to the baseline, not to the smoothing control.
+On Rome, use its configured Linux binary and TBLIS environment instead of the
+Homebrew build command. Do not overlap these heavy controls with an existing
+HF job. At fixed reciprocal cutoffs, increasing the box from 8 to 12 increases
+plane-wave counts approximately 3.375-fold and dense matrix storage approximately
+11.39-fold; this is a capacity warning, not a measured peak-RSS prediction.
+The automatic sphere radius changes from approximately 4.9628 to 7.4442 bohr.
+
+Compare `result.toml` → `sector_energies.vv_hartree` only after verifying the
+iteration trace reached the requested SCF tolerances and removed the virtual
+level shift; reaching the iteration cap is not convergence. Compare against the
+matched orbital 3 / l6 baseline above, not the orbital 4 / l8 VV value. Movement
+toward the isolated LDA determinant's approximately −2.926 Ha exchange would
+support kernel sensitivity, but does not establish agreement with HF orbitals
+or physical acceptance. A null response does not exclude the kernel: the fixed
+Fourier cutoff of 6 must also be converged, particularly when increasing the
+smoothing parameter. The box control changes the plane-wave basis as well as
+the kernel radius, so it is not a pure fixed-basis kernel test. Product-basis
+and orbital errors remain separate candidates; do not change CC, CV, or Gamma
+handling on the basis of these controls alone.
+
 ## 4. Milestones and acceptance gates
 
 The driver and core-sector work advance as two mostly independent tracks.

@@ -334,8 +334,10 @@ impl Default for Cli {
 impl Cli {
     fn parse() -> Result<Self, Box<dyn Error>> {
         let mut cli = Self::default();
+        let mut smoke_configuration = true;
         let mut arguments = env::args().skip(1);
         while let Some(name) = arguments.next() {
+            smoke_configuration &= name == "--out";
             let value = arguments
                 .next()
                 .ok_or_else(|| invalid_input(format!("missing value after {name}")))?;
@@ -419,6 +421,9 @@ impl Cli {
             }
         }
         cli.validate()?;
+        if smoke_configuration {
+            eprintln!("warning: default smoke configuration; not for physical assessment (see doc/23_core_valence_exchange.md section 3.4)");
+        }
         Ok(cli)
     }
 
