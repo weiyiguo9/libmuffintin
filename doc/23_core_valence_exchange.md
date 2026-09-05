@@ -371,7 +371,7 @@ only valence density and replaces core density fresh. The inspected
 ### 3.4 Reproducible frozen-core Kr kernel controls
 
 `kr_relaxed_core_hf` keeps its inexpensive smoke defaults. Invoking it without
-options, or with only `--out`, prints a warning on stderr; this configuration
+options, or with only `--out` and/or `--verbosity`, prints a warning on stderr; this configuration
 is not suitable for physical assessment. The following is a physical-diagnostic
 configuration, not an accepted or fully converged production reference.
 Run from the repository root, after building the release example:
@@ -396,8 +396,20 @@ OUT=/tmp/libmuffintin-kr-omega16-run1
   --fock-max-iterations 128 --fock-density-tolerance 1e-5 \
   --fock-feedback-tolerance 1e-5 --fock-commutator-tolerance 1e-5 \
   --outer-max-iterations 2 --outer-energy-tolerance 1e-5 \
-  --out "$OUT"
+  --verbosity 2 --out "$OUT"
 ```
+
+`--verbosity 0` suppresses progress, `1` (the example default) reports startup
+and frozen SCF iterations, and `2` additionally reports phase begin/end markers
+with elapsed wall seconds on stderr. The level is recorded in the manifest;
+library calls remain quiet unless `set_hf_verbosity` is called explicitly.
+Nested phase times are inclusive: do not sum parent and child times. An end
+marker also appears on an error exit and does not establish convergence or
+physical acceptance. Capture stdout and stderr separately, for example by
+appending `> "$OUT.stdout.log" 2> "$OUT.stderr.log"` to the command. For measured
+peak RSS, prefix the executable with `/usr/bin/time -l` on macOS or
+`/usr/bin/time -v` on Linux (including Rome); its resource report joins stderr.
+Allocated tensor capacity is not a measurement of process peak RSS.
 
 The CLI spelling `--fock-mixing cdiis` serializes as
 `commutator-cdiis-global-feedback`. The angular field cutoff is derived as
@@ -1502,6 +1514,38 @@ reservation. The VV mixed-product basis remains VV-only for both policies;
 no unused core products are added to it. If `RelaxedCore` is implemented, its
 unified active-space interaction is built as a separate product rather than
 by enlarging every existing VV contraction.
+
+### 4.4 Appended follow-up: self-consistent core updates
+
+**Status: queued after the current performance optimization and publication;
+not implemented by that work.** Investigate an EMTO soft-core or standard
+LAPW-style core-update policy instead of keeping the initial core radial
+orbitals and density fixed throughout the valence HF loop. This extends the
+existing M3c core-update work; it is not a second unrelated relaxed-core driver.
+Frozen core occupations and frozen core radial functions are separate choices.
+
+The completed Snellius performance run `26403808` retained the frozen-checkpoint
+SRA model and reproduced $E=-2787.682192574881$ Ha, compared with
+$-2788.884473874519$ Ha for the recorded Dyall-v4z 4c-DC-HF reference: the
+difference remains $+1.202281299638$ Ha. Its VV exchange is
+$-2.1019834250521616$ Ha. The earlier $-2.926180$ Ha VV result belongs to a
+fixed isolated LDA determinant, not the GTO self-consistent HF VV decomposition;
+the two VV values do not identify the source of the total-energy error.
+Performance/numerical reproduction is therefore separate from GTO physical
+acceptance, which remains open.
+
+| Follow-up | Required outcome |
+|---|---|
+| Establish the core policy | Compare the actual EMTO soft-core and LAPW core-update definitions in reference sources; do not assume they are identical. Specify which core quantities remain fixed and which follow the current potential. |
+| Define the HF update | Connect the selected policy to the existing radial Fock-core contract, core density, Hartree response, and core exchange. Re-solving a local DFT core alone must not be presented as a self-consistent HF core. |
+| Maintain the common frame | After a core update, refresh core–valence orthogonality and invalidate/rebuild the affected core-member product bases, Coulomb operators, and CV/CC exchange data before reuse. Retain final CV/VC and energy-identity diagnostics. |
+| Separate physical differences | Compare frozen and updated-core calculations with the same nuclear model, basis, cutoffs, and exchange controls first. Keep the pending nuclear-parameter comparison and the SRA versus fully optimized 4c Hamiltonian comparison as separate controls. |
+| Record acceptance evidence | Report core radial/density changes, core convergence and spill, total energy, relative 4s/4p levels, and matched sector energies. Do not claim that core relaxation must remove the GTO discrepancy before these controls are evaluated. |
+
+The current performance commits do not activate this policy, alter nuclear
+parameters, or close the GTO acceptance gap. The next implementation step starts
+with the explicit core-update contract and its interaction with the existing
+fixed-basis caches, not by silently unfreezing one cached array.
 
 ## 5. Explicit exclusions
 
