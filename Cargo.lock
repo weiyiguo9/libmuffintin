@@ -1039,6 +1039,7 @@ dependencies = [
  "libmuffintin-tensor",
  "num-complex",
  "rayon",
+ "rustc-hash",
  "thiserror 2.0.20",
 ]
 

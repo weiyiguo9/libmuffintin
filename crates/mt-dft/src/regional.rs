@@ -944,13 +944,43 @@ fn interstitial_inner_product(
     if left.layout() != right.layout() {
         return Err(RegionalError::Fourier(FourierFieldError::LayoutMismatch));
     }
+    // Validate the full layout before omitting exact-zero terms, so pruning
+    // cannot hide an overflowing reciprocal difference.
+    for axis in 0..3 {
+        let vectors = left.layout().vectors();
+        if let (Some(minimum), Some(maximum)) = (
+            vectors.iter().min_by_key(|vector| vector.index[axis]),
+            vectors.iter().max_by_key(|vector| vector.index[axis]),
+        ) {
+            for (a, b) in [(minimum, maximum), (maximum, minimum)] {
+                if a.index[axis].checked_sub(b.index[axis]).is_none() {
+                    return Err(RegionalError::ReciprocalDifferenceOverflow {
+                        left: a.index,
+                        right: b.index,
+                    });
+                }
+            }
+        }
+    }
+    let left_nonzero = left
+        .field
+        .iter()
+        .filter(|(_, value)| **value != Complex64::default())
+        .collect::<Vec<_>>();
+    let right_nonzero = right
+        .field
+        .iter()
+        .filter(|(_, value)| **value != Complex64::default())
+        .collect::<Vec<_>>();
     let reciprocal = left.layout().reciprocal();
     let volume = geometry.cell_volume().get();
     let mut total = Complex64::new(0.0, 0.0);
     let mut absolute_scale = 0.0;
     let mut step_coefficients = HashMap::new();
-    for (left_vector, &left_value) in left.field.iter() {
-        for (right_vector, &right_value) in right.field.iter() {
+    // Keep the original ordering and absolute scale of every nonzero term.
+    // In particular, zero Pauli components need no quadratic convolution.
+    for (left_vector, &left_value) in left_nonzero {
+        for &(right_vector, &right_value) in &right_nonzero {
             let difference = [
                 left_vector.index[0].checked_sub(right_vector.index[0]),
                 left_vector.index[1].checked_sub(right_vector.index[1]),

@@ -6,14 +6,14 @@ use muffintin_core::{
     MeshError, StepFunctionError, lm_count, lm_index,
 };
 use muffintin_coulomb::{
-    HartreeError, InterstitialHartreePotential, MuffinTinChargeDensity, MuffinTinHartreePotential,
-    PeriodicChargeTreatment, RawElectrostaticPotential, RawHartreePotential, RawNuclearPotential,
-    WeinertChargeDensity, WeinertHartreeSpec, solve_periodic_nuclear_potential,
-    solve_weinert_hartree,
+    HartreeError, MuffinTinChargeDensity, MuffinTinHartreePotential, PeriodicChargeTreatment,
+    RawElectrostaticPotential, RawHartreePotential, RawNuclearPotential, WeinertChargeDensity,
+    WeinertHartreeSpec, solve_periodic_nuclear_potential, solve_weinert_hartree,
 };
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
 use num_complex::Complex64;
-use std::collections::{HashMap, hash_map::Entry};
+use rustc_hash::FxHashMap;
+use std::collections::hash_map::Entry;
 use std::f64::consts::PI;
 use thiserror::Error;
 
@@ -110,28 +110,64 @@ pub fn evaluate_regional_electrostatics(
         });
     }
 
-    let hartree_integral = density_potential_integral(
-        &weinert_density,
-        raw_hartree.muffin_tins(),
+    let layout = weinert_density.interstitial().layout();
+    let raw_interstitial = [
         raw_hartree.interstitial(),
-        "electronic Hartree energy",
-    )?;
-    let electron_nuclear = density_potential_integral(
-        &weinert_density,
-        raw_nuclear.muffin_tins(),
         raw_nuclear.interstitial(),
-        "electron-nuclear energy",
-    )?;
-    let coulomb = density_potential_integral(
-        &weinert_density,
-        raw_electrostatic.muffin_tins(),
         raw_electrostatic.interstitial(),
-        "Coulomb integral",
+    ];
+    if raw_interstitial.iter().any(|raw| raw.layout() != layout) {
+        return Err(RegionalElectrostaticError::RawLayoutMismatch);
+    }
+    let coefficients = raw_interstitial.map(|raw| {
+        raw.coefficients()
+            .map(|value| value.as_complex())
+            .collect::<Vec<_>>()
+    });
+    let mut integrals = [
+        muffin_tin_density_potential_integral(&weinert_density, raw_hartree.muffin_tins())?,
+        muffin_tin_density_potential_integral(&weinert_density, raw_nuclear.muffin_tins())?,
+        muffin_tin_density_potential_integral(&weinert_density, raw_electrostatic.muffin_tins())?,
+    ];
+    let volume = weinert_density.geometry().cell_volume().get();
+    let density_coefficients = weinert_density.interstitial().coefficients();
+    // Share theta lookups with the total-potential mask, but retain each
+    // original energy's MT-first, left/right summation and multiplication order.
+    let mut masked_total = mask_fourier_coefficients(
+        charge.geometry(),
+        layout,
+        &coefficients[2],
+        |target, source, theta| {
+            let rho = density_coefficients[target];
+            if rho == Complex64::default() {
+                return;
+            }
+            for field in 0..3 {
+                let term = volume * rho.conj() * theta * coefficients[field][source];
+                integrals[field].0 += term;
+                integrals[field].1 += term.norm();
+            }
+        },
     )?;
+    let [
+        (hartree_value, hartree_scale),
+        (nuclear_value, nuclear_scale),
+        (coulomb_value, coulomb_scale),
+    ] = integrals;
+    let hartree_integral =
+        checked_real_hartree(hartree_value, hartree_scale, "electronic Hartree energy")?;
+    let electron_nuclear =
+        checked_real_hartree(nuclear_value, nuclear_scale, "electron-nuclear energy")?;
+    let coulomb = checked_real_hartree(coulomb_value, coulomb_scale, "Coulomb integral")?;
     let electron_hartree = Hartree(0.5 * hartree_integral.get());
     let nuclear_nuclear = nuclear_nuclear_energy(&raw_nuclear)?;
     let madelung = Hartree(electron_nuclear.get() + 2.0 * nuclear_nuclear.get());
-    let potential = regional_potential(charge, &raw_electrostatic)?;
+    canonicalize_fourier(layout, &mut masked_total)?;
+    let interstitial = InterstitialField::from_fourier_field(HermitianFourierField::new(
+        layout.clone(),
+        masked_total,
+    )?);
+    let potential = regional_potential(charge, &raw_electrostatic, interstitial)?;
 
     Ok(RegionalElectrostaticResult {
         potential,
@@ -241,13 +277,13 @@ fn accumulate_real_channel(
 fn regional_potential(
     charge: &RegionalScalarField,
     raw: &RawElectrostaticPotential,
+    interstitial: InterstitialField,
 ) -> Result<RegionalScalarField, RegionalElectrostaticError> {
     let muffin_tins = raw
         .muffin_tins()
         .iter()
         .map(raw_muffin_tin_field)
         .collect::<Result<Vec<_>, _>>()?;
-    let interstitial = masked_interstitial(charge, raw.interstitial())?;
     RegionalScalarField::new(charge.geometry().clone(), muffin_tins, interstitial)
         .map_err(Into::into)
 }
@@ -273,35 +309,21 @@ fn raw_muffin_tin_field(
     )?)
 }
 
-fn masked_interstitial(
-    charge: &RegionalScalarField,
-    raw: &InterstitialHartreePotential,
-) -> Result<InterstitialField, RegionalElectrostaticError> {
-    let layout = raw.layout();
-    let raw_coefficients = raw
-        .coefficients()
-        .map(|value| value.as_complex())
-        .collect::<Vec<_>>();
-    let masked = mask_fourier_coefficients(charge.geometry(), layout, &raw_coefficients)?;
-    Ok(InterstitialField::from_fourier_field(
-        HermitianFourierField::new(layout.clone(), masked)?,
-    ))
-}
-
 fn mask_fourier_coefficients(
     geometry: &InterstitialGeometry,
     layout: &FourierLayout,
     raw_coefficients: &[Complex64],
+    mut accumulate_energy: impl FnMut(usize, usize, Complex64),
 ) -> Result<Vec<Complex64>, RegionalElectrostaticError> {
     if raw_coefficients.len() != layout.len() {
         return Err(RegionalElectrostaticError::RawLayoutMismatch);
     }
     let reciprocal = layout.reciprocal();
     let mut masked = Vec::with_capacity(layout.len());
-    let mut step_coefficients = HashMap::new();
-    for target in layout.vectors() {
+    let mut step_coefficients = FxHashMap::default();
+    for (target_position, target) in layout.vectors().iter().enumerate() {
         let mut value = Complex64::default();
-        for (source, &coefficient) in layout.vectors().iter().zip(raw_coefficients) {
+        for (source_position, source) in layout.vectors().iter().enumerate() {
             let difference = reciprocal_difference(target.index, source.index)?;
             let theta = match step_coefficients.entry(difference) {
                 Entry::Occupied(entry) => *entry.get(),
@@ -309,23 +331,19 @@ fn mask_fourier_coefficients(
                     *entry.insert(geometry.coefficient(reciprocal.cartesian(difference))?)
                 }
             };
-            value += theta * coefficient;
+            value += theta * raw_coefficients[source_position];
+            accumulate_energy(target_position, source_position, theta);
         }
         masked.push(value);
     }
-    canonicalize_fourier(layout, &mut masked)?;
     Ok(masked)
 }
 
-fn density_potential_integral(
+fn muffin_tin_density_potential_integral(
     density: &WeinertChargeDensity,
     muffin_tins: &[MuffinTinHartreePotential],
-    interstitial: &InterstitialHartreePotential,
-    quantity: &'static str,
-) -> Result<Hartree, RegionalElectrostaticError> {
-    if density.muffin_tins().len() != muffin_tins.len()
-        || density.interstitial().layout() != interstitial.layout()
-    {
+) -> Result<(Complex64, f64), RegionalElectrostaticError> {
+    if density.muffin_tins().len() != muffin_tins.len() {
         return Err(RegionalElectrostaticError::RawLayoutMismatch);
     }
     let mut total = Complex64::default();
@@ -359,36 +377,7 @@ fn density_potential_integral(
         }
     }
 
-    let volume = density.geometry().cell_volume().get();
-    let reciprocal = density.interstitial().layout().reciprocal();
-    let potential_coefficients = interstitial
-        .coefficients()
-        .map(|value| value.as_complex())
-        .collect::<Vec<_>>();
-    let mut step_coefficients = HashMap::new();
-    for (left, &rho) in density.interstitial().iter() {
-        for (right, &potential) in density
-            .interstitial()
-            .layout()
-            .vectors()
-            .iter()
-            .zip(&potential_coefficients)
-        {
-            let difference = reciprocal_difference(left.index, right.index)?;
-            let theta = match step_coefficients.entry(difference) {
-                Entry::Occupied(entry) => *entry.get(),
-                Entry::Vacant(entry) => *entry.insert(
-                    density
-                        .geometry()
-                        .coefficient(reciprocal.cartesian(difference))?,
-                ),
-            };
-            let term = volume * rho.conj() * theta * potential;
-            total += term;
-            scale += term.norm();
-        }
-    }
-    checked_real_hartree(total, scale, quantity)
+    Ok((total, scale))
 }
 
 fn nuclear_nuclear_energy(
@@ -811,7 +800,9 @@ mod tests {
             Complex64::new(2.0, 0.0),
             Complex64::default(),
         ];
-        let masked_uniform = mask_fourier_coefficients(&geometry, &layout, &uniform).unwrap();
+        let mut masked_uniform =
+            mask_fourier_coefficients(&geometry, &layout, &uniform, |_, _, _| {}).unwrap();
+        canonicalize_fourier(&layout, &mut masked_uniform).unwrap();
         for (position, target) in layout.vectors().iter().enumerate() {
             let expected = 2.0 * geometry.coefficient(target.cartesian).unwrap();
             assert!((masked_uniform[position] - expected).norm() < 1.0e-14);
@@ -819,7 +810,9 @@ mod tests {
 
         let mode = Complex64::new(0.7, 0.2);
         let finite = [mode.conj(), Complex64::default(), mode];
-        let masked_finite = mask_fourier_coefficients(&geometry, &layout, &finite).unwrap();
+        let mut masked_finite =
+            mask_fourier_coefficients(&geometry, &layout, &finite, |_, _, _| {}).unwrap();
+        canonicalize_fourier(&layout, &mut masked_finite).unwrap();
         for (position, target) in layout.vectors().iter().enumerate() {
             let minus = reciprocal_difference(target.index, [-1, 0, 0]).unwrap();
             let plus = reciprocal_difference(target.index, [1, 0, 0]).unwrap();
@@ -876,12 +869,14 @@ mod tests {
             .coefficients()
             .map(|value| value.as_complex())
             .collect::<Vec<_>>();
-        let expected_masked = mask_fourier_coefficients(
+        let mut expected_masked = mask_fourier_coefficients(
             charge.geometry(),
             charge.interstitial().layout(),
             &raw_coefficients,
+            |_, _, _| {},
         )
         .unwrap();
+        canonicalize_fourier(charge.interstitial().layout(), &mut expected_masked).unwrap();
         assert_eq!(
             result.potential.interstitial().field().coefficients(),
             expected_masked

@@ -342,15 +342,18 @@ fn build_fourier_coefficients(
             )?);
         }
     }
+    // The radial transform depends on the extension and |G|, not direction.
+    // Use the exact floating-point norm so reuse does not merge nearby shells.
+    let mut transforms = BTreeMap::new();
     spec.fourier_layout
         .vectors()
         .iter()
         .map(|vector| {
             let mut coefficient = Complex64::new(0.0, 0.0);
-            let mut transforms = BTreeMap::new();
             for site in &spec.sites {
                 let key = AtomicExtensionKey::new(site);
-                let transform = if let Some(&transform) = transforms.get(&key) {
+                let transform_key = (key, vector.norm.get().to_bits());
+                let transform = if let Some(&transform) = transforms.get(&transform_key) {
                     transform
                 } else {
                     let atom = &atoms[&site.atomic_number];
@@ -364,7 +367,7 @@ fn build_fourier_coefficients(
                         })
                         .collect::<Vec<_>>();
                     let transform = 4.0 * PI * atom.mesh.integrate(&integrand)? / volume;
-                    transforms.insert(key, transform);
+                    transforms.insert(transform_key, transform);
                     transform
                 };
                 let phase = -vector

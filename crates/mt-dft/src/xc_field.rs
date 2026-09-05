@@ -203,34 +203,32 @@ fn transform_interstitial(
         std::array::from_fn(|_| vec![Complex64::new(0.0, 0.0); layout.len()]);
     let mut exchange_correlation_energy = 0.0;
     let mut density_potential_integral = 0.0;
+    let density_fields = [
+        density.charge().interstitial(),
+        density.magnetization()[0].interstitial(),
+        density.magnetization()[1].interstitial(),
+        density.magnetization()[2].interstitial(),
+    ];
+    let zero_fields = density_fields.map(|field| {
+        field
+            .field()
+            .coefficients()
+            .iter()
+            .all(|&coefficient| coefficient == Complex64::default())
+    });
 
     for point in interstitial_grid.points() {
-        let (charge, magnetization) = if functional == XcFunctional::LdaPw92 {
-            let magnetization = density.magnetization();
-            (
-                FieldJet::value(interstitial_field_value(
-                    density.charge().interstitial(),
-                    point.position,
-                )?),
-                [
-                    FieldJet::value(interstitial_field_value(
-                        magnetization[0].interstitial(),
-                        point.position,
-                    )?),
-                    FieldJet::value(interstitial_field_value(
-                        magnetization[1].interstitial(),
-                        point.position,
-                    )?),
-                    FieldJet::value(interstitial_field_value(
-                        magnetization[2].interstitial(),
-                        point.position,
-                    )?),
-                ],
-            )
-        } else {
-            interstitial_pauli_jets(density, point.position)?
-        };
-        let xc = evaluate_noncollinear_xc_point(functional, route, charge, magnetization)?;
+        let [charge, mx, my, mz] = [0, 1, 2, 3].map(|component| {
+            if zero_fields[component] {
+                Ok(FieldJet::value(0.0))
+            } else if functional == XcFunctional::LdaPw92 {
+                interstitial_field_value(density_fields[component], point.position)
+                    .map(FieldJet::value)
+            } else {
+                interstitial_field_jet(density_fields[component], point.position)
+            }
+        });
+        let xc = evaluate_noncollinear_xc_point(functional, route, charge?, [mx?, my?, mz?])?;
         exchange_correlation_energy += point.weight.get() * xc.energy_density;
         density_potential_integral += point.weight.get() * xc.density_potential;
         let normalized_weight = point.weight.get() / volume;
@@ -238,7 +236,9 @@ fn transform_interstitial(
             let phase = -dot_g_r(vector.cartesian, point.position);
             let transform = Complex64::from_polar(normalized_weight, phase);
             for (target, value) in coefficients.iter_mut().zip(xc.potential) {
-                target[position] += value * transform;
+                if value != 0.0 {
+                    target[position] += value * transform;
+                }
             }
         }
     }
@@ -447,6 +447,12 @@ fn transform_muffin_tin(
     let mut radial_energy = vec![0.0; mesh.len()];
     let mut radial_density_potential = vec![0.0; mesh.len()];
     let convention = charge.field().convention();
+    let zero_fields = fields.map(|field| {
+        field
+            .field()
+            .channels()
+            .all(|(_, values)| values.iter().all(|&value| value == Complex64::default()))
+    });
     let angular_harmonics = angular
         .points()
         .iter()
@@ -466,19 +472,23 @@ fn transform_muffin_tin(
         let derivative_step = derivative_step(mesh.radii(), radial_index);
         for (point, harmonics) in angular.points().iter().zip(&angular_harmonics) {
             let position = point.direction.map(|component| component * radius);
-            let [charge, mx, my, mz] = if functional == XcFunctional::LdaPw92 {
-                fields.map(|field| {
-                    evaluate_muffin_tin_shell(field, radial_index, harmonics).map(FieldJet::value)
-                })
-            } else {
-                fields.map(|field| {
-                    muffin_tin_field_jet(field, radial_index, position, derivative_step)
-                })
-            };
+            let [charge, mx, my, mz] = [0, 1, 2, 3].map(|component| {
+                if zero_fields[component] {
+                    Ok(FieldJet::value(0.0))
+                } else if functional == XcFunctional::LdaPw92 {
+                    evaluate_muffin_tin_shell(fields[component], radial_index, harmonics)
+                        .map(FieldJet::value)
+                } else {
+                    muffin_tin_field_jet(fields[component], radial_index, position, derivative_step)
+                }
+            });
             let xc = evaluate_noncollinear_xc_point(functional, route, charge?, [mx?, my?, mz?])?;
             radial_energy[radial_index] += point.weight * xc.energy_density;
             radial_density_potential[radial_index] += point.weight * xc.density_potential;
             for (target, value) in projected.iter_mut().zip(xc.potential) {
+                if value == 0.0 {
+                    continue;
+                }
                 project_angular_value(
                     convention,
                     harmonics,
@@ -562,6 +572,9 @@ fn interstitial_field_jet(
     let mut hessian = [Complex64::new(0.0, 0.0); 6];
     let mut scale = 0.0;
     for (vector, &coefficient) in field.field().iter() {
+        if coefficient == Complex64::default() {
+            continue;
+        }
         let g = vector.cartesian.map(|component| component.get());
         let phase = Complex64::from_polar(1.0, dot_raw(g, position.map(Bohr::get)));
         let term = coefficient * phase;
@@ -599,6 +612,9 @@ fn interstitial_field_value(
     let mut value = Complex64::new(0.0, 0.0);
     let mut scale = 0.0;
     for (vector, &coefficient) in field.field().iter() {
+        if coefficient == Complex64::default() {
+            continue;
+        }
         let phase = Complex64::from_polar(1.0, dot_g_r(vector.cartesian, position));
         let term = coefficient * phase;
         value += term;
