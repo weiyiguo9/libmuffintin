@@ -1115,8 +1115,11 @@ layout, and neither the product span nor any physical cutoff changes. For
 $N_I$ interstitial modes and $N_s$ site coordinates, the VV cache avoids
 $16N_I N_s^2$ bytes per site, and CV avoids $16N_I N_c N_s$ bytes. These are
 allocation counts, not measured peak-RSS reductions. All 15 scalar/spinor
-MPB tests passed after this change; production memory and prefix parity must
-be measured on the replacement run.
+MPB tests passed after this change. On the replacement run, the first two
+energies match the stopped run at printed precision. A process sample during
+finalization measured 10.6 GB physical footprint and 27.2 GB lifetime peak so
+far, versus the earlier 34.2 GB observation. These are samples from different
+stages, not final whole-run peak-RSS measurements.
 
 The replacement run at `9efeea8` reached nine converged SCF iterations with
 zero final virtual shift, but final core-sector completion was still running
@@ -1130,6 +1133,49 @@ coordinate ordering and radial identities are unchanged; this is not a
 change to the product span or a measured whole-run speedup. The existing
 signed-kappa HDLO fixture checks every projection coordinate against the
 forward map.
+
+The clean `9efeea8` replacement subsequently exited successfully after all
+nine SCF steps, final CV/VC checks, and checkpoint/result export. Its final
+commutator, active-feedback, and physical-density residuals are respectively
+$2.62653294\times10^{-7}$ Ha, $1.13666952\times10^{-6}$ Ha, and
+$1.68792953\times10^{-9}$. The CV/VC trace mismatch is
+$6.66133815\times10^{-16}$ Ha; valence/core counts are
+8.000000000000071/28. The final virtual shift is zero. The output directory
+is `/tmp/libmuffintin-kr-sra-frozen-field12-orbital4-l8-9efeea8-run1`, with
+the matching `.log` recording 7847.67 s wall time, 14598.78 s user time, and
+382.62 s system time. Its pinned executable has SHA-256
+`0ea8c9d63a242afd1a253b87fba7f8b35350cacb4d92cc734dea04a6b878adfa`.
+This timing still includes the old inverse-coordinate search, not the
+optimization above, and is not a matched-workload comparison with the
+smaller-basis run.
+
+| Calculation | Total energy (Ha) | HOMO-shifted 4s (eV) | HOMO-shifted 4p1/2 (eV) |
+|---|---|---|---|
+| Frozen-SRA, orbital cutoff 3 / angular cutoff 6 | -2787.663637354521 | -20.035790 | -0.998130 |
+| Frozen-SRA, orbital cutoff 4 / angular cutoff 8 | -2787.682192574879 | -19.925577 | -1.008882 |
+| Stored point-nucleus dyall-v4z X2C1e-HF | -2788.4050834439577 | -18.333357 | -0.798074 |
+| Stored point-nucleus dyall-v4z 4c-DC-HF | -2788.8844738745192 | -18.324633 | -0.739220 |
+
+The occupied LAPW levels are grouped by the expected atomic ordering; the
+remaining 4p3/2 splitting is below $8.9\times10^{-8}$ eV. The absolute HOMO
+0.01929100536700827 Ha remains in the cell-mean electrostatic gauge. Enlarging
+the orbital basis lowers the energy by 0.01855522036 Ha but leaves a
+1.20228129964 Ha difference from the stored 4c result. The angular field
+cutoff also increases from 14 to 18, so this is a combined basis refinement,
+not an isolated orbital-cutoff derivative. This does not establish basis
+convergence, explain the remaining difference, or validate KH+SOC against
+4c: this run uses frozen-core SRA, while the GTO result is fully optimized
+Dirac-Coulomb HF. Independent product/Fourier cutoff, box/kernel, core
+relaxation, and relativistic-Hamiltonian checks remain necessary.
+
+An independent Linux/Rome run of the same clean source, with Rayon 16 and
+single-threaded inner numerical libraries, also reached nine unshifted SCF
+iterations at -2787.6821925748786 Ha. Its source snapshot and run are under
+`/scratch-shared/wguo/libmuffintin`, allocation `26393384`, step `0`, on
+`fat_rome` with 16 CPUs and 120 GiB. The Linux release build and signed-kappa
+HDLO path check passed. Final core-sector completion was still running at
+the latest observation; only SCF agreement, not final export or timing, is
+established on Linux.
 
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
