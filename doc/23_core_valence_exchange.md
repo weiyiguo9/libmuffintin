@@ -1040,6 +1040,54 @@ their respective $10^{-8}$ and $10^{-9}$ tolerances. These checks establish
 the coefficient convention and small-fixture HF identities, not convergence
 of the production Kr calculation or agreement with GTO energies.
 
+The corrected frozen-SRA Kr run at `9b179f7` subsequently completed all nine
+coupled Fock iterations, the final CV/VC contraction, and result export. It
+used box 8 bohr, MT radius 2 bohr, 2401 radial points, orbital cutoff 3,
+field cutoff 12, product cutoff 6, orbital/product angular cutoffs 6, LEXP 18,
+all configured HDLOs, and the smoothed spherical exchange kernel with
+$\omega=0.8$ and Fourier cutoff 6. CDIIS history 8, two startup steps with
+damping 0.5, and initial virtual shift 0.1 Ha were unchanged. The shift was
+removed before acceptance; no EDIIS/ADIIS or looser convergence gate was used.
+
+| Final quantity | Value |
+|---|---|
+| Total energy (Ha) | -2787.663637354521 |
+| Unshifted HOMO (Ha, cell-mean electrostatic gauge) | 0.022173670345854265 |
+| Commutator residual (Ha) | 2.6041587002885947e-7 |
+| Active-feedback residual (Ha) | 1.1084226369626657e-6 |
+| Physical density residual | 2.351761675008591e-9 |
+| CV/VC trace mismatch (Ha) | 1.5543122344752192e-15 |
+| Valence / core electron counts | 7.999999999999996 / 28 |
+| Expanded / allowed spinor dimensions | 628 / 600 |
+| Wall time, Rayon 4 / BLIS 1 / OMP 1 | 1970.61 s |
+
+The clean runtime manifest, iterations, final result, and checkpoint are in
+`/tmp/libmuffintin-kr-sra-frozen-field12-9b179f7-run1`; the matching `.log`
+records successful exit and wall time. The pinned executable
+`/tmp/libmuffintin-kr-normalized-9b179f7` has SHA-256
+`4dda3bec452cbe391773ffc8ee5777f0798c4912dce725b15cc78a07ce8d790c`.
+
+This establishes SCF convergence at those cutoffs, not physical benchmark
+acceptance. Its occupied levels, grouped by the expected atomic ordering and
+shifted by the HOMO, are -20.035790 eV (4s), -0.998130 eV (4p1/2), and zero
+(4p3/2, residual splitting below $1.7\times10^{-7}$ eV). The stored point-nucleus
+dyall-v4z 4c-DC-HF reference gives approximately -18.324633 and -0.739220 eV
+for the first two groups; the total energies differ by 1.22083652 Ha. Frozen
+versus relaxed core, basis/cutoff convergence, box and Coulomb conventions,
+and SRA versus 4c remain distinct uncertainties. Neither an absolute HOMO
+comparison across different potential gauges nor attribution of the entire
+energy difference to relativistic physics is justified.
+
+The final-stage sample
+`/tmp/libmuffintin-kr-normalized-9b179f7-final-vc.sample.txt` located the
+occupied-weighted target-pair reduction in the serial loop inside
+`CoulombVertexContractor::weighted_occupied_quadratic_sum`. That reduction is
+now the tensor contraction `aoi,aoj->ij`, with occupations included once in
+the conjugated left tensor. A complex, unequal-occupation fixture matches
+direct quadratic forms, and the full small-fixture sector identities pass.
+The 1970.61 s measurement predates this optimization; no whole-SCF speedup
+factor has yet been measured.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
