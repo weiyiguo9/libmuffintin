@@ -228,8 +228,12 @@ fn compile_mpb_basis(
     )?;
     let context = ScalarVertexContext::new(&input.source, &raw, &auxiliary)?;
     let interstitial_table = context.interstitial_table()?;
-    let mt_coordinate_tensors =
-        compile_mt_coordinate_tensors(input, &raw, context.muffin_tin_table())?;
+    let mt_coordinate_tensors = compile_mt_coordinate_tensors(
+        input,
+        &raw,
+        auxiliary.mt_dimension(),
+        context.muffin_tin_table(),
+    )?;
     let interstitial_coordinate_tensors =
         compile_interstitial_coordinate_tensors(input, &auxiliary, &interstitial_table)?;
     Ok(ScalarMpbBasis {
@@ -648,6 +652,7 @@ fn normalized_mpb_site_projection(
 fn compile_mt_coordinate_tensors(
     input: &ScalarProductInput,
     raw: &RawProductSpace,
+    mt_dimension: usize,
     mut table: ScalarMtPairTable<'_>,
 ) -> Result<HashMap<(u8, usize), Vec<ComplexTensor>>, ScalarMpbError> {
     let known = raw_mt_pairs(raw);
@@ -670,6 +675,7 @@ fn compile_mt_coordinate_tensors(
                     right_basis,
                     left_coordinate_count,
                     right_coordinate_count,
+                    mt_dimension,
                     &known,
                     &mut table,
                 )?);
@@ -688,10 +694,12 @@ fn compile_mt_coordinate_tensor(
     right_basis: &CompiledBasis,
     left_coordinate_count: usize,
     right_coordinate_count: usize,
+    mt_dimension: usize,
     known: &HashSet<(ProductRadialId, ProductRadialId)>,
     table: &mut ScalarMtPairTable<'_>,
 ) -> Result<ComplexTensor, ScalarMpbError> {
-    let auxiliary_count = table.auxiliary_dimension();
+    // Interstitial auxiliary rows are exactly zero for every MT pair.
+    let auxiliary_count = mt_dimension;
     let mut coefficients = vec![
         Complex64::default();
         auxiliary_count * left_coordinate_count * right_coordinate_count

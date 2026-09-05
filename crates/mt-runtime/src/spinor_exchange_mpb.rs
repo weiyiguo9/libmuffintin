@@ -272,7 +272,7 @@ fn compile_cv_site_tensors(
             CompiledSiteProjection::spinor(compiled, site, channels)?.coordinate_count();
         let mut coefficients = vec![
             Complex64::default();
-            auxiliary.dimension() * core_indices.len() * coordinate_count
+            auxiliary.mt_dimension() * core_indices.len() * coordinate_count
         ];
         for (local_core, &core_index) in core_indices.iter().enumerate() {
             let core = &input.core.orbitals[core_index];
@@ -308,7 +308,7 @@ fn compile_cv_site_tensors(
             site,
             core_indices,
             coefficients: ComplexTensor::from_host_row_major(
-                &[auxiliary.dimension(), core_count, coordinate_count],
+                &[auxiliary.mt_dimension(), core_count, coordinate_count],
                 &[Axis::Auxiliary, Axis::CoreOrbital, Axis::SiteCoordinate],
                 coefficients,
             )?,
@@ -367,7 +367,7 @@ pub(crate) fn build_spinor_exchange_feedback_from_basis(
                 let phases = spinor_pair_site_phases(input, mapped, site_tensor.site)
                     .ok_or(SpinorExchangeMpbError::IncompatiblePairContext)?;
                 let phase = phases.left_bloch.conj() * phases.auxiliary_compensation;
-                for auxiliary in 0..auxiliary_count {
+                for auxiliary in 0..basis.auxiliary.mt_dimension() {
                     for target in 0..target_count {
                         contracted
                             [(core_index * target_count + target) * auxiliary_count + auxiliary] +=

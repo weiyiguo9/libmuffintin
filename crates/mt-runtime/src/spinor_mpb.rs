@@ -191,8 +191,13 @@ pub(crate) fn compile_spinor_mpb_basis(
     let known_pp = raw_mt_pairs(&raw, DiracChargeSector::LargeLarge);
     let known_qq = raw_mt_pairs(&raw, DiracChargeSector::SmallSmall);
     let mut table = context.sector_table();
-    let mt_coordinate_tensors =
-        compile_mt_coordinate_tensors(input, &mut table, &known_pp, &known_qq)?;
+    let mt_coordinate_tensors = compile_mt_coordinate_tensors(
+        input,
+        &mut table,
+        auxiliary.mt_dimension(),
+        &known_pp,
+        &known_qq,
+    )?;
     Ok(SpinorMpbBasis {
         source: input.source.clone(),
         raw,
@@ -465,6 +470,7 @@ pub(crate) fn normalized_mpb_site_projection(
 fn compile_mt_coordinate_tensors(
     input: &SpinorProductInput,
     table: &mut DiracMtSectorTable<'_>,
+    mt_dimension: usize,
     known_pp: &HashSet<(DiracRadialId, DiracRadialId)>,
     known_qq: &HashSet<(DiracRadialId, DiracRadialId)>,
 ) -> Result<Vec<ComplexTensor>, SpinorMpbError> {
@@ -478,7 +484,9 @@ fn compile_mt_coordinate_tensors(
         let channels = site_channels(basis, site)?;
         let coordinate_count =
             CompiledSiteProjection::spinor(basis, site, channels)?.coordinate_count();
-        let auxiliary_count = table.auxiliary_dimension();
+        // MT pair kernels have no interstitial auxiliary support. Do not
+        // allocate those zero rows in the static site-coordinate cache.
+        let auxiliary_count = mt_dimension;
         let mut coefficients =
             vec![Complex64::default(); auxiliary_count * coordinate_count * coordinate_count];
         for left in 0..coordinate_count {
