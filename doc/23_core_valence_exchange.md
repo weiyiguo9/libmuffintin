@@ -1173,9 +1173,26 @@ single-threaded inner numerical libraries, also reached nine unshifted SCF
 iterations at -2787.6821925748786 Ha. Its source snapshot and run are under
 `/scratch-shared/wguo/libmuffintin`, allocation `26393384`, step `0`, on
 `fat_rome` with 16 CPUs and 120 GiB. The Linux release build and signed-kappa
-HDLO path check passed. Final core-sector completion was still running at
-the latest observation; only SCF agreement, not final export or timing, is
-established on Linux.
+HDLO path check passed. Step `26393384.0` subsequently completed with exit
+status zero, final result/checkpoint export, and a CV/VC trace mismatch of
+$2.22044605\times10^{-16}$ Ha. The maximum energy difference across all nine
+iterations is $5.91171556\times10^{-12}$ Ha; the final energy difference is
+$4.54747351\times10^{-13}$ Ha. All 1192 orbital energies agree within
+$3.15498739\times10^{-11}$ Ha. This establishes cross-platform numerical
+agreement for this fixed frozen-SRA calculation, not GTO agreement.
+
+The Linux `/usr/bin/time -v` measurement covers HF initialization through
+final export, excluding compilation and the path test: wall time 11163 s,
+user time 19588.03 s, system time 112 s, and maximum RSS 45029620 KiB
+(42.94 GiB). The reported mean CPU use is 176%, not utilization of all 16
+allocated cores. Slurm reports 3:17:20 for the combined build/test/HF step
+and sampled MaxRSS 39665487 KiB; these are distinct measurement scopes and
+must not replace the HF-only process measurement. The complete remote run
+is `/scratch-shared/wguo/libmuffintin/runs/kr-g4-l8-9efeea8-26393384`, with
+downloaded result, manifest, iterations, and log in
+`/tmp/libmuffintin-snellius-9efeea8-completed`. The old inverse-coordinate
+search remains in this baseline; a same-parameter optimized run is needed
+before claiming a speedup.
 
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
