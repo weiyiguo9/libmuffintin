@@ -188,6 +188,14 @@ $\kappa=-(l+1)$ and $\kappa=+l$ channels, `core/cfnorm.f:37-98` matches and
 normalizes large and small components, and `core/spratm.f:4-23` identifies the
 fully relativistic core path.
 
+The homogeneous energy search needs each branch's endpoint direction, not
+its arbitrary amplitude. The runtime therefore rescales the two components
+together during shooting when only an endpoint is requested. This leaves
+the normalized matching residual unchanged and avoids growth across long
+trial branches. It does not rescale the stored physical radial arrays or
+the inhomogeneous exchange source. Nonfinite integration states still fail;
+no failed energy sample is skipped.
+
 ## 5. Scalar-relativistic valence versus four-component Dirac
 
 The three radial models must not be inferred from the number of returned

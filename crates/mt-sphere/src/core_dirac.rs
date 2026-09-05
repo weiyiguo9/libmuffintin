@@ -1967,6 +1967,14 @@ fn integrate_outward(
             energy,
         );
         ensure_finite_state(current_p, current_q, i + 1)?;
+        if !keep_arrays {
+            // Shooting uses only the endpoint direction of this homogeneous
+            // equation. Remove its arbitrary growing amplitude on long trial
+            // branches; physical arrays retain their common normalization.
+            let scale = current_p.hypot(current_q).max(1.0);
+            current_p /= scale;
+            current_q /= scale;
+        }
         if keep_arrays {
             p[i + 1] = current_p;
             q_hat[i + 1] = current_q;
@@ -2025,6 +2033,11 @@ fn integrate_inward(
             energy,
         );
         ensure_finite_state(current_p, current_q, i - 1)?;
+        if !keep_arrays {
+            let scale = current_p.hypot(current_q).max(1.0);
+            current_p /= scale;
+            current_q /= scale;
+        }
         if keep_arrays {
             p[i - 1] = current_p;
             q_hat[i - 1] = current_q;
@@ -2690,7 +2703,7 @@ mod tests {
 
     #[test]
     fn deterministic_core_search_isolates_the_node_compatible_bracket() {
-        let mesh = extended_mesh(1.0e-7, 40.0, 0.002);
+        let mesh = extended_mesh(1.0e-7, 100.0, 0.002);
         let potential: Vec<f64> = mesh
             .radii()
             .iter()
