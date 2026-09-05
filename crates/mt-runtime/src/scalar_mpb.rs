@@ -217,6 +217,10 @@ fn compile_mpb_basis(
     overlap_spin_factor: f64,
 ) -> Result<ScalarMpbBasis, ScalarMpbError> {
     require_compatible_layout(input)?;
+    assert!(
+        input.source.radials.iter().all(|site| site.cores.is_empty()),
+        "scalar runtime MPB requires valence-only product input; core radials would add core-valence products"
+    );
     let (raw, _) = spex_mixed_product_basis(&input.source, product_l_max, product_g_max, &lattice)?;
     let auxiliary = apply_overlap_cutoff(
         &raw,
