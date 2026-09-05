@@ -92,6 +92,8 @@ pub fn complex_spherical_harmonic(
 ///
 /// Results use [`lm_index`] order. At the zero vector, only `Y_00` is set;
 /// this matches SPEX's deterministic convention for an undefined direction.
+/// Normalized associated Legendre recurrences share work across channels,
+/// requiring quadratic work in `l_max`.
 pub fn complex_spherical_harmonics(l_max: u32, direction: [f64; 3]) -> Vec<Complex64> {
     let mut result = vec![Complex64::new(0.0, 0.0); lm_count(l_max)];
     result[0] = Complex64::new(0.5 / PI.sqrt(), 0.0);
@@ -100,16 +102,42 @@ pub fn complex_spherical_harmonics(l_max: u32, direction: [f64; 3]) -> Vec<Compl
         return result;
     }
     let cos_theta = (direction[2] / norm).clamp(-1.0, 1.0);
+    let sin_theta = (1.0 - cos_theta * cos_theta).max(0.0).sqrt();
     let phi = direction[1].atan2(direction[0]);
-    for l in 1..=l_max {
-        for m in -(l as i32)..=l as i32 {
-            let abs_m = m.unsigned_abs();
-            let positive = positive_m_harmonic(l, abs_m, cos_theta, phi);
-            result[lm_index(l, m).expect("loop bounds validate m")] = if m >= 0 {
-                positive
+    // q_lm = sqrt((2l+1)/(4pi) * (l-m)!/(l+m)!) P_l^m(cos(theta)).
+    // The negative diagonal factor retains the Condon--Shortley phase.
+    let mut diagonal = result[0].re;
+    for m in 0..=l_max {
+        let mf = f64::from(m);
+        if m > 0 {
+            diagonal *= -((2.0 * mf + 1.0) / (2.0 * mf)).sqrt() * sin_theta;
+        }
+        let phase = Complex64::from_polar(1.0, mf * phi);
+        let negative_m_sign = parity(m);
+        let mut previous = 0.0;
+        let mut current = diagonal;
+        for l in m..=l_max {
+            let lf = f64::from(l);
+            let next = if l == m {
+                diagonal
+            } else if l == m + 1 {
+                (2.0 * mf + 3.0).sqrt() * cos_theta * current
             } else {
-                positive.conj() * parity(abs_m)
+                let denominator = lf * lf - mf * mf;
+                let alpha = ((4.0 * lf * lf - 1.0) / denominator).sqrt();
+                let beta = ((2.0 * lf + 1.0) * ((lf - 1.0).powi(2) - mf * mf)
+                    / ((2.0 * lf - 3.0) * denominator))
+                    .sqrt();
+                alpha * cos_theta * current - beta * previous
             };
+            previous = current;
+            current = next;
+            let positive = phase * current;
+            let center = l as usize * (l as usize + 1);
+            result[center + m as usize] = positive;
+            if m > 0 {
+                result[center - m as usize] = positive.conj() * negative_m_sign;
+            }
         }
     }
     result

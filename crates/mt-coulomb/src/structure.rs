@@ -126,6 +126,10 @@ pub fn structure_constants(
 
     let pref = 4.0 * PI / (scale.powi(3) * vol);
     let q_cart = q.cartesian.map(InverseBohr::get);
+    // SPEX uses only real-space contributions for L >= 8.
+    let recip_l_max = l_max.min(7);
+    let recip_nlm = lm_count(recip_l_max);
+    let mut y = vec![Complex64::default(); recip_nlm];
     for g in &recip_points {
         let k = [
             q_cart[0] + g.cartesian[0].get(),
@@ -134,10 +138,9 @@ pub fn structure_constants(
         ];
         let knorm = k.iter().map(|c| c * c).sum::<f64>().sqrt();
         let a = knorm / scale;
-        let harmonics = complex_spherical_harmonics(l_max, k);
-        let mut y = vec![Complex64::default(); nlm];
+        let harmonics = complex_spherical_harmonics(recip_l_max, k);
         let mut cdum = Complex64::new(1.0, 0.0);
-        for l in 0..=l_max.min(7) {
+        for l in 0..=recip_l_max {
             let gl = recip_g(l, a, pref);
             for m in -(l as i32)..=l as i32 {
                 let lm = lm_index(l, m)?;
@@ -155,7 +158,7 @@ pub fn structure_constants(
                 ];
                 let k_inv = [InverseBohr(k[0]), InverseBohr(k[1]), InverseBohr(k[2])];
                 let cexp = plane_wave_phase(k_inv, delta_r);
-                for lm in 0..nlm {
+                for lm in 0..recip_nlm {
                     values[(site_a * n_sites + site_b) * nlm + lm] += cexp * y[lm];
                 }
             }
