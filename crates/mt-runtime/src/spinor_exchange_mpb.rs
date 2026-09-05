@@ -1,7 +1,10 @@
 //! Full rectangular core-sector spinor MPB vertices for one transfer q.
 
 use crate::checkpoint_physics::CheckpointPhysicsError;
-use crate::spinor_mpb::{SpinorFrozenInputIdentity, spinor_frozen_input_identity};
+use crate::spinor_mpb::{
+    SpinorFrozenInputIdentity, SpinorMpbError, normalized_mpb_site_projection,
+    spinor_frozen_input_identity,
+};
 use crate::spinor_product::{
     SpinorCoreOrbital, SpinorKMinusQ, SpinorProductInput, spinor_pair_site_phases,
 };
@@ -123,6 +126,8 @@ impl SpinorExchangeMpbResult {
 
 #[derive(Debug, Error)]
 pub enum SpinorExchangeMpbError {
+    #[error(transparent)]
+    Projection(#[from] SpinorMpbError),
     #[error(transparent)]
     Input(#[from] CheckpointPhysicsError),
     #[error(transparent)]
@@ -600,7 +605,10 @@ fn project_k_sites(
             .project_eigenvectors(left_ev)?;
         let right = CompiledSiteProjection::spinor(right_basis, site, right_channels)?
             .project_eigenvectors(right_ev)?;
-        sites.push(ProjectedSitePair { left, right });
+        sites.push(ProjectedSitePair {
+            left: normalized_mpb_site_projection(input, site, left)?,
+            right: normalized_mpb_site_projection(input, site, right)?,
+        });
     }
     Ok(sites)
 }

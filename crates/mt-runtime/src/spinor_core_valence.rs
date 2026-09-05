@@ -36,7 +36,9 @@ pub struct FrozenSiteValenceOrbital {
 pub struct FrozenSiteValenceDensity {
     pub site_index: usize,
     pub orbitals: Vec<FrozenSiteValenceOrbital>,
-    /// Row-major $D_{ab}=\sum_{kn}w_k f_{kn}d^*_{an}d_{bn}$.
+    /// Row-major density in normalized radial coordinates:
+    /// $D_{ab}=\sum_{kn}w_k f_{kn}\hat d^*_{an}\hat d_{bn}$,
+    /// with $\hat d_a=\sqrt{N_a}d_a$ for the original LAPW coefficients.
     pub matrix: Vec<Complex64>,
 }
 
@@ -180,7 +182,9 @@ pub enum FrozenCoreValenceError {
 
 /// Form each site's occupied valence density exactly once from one complete q slice.
 ///
-/// This inserts $w_k f_{kn}$ and no $q$ weight, spin multiplier, or overlap matrix.
+/// This inserts $w_k f_{kn}$ and changes to the individually normalized radial
+/// coordinates used by the radial exchange oracle/action. It inserts no $q$
+/// weight, spin multiplier, or full overlap matrix.
 pub fn build_frozen_site_valence_densities(
     inputs: &[SpinorProductInput],
     occupations: &SectorOccupations,
@@ -260,8 +264,10 @@ pub fn build_frozen_site_valence_densities(
                 let weight = occupations.k_weights[k] * occupations.valence[k][band];
                 for left in 0..coordinate_count {
                     for right in 0..coordinate_count {
-                        matrix[left * coordinate_count + right] +=
-                            weight * projected.at(left, band).conj() * projected.at(right, band);
+                        matrix[left * coordinate_count + right] += weight
+                            * projected.at(left, band).conj()
+                            * projected.at(right, band)
+                            * (orbitals[left].normalization * orbitals[right].normalization).sqrt();
                     }
                 }
             }

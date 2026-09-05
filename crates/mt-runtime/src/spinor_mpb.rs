@@ -405,9 +405,61 @@ fn project_k_sites(
             .project_eigenvectors(left_ev)?;
         let right = CompiledSiteProjection::spinor(right_basis, site, right_channels)?
             .project_eigenvectors(right_ev)?;
-        sites.push(ProjectedSitePair { left, right });
+        sites.push(ProjectedSitePair {
+            left: normalized_mpb_site_projection(input, site, left)?,
+            right: normalized_mpb_site_projection(input, site, right)?,
+        });
     }
     Ok(sites)
+}
+
+/// MPB primitives use P/sqrt(N), Q/sqrt(N), while LAPW projection rows
+/// multiply the original P,Q. Change coefficients to d_hat=sqrt(N)*d.
+/// This affects only MT coordinates, never interstitial plane-wave amplitudes.
+pub(crate) fn normalized_mpb_site_projection(
+    input: &SpinorProductInput,
+    site: usize,
+    projected: SiteOrbitalCoefficients,
+) -> Result<SiteOrbitalCoefficients, SpinorMpbError> {
+    let coordinates = projected.coordinate_count();
+    let bands = projected.band_count();
+    let mut values = projected.to_host_row_major();
+    for (coordinate, row) in values.chunks_exact_mut(bands).enumerate() {
+        let (id, _) = input
+            .site_projection_identity(site, coordinate)
+            .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
+        let radial = input
+            .source
+            .find_radial(id)
+            .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
+        let norm = match radial.normalization {
+            muffintin_prodbasis::DiracRadialNormalization::Explicit(value) => value,
+            muffintin_prodbasis::DiracRadialNormalization::OnMesh => {
+                let integrand = radial
+                    .samples
+                    .large
+                    .iter()
+                    .zip(&radial.samples.small)
+                    .map(|(p, q)| p * p + q * q)
+                    .collect::<Vec<_>>();
+                input.source.radials[site]
+                    .mesh
+                    .integrate(&integrand)
+                    .map_err(MpbError::from)?
+            }
+        };
+        let scale = norm.sqrt();
+        for value in row {
+            *value *= scale;
+        }
+    }
+    Ok(SiteOrbitalCoefficients::from_tensor(
+        ComplexTensor::from_host_row_major(
+            &[coordinates, bands],
+            &[Axis::SiteCoordinate, Axis::Band],
+            values,
+        )?,
+    )?)
 }
 
 fn compile_mt_coordinate_tensors(

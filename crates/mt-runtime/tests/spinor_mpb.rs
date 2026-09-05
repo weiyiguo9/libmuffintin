@@ -38,8 +38,7 @@ use muffintin_prodbasis::{
 use muffintin_sphere::CoreState;
 use num_complex::Complex64;
 
-fn hydrogen_spinor_checkpoint() -> CheckpointV2 {
-    let point_count = 61;
+fn hydrogen_spinor_checkpoint(point_count: usize) -> CheckpointV2 {
     let first: f64 = 1.0e-4;
     let radius: f64 = 1.0;
     let increment = (radius / first).ln() / (point_count - 1) as f64;
@@ -453,6 +452,7 @@ fn independent_mt_sector(
                 };
                 let amplitude = left_site.at(left_coord, selection.left_band).conj()
                     * right_site.at(right_coord, selection.right_band)
+                    * (radial_norm(input, left_id) * radial_norm(input, right_id)).sqrt()
                     * phase;
                 match sector {
                     DiracChargeSector::LargeLarge => {
@@ -468,9 +468,31 @@ fn independent_mt_sector(
     acc.finish().unwrap().mt().to_vec()
 }
 
+fn radial_norm(
+    input: &muffintin::SpinorProductInput,
+    id: muffintin_prodbasis::DiracRadialId,
+) -> f64 {
+    let radial = input.source.find_radial(id).unwrap();
+    match radial.normalization {
+        muffintin_prodbasis::DiracRadialNormalization::Explicit(norm) => norm,
+        muffintin_prodbasis::DiracRadialNormalization::OnMesh => input.source.radials[id.site]
+            .mesh
+            .integrate(
+                &radial
+                    .samples
+                    .large
+                    .iter()
+                    .zip(&radial.samples.small)
+                    .map(|(p, q)| p * p + q * q)
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap(),
+    }
+}
+
 #[test]
 fn spinor_mpb_rejects_empty_selection() {
-    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint(61)).unwrap();
     let input = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
         .unwrap();
@@ -489,7 +511,7 @@ fn spinor_mpb_rejects_empty_selection() {
 
 #[test]
 fn spinor_mpb_rejects_band_outside_leading_window() {
-    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint(61)).unwrap();
     let input = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
         .unwrap();
@@ -520,7 +542,7 @@ fn spinor_mpb_rejects_band_outside_leading_window() {
 
 #[test]
 fn q0_signed_kappa_hdlo_has_site_identity_and_pp_qq_signals() {
-    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint(241)).unwrap();
     let input = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -547,7 +569,8 @@ fn q0_signed_kappa_hdlo_has_site_identity_and_pp_qq_signals() {
         "kappa=+1 HDLO must occupy a site-projection coordinate"
     );
 
-    let result = build_spinor_mpb(&input, &mpb_spec(0)).unwrap();
+    let spec = mpb_spec(0);
+    let result = build_spinor_mpb(&input, &spec).unwrap();
     assert_eq!(result.reciprocal, input.reciprocal);
     assert_eq!(result.pair_columns, input.pair_columns);
     assert_eq!(result.raw.q, input.source.q);
@@ -558,7 +581,7 @@ fn q0_signed_kappa_hdlo_has_site_identity_and_pp_qq_signals() {
         .and_then(|payload| payload.cutoff)
         .expect("TOL record");
     assert_eq!(cutoff.nspin_factor, SPINOR_MPB_NSPIN);
-    assert_eq!(cutoff.value, DEFAULT_TOLERANCE);
+    assert_eq!(cutoff.value, spec.overlap_tolerance);
 
     let record = &result.vertices[0];
     assert_eq!(record.k, 0);
@@ -604,6 +627,59 @@ fn q0_signed_kappa_hdlo_has_site_identity_and_pp_qq_signals() {
     assert!(max_abs_diff(record.vertex.mt(), &summed) < 1.0e-10);
     assert!(max_abs_diff(record.vertex.mt(), &pp) > 1.0e-8);
     assert!(max_abs_diff(record.vertex.mt(), &qq) > 1.0e-8);
+
+    // Integrate the physical LAPW orbital directly, without MPB normalization.
+    let projected = projection
+        .project_eigenvectors(&input.orbitals.eigenvectors[0])
+        .unwrap();
+    let mesh = &input.source.radials[0].mesh;
+    let mut physical_mt = Complex64::default();
+    for left in 0..projected.coordinate_count() {
+        let (left_id, left_mu) = input.site_projection_identity(0, left).unwrap();
+        let a = &input.source.find_radial(left_id).unwrap().samples;
+        for right in 0..projected.coordinate_count() {
+            let (right_id, right_mu) = input.site_projection_identity(0, right).unwrap();
+            if left_id.kappa != right_id.kappa || left_mu != right_mu {
+                continue;
+            }
+            let b = &input.source.find_radial(right_id).unwrap().samples;
+            let overlap = mesh
+                .integrate(
+                    &a.large
+                        .iter()
+                        .zip(&a.small)
+                        .zip(&b.large)
+                        .zip(&b.small)
+                        .map(|(((ap, aq), bp), bq)| ap * bp + aq * bq)
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
+            physical_mt += projected.at(left, 0).conj() * projected.at(right, 0) * overlap;
+        }
+    }
+    let mut mpb_mt = Complex64::default();
+    for block in &result.auxiliary.mixed_product().unwrap().sites {
+        for mode in block.modes.iter().filter(|mode| mode.l == 0) {
+            let index = result.auxiliary.mt_index(block.site, 0, 0, mode.n).unwrap();
+            let integral = block
+                .mesh
+                .integrate(
+                    &mode
+                        .radial
+                        .iter()
+                        .zip(block.mesh.radii())
+                        .map(|(radial, r)| radial * r.get())
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap()
+                * (4.0 * std::f64::consts::PI).sqrt();
+            mpb_mt += record.vertex.coefficients()[index] * integral;
+        }
+    }
+    assert!(
+        (mpb_mt - physical_mt).norm() < 1.0e-8,
+        "MPB {mpb_mt}, physical {physical_mt}"
+    );
     assert!(
         record
             .vertex
@@ -615,7 +691,7 @@ fn q0_signed_kappa_hdlo_has_site_identity_and_pp_qq_signals() {
 
 #[test]
 fn finite_q_two_pauli_interstitial_matches_independent_theta_oracle() {
-    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint(61)).unwrap();
     let input = physics
         .spinor_product_input(&spinor_config([2, 1, 1], 1.0), [1.5, 0.0, 0.0])
         .unwrap();
@@ -680,7 +756,7 @@ fn finite_q_two_pauli_interstitial_matches_independent_theta_oracle() {
 
 #[test]
 fn rectangular_core_vertices_are_mt_only_pp_qq_and_occupation_free() {
-    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint(241)).unwrap();
     let plain = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
         .unwrap();
@@ -746,14 +822,56 @@ fn rectangular_core_vertices_are_mt_only_pp_qq_and_occupation_free() {
                 && diagnostic.direct_overlap.is_some()
                 && diagnostic.residual.is_some())
     );
-    assert!(low_result.diagnostics.max_residual.unwrap() < 1.0e-9);
+    assert!(
+        low_result.diagnostics.max_residual.unwrap() < 1.0e-9,
+        "physical CV constant-mode residual {:?}",
+        low_result.diagnostics.max_residual
+    );
+    let basis = &low.orbitals.bases[0];
+    let channels = &basis.site_augmentations[0][0].channels;
+    let projected = CompiledSiteProjection::spinor(basis, 0, channels)
+        .unwrap()
+        .project_eigenvectors(&low.orbitals.eigenvectors[0])
+        .unwrap();
+    for (record, diagnostic) in low_result
+        .cv
+        .vertices
+        .iter()
+        .zip(&low_result.diagnostics.cv)
+    {
+        let core = &low.core.orbitals[record.occupied];
+        let a = &low.source.find_radial(core.radial).unwrap().samples;
+        let mut physical_overlap = Complex64::default();
+        for coordinate in 0..projected.coordinate_count() {
+            let (id, mu) = low.site_projection_identity(0, coordinate).unwrap();
+            if id.kappa != core.radial.kappa || mu != core.twice_mu {
+                continue;
+            }
+            let b = &low.source.find_radial(id).unwrap().samples;
+            let overlap = low.source.radials[0]
+                .mesh
+                .integrate(
+                    &a.large
+                        .iter()
+                        .zip(&a.small)
+                        .zip(&b.large)
+                        .zip(&b.small)
+                        .map(|(((ap, aq), bp), bq)| ap * bp + aq * bq)
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap()
+                / radial_norm(&low, core.radial).sqrt();
+            physical_overlap += projected.at(coordinate, record.target) * overlap;
+        }
+        assert!((diagnostic.direct_overlap.unwrap() - physical_overlap).norm() < 1.0e-12);
+    }
 }
 
 #[test]
 fn repeating_the_frozen_sector_rebuild_reproduces_it_exactly() {
     // The HF Fock loop used to assert this by building the first frame twice
     // and comparing, which doubled the most expensive step of every run.
-    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint(61)).unwrap();
     let plain = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
         .unwrap();
@@ -817,7 +935,7 @@ fn repeating_the_frozen_sector_rebuild_reproduces_it_exactly() {
 
 #[test]
 fn frozen_gamma_sector_evaluator_closes_all_public_one_shot_identities() {
-    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint(61)).unwrap();
     let plain = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
         .unwrap();
@@ -907,7 +1025,7 @@ fn frozen_gamma_sector_evaluator_closes_all_public_one_shot_identities() {
 
 #[test]
 fn frozen_site_density_and_cv_only_contraction_apply_weights_once_and_close_delta() {
-    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint(61)).unwrap();
     let plain = physics
         .spinor_product_input(&spinor_config([1, 1, 1], 0.5), [0.0; 3])
         .unwrap();
@@ -941,12 +1059,20 @@ fn frozen_site_density_and_cv_only_contraction_apply_weights_once_and_close_delt
         .unwrap()
         .project_eigenvectors(&input.orbitals.eigenvectors[0])
         .unwrap();
-    let expected_00 = (0..n_valence)
-        .map(|band| {
-            occupations.valence[0][band] * projected.at(0, band).conj() * projected.at(0, band)
-        })
-        .sum::<Complex64>();
-    assert!((densities.sites[0].matrix[0] - expected_00).norm() < 1.0e-13);
+    for (left, a) in densities.sites[0].orbitals.iter().enumerate() {
+        for (right, b) in densities.sites[0].orbitals.iter().enumerate() {
+            let physical = (0..n_valence)
+                .map(|band| {
+                    occupations.valence[0][band]
+                        * projected.at(left, band).conj()
+                        * projected.at(right, band)
+                })
+                .sum::<Complex64>();
+            let density = densities.sites[0].matrix[left * projected.coordinate_count() + right]
+                / (a.normalization * b.normalization).sqrt();
+            assert!((density - physical).norm() < 1.0e-13);
+        }
+    }
     assert!(densities.frozen_context_matches(std::slice::from_ref(&input), &occupations));
 
     let mut changed_occupations = occupations.clone();
@@ -1018,7 +1144,7 @@ fn frozen_site_density_and_cv_only_contraction_apply_weights_once_and_close_delt
 
 #[test]
 fn frozen_site_density_inserts_nonuniform_k_weights_once() {
-    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint(61)).unwrap();
     let config = spinor_config([2, 1, 1], 0.5);
     let gamma_plain = physics.spinor_product_input(&config, [0.0; 3]).unwrap();
     let sidecar = core_sidecar(&gamma_plain, 0.5);
@@ -1068,7 +1194,7 @@ fn frozen_site_density_inserts_nonuniform_k_weights_once() {
 
 #[test]
 fn finite_q_core_phase_uses_k_minus_q_wrap_and_gamma_couplings_are_conjugate() {
-    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint(61)).unwrap();
     let gamma_plain = physics
         .spinor_product_input(&spinor_config([2, 1, 1], 1.0), [0.0; 3])
         .unwrap();

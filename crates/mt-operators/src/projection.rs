@@ -262,7 +262,9 @@ pub struct SiteOrbitalCoefficients {
 }
 
 impl SiteOrbitalCoefficients {
-    fn from_tensor(tensor: ComplexTensor) -> Result<Self, muffintin_tensor::TensorError> {
+    /// Checked site-coordinate coefficients, including an explicit change of
+    /// radial-coordinate normalization performed by the caller.
+    pub fn from_tensor(tensor: ComplexTensor) -> Result<Self, muffintin_tensor::TensorError> {
         if tensor.rank() != 2 {
             return Err(muffintin_tensor::TensorError::Rank {
                 expected: 2,
