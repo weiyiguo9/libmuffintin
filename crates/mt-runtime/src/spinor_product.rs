@@ -497,27 +497,42 @@ impl SpinorProductInput {
     pub fn site_projection_identity(
         &self,
         site: usize,
-        coordinate: usize,
+        mut coordinate: usize,
     ) -> Option<(DiracRadialId, TwiceMu)> {
         let radials = self.source.radials.get(site)?;
-        for shell in shells(radials) {
-            for twice_mu in shell.kappa.twice_mu_values() {
-                for radial_n in 0..(SPINOR_RADIAL_LO0 + shell.lo_count) {
-                    if self.site_projection_row(site, shell.kappa, twice_mu, radial_n)
-                        == Some(coordinate)
-                    {
-                        return Some((
-                            DiracRadialId {
-                                site,
-                                kind: ProductOrbitalKind::Valence,
-                                kappa: shell.kappa,
-                                n: radial_n,
-                            },
-                            twice_mu,
-                        ));
-                    }
-                }
+        let shells = shells(radials);
+        for shell in &shells {
+            let count = 2 * shell.kappa.degeneracy() as usize;
+            if coordinate < count {
+                return Some((
+                    DiracRadialId {
+                        site,
+                        kind: ProductOrbitalKind::Valence,
+                        kappa: shell.kappa,
+                        n: coordinate % 2,
+                    },
+                    shell.kappa.twice_mu_values().nth(coordinate / 2)?,
+                ));
             }
+            coordinate -= count;
+        }
+        for shell in &shells {
+            let count = shell.kappa.degeneracy() as usize * shell.lo_count;
+            if coordinate < count {
+                return Some((
+                    DiracRadialId {
+                        site,
+                        kind: ProductOrbitalKind::Valence,
+                        kappa: shell.kappa,
+                        n: SPINOR_RADIAL_LO0 + coordinate % shell.lo_count,
+                    },
+                    shell
+                        .kappa
+                        .twice_mu_values()
+                        .nth(coordinate / shell.lo_count)?,
+                ));
+            }
+            coordinate -= count;
         }
         None
     }

@@ -1118,6 +1118,19 @@ allocation counts, not measured peak-RSS reductions. All 15 scalar/spinor
 MPB tests passed after this change; production memory and prefix parity must
 be measured on the replacement run.
 
+The replacement run at `9efeea8` reached nine converged SCF iterations with
+zero final virtual shift, but final core-sector completion was still running
+when sampled. The sample
+`/tmp/libmuffintin-kr-mtcompact-9efeea8-final.sample.txt` placed 825 of 839
+main-thread samples in `site_projection_identity`, called by `add_cv` during
+`complete_core_sector_frame`. The inverse coordinate lookup now decodes the
+APW block and then the LO block directly, instead of enumerating candidate
+coordinates and rebuilding shell metadata for each forward lookup. The
+coordinate ordering and radial identities are unchanged; this is not a
+change to the product span or a measured whole-run speedup. The existing
+signed-kappa HDLO fixture checks every projection coordinate against the
+forward map.
+
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
 tied to the scalar feedback tolerance because that loop retains its
