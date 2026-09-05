@@ -114,9 +114,9 @@ fn preflight_spinor_mldump<'a>(
 ) -> Result<&'a SpinorProductInput, SpinorMldumpError> {
     header.validate()?;
     let first = require_spinor_q_slice(inputs)?;
+    require_spinor_bases_exportable(first, header)?;
     require_spinor_coulomb_export_context(inputs, thc, coulomb, spec)?;
     preflight_header::<SpinorMldumpError, _>(header, first, inputs, spec.request.cell())?;
-    require_spinor_bases_exportable(first, header)?;
     Ok(first)
 }
 
