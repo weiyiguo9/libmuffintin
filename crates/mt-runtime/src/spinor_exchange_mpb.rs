@@ -477,7 +477,15 @@ pub fn build_spinor_exchange_mpb(
     let mut vc_diagnostics = Vec::with_capacity(vc_layout.n_columns()?);
 
     for mapped in input.k_minus_q.iter().copied() {
-        let projected = project_k_sites(input, mapped)?;
+        let projected = project_k_sites(input, mapped)?
+            .into_iter()
+            .map(|site| {
+                (
+                    site.left.to_host_row_major(),
+                    site.right.to_host_row_major(),
+                )
+            })
+            .collect::<Vec<_>>();
         for (core_index, core) in input.core.orbitals.iter().enumerate() {
             for target in 0..n_valence {
                 let column = cv_layout.encode(mapped.k_index, core_index, target)?;
@@ -490,7 +498,8 @@ pub fn build_spinor_exchange_mpb(
                     input,
                     mapped,
                     core,
-                    &projected[core.site_index].right,
+                    &projected[core.site_index].1,
+                    n_valence,
                     target,
                     &known_pp,
                     &known_qq,
@@ -520,7 +529,8 @@ pub fn build_spinor_exchange_mpb(
                     &source,
                     input,
                     mapped,
-                    &projected[core.site_index].left,
+                    &projected[core.site_index].0,
+                    n_valence,
                     occupied,
                     core,
                     &known_pp,
@@ -648,7 +658,8 @@ fn add_cv(
     input: &SpinorProductInput,
     mapped: SpinorKMinusQ,
     core: &SpinorCoreOrbital,
-    right: &SiteOrbitalCoefficients,
+    right: &[Complex64],
+    n_bands: usize,
     target: usize,
     known_pp: &HashSet<(
         muffintin_prodbasis::DiracRadialId,
@@ -663,7 +674,7 @@ fn add_cv(
     let phases = spinor_pair_site_phases(input, mapped, core.site_index)
         .ok_or(SpinorExchangeMpbError::IncompatiblePairContext)?;
     let mut direct = Complex64::default();
-    for coordinate in 0..right.coordinate_count() {
+    for (coordinate, bands) in right.chunks_exact(n_bands).enumerate() {
         let (right_id, right_mu) = input
             .site_projection_identity(core.site_index, coordinate)
             .ok_or(SpinorExchangeMpbError::IncompatiblePairContext)?;
@@ -673,8 +684,7 @@ fn add_cv(
             right: right_id,
             right_twice_mu: right_mu,
         };
-        let amplitude =
-            phases.left_bloch.conj() * right.at(coordinate, target) * phases.auxiliary_compensation;
+        let amplitude = phases.left_bloch.conj() * bands[target] * phases.auxiliary_compensation;
         add_pair(acc, table, pair, amplitude, known_pp, known_qq)?;
         if measure_direct {
             direct += amplitude * direct_overlap(source, pair)?;
@@ -690,7 +700,8 @@ fn add_vc(
     source: &DiracProductSource,
     input: &SpinorProductInput,
     mapped: SpinorKMinusQ,
-    left: &SiteOrbitalCoefficients,
+    left: &[Complex64],
+    n_bands: usize,
     occupied: usize,
     core: &SpinorCoreOrbital,
     known_pp: &HashSet<(
@@ -705,7 +716,7 @@ fn add_vc(
     let phases = spinor_pair_site_phases(input, mapped, core.site_index)
         .ok_or(SpinorExchangeMpbError::IncompatiblePairContext)?;
     let mut direct = Complex64::default();
-    for coordinate in 0..left.coordinate_count() {
+    for (coordinate, bands) in left.chunks_exact(n_bands).enumerate() {
         let (left_id, left_mu) = input
             .site_projection_identity(core.site_index, coordinate)
             .ok_or(SpinorExchangeMpbError::IncompatiblePairContext)?;
@@ -715,9 +726,7 @@ fn add_vc(
             right: core.radial,
             right_twice_mu: core.twice_mu,
         };
-        let amplitude = left.at(coordinate, occupied).conj()
-            * phases.right_bloch
-            * phases.auxiliary_compensation;
+        let amplitude = bands[occupied].conj() * phases.right_bloch * phases.auxiliary_compensation;
         add_pair(acc, table, pair, amplitude, known_pp, known_qq)?;
         direct += amplitude * direct_overlap(source, pair)?;
     }

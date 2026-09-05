@@ -2,6 +2,8 @@
 
 #![forbid(unsafe_code)]
 
+pub use hf_diagnostics::{HfVerbosity, set_hf_verbosity};
+
 #[cfg(test)]
 extern crate self as muffintin;
 
@@ -10,6 +12,7 @@ mod channel_token;
 mod checkpoint_physics;
 mod dft_scf;
 mod error;
+mod hf_diagnostics;
 mod hf_scf;
 mod input;
 mod isdf_exchange;

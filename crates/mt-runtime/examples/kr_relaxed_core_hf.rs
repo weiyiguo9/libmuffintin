@@ -245,6 +245,7 @@ impl HdloSelection {
 #[derive(Debug)]
 struct Cli {
     out: PathBuf,
+    verbosity: muffintin::HfVerbosity,
     relativity: RelativitySelection,
     soc_bands: usize,
     kh_hartree_update: KhSocHartreeUpdate,
@@ -289,6 +290,7 @@ impl Default for Cli {
     fn default() -> Self {
         Self {
             out: PathBuf::from("kr-relaxed-core-hf-p0"),
+            verbosity: muffintin::HfVerbosity::Progress,
             relativity: RelativitySelection::SpinorFirst,
             soc_bands: 7,
             kh_hartree_update: KhSocHartreeUpdate::OuterDensity,
@@ -337,12 +339,20 @@ impl Cli {
         let mut smoke_configuration = true;
         let mut arguments = env::args().skip(1);
         while let Some(name) = arguments.next() {
-            smoke_configuration &= name == "--out";
+            smoke_configuration &= matches!(name.as_str(), "--out" | "--verbosity");
             let value = arguments
                 .next()
                 .ok_or_else(|| invalid_input(format!("missing value after {name}")))?;
             match name.as_str() {
                 "--out" => cli.out = PathBuf::from(value),
+                "--verbosity" => {
+                    cli.verbosity = match value.as_str() {
+                        "0" => muffintin::HfVerbosity::Quiet,
+                        "1" => muffintin::HfVerbosity::Progress,
+                        "2" => muffintin::HfVerbosity::Timings,
+                        _ => return Err(invalid_input("--verbosity must be 0, 1, or 2")),
+                    };
+                }
                 "--relativity" => cli.relativity = RelativitySelection::parse(&value)?,
                 "--soc-bands" => cli.soc_bands = parse_value(&name, &value)?,
                 "--kh-hartree-update" => {
@@ -422,7 +432,9 @@ impl Cli {
         }
         cli.validate()?;
         if smoke_configuration {
-            eprintln!("warning: default smoke configuration; not for physical assessment (see doc/23_core_valence_exchange.md section 3.4)");
+            eprintln!(
+                "warning: default smoke configuration; not for physical assessment (see doc/23_core_valence_exchange.md section 3.4)"
+            );
         }
         Ok(cli)
     }
@@ -591,6 +603,7 @@ struct UnitsManifest {
 
 #[derive(Serialize)]
 struct ParameterManifest {
+    verbosity: u8,
     coupled_scf_max_iterations: Option<usize>,
     coupled_scf_density_tolerance: Option<f64>,
     output_directory: String,
@@ -952,6 +965,14 @@ struct ResidualRecord {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse()?;
+    muffintin::set_hf_verbosity(cli.verbosity);
+    if cli.verbosity != muffintin::HfVerbosity::Quiet {
+        eprintln!(
+            "[hf] preparing Kr {} calculation; output={}",
+            cli.relativity.as_str(),
+            cli.out.display()
+        );
+    }
     let field_l_max = cli
         .orbital_l_max
         .checked_add(1)
@@ -1121,6 +1142,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             radial_norm_and_residual: "dimensionless",
         },
         parameters: ParameterManifest {
+            verbosity: cli.verbosity as u8,
             coupled_scf_max_iterations: (cli.relativity == RelativitySelection::SpinorFrozen)
                 .then_some(cli.max_fock_iterations),
             coupled_scf_density_tolerance: (cli.relativity == RelativitySelection::SpinorFrozen)

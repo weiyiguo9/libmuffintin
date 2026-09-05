@@ -66,6 +66,12 @@ pub(super) fn run(
     start: &muffintin::AtomicStart,
     mut config: ScfConfig,
 ) -> Result<(), Box<dyn Error>> {
+    if cli.verbosity != muffintin::HfVerbosity::Quiet {
+        eprintln!(
+            "[hf] starting frozen SRA driver; max_iterations={}",
+            cli.max_fock_iterations
+        );
+    }
     // This is a single coupled Fock loop, not outer density mixing plus an inner loop.
     config.convergence.max_iterations = cli.max_fock_iterations;
     config.convergence.density_tolerance = cli.fock_density_tolerance;
@@ -121,6 +127,9 @@ pub(super) fn run(
         "failed"
     };
     iterations.failure = result.as_ref().err().map(ToString::to_string);
+    if cli.verbosity != muffintin::HfVerbosity::Quiet {
+        eprintln!("[hf] frozen SRA driver status={}", iterations.status);
+    }
     write_toml(&pending, &iterations)?;
     fs::rename(&pending, &path)?;
     let result = result?;

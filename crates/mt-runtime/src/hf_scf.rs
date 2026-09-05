@@ -1713,6 +1713,9 @@ fn rebuild_core_feedback_frame(
     core_sidecars: &[CoreShellOrbitals],
     cache: &mut Option<CoreExchangeCache>,
 ) -> Result<CoreFeedbackFrame, CoreValenceHfError> {
+    use crate::hf_diagnostics::HfPhaseTimer;
+    let _frame_timer = HfPhaseTimer::new("exchange.feedback_frame");
+    let input_timer = HfPhaseTimer::new("exchange.inputs_and_selections");
     let inputs =
         build_q_inputs_with_cores(physics, bands, k_fractional, q_fractional, core_sidecars)?;
     let first = inputs.first().ok_or(CoreValenceHfError::QTopology)?;
@@ -1745,25 +1748,34 @@ fn rebuild_core_feedback_frame(
         product_g_max: spec.product_g_max,
         overlap_tolerance: spec.overlap_tolerance,
     };
+    drop(input_timer);
     if cache.is_none() {
+        let vv_basis_timer = HfPhaseTimer::new("exchange.cache.vv_basis");
         let vv_bases = inputs
             .iter()
             .map(|input| compile_spinor_mpb_basis(input, &vv_spec))
             .collect::<Result<Vec<_>, _>>()?;
+        drop(vv_basis_timer);
+        let vv_coulomb_timer = HfPhaseTimer::new("exchange.cache.vv_coulomb");
         let vv_operators = vv_bases
             .iter()
             .map(|basis| assemble_coulomb(&basis.auxiliary, &spec.coulomb))
             .collect::<Result<Vec<_>, _>>()
             .map_err(FrozenSpinorSectorExchangeError::from)?;
+        drop(vv_coulomb_timer);
+        let core_basis_timer = HfPhaseTimer::new("exchange.cache.core_basis");
         let core_bases = inputs
             .iter()
             .map(|input| compile_spinor_exchange_mpb_basis(input, &core_spec))
             .collect::<Result<Vec<_>, _>>()?;
+        drop(core_basis_timer);
+        let core_coulomb_timer = HfPhaseTimer::new("exchange.cache.core_coulomb");
         let core_operators = core_bases
             .iter()
             .map(|basis| assemble_coulomb(&basis.auxiliary, &spec.coulomb))
             .collect::<Result<Vec<_>, _>>()
             .map_err(FrozenSpinorSectorExchangeError::from)?;
+        drop(core_coulomb_timer);
         *cache = Some(CoreExchangeCache {
             vv_bases,
             vv_operators,
@@ -1774,16 +1786,21 @@ fn rebuild_core_feedback_frame(
     let cache = cache
         .as_ref()
         .expect("the fixed-potential exchange cache was just initialized");
+    let vv_vertex_timer = HfPhaseTimer::new("exchange.vv_vertices");
     let vv_mpb = inputs
         .iter()
         .zip(&cache.vv_bases)
         .map(|(input, basis)| build_spinor_mpb_from_basis(input, &vv_spec, basis))
         .collect::<Result<Vec<_>, _>>()?;
+    drop(vv_vertex_timer);
+    let core_vertex_timer = HfPhaseTimer::new("exchange.core_vertices");
     let core_mpb = inputs
         .iter()
         .zip(&cache.core_bases)
         .map(|(input, basis)| build_spinor_exchange_feedback_from_basis(input, &core_spec, basis))
         .collect::<Result<Vec<_>, _>>()?;
+    drop(core_vertex_timer);
+    let _contraction_timer = HfPhaseTimer::new("exchange.contraction");
     let exchange = build_cached_spinor_valence_feedback_exchange(
         &inputs,
         &vv_mpb,
@@ -3501,20 +3518,19 @@ fn commutator_diis_error(
                 )?
             } else {
                 // Keep the existing physical diagnostic and acceptance metric.
-                let rotated = einsum(
-                    "ia,ab,jb->ij",
+                let overlap_vectors = einsum(
+                    "ij,jb->ib",
                     &[
+                        eigenproblem.overlap.as_tensor(),
                         solution.eigenvectors.as_tensor(),
-                        &preconditioned,
-                        &conjugate,
                     ],
                 )?;
                 einsum(
-                    "ij,jk,kl->il",
+                    "ia,ab,jb->ij",
                     &[
-                        eigenproblem.overlap.as_tensor(),
-                        &rotated,
-                        eigenproblem.overlap.as_tensor(),
+                        &overlap_vectors,
+                        &preconditioned,
+                        &overlap_vectors.conjugate(),
                     ],
                 )?
             };

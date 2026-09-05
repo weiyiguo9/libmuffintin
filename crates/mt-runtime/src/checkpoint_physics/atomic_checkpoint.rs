@@ -192,6 +192,8 @@ pub enum AtomicStartError {
 pub fn materialize_atomic_start(
     request: AtomicStartRequest,
 ) -> Result<AtomicStart, AtomicStartError> {
+    use crate::hf_diagnostics::HfPhaseTimer;
+    let _start_timer = HfPhaseTimer::new("atomic_start.total");
     let AtomicStartRequest {
         meta,
         structure,
@@ -230,6 +232,7 @@ pub fn materialize_atomic_start(
             })
         })
         .collect::<Result<Vec<_>, AtomicStartError>>()?;
+    let density_timer = HfPhaseTimer::new("atomic_start.superposition_density");
     let atomic = build_atomic_superposition_density(&AtomicSuperpositionSpec {
         direct_lattice,
         sites,
@@ -239,6 +242,8 @@ pub fn materialize_atomic_start(
         target_electron_count,
         free_atom_scf,
     })?;
+    drop(density_timer);
+    let conversion_timer = HfPhaseTimer::new("atomic_start.density_conversion");
     let angular_basis = meta.potential_convention.angular_basis;
     let basis_hints = BasisHints {
         reciprocal_length_unit: InverseLengthUnit::BohrInverse,
@@ -279,11 +284,15 @@ pub fn materialize_atomic_start(
         &structure.converted.sites,
         structure.converted.reciprocal,
     )?;
+    drop(conversion_timer);
+    let potential_timer = HfPhaseTimer::new("atomic_start.potential");
     let built_potential = build_scf_potential(
         &production_density,
         &structure.converted.nuclear_charges,
         exchange_correlation,
     )?;
+    drop(potential_timer);
+    let _checkpoint_timer = HfPhaseTimer::new("atomic_start.checkpoint");
     let potential = PotentialV2 {
         unit: FieldUnitV2::Hartree,
         representation: FieldRepresentationV2::MaskedOperator,

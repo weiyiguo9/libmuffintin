@@ -1,6 +1,7 @@
 //! Coupled Hartree and exchange iteration in one frozen-core SRA space.
 
 use super::*;
+use crate::hf_diagnostics::{HfPhaseTimer, hf_progress};
 
 /// One-loop SRA HF controls. `config.convergence` supplies the iteration
 /// limit, energy tolerance, and fresh unmixed density-map tolerance.
@@ -68,6 +69,8 @@ pub fn run_frozen_core_hf(
     spec: &FrozenCoreHfSpec,
     mut on_iteration: impl FnMut(&FrozenCoreHfIterationDiagnostic) -> std::io::Result<()>,
 ) -> Result<FrozenCoreHfResult, CoreValenceHfError> {
+    hf_progress(format_args!("frozen-core initialization begin"));
+    let initialization = HfPhaseTimer::new("frozen.initialization");
     let _ = ScfLoop::new(spec.config.clone(), None)?;
     let valence_electrons = validate(spec)?;
     let k_fractional = muffintin_dft::regular_k_points(spec.config.k_mesh)?;
@@ -78,6 +81,7 @@ pub fn run_frozen_core_hf(
         .kernel
         .frozen_checkpoint_core(&initial.total, &spec.config)?;
     let reference = physics.frozen_potential().clone();
+    let build_bands = HfPhaseTimer::new("frozen.initial_bands");
     let (mut bands, _) = solve_h0_bands(
         physics,
         &spec.config,
@@ -88,6 +92,8 @@ pub fn run_frozen_core_hf(
         ScfRelativity::SpinorFirstVariation,
         &core.orbitals,
     )?;
+    drop(build_bands);
+    drop(initialization);
     let exchange_spec = CoreExchangeSpec {
         product_l_max: spec.product_l_max,
         product_g_max: spec.product_g_max,
@@ -103,6 +109,11 @@ pub fn run_frozen_core_hf(
     let mut shift = spec.virtual_level_shift.get();
     let mut diagnostics = Vec::new();
     for iteration in 1..=spec.config.convergence.max_iterations {
+        let iteration_start = std::time::Instant::now();
+        hf_progress(format_args!(
+            "frozen iteration={iteration} begin shift_ha={shift:.6e}"
+        ));
+        let density_timer = HfPhaseTimer::new("frozen.density");
         let occupation =
             solve_occupations(bands.states(), valence_electrons, spec.config.occupations)?;
         let rows = occupation_rows(&occupation.values, &bands)?;
@@ -110,6 +121,9 @@ pub fn run_frozen_core_hf(
             .kernel
             .synthesize_bands(&bands, &occupation.values)?;
         let total_density = sum_density(&valence_density, &core.density)?;
+        drop(density_timer);
+        let hartree_timer = HfPhaseTimer::new("frozen.hartree_and_local_feedback");
+        let electrostatics_timer = HfPhaseTimer::new("frozen.electrostatics");
         let electrostatic = evaluate_regional_electrostatics(
             total_density.charge(),
             &ElectrostaticSpec::new(
@@ -117,6 +131,8 @@ pub fn run_frozen_core_hf(
                 physics.nuclear_charges().to_vec(),
             )?,
         )?;
+        drop(electrostatics_timer);
+        let local_timer = HfPhaseTimer::new("frozen.local_feedback");
         let zero = electrostatic.potential.zero_like();
         let potential = RegionalPotential::new(
             electrostatic.potential.clone(),
@@ -125,6 +141,9 @@ pub fn run_frozen_core_hf(
         let local = physics
             .kernel
             .spinor_local_potential_feedback(&bands, &potential)?;
+        drop(local_timer);
+        drop(hartree_timer);
+        let exchange_timer = HfPhaseTimer::new("frozen.exchange_feedback");
         let rebuilt = rebuild_core_feedback_frame(
             physics,
             &exchange_spec,
@@ -155,9 +174,14 @@ pub fn run_frozen_core_hf(
             );
         }
         let cc = cc_trace.expect("initial frozen CC contraction is retained");
+        drop(exchange_timer);
+        let solve_timer = HfPhaseTimer::new("frozen.lift_and_fresh_solve");
+        let lift_timer = HfPhaseTimer::new("frozen.exchange_lift");
         let band_feedback = relaxed_valence_feedback(&rebuilt.exchange)?;
         let exchange = lift_global_feedback(&bands, &band_feedback)?;
         let fresh = subtract_global_feedback(&exchange, &scale_feedback(&local, -1.0)?)?;
+        drop(lift_timer);
+        let commutator_timer = HfPhaseTimer::new("frozen.physical_commutator");
         let commutator = maximum_complex_element(&commutator_diis_error(
             &bands,
             &rows,
@@ -166,17 +190,26 @@ pub fn run_frozen_core_hf(
             FeedbackChannel::Spinor,
             None,
         )?);
+        drop(commutator_timer);
+        let feedback_timer = HfPhaseTimer::new("frozen.active_feedback");
         let feedback_residual = previous_feedback
             .as_ref()
             .map(|old| active_feedback_difference(&bands, &rows, old, &fresh))
             .transpose()?;
+        drop(feedback_timer);
+        let eigensolve_timer = HfPhaseTimer::new("frozen.fresh_eigensolve");
         let solved = bands.solve_spinor_global_feedback(&fresh)?;
+        drop(eigensolve_timer);
+        let solved_density_timer = HfPhaseTimer::new("frozen.solved_density");
         let solved_occupation =
             solve_occupations(solved.states(), valence_electrons, spec.config.occupations)?;
         let solved_density = physics
             .kernel
             .synthesize_bands(&solved, &solved_occupation.values)?;
         let density_residual = valence_density.difference_rms(&solved_density)?;
+        drop(solved_density_timer);
+        drop(solve_timer);
+        let energy_timer = HfPhaseTimer::new("frozen.energy_diagnostics");
         let core_one_body_traces = current_core_one_body(physics, &core.orbitals, &electrostatic)?;
         let core_h0 = Hartree(
             core_one_body_traces
@@ -224,9 +257,23 @@ pub fn run_frozen_core_hf(
             virtual_level_shift: Hartree(shift),
             converged: gates && shift == 0.0,
         };
+        drop(energy_timer);
+        let converged = diagnostic.converged;
+        let finish_iteration = move || {
+            hf_progress(format_args!(
+                "frozen iteration={iteration} finish energy_ha={:.12} delta_energy_ha={:?} density_residual={density_residual:.6e} commutator_ha={commutator:.6e} feedback_ha={feedback_residual:?} shift_ha={shift:.6e} converged={} elapsed_s={:.6}",
+                energy.get(),
+                energy_change.map(Hartree::get),
+                converged,
+                iteration_start.elapsed().as_secs_f64(),
+            ))
+        };
         on_iteration(&diagnostic)?;
         diagnostics.push(diagnostic);
         if gates && shift == 0.0 {
+            finish_iteration();
+            hf_progress(format_args!("frozen final core sectors begin"));
+            let _final_timer = HfPhaseTimer::new("frozen.final_core_sectors");
             let final_frame = complete_core_sector_frame(&exchange_spec, rebuilt)?;
             require_relaxed_gate(
                 "frozen-core CV/VC trace identity",
@@ -261,11 +308,13 @@ pub fn run_frozen_core_hf(
         }
         previous_energy = Some(energy);
         if gates {
+            finish_iteration();
             shift = 0.0;
             bands = solved;
             previous_feedback = Some(fresh);
             continue;
         }
+        let _mixing_timer = HfPhaseTimer::new("frozen.mixing_and_update_solve");
         let mixed = match &previous_feedback {
             Some(previous) => mixer.mix(&bands, &rows, previous, &fresh)?,
             None => fresh.clone(),
@@ -289,6 +338,8 @@ pub fn run_frozen_core_hf(
         }
         bands = bands.solve_spinor_global_feedback(&update)?;
         previous_feedback = Some(mixed);
+        drop(_mixing_timer);
+        finish_iteration();
     }
     let last = diagnostics
         .last()

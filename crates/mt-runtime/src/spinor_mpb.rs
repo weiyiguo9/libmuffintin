@@ -1,5 +1,6 @@
 //! Selected-band spinor mixed-product bridge from frozen [`SpinorProductInput`].
 
+use crate::hf_diagnostics::HfPhaseTimer;
 use crate::spinor_product::{
     SpinorCoreTable, SpinorKMinusQ, SpinorProductInput, spinor_pair_site_phases,
 };
@@ -14,10 +15,10 @@ use muffintin_prodbasis::{
     AuxiliaryPartition, CompiledAuxiliaryBasis, DiracChargeSector, DiracMtPairSpec, DiracRadialId,
     DiracRawProductSpace, OrbitalPair, PairColumnLayout, PairVertex, TransferQ,
 };
-use muffintin_tensor::{Axis, ComplexTensor, DenseEigenvectors, TensorError, einsum};
+use muffintin_tensor::{Axis, ComplexTensor, TensorError, einsum};
 use num_complex::Complex64;
 use rayon::prelude::*;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use thiserror::Error;
 
 /// SPEX overlap-cutoff spin factor for one spinor band manifold (`nspin = 1`).
@@ -156,15 +157,20 @@ pub(crate) fn compile_spinor_mpb_basis(
     input: &SpinorProductInput,
     spec: &SpinorMpbSpec,
 ) -> Result<SpinorMpbBasis, SpinorMpbError> {
+    let validation_timer = HfPhaseTimer::new("exchange.cache.vv_basis.validate");
     input
         .validate()
         .map_err(|_| SpinorMpbError::IncompatiblePairLayout)?;
     require_compatible_layout(input)?;
+    drop(validation_timer);
+    let raw_timer = HfPhaseTimer::new("exchange.cache.vv_basis.raw_dirac_space");
     let raw = untruncated_dirac_product_space(
         &input.source,
         spec.product_l_max,
         DiracProductMode::ValenceValence,
     )?;
+    drop(raw_timer);
+    let overlap_timer = HfPhaseTimer::new("exchange.cache.vv_basis.overlap_cutoff");
     let auxiliary = apply_dirac_overlap_cutoff(
         &raw,
         &input.source,
@@ -173,8 +179,14 @@ pub(crate) fn compile_spinor_mpb_basis(
         &input.reciprocal,
         spec.product_g_max,
     )?;
+    drop(overlap_timer);
+    let context_timer = HfPhaseTimer::new("exchange.cache.vv_basis.vertex_context");
     let context = DiracVertexContext::new(&input.source, &raw, &auxiliary)?;
+    drop(context_timer);
+    let table_timer = HfPhaseTimer::new("exchange.cache.vv_basis.interstitial_table");
     let interstitial_table = context.interstitial_table()?;
+    drop(table_timer);
+    let theta_timer = HfPhaseTimer::new("exchange.cache.vv_basis.interstitial_theta");
     let pair_support = &input.source.interstitial_pair_support.components;
     let mut theta = Vec::new();
     for component in pair_support {
@@ -188,6 +200,8 @@ pub(crate) fn compile_spinor_mpb_basis(
         &[Axis::Auxiliary, Axis::Auxiliary],
         theta,
     )?;
+    drop(theta_timer);
+    let mt_timer = HfPhaseTimer::new("exchange.cache.vv_basis.mt_coordinate_tensors");
     let known_pp = raw_mt_pairs(&raw, DiracChargeSector::LargeLarge);
     let known_qq = raw_mt_pairs(&raw, DiracChargeSector::SmallSmall);
     let mut table = context.sector_table();
@@ -198,6 +212,7 @@ pub(crate) fn compile_spinor_mpb_basis(
         &known_pp,
         &known_qq,
     )?;
+    drop(mt_timer);
     Ok(SpinorMpbBasis {
         source: input.source.clone(),
         raw,
@@ -217,6 +232,8 @@ pub(crate) fn build_spinor_mpb_from_basis(
     spec: &SpinorMpbSpec,
     basis: &SpinorMpbBasis,
 ) -> Result<SpinorMpbResult, SpinorMpbError> {
+    let _total_timer = HfPhaseTimer::new("vv.mpb_rebuild");
+    let validation_timer = HfPhaseTimer::new("vv.validate_frozen_inputs");
     if spec.selections.is_empty() {
         return Err(SpinorMpbError::EmptySelection);
     }
@@ -236,23 +253,19 @@ pub(crate) fn build_spinor_mpb_from_basis(
     {
         return Err(SpinorMpbError::IncompatibleBasisContext);
     }
+    drop(validation_timer);
     let raw = &basis.raw;
     let auxiliary = &basis.auxiliary;
-    let relative_g_by_index = input
-        .source
-        .interstitial_pair_support
-        .components
-        .iter()
-        .enumerate()
-        .map(|(position, component)| (component.g_relative.index, (position, component.g_relative)))
-        .collect::<HashMap<_, _>>();
     let context = DiracVertexContext::new(&input.source, &raw, &auxiliary)?;
+    let projection_timer = HfPhaseTimer::new("vv.site_projection");
     let projected_by_k = input
         .k_minus_q
         .iter()
         .copied()
         .map(|mapped| Ok((mapped.k_index, project_k_sites(input, mapped)?)))
         .collect::<Result<Vec<_>, SpinorMpbError>>()?;
+    drop(projection_timer);
+    let mt_timer = HfPhaseTimer::new("vv.mt_contraction");
     let muffin_tin_vertices = contract_muffin_tin_selections(
         input,
         spec,
@@ -260,12 +273,10 @@ pub(crate) fn build_spinor_mpb_from_basis(
         &projected_by_k,
         &basis.mt_coordinate_tensors,
     )?;
-    let interstitial_vertices = contract_interstitial_selections(
-        input,
-        spec,
-        &relative_g_by_index,
-        &basis.interstitial_theta,
-    )?;
+    drop(mt_timer);
+    let interstitial_vertices =
+        contract_interstitial_selections(input, spec, &basis.interstitial_theta)?;
+    let _assembly_timer = HfPhaseTimer::new("vv.vertex_assembly_and_frozen_identity");
     let vertices = spec
         .selections
         .par_iter()
@@ -377,16 +388,6 @@ fn contract_selection(
         right_band: selection.right_band,
         vertex,
     })
-}
-
-struct BandPair<'a> {
-    left_band: usize,
-    right_band: usize,
-    left_basis: &'a SpinorCompiledBasis,
-    right_basis: &'a SpinorCompiledBasis,
-    left_ev: &'a DenseEigenvectors,
-    right_ev: &'a DenseEigenvectors,
-    wrap: muffintin_core::GVector,
 }
 
 struct ProjectedSitePair {
@@ -625,9 +626,10 @@ fn select_site_bands(
     bands: &[usize],
 ) -> Result<ComplexTensor, SpinorMpbError> {
     let mut values = Vec::with_capacity(projected.coordinate_count() * bands.len());
-    for coordinate in 0..projected.coordinate_count() {
+    let coefficients = projected.to_host_row_major();
+    for row in coefficients.chunks_exact(projected.band_count()) {
         for &band in bands {
-            values.push(projected.at(coordinate, band));
+            values.push(row[band]);
         }
     }
     Ok(ComplexTensor::from_host_row_major(
@@ -640,10 +642,11 @@ fn select_site_bands(
 fn contract_interstitial_selections(
     input: &SpinorProductInput,
     spec: &SpinorMpbSpec,
-    relative_g_by_index: &HashMap<[i32; 3], (usize, muffintin_core::GVector)>,
     theta: &ComplexTensor,
 ) -> Result<Vec<Vec<Complex64>>, SpinorMpbError> {
-    let n_raw = relative_g_by_index.len();
+    let _total_timer = HfPhaseTimer::new("vv.interstitial");
+    let components = &input.source.interstitial_pair_support.components;
+    let n_raw = components.len();
     let n_pw = theta.shape()[1];
     if n_raw == 0 || n_pw == 0 {
         return Ok(vec![
@@ -651,93 +654,186 @@ fn contract_interstitial_selections(
             spec.selections.len()
         ]);
     }
-    // Bound temporary raw-pair amplitudes independently of the full band window.
-    let blocks = spec
-        .selections
-        .par_chunks(64)
-        .map(|selections| {
-            let mut amplitudes = Vec::with_capacity(selections.len() * n_raw);
-            for &selection in selections {
-                amplitudes.extend(interstitial_amplitudes(
-                    input,
-                    relative_g_by_index,
-                    selection,
-                )?);
+    let lookup_timer = HfPhaseTimer::new("vv.interstitial.dense_lookup");
+    // Dense reciprocal-index lookup is shared by all k points and bands.
+    let mut lower = components[0].g_relative.index;
+    let mut upper = lower;
+    for component in components {
+        for axis in 0..3 {
+            lower[axis] = lower[axis].min(component.g_relative.index[axis]);
+            upper[axis] = upper[axis].max(component.g_relative.index[axis]);
+        }
+    }
+    let shape: [usize; 3] = std::array::from_fn(|axis| (upper[axis] - lower[axis] + 1) as usize);
+    let offset = |g: [i32; 3]| {
+        ((g[0] - lower[0]) as usize * shape[1] + (g[1] - lower[1]) as usize) * shape[2]
+            + (g[2] - lower[2]) as usize
+    };
+    let mut relative_positions = vec![usize::MAX; shape.iter().product()];
+    for (position, component) in components.iter().enumerate() {
+        relative_positions[offset(component.g_relative.index)] = position;
+    }
+    drop(lookup_timer);
+    let mut selections_by_k = BTreeMap::<usize, BTreeMap<usize, Vec<usize>>>::new();
+    for (position, selection) in spec.selections.iter().enumerate() {
+        selections_by_k
+            .entry(selection.k)
+            .or_default()
+            .entry(selection.left_band)
+            .or_default()
+            .push(position);
+    }
+    let volume = input.source.partition.interstitial().cell_volume().get();
+    let mut vertices = vec![Vec::new(); spec.selections.len()];
+    for (k, selections_by_left) in selections_by_k {
+        let preparation_timer =
+            HfPhaseTimer::new("vv.interstitial.k_gather_indices_and_coefficients");
+        let mapped = input
+            .k_minus_q
+            .iter()
+            .find(|mapped| mapped.k_index == k)
+            .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
+        let left_basis = &input.orbitals.bases[mapped.kq_index];
+        let right_basis = &input.orbitals.bases[mapped.k_index];
+        let n_right = right_basis.plane_waves.len();
+        let band_count = input.orbitals.band_window.count;
+        let right_bands = selections_by_left
+            .values()
+            .flatten()
+            .map(|&position| spec.selections[position].right_band)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut right_positions = vec![usize::MAX; band_count];
+        for (position, &band) in right_bands.iter().enumerate() {
+            right_positions[band] = position;
+        }
+
+        // Build G_left(G_rel, G_right) once per k, not once per band pair.
+        // Missing left sphere entries remain zero in the gathered matrix.
+        let mut gather = vec![usize::MAX; n_raw * n_right];
+        let wrap = mapped.umklapp.index;
+        for (left_g, left_wave) in left_basis.plane_waves.iter().enumerate() {
+            for (right_g, right_wave) in right_basis.plane_waves.iter().enumerate() {
+                let g = std::array::from_fn(|axis| {
+                    right_wave.g.index[axis] - left_wave.g.index[axis] + wrap[axis]
+                });
+                if (0..3).any(|axis| g[axis] < lower[axis] || g[axis] > upper[axis]) {
+                    return Err(MpbError::UnknownInterstitialPair { g }.into());
+                }
+                let position = relative_positions[offset(g)];
+                if position == usize::MAX {
+                    return Err(MpbError::UnknownInterstitialPair { g }.into());
+                }
+                gather[position * n_right + right_g] = left_g;
             }
-            let amplitudes = ComplexTensor::from_host_row_major(
-                &[selections.len(), n_raw],
-                &[Axis::PairColumn, Axis::Auxiliary],
-                amplitudes,
-            )?;
-            let contracted = einsum("pr,ra->pa", &[&amplitudes, theta])?.to_host_row_major();
-            Ok(contracted
-                .chunks_exact(n_pw)
-                .map(<[Complex64]>::to_vec)
-                .collect::<Vec<_>>())
-        })
-        .collect::<Result<Vec<_>, SpinorMpbError>>()?;
-    Ok(blocks.into_iter().flatten().collect())
+        }
+        let left_values = input.orbitals.eigenvectors[mapped.kq_index].to_host_column_major();
+        let right_values = input.orbitals.eigenvectors[mapped.k_index].to_host_row_major();
+        let mut left_rows = Vec::with_capacity(2);
+        let mut right_blocks = Vec::with_capacity(2);
+        for spin in 0..2 {
+            left_rows.push(
+                (0..left_basis.plane_waves.len())
+                    .map(|g| {
+                        left_basis
+                            .layout
+                            .plane_wave_index(spin, g)
+                            .ok_or(SpinorMpbError::IncompatiblePairLayout)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+            let mut coefficients = Vec::with_capacity(n_right * right_bands.len());
+            for g in 0..n_right {
+                let row = right_basis
+                    .layout
+                    .plane_wave_index(spin, g)
+                    .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
+                for &band in &right_bands {
+                    coefficients.push(right_values[row * band_count + band]);
+                }
+            }
+            right_blocks.push(ComplexTensor::from_host_row_major(
+                &[n_right, right_bands.len()],
+                &[Axis::GlobalBasis, Axis::Band],
+                coefficients,
+            )?);
+        }
+        drop(preparation_timer);
+
+        // Keep only one left band's raw amplitudes live; parallelizing these
+        // blocks would multiply the large G_rel x band temporary by thread count.
+        for (left_band, positions) in selections_by_left {
+            let mut amplitudes = vec![Complex64::default(); n_raw * right_bands.len()];
+            let left_column = &left_values[left_band * left_basis.layout.dimension()
+                ..(left_band + 1) * left_basis.layout.dimension()];
+            for (rows, right) in left_rows.iter().zip(&right_blocks) {
+                let left = rows
+                    .iter()
+                    .map(|&row| left_column[row].conj())
+                    .collect::<Vec<_>>();
+                let spin_amplitudes =
+                    interstitial_amplitudes(&gather, &left, right, n_raw, n_right)?;
+                for (amplitude, spin_amplitude) in amplitudes.iter_mut().zip(spin_amplitudes) {
+                    *amplitude += spin_amplitude / volume;
+                }
+            }
+            // Preserve the existing bounded pair-to-Theta contraction and
+            // scatter back to the original order, including duplicate selections.
+            let theta_timer = HfPhaseTimer::new("vv.interstitial.theta");
+            let blocks = positions
+                .par_chunks(64)
+                .map(|positions| {
+                    let mut selected = Vec::with_capacity(positions.len() * n_raw);
+                    for &position in positions {
+                        let right = right_positions[spec.selections[position].right_band];
+                        selected.extend(
+                            (0..n_raw).map(|raw| amplitudes[raw * right_bands.len() + right]),
+                        );
+                    }
+                    let selected = ComplexTensor::from_host_row_major(
+                        &[positions.len(), n_raw],
+                        &[Axis::PairColumn, Axis::Auxiliary],
+                        selected,
+                    )?;
+                    let contracted = einsum("pr,ra->pa", &[&selected, theta])?.to_host_row_major();
+                    Ok(contracted
+                        .chunks_exact(n_pw)
+                        .map(<[Complex64]>::to_vec)
+                        .collect::<Vec<_>>())
+                })
+                .collect::<Result<Vec<_>, SpinorMpbError>>()?;
+            for (position, vertex) in positions.into_iter().zip(blocks.into_iter().flatten()) {
+                vertices[position] = vertex;
+            }
+            drop(theta_timer);
+        }
+    }
+    Ok(vertices)
 }
 
 fn interstitial_amplitudes(
-    input: &SpinorProductInput,
-    relative_g_by_index: &HashMap<[i32; 3], (usize, muffintin_core::GVector)>,
-    selection: SpinorMpbSelection,
+    gather: &[usize],
+    conjugate_left: &[Complex64],
+    right: &ComplexTensor,
+    n_raw: usize,
+    n_right: usize,
 ) -> Result<Vec<Complex64>, SpinorMpbError> {
-    let mapped = input
-        .k_minus_q
-        .iter()
-        .find(|mapped| mapped.k_index == selection.k)
-        .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
-    let pair = BandPair {
-        left_band: selection.left_band,
-        right_band: selection.right_band,
-        left_basis: &input.orbitals.bases[mapped.kq_index],
-        right_basis: &input.orbitals.bases[mapped.k_index],
-        left_ev: &input.orbitals.eigenvectors[mapped.kq_index],
-        right_ev: &input.orbitals.eigenvectors[mapped.k_index],
-        wrap: mapped.umklapp,
-    };
-    if pair.left_ev.rows() != pair.left_basis.layout.dimension()
-        || pair.right_ev.rows() != pair.right_basis.layout.dimension()
-        || pair.left_ev.columns() != input.orbitals.band_window.count
-        || pair.right_ev.columns() != input.orbitals.band_window.count
-    {
-        return Err(SpinorMpbError::IncompatiblePairLayout);
-    }
-    let volume = input.source.partition.interstitial().cell_volume().get();
-    let wrap = pair.wrap.index;
-    let mut amplitudes = vec![Complex64::default(); relative_g_by_index.len()];
-    for (left_g, left_wave) in pair.left_basis.plane_waves.iter().enumerate() {
-        for (right_g, right_wave) in pair.right_basis.plane_waves.iter().enumerate() {
-            let index = [
-                right_wave.g.index[0] - left_wave.g.index[0] + wrap[0],
-                right_wave.g.index[1] - left_wave.g.index[1] + wrap[1],
-                right_wave.g.index[2] - left_wave.g.index[2] + wrap[2],
-            ];
-            let &(position, _) = relative_g_by_index
-                .get(&index)
-                .ok_or(MpbError::UnknownInterstitialPair { g: index })?;
-            let mut amplitude = Complex64::default();
-            for spin in 0..2 {
-                let left_row = pair
-                    .left_basis
-                    .layout
-                    .plane_wave_index(spin, left_g)
-                    .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
-                let right_row = pair
-                    .right_basis
-                    .layout
-                    .plane_wave_index(spin, right_g)
-                    .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
-                amplitude += pair.left_ev.at(left_row, pair.left_band).conj()
-                    * pair.right_ev.at(right_row, pair.right_band);
-            }
-            amplitude /= volume;
-            amplitudes[position] += amplitude;
+    let gather_timer = HfPhaseTimer::new("vv.interstitial.gather");
+    let mut values = vec![Complex64::default(); gather.len()];
+    for (value, &left_g) in values.iter_mut().zip(gather) {
+        if left_g != usize::MAX {
+            *value = conjugate_left[left_g];
         }
     }
-    Ok(amplitudes)
+    let gathered = ComplexTensor::from_host_row_major(
+        &[n_raw, n_right],
+        &[Axis::Auxiliary, Axis::GlobalBasis],
+        values,
+    )?;
+    drop(gather_timer);
+    let _gemm_timer = HfPhaseTimer::new("vv.interstitial.gemm");
+    Ok(einsum("rg,gb->rb", &[&gathered, right])?.to_host_row_major())
 }
 
 fn site_channels(
