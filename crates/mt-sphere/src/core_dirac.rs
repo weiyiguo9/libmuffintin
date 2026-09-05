@@ -273,6 +273,14 @@ pub struct CoreDiracSolution {
     pub matching_residual: f64,
 }
 
+/// The unique node-compatible shooting interval and its converged core spinor.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IsolatedCoreDiracState {
+    pub bracket: EnergyBracket,
+    /// Solution obtained with the default [`CoreDiracSpec`] for this bracket.
+    pub solution: CoreDiracSolution,
+}
+
 /// Exact first-order trace of a physical reduced Dirac radial spinor.
 ///
 /// The derivatives are evaluated from the Dirac equations at the same radius;
@@ -1135,7 +1143,7 @@ pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSourcedSpec>>(
     Ok(candidates.remove(0))
 }
 
-/// Isolate the unique adjacent shooting interval with the requested node count.
+/// Isolate the unique adjacent shooting interval and retain its solved state.
 ///
 /// The caller supplies the extended mesh and its complete physical potential;
 /// this helper does not construct or extrapolate an outer potential. Every
@@ -1145,7 +1153,7 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
     mesh: &ExponentialMesh,
     potential: &[f64],
     search: S,
-) -> Result<EnergyBracket, DiracError> {
+) -> Result<IsolatedCoreDiracState, DiracError> {
     let search = search.borrow();
     let (lower, upper) = search.energy_window.values();
     if !lower.is_finite() || !upper.is_finite() || lower >= upper {
@@ -1210,7 +1218,7 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
                 search.muffin_tin_radius,
             );
             match solve_core_dirac(mesh, potential, spec) {
-                Ok(_) => candidates.push(bracket),
+                Ok(solution) => candidates.push(IsolatedCoreDiracState { bracket, solution }),
                 Err(
                     DiracError::NodeCountMismatch { .. }
                     | DiracError::RootNotBracketed { .. }
@@ -1223,9 +1231,9 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
         previous_energy = energy;
         previous = current;
     }
-    match candidates.as_slice() {
-        [bracket] => Ok(*bracket),
-        [] => Err(DiracError::CoreBracketNotFound {
+    match candidates.len() {
+        1 => Ok(candidates.remove(0)),
+        0 => Err(DiracError::CoreBracketNotFound {
             n: search.state.n,
             kappa: search.state.kappa.get(),
             lower,
@@ -1235,7 +1243,7 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
         many => Err(DiracError::CoreBracketAmbiguous {
             n: search.state.n,
             kappa: search.state.kappa.get(),
-            candidates: many.len(),
+            candidates: many,
         }),
     }
 }
@@ -2722,15 +2730,11 @@ mod tests {
             EnergyBracket::from_values(-0.8, -0.2).unwrap(),
         )
         .with_intervals(48);
-        let bracket = isolate_core_dirac_bracket(&mesh, &potential, search).unwrap();
+        let isolated = isolate_core_dirac_bracket(&mesh, &potential, search).unwrap();
+        let bracket = isolated.bracket;
         let exact = C_SQUARED * ((1.0 - 1.0 / C_SQUARED).sqrt() - 1.0);
         assert!(bracket.lower.get() < exact && bracket.upper.get() > exact);
-        let solution = solve_core_dirac(
-            &mesh,
-            &potential,
-            CoreDiracSpec::new(state, 1.0, bracket, mt_radius),
-        )
-        .unwrap();
+        let solution = isolated.solution;
         assert_eq!(solution.nodes, state.expected_nodes());
 
         let missing = CoreBracketSearch::new(
@@ -2761,18 +2765,14 @@ mod tests {
             .unwrap();
         let state = CoreState::new(1, Kappa::new(-1).unwrap()).unwrap();
         let window = EnergyBracket::from_values(-0.8, -0.2).unwrap();
-        let bracket = isolate_core_dirac_bracket(
+        let isolated = isolate_core_dirac_bracket(
             &mesh,
             &potential,
             CoreBracketSearch::new(state, 1.0, mt_radius, window).with_intervals(48),
         )
         .unwrap();
-        let solution = solve_core_dirac(
-            &mesh,
-            &potential,
-            CoreDiracSpec::new(state, 1.0, bracket, mt_radius),
-        )
-        .unwrap();
+        let bracket = isolated.bracket;
+        let solution = isolated.solution;
 
         let shift = 1.25;
         let shifted_potential = potential
@@ -2782,20 +2782,16 @@ mod tests {
         let shifted_window =
             EnergyBracket::from_values(window.lower.get() + shift, window.upper.get() + shift)
                 .unwrap();
-        let shifted_bracket = isolate_core_dirac_bracket(
+        let shifted_isolated = isolate_core_dirac_bracket(
             &mesh,
             &shifted_potential,
             CoreBracketSearch::new(state, 1.0, mt_radius, shifted_window).with_intervals(48),
         )
         .unwrap();
+        let shifted_bracket = shifted_isolated.bracket;
         assert!((shifted_bracket.lower.get() - bracket.lower.get() - shift).abs() < 1.0e-13);
         assert!((shifted_bracket.upper.get() - bracket.upper.get() - shift).abs() < 1.0e-13);
-        let shifted_solution = solve_core_dirac(
-            &mesh,
-            &shifted_potential,
-            CoreDiracSpec::new(state, 1.0, shifted_bracket, mt_radius),
-        )
-        .unwrap();
+        let shifted_solution = shifted_isolated.solution;
         assert!((shifted_solution.energy.get() - solution.energy.get() - shift).abs() < 1.0e-11);
         let phase = solution
             .p

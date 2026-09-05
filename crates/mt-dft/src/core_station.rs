@@ -966,7 +966,8 @@ fn solve_bound_core_state(
         &extended.values,
         CoreBracketSearch::new(state, nuclear_charge, muffin_tin_radius, window)
             .with_intervals(search_intervals),
-    )?;
+    )?
+    .bracket;
     let spec = CoreDiracSpec::new(state, nuclear_charge, bracket, muffin_tin_radius);
     let solution = solve_core_dirac(&extended.mesh, &extended.values, spec)?;
     Ok(SolvedBoundCoreState {

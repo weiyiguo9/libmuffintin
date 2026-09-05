@@ -39,9 +39,9 @@ pub use core_dirac::{
     CoreBracketSearch, CoreDiracExchangeAction, CoreDiracSolution, CoreDiracSourcedSpec,
     CoreDiracSpec, CoreState, DiracBoundaryTrace, DiracEnergyDerivative, DiracError,
     DiracLocalHamiltonianError, DiracLocalOrbital, DiracSecondEnergyDerivative, EnergyBracket,
-    RelativisticRole, ValenceDiracSolution, ValenceDiracSpec, dirac_local_hamiltonian_expectation,
-    isolate_core_dirac_bracket, solve_core_dirac, solve_core_dirac_with_action,
-    solve_valence_dirac,
+    IsolatedCoreDiracState, RelativisticRole, ValenceDiracSolution, ValenceDiracSpec,
+    dirac_local_hamiltonian_expectation, isolate_core_dirac_bracket, solve_core_dirac,
+    solve_core_dirac_with_action, solve_valence_dirac,
 };
 pub use core_potential::{
     CenteredSphericalFourierMode, CorePotentialContinuationError, CorePotentialContinuationSpec,

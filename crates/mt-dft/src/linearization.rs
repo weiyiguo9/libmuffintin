@@ -2,8 +2,8 @@
 
 use muffintin_core::{Bohr, ExponentialMesh, Hartree, InverseBohr, Kappa, KappaError};
 use muffintin_sphere::{
-    CoreBracketSearch, CoreDiracSolution, CoreDiracSpec, CoreState, DiracError, EnergyBracket,
-    RadialEquation, RadialError, RadialSolver, isolate_core_dirac_bracket, solve_core_dirac,
+    CoreBracketSearch, CoreDiracSolution, CoreState, DiracError, EnergyBracket, RadialEquation,
+    RadialError, RadialSolver, isolate_core_dirac_bracket,
 };
 use thiserror::Error;
 
@@ -217,8 +217,8 @@ pub(crate) fn solve_atomic_bound_state(
             )
             .ok()
         });
-    let bracket = match seeded {
-        Some(bracket) => bracket,
+    let isolated = match seeded {
+        Some(isolated) => isolated,
         None => isolate_core_dirac_bracket(
             mesh,
             potential,
@@ -235,21 +235,10 @@ pub(crate) fn solve_atomic_bound_state(
             source,
         })?,
     };
-    let solution = solve_core_dirac(
-        mesh,
-        potential,
-        CoreDiracSpec::new(
-            request.state,
-            request.nuclear_charge,
-            bracket,
-            request.muffin_tin_radius,
-        ),
-    )
-    .map_err(|source| LinearizationEnergyError::Atomic {
-        state: request.state,
-        source,
-    })?;
-    Ok(SolvedAtomicBoundState { solution, bracket })
+    Ok(SolvedAtomicBoundState {
+        solution: isolated.solution,
+        bracket: isolated.bracket,
+    })
 }
 
 /// Generate an Elk-style scalar band center from the current spherical potential.
