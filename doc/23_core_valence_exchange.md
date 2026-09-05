@@ -1011,11 +1011,34 @@ agree to floating-point precision. The active-feedback maximum in the current
 band frame differs, so this is not an all-fields bitwise identity claim.
 The baseline used two Rayon threads and the optimized run four; this prefix
 comparison is not a controlled whole-SCF timing ratio. The baseline was
-deliberately stopped after that check, and the optimized run was retained for
-the unconverged HF calculation. Evidence is stored in
+deliberately stopped after that check. The optimized run was subsequently
+stopped after the radial-coordinate diagnosis below. Evidence is stored in
 `/tmp/libmuffintin-kr-field12-prefix-comparison-037674d.json` and the baseline
 output directory's `STOPPED.md`. No GTO benchmark acceptance follows from
 matching this short prefix.
+
+The follow-up at `76f7dde` found a separate representation error: raw MPB
+radial pairs were individually normalized, but the LAPW site coefficients
+were not changed to the corresponding coordinates. On the initial field-12
+Kr determinant, using normalized radials with unchanged coefficients changed
+the represented valence count from 8 to 8.053989092296. The largest occupied
+core–valence overlap changed from $2.86\times10^{-17}$ to
+$9.36\times10^{-4}$. Thus the earlier directional exchange checks establish
+internal consistency only, not that exchange uses the same physical orbitals
+as Hartree. The diagnostic is retained at
+`/tmp/libmuffintin-kr-normalization-76f7dde-probe1.log` with its matching
+instrumentation patch. The runtime now converts the MT coefficients as in
+[18](18_lapw_mpb_thc_integration.md) §1.2, including the valence density used
+by the radial VC action. This does not change the raw product space, core
+normalization, interstitial amplitudes, or the valence-only THC scope.
+
+The normalization correction passed the scalar and spinor MPB integration
+tests, plus the Gamma valence-HF, KH+SOC, and relaxed-core HF fixtures (19
+tests in total). The physical MT integral and CV overlap comparisons use
+241-point radial meshes rather than the 61-point smoke mesh, without relaxing
+their respective $10^{-8}$ and $10^{-9}$ tolerances. These checks establish
+the coefficient convention and small-fixture HF identities, not convergence
+of the production Kr calculation or agreement with GTO energies.
 
 The spinor eigenvalue and total-energy identity gates scale with the electron
 count and the same commutator tolerance. The scalar-source identities remain
@@ -1124,9 +1147,11 @@ extended-minus-MT trace difference is reported as spill evidence and is never
 folded into that tolerance.
 
 M3b follows M2. It builds the complete
-Hermitian site-valence density as
-$D_{ab}=\sum_{kn}w_k f_{kn}d^*_{akn}d_{bkn}$ exactly once, with no $q$ weight,
-spin multiplier, or overlap insertion. The production radial action keeps the
+Hermitian site-valence density in individually normalized radial coordinates as
+$\widehat D_{ab}=\sum_{kn}w_k f_{kn}\widehat d^*_{akn}\widehat d_{bkn}$,
+where $\widehat d_a=\sqrt{N_a}\,d_a$ converts the physical LAPW projection
+coefficient. Weights enter exactly once, with no $q$ weight, spin multiplier,
+or full overlap-matrix insertion. The production radial action keeps the
 PP $\Omega_\kappa$ and QQ $\Omega_{-\kappa}$ reductions separate, averages
 only over the target-core magnetic channels, acts on physical P/Q, and is
 zero outside the muffin tin. Core occupation enters only its final trace.

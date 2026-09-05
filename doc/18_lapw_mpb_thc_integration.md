@@ -98,11 +98,29 @@ $\Theta_I$ argument
 G_{\mathrm{aux}} - G_{\mathrm{transfer}} - G_{\mathrm{rel}}.
 ```
 
-Muffin-tin contraction weights every coefficient pair as
-$\mathrm{conj}(C_{\mathrm{left}})C_{\mathrm{right}}$ times the inverse
+Muffin-tin contraction weights every normalized-radial coefficient pair as
+$\mathrm{conj}(\widehat d_{\mathrm{left}})\widehat d_{\mathrm{right}}$ times the inverse
 canonical site phase $\exp(-i q\cdot R_a)$, so the primitive MPB
 $+iq\cdot R_a$ kernel is not double-counted against matching phases already
 stored on the projection.
+
+The LAPW site projection returns coefficients $d_a$ multiplying the original
+radial functions. Raw MPB primitives instead divide each radial by its own
+norm. For reduced radial samples $(p_a,q_a)$ this requires the diagonal change
+of coordinates
+
+```math
+N_a=\int_{\mathrm{MT}}(p_a^2+q_a^2)\,dr,\qquad
+\widehat d_a=\sqrt{N_a}\,d_a,\qquad
+d_a(p_a,q_a)=\widehat d_a\frac{(p_a,q_a)}{\sqrt{N_a}}.
+```
+
+This is not an overlap orthogonalization: energy-derivative radials need not
+have unit norm. The same conversion applies to spinor MPB PP/QQ and its
+valence arms in CV/VC. Core sidecars retain their explicit full-mesh norm;
+neither interstitial plane-wave coefficients nor physical THC orbital samples
+receive this MPB coordinate conversion. The raw MPB and its overlap cutoff
+are unchanged.
 
 Valence radial index $n$ is stable across the scalar path: $n=0$ is $u$,
 $n=1$ is $\dot u$, and $n=2+\mathrm{ordinal}$ are local orbitals. The scalar
