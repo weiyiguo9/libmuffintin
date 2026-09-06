@@ -443,6 +443,15 @@ partition. Adaptive interpolation points are then selected from that parent
 support by the existing AllQL2 QRCP or pivoted-Cholesky engine; this function
 does not claim adaptive parent-mesh refinement.
 
+The natural parent retains its uniform-grid construction metadata. With
+`fft-fftw`, orbital synthesis evaluates that complete midpoint grid and gathers
+the interstitial subset; sampled $\zeta$ projection scatters the weighted
+interstitial samples onto the same grid and retains the finite $q$ phase.
+Externally supplied parent points keep the direct Fourier sum. The FFT route
+does not interpolate muffin-tin angular/radial points onto a Cartesian grid.
+Shared dense plans live in `muffintin_tensor::fft`, while partition and physical
+normalization remain the responsibility of the existing consumers.
+
 For one scalar spin channel or one full-first-variation spinor manifold,
 `build_scalar_isdf_exchange` and `build_spinor_isdf_exchange` contract the
 sampled-$\zeta$ Weinert operators into the frozen band basis:

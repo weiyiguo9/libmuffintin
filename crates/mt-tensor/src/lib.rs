@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 
 mod backend;
+pub mod fft;
 #[cfg(feature = "backend-rstsr")]
 mod rstsr_tblis;
 #[cfg(feature = "backend-tenferro")]

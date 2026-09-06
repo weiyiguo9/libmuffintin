@@ -19,6 +19,9 @@ use num_complex::Complex64;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use thiserror::Error;
 
+#[cfg(feature = "fft-fftw")]
+use crate::pair_fft::PairFft;
+
 /// SPEX overlap-cutoff spin factor for collinear scalar mixed-product construction (`nspin = 2`).
 pub const SCALAR_MPB_NSPIN: f64 = 2.0;
 /// SPEX overlap-cutoff spin factor for one Pauli-spinor second-variation manifold.
@@ -56,7 +59,10 @@ pub(crate) struct ScalarMpbBasis {
     overlap_tolerance: f64,
     overlap_spin_factor: f64,
     mt_coordinate_tensors: HashMap<(u8, usize), Vec<ComplexTensor>>,
+    #[cfg(not(feature = "fft-fftw"))]
     interstitial_coordinate_tensors: HashMap<(u8, usize), ComplexTensor>,
+    #[cfg(feature = "fft-fftw")]
+    interstitial_theta: ComplexTensor,
 }
 
 /// One same-spin band pair at one k-point.
@@ -160,6 +166,9 @@ pub enum ScalarMpbError {
     Operator(#[from] OperatorError),
     #[error(transparent)]
     Tensor(#[from] TensorError),
+    #[cfg(feature = "fft-fftw")]
+    #[error(transparent)]
+    Fft(#[from] muffintin_tensor::fft::FftError),
     #[error("scalar MPB selections must be nonempty")]
     EmptySelection,
     #[error(
@@ -218,7 +227,11 @@ fn compile_mpb_basis(
 ) -> Result<ScalarMpbBasis, ScalarMpbError> {
     require_compatible_layout(input)?;
     assert!(
-        input.source.radials.iter().all(|site| site.cores.is_empty()),
+        input
+            .source
+            .radials
+            .iter()
+            .all(|site| site.cores.is_empty()),
         "scalar runtime MPB requires valence-only product input; core radials would add core-valence products"
     );
     let (raw, _) = spex_mixed_product_basis(&input.source, product_l_max, product_g_max, &lattice)?;
@@ -238,8 +251,11 @@ fn compile_mpb_basis(
         auxiliary.mt_dimension(),
         context.muffin_tin_table(),
     )?;
+    #[cfg(not(feature = "fft-fftw"))]
     let interstitial_coordinate_tensors =
         compile_interstitial_coordinate_tensors(input, &auxiliary, &interstitial_table)?;
+    #[cfg(feature = "fft-fftw")]
+    let interstitial_theta = compile_interstitial_theta(input, &auxiliary, &interstitial_table)?;
     Ok(ScalarMpbBasis {
         source: input.source.clone(),
         raw,
@@ -258,7 +274,10 @@ fn compile_mpb_basis(
         overlap_tolerance,
         overlap_spin_factor,
         mt_coordinate_tensors,
+        #[cfg(not(feature = "fft-fftw"))]
         interstitial_coordinate_tensors,
+        #[cfg(feature = "fft-fftw")]
+        interstitial_theta,
     })
 }
 
@@ -298,12 +317,16 @@ pub(crate) fn build_scalar_mpb_from_basis(
         basis.auxiliary.dimension(),
         &basis.mt_coordinate_tensors,
     )?;
+    #[cfg(not(feature = "fft-fftw"))]
     let interstitial_vertices = contract_interstitial_selections(
         input,
         spec,
         &basis.auxiliary,
         &basis.interstitial_coordinate_tensors,
     )?;
+    #[cfg(feature = "fft-fftw")]
+    let interstitial_vertices =
+        contract_interstitial_selections(input, spec, &basis.auxiliary, &basis.interstitial_theta)?;
     let vertices = assemble_scalar_vertices(
         input,
         &basis.auxiliary,
@@ -398,11 +421,19 @@ pub(crate) fn build_second_variation_mpb_from_basis(
         basis.auxiliary.dimension(),
         &basis.mt_coordinate_tensors,
     )?;
+    #[cfg(not(feature = "fft-fftw"))]
     let interstitial_vertices = contract_interstitial_selections(
         input,
         &scalar_spec,
         &basis.auxiliary,
         &basis.interstitial_coordinate_tensors,
+    )?;
+    #[cfg(feature = "fft-fftw")]
+    let interstitial_vertices = contract_interstitial_selections(
+        input,
+        &scalar_spec,
+        &basis.auxiliary,
+        &basis.interstitial_theta,
     )?;
     let components = assemble_scalar_vertices(
         input,
@@ -853,6 +884,7 @@ fn select_site_bands(
     )?)
 }
 
+#[cfg(not(feature = "fft-fftw"))]
 fn compile_interstitial_coordinate_tensors(
     input: &ScalarProductInput,
     auxiliary: &CompiledAuxiliaryBasis,
@@ -914,6 +946,26 @@ fn compile_interstitial_coordinate_tensors(
     Ok(tensors)
 }
 
+#[cfg(feature = "fft-fftw")]
+fn compile_interstitial_theta(
+    input: &ScalarProductInput,
+    auxiliary: &CompiledAuxiliaryBasis,
+    table: &InterstitialThetaTable,
+) -> Result<ComplexTensor, ScalarMpbError> {
+    let components = &input.source.interstitial_pair_support.components;
+    let interstitial_count = auxiliary.interstitial_dimension();
+    let mut theta = Vec::with_capacity(components.len() * interstitial_count);
+    for component in components {
+        theta.extend_from_slice(table.row(auxiliary, component.g_relative.index)?);
+    }
+    Ok(ComplexTensor::from_host_row_major(
+        &[components.len(), interstitial_count],
+        &[Axis::Auxiliary, Axis::Auxiliary],
+        theta,
+    )?)
+}
+
+#[cfg(not(feature = "fft-fftw"))]
 fn contract_interstitial_selections(
     input: &ScalarProductInput,
     spec: &ScalarMpbSpec,
@@ -990,6 +1042,117 @@ fn contract_interstitial_selections(
         .collect()
 }
 
+#[cfg(feature = "fft-fftw")]
+fn contract_interstitial_selections(
+    input: &ScalarProductInput,
+    spec: &ScalarMpbSpec,
+    auxiliary: &CompiledAuxiliaryBasis,
+    theta: &ComplexTensor,
+) -> Result<Vec<Vec<Complex64>>, ScalarMpbError> {
+    let auxiliary_count = auxiliary.dimension();
+    let mt_count = auxiliary.mt_dimension();
+    let interstitial_count = auxiliary.interstitial_dimension();
+    let components = &input.source.interstitial_pair_support.components;
+    if components.is_empty() || interstitial_count == 0 {
+        return Ok(vec![
+            vec![Complex64::default(); auxiliary_count];
+            spec.selections.len()
+        ]);
+    }
+    let raw_indices = components
+        .iter()
+        .map(|component| component.g_relative.index)
+        .collect::<Vec<_>>();
+    let mut by_selection = HashMap::new();
+    let groups = spec
+        .selections
+        .iter()
+        .map(|selection| (selection.spin, selection.k))
+        .collect::<BTreeSet<_>>();
+    let volume = input.source.partition.interstitial().cell_volume().get();
+    for (spin, k) in groups {
+        let mapped = input
+            .k_minus_q
+            .iter()
+            .copied()
+            .find(|mapped| mapped.k_index == k)
+            .ok_or(ScalarMpbError::IncompatiblePairLayout)?;
+        let channel = input
+            .orbitals
+            .channels
+            .iter()
+            .find(|channel| channel.spin == spin)
+            .ok_or(ScalarMpbError::IncompatiblePairLayout)?;
+        let left_basis = &channel.bases[mapped.kq_index];
+        let right_basis = &channel.bases[mapped.k_index];
+        let left_indices = left_basis
+            .plane_waves
+            .iter()
+            .map(|wave| wave.g.index)
+            .collect::<Vec<_>>();
+        let right_indices = right_basis
+            .plane_waves
+            .iter()
+            .map(|wave| wave.g.index)
+            .collect::<Vec<_>>();
+        let mut fft = PairFft::new(
+            &left_indices,
+            &right_indices,
+            &raw_indices,
+            mapped.umklapp.index,
+        )?;
+        let pairs = spec
+            .selections
+            .iter()
+            .filter(|selection| selection.spin == spin && selection.k == k)
+            .map(|selection| (selection.left_band, selection.right_band))
+            .collect::<BTreeSet<_>>();
+        for (left_band, right_band) in pairs {
+            let left = (0..left_indices.len())
+                .map(|g| channel.eigenvectors[mapped.kq_index].at(g, left_band))
+                .collect::<Vec<_>>();
+            let right = (0..right_indices.len())
+                .map(|g| channel.eigenvectors[mapped.k_index].at(g, right_band))
+                .collect::<Vec<_>>();
+            let mut amplitudes = fft.correlate(
+                &left_indices,
+                &left,
+                &right_indices,
+                &right,
+                &raw_indices,
+                mapped.umklapp.index,
+            )?;
+            for amplitude in &mut amplitudes {
+                *amplitude /= volume;
+            }
+            let raw = ComplexTensor::from_host_row_major(
+                &[1, components.len()],
+                &[Axis::PairColumn, Axis::Auxiliary],
+                amplitudes,
+            )?;
+            let projected = einsum("pr,ra->pa", &[&raw, theta])?.to_host_row_major();
+            let mut coefficients = vec![Complex64::default(); auxiliary_count];
+            coefficients[mt_count..].copy_from_slice(&projected);
+            by_selection.insert((spin, k, left_band, right_band), coefficients);
+        }
+    }
+    spec.selections
+        .iter()
+        .map(|selection| {
+            by_selection
+                .get(&(
+                    selection.spin,
+                    selection.k,
+                    selection.left_band,
+                    selection.right_band,
+                ))
+                .cloned()
+                .ok_or(ScalarMpbError::IncompatiblePairLayout)
+        })
+        .collect()
+}
+
+#[cfg(not(feature = "fft-fftw"))]
 fn selected_bands(spec: &ScalarMpbSpec, spin: u8, k: usize, left: bool) -> Vec<usize> {
     spec.selections
         .iter()
@@ -1006,6 +1169,7 @@ fn selected_bands(spec: &ScalarMpbSpec, spin: u8, k: usize, left: bool) -> Vec<u
         .collect()
 }
 
+#[cfg(not(feature = "fft-fftw"))]
 fn select_plane_wave_bands(
     eigenvectors: &muffintin_tensor::DenseEigenvectors,
     plane_wave_count: usize,

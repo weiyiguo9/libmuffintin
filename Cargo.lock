@@ -1054,7 +1054,6 @@ dependencies = [
 name = "libmuffintin-dft"
 version = "0.2.0"
 dependencies = [
- "fftw",
  "libm",
  "libmuffintin-core",
  "libmuffintin-coulomb",
@@ -1193,6 +1192,7 @@ dependencies = [
 name = "libmuffintin-tensor"
 version = "0.2.0"
 dependencies = [
+ "fftw",
  "num-complex",
  "rstsr",
  "tblis-src",

@@ -1,13 +1,15 @@
 //! Spinor AllQL2 THC from frozen [`SpinorProductInput`] on a [`ThcParentGrid`].
 
 use crate::spinor_product::{SpinorProductInput, SpinorQSliceError, require_spinor_q_slice};
+#[cfg(feature = "fft-fftw")]
+use crate::thc_fft::{NaturalInterstitialFft, NaturalInterstitialFftError};
 use crate::thc_grid::{
     ThcCandidates, ThcEngine, ThcGridError, ThcParentGrid, ThcQRecord, ThcRegion,
     records_match_parent_grid, require_parent_grid_radials,
 };
 use muffintin_core::{
-    Bohr, GVector, InverseBohr, RelativisticChannel, SpinProjection, complex_spherical_harmonics,
-    lm_index,
+    Bohr, GVector, GridError, InverseBohr, RelativisticChannel, SpinProjection,
+    complex_spherical_harmonics, lm_index,
 };
 use muffintin_operators::lapw::{Provenance, SpinorCompiledBasis};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
@@ -16,6 +18,8 @@ use muffintin_prodbasis::thc::{
 };
 use muffintin_prodbasis::{DiracRadial, DiracRadialId, DiracSiteRadialSet, ProductOrbitalKind};
 use muffintin_tensor::DenseEigenvectors;
+#[cfg(feature = "fft-fftw")]
+use muffintin_tensor::fft::FftError;
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -62,6 +66,14 @@ pub enum SpinorThcError {
     Thc(#[from] ThcError),
     #[error(transparent)]
     Operator(#[from] OperatorError),
+    #[error(transparent)]
+    Grid(#[from] GridError),
+    #[cfg(feature = "fft-fftw")]
+    #[error(transparent)]
+    Fft(#[from] FftError),
+    #[cfg(feature = "fft-fftw")]
+    #[error("spinor THC natural interstitial points do not match their uniform-grid provenance")]
+    NaturalGridOrder,
     #[error("spinor THC q-slice must be nonempty")]
     EmptySlice,
     #[error("spinor THC q-slice has {actual} bundles, expected {expected} k-mesh transfers")]
@@ -217,6 +229,38 @@ fn evaluate_orbitals(
         .cell_volume()
         .get()
         .sqrt();
+    #[cfg(feature = "fft-fftw")]
+    let fft_interstitial =
+        if let Some(mut fft) = NaturalInterstitialFft::new(grid).map_err(map_fft_init_error)? {
+            for k in 0..n_k {
+                let compiled = &input.orbitals.bases[k];
+                let eigenvectors = &input.orbitals.eigenvectors[k];
+                for band in 0..n_orb {
+                    for spin in 0..2 {
+                        let modes = compiled
+                            .plane_waves
+                            .iter()
+                            .enumerate()
+                            .map(|(g, wave)| {
+                                let row = compiled
+                                    .layout
+                                    .plane_wave_index(spin, g)
+                                    .ok_or(SpinorThcError::IncompatibleInputs)?;
+                                Ok((wave.g.index, eigenvectors.at(row, band)))
+                            })
+                            .collect::<Result<Vec<_>, SpinorThcError>>()?;
+                        fft.synthesize(modes, volume.recip(), |point, value| {
+                            samples[point][k][band].large[spin] = value;
+                        })?;
+                    }
+                }
+            }
+            true
+        } else {
+            false
+        };
+    #[cfg(not(feature = "fft-fftw"))]
+    let fft_interstitial = false;
     let mut site_proj = Vec::with_capacity(n_k);
     for k in 0..n_k {
         let compiled = &input.orbitals.bases[k];
@@ -264,24 +308,35 @@ fn evaluate_orbitals(
                 }
             }
             ThcRegion::Interstitial => {
-                for k in 0..n_k {
-                    for band in 0..n_orb {
-                        samples[p][k][band] = SpinorOrbitalSample {
-                            large: interstitial_orbital(
-                                &input.orbitals.bases[k],
-                                &input.orbitals.eigenvectors[k],
-                                band,
-                                point.coordinate,
-                                volume,
-                            )?,
-                            small: [Complex64::default(); 2],
-                        };
+                if !fft_interstitial {
+                    for k in 0..n_k {
+                        for band in 0..n_orb {
+                            samples[p][k][band] = SpinorOrbitalSample {
+                                large: interstitial_orbital(
+                                    &input.orbitals.bases[k],
+                                    &input.orbitals.eigenvectors[k],
+                                    band,
+                                    point.coordinate,
+                                    volume,
+                                )?,
+                                small: [Complex64::default(); 2],
+                            };
+                        }
                     }
                 }
             }
         }
     }
     Ok(samples)
+}
+
+#[cfg(feature = "fft-fftw")]
+fn map_fft_init_error(error: NaturalInterstitialFftError) -> SpinorThcError {
+    match error {
+        NaturalInterstitialFftError::Grid(error) => SpinorThcError::Grid(error),
+        NaturalInterstitialFftError::Fft(error) => SpinorThcError::Fft(error),
+        NaturalInterstitialFftError::ParentGridOrder => SpinorThcError::NaturalGridOrder,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

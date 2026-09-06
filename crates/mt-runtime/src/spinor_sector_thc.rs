@@ -6,12 +6,14 @@ use crate::spinor_exchange_mpb::{SpinorExchangeMpbResult, SpinorExchangeMpbSecto
 use crate::spinor_mpb::SpinorMpbResult;
 use crate::spinor_product::{SpinorProductInput, SpinorQSliceError, require_spinor_q_slice};
 use crate::spinor_thc::SpinorThcSpec;
+#[cfg(feature = "fft-fftw")]
+use crate::thc_fft::{NaturalInterstitialFft, NaturalInterstitialFftError};
 use crate::thc_grid::{
     ParentGridIdentity, ThcGridError, ThcParentGrid, ThcRegion, require_parent_grid_radials,
 };
 use muffintin_core::{
-    Bohr, ExponentialMesh, GVector, InverseBohr, RelativisticChannel, SpinProjection, VolumeBohr3,
-    complex_spherical_harmonics, lm_index,
+    Bohr, ExponentialMesh, GVector, GridError, InverseBohr, RelativisticChannel, SpinProjection,
+    VolumeBohr3, complex_spherical_harmonics, lm_index,
 };
 use muffintin_coulomb::{
     CoulombError, SampledAuxiliaryFunctions, SampledPointSupport, assemble_coulomb,
@@ -28,6 +30,8 @@ use muffintin_prodbasis::{
     ExchangeSpace, OrbitalPair, PairVertex, ProductOrbitalKind, TransferQ,
 };
 use muffintin_tensor::DenseEigenvectors;
+#[cfg(feature = "fft-fftw")]
+use muffintin_tensor::fft::FftError;
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -183,6 +187,16 @@ pub enum SpinorSectorThcError {
     Thc(#[from] ThcError),
     #[error(transparent)]
     Operator(#[from] OperatorError),
+    #[error(transparent)]
+    Grid(#[from] GridError),
+    #[cfg(feature = "fft-fftw")]
+    #[error(transparent)]
+    Fft(#[from] FftError),
+    #[cfg(feature = "fft-fftw")]
+    #[error(
+        "spinor sector THC natural interstitial points do not match their uniform-grid provenance"
+    )]
+    NaturalGridOrder,
     #[error(transparent)]
     Coulomb(#[from] CoulombError),
     #[error("spinor sector THC q-slice must be nonempty")]
@@ -448,6 +462,38 @@ fn evaluate_valence_orbitals(
         .cell_volume()
         .get()
         .sqrt();
+    #[cfg(feature = "fft-fftw")]
+    let fft_interstitial =
+        if let Some(mut fft) = NaturalInterstitialFft::new(grid).map_err(map_fft_init_error)? {
+            for k in 0..n_k {
+                let compiled = &input.orbitals.bases[k];
+                let eigenvectors = &input.orbitals.eigenvectors[k];
+                for band in 0..n_orb {
+                    for spin in 0..2 {
+                        let modes = compiled
+                            .plane_waves
+                            .iter()
+                            .enumerate()
+                            .map(|(g, wave)| {
+                                let row = compiled
+                                    .layout
+                                    .plane_wave_index(spin, g)
+                                    .ok_or(SpinorSectorThcError::IncompatibleInputs)?;
+                                Ok((wave.g.index, eigenvectors.at(row, band)))
+                            })
+                            .collect::<Result<Vec<_>, SpinorSectorThcError>>()?;
+                        fft.synthesize(modes, sqrt_volume.recip(), |point, value| {
+                            samples[point][k][band].large[spin] = value;
+                        })?;
+                    }
+                }
+            }
+            true
+        } else {
+            false
+        };
+    #[cfg(not(feature = "fft-fftw"))]
+    let fft_interstitial = false;
     let mut site_proj = Vec::with_capacity(n_k);
     for k in 0..n_k {
         let compiled = &input.orbitals.bases[k];
@@ -488,24 +534,35 @@ fn evaluate_valence_orbitals(
                 }
             }
             ThcRegion::Interstitial => {
-                for k in 0..n_k {
-                    for band in 0..n_orb {
-                        samples[point_index][k][band] = SpinorOrbitalSample {
-                            large: interstitial_valence_orbital(
-                                &input.orbitals.bases[k],
-                                &input.orbitals.eigenvectors[k],
-                                band,
-                                point.coordinate,
-                                sqrt_volume,
-                            )?,
-                            small: [Complex64::default(); 2],
-                        };
+                if !fft_interstitial {
+                    for k in 0..n_k {
+                        for band in 0..n_orb {
+                            samples[point_index][k][band] = SpinorOrbitalSample {
+                                large: interstitial_valence_orbital(
+                                    &input.orbitals.bases[k],
+                                    &input.orbitals.eigenvectors[k],
+                                    band,
+                                    point.coordinate,
+                                    sqrt_volume,
+                                )?,
+                                small: [Complex64::default(); 2],
+                            };
+                        }
                     }
                 }
             }
         }
     }
     Ok(samples)
+}
+
+#[cfg(feature = "fft-fftw")]
+fn map_fft_init_error(error: NaturalInterstitialFftError) -> SpinorSectorThcError {
+    match error {
+        NaturalInterstitialFftError::Grid(error) => SpinorSectorThcError::Grid(error),
+        NaturalInterstitialFftError::Fft(error) => SpinorSectorThcError::Fft(error),
+        NaturalInterstitialFftError::ParentGridOrder => SpinorSectorThcError::NaturalGridOrder,
+    }
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -1116,8 +1173,8 @@ fn sampled_sector_auxiliary(
     record: &SpinorSectorThcQRecord,
     grid: &ThcParentGrid,
     site_meshes: Vec<ExponentialMesh>,
-) -> Result<SampledAuxiliaryFunctions, CoulombError> {
-    SampledAuxiliaryFunctions::new(
+) -> Result<SampledAuxiliaryFunctions, SpinorSectorThcError> {
+    let sampled = SampledAuxiliaryFunctions::new(
         record.auxiliary.layout(),
         site_meshes,
         grid.points().iter().map(|point| point.coordinate).collect(),
@@ -1135,7 +1192,11 @@ fn sampled_sector_auxiliary(
             })
             .collect(),
         record.zeta.clone(),
-    )
+    )?;
+    match grid.uniform_interstitial_grid()? {
+        Some(uniform) => Ok(sampled.with_uniform_interstitial_grid(&uniform)?),
+        None => Ok(sampled),
+    }
 }
 
 fn compare_sector_pairs(

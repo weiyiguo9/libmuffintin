@@ -9,7 +9,6 @@ mod core_potential;
 mod core_station;
 mod density;
 mod energy;
-mod fft;
 mod free_atom;
 mod hartree;
 mod linearization;

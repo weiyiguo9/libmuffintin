@@ -7,6 +7,10 @@ use muffintin::{
     ScalarThcError, ScalarThcSpec, ThcCandidates, ThcEngine, ThcParentGrid, ThcRegion,
     build_scalar_thc,
 };
+#[cfg(feature = "fft-fftw")]
+use muffintin::{NaturalThcGridSpec, build_natural_thc_parent_grid, sample_scalar_orbitals};
+#[cfg(feature = "fft-fftw")]
+use muffintin_core::Cell;
 use muffintin_core::{
     Bohr, Hartree, InverseBohr, VolumeBohr3, complex_spherical_harmonics, lm_from_index, lm_index,
 };
@@ -404,6 +408,68 @@ fn selected_pair(
         .position(|point| point.id == parent)
         .expect("parent point was selected");
     result.records[q].vertices[column].coefficients()[mu]
+}
+
+#[cfg(feature = "fft-fftw")]
+#[test]
+fn natural_interstitial_fft_matches_direct_orbital_synthesis() {
+    let physics = CheckpointPhysics::new(&hydrogen_checkpoint()).unwrap();
+    let input = physics
+        .scalar_product_input(&scalar_config([2, 1, 1], 1.0), [0.0; 3])
+        .unwrap();
+    let cell = Cell::new([
+        [Bohr(8.0), Bohr(0.0), Bohr(0.0)],
+        [Bohr(0.0), Bohr(8.0), Bohr(0.0)],
+        [Bohr(0.0), Bohr(0.0), Bohr(8.0)],
+    ])
+    .unwrap();
+    let meshes = input
+        .source
+        .radials
+        .iter()
+        .map(|site| site.mesh.clone())
+        .collect::<Vec<_>>();
+    let grid = build_natural_thc_parent_grid(
+        input.source.partition.clone(),
+        cell,
+        input.reciprocal,
+        &meshes,
+        Provenance {
+            recipe: Some("scalar-natural-fft-test".to_owned()),
+            reference: None,
+        },
+        NaturalThcGridSpec {
+            angular_points_per_shell: 6,
+            interstitial_divisions: [5, 4, 3],
+        },
+    )
+    .unwrap();
+    let samples = sample_scalar_orbitals(&input, &grid, 0).unwrap();
+    for (point, parent) in grid.points().iter().enumerate() {
+        if parent.region != ThcRegion::Interstitial {
+            continue;
+        }
+        for k in 0..samples.n_k {
+            for band in 0..samples.n_orb {
+                let expected = independent_pq(
+                    &input,
+                    &grid,
+                    point,
+                    k,
+                    band,
+                    false,
+                    false,
+                    MtKPhase::CellPeriodic,
+                )
+                .0;
+                let actual = samples.large[(point * samples.n_k + k) * samples.n_orb + band];
+                assert!(
+                    (actual - expected).norm() < 1.0e-8,
+                    "{actual} vs {expected}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

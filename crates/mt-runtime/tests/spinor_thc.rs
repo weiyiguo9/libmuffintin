@@ -5,10 +5,16 @@ use muffintin::{
     SpinorProductInput, SpinorThcError, SpinorThcSpec, ThcCandidates, ThcEngine, ThcParentGrid,
     ThcRegion, build_spinor_thc,
 };
+#[cfg(feature = "fft-fftw")]
+use muffintin::{NaturalThcGridSpec, build_natural_thc_parent_grid};
+#[cfg(feature = "fft-fftw")]
+use muffintin_core::Cell;
 use muffintin_core::{
     Bohr, InverseBohr, RelativisticChannel, SpinProjection, complex_spherical_harmonics, lm_index,
 };
 use muffintin_operators::CompiledSiteProjection;
+#[cfg(feature = "fft-fftw")]
+use muffintin_operators::lapw::Provenance;
 use muffintin_prodbasis::thc::{GridPath, L2Engine, SelectorStrategy};
 use num_complex::Complex64;
 
@@ -341,6 +347,64 @@ fn default_pair(
         false,
         false,
     )
+}
+
+#[cfg(feature = "fft-fftw")]
+#[test]
+fn natural_interstitial_fft_matches_direct_pauli_pair_synthesis() {
+    let physics = CheckpointPhysics::new(&hydrogen_spinor_checkpoint()).unwrap();
+    let input = physics
+        .spinor_product_input(&spinor_config([1, 1, 1], 1.0), [0.0; 3])
+        .unwrap();
+    let cell = Cell::new([
+        [Bohr(8.0), Bohr(0.0), Bohr(0.0)],
+        [Bohr(0.0), Bohr(8.0), Bohr(0.0)],
+        [Bohr(0.0), Bohr(0.0), Bohr(8.0)],
+    ])
+    .unwrap();
+    let meshes = input
+        .source
+        .radials
+        .iter()
+        .map(|site| site.mesh.clone())
+        .collect::<Vec<_>>();
+    let grid = build_natural_thc_parent_grid(
+        input.source.partition.clone(),
+        cell,
+        input.reciprocal,
+        &meshes,
+        Provenance {
+            recipe: Some("spinor-natural-fft-test".to_owned()),
+            reference: None,
+        },
+        NaturalThcGridSpec {
+            angular_points_per_shell: 6,
+            interstitial_divisions: [5, 4, 3],
+        },
+    )
+    .unwrap();
+    let point = grid
+        .points()
+        .iter()
+        .position(|point| point.region == ThcRegion::Interstitial)
+        .unwrap();
+    let result = build_spinor_thc(
+        std::slice::from_ref(&input),
+        &grid,
+        &SpinorThcSpec {
+            rank: RankPolicy::Exact { n_mu: 1 },
+            candidates: ThcCandidates::Indices(vec![point]),
+            engine: ThcEngine::FullColumnPivotedQr,
+        },
+    )
+    .unwrap();
+    let column = input.pair_columns.encode(0, 0, 0);
+    let actual = selected_pair(&result, 0, point, column);
+    let expected = default_pair(&input, &grid, point, 0);
+    assert!(
+        (actual - expected).norm() < 1.0e-8,
+        "{actual} vs {expected}"
+    );
 }
 
 #[test]

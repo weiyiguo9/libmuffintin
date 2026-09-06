@@ -4,11 +4,15 @@ use crate::scalar_product::{
     ScalarProductInput, ScalarQSliceError, ScalarSpinChannel, require_scalar_q_slice,
 };
 use crate::site_coords::site_coordinate;
+#[cfg(feature = "fft-fftw")]
+use crate::thc_fft::{NaturalInterstitialFft, NaturalInterstitialFftError};
 use crate::thc_grid::{
     ThcCandidates, ThcEngine, ThcGridError, ThcParentGrid, ThcQRecord, ThcRegion,
     records_match_parent_grid, require_parent_grid_radials,
 };
-use muffintin_core::{Bohr, GVector, InverseBohr, complex_spherical_harmonics, lm_index};
+use muffintin_core::{
+    Bohr, GVector, GridError, InverseBohr, complex_spherical_harmonics, lm_index,
+};
 use muffintin_operators::lapw::{CompiledBasis, Provenance};
 use muffintin_operators::{CompiledSiteProjection, OperatorError, SiteOrbitalCoefficients};
 use muffintin_prodbasis::thc::{
@@ -16,6 +20,8 @@ use muffintin_prodbasis::thc::{
 };
 use muffintin_prodbasis::{ProductOrbitalKind, ProductRadial, ProductRadialId, SiteRadialSet};
 use muffintin_tensor::DenseEigenvectors;
+#[cfg(feature = "fft-fftw")]
+use muffintin_tensor::fft::FftError;
 use num_complex::Complex64;
 use thiserror::Error;
 
@@ -86,6 +92,14 @@ pub enum ScalarThcError {
     Thc(#[from] ThcError),
     #[error(transparent)]
     Operator(#[from] OperatorError),
+    #[error(transparent)]
+    Grid(#[from] GridError),
+    #[cfg(feature = "fft-fftw")]
+    #[error(transparent)]
+    Fft(#[from] FftError),
+    #[cfg(feature = "fft-fftw")]
+    #[error("scalar THC natural interstitial points do not match their uniform-grid provenance")]
+    NaturalGridOrder,
     #[error("scalar THC q-slice must be nonempty")]
     EmptySlice,
     #[error("scalar THC q-slice has {actual} bundles, expected {expected} k-mesh transfers")]
@@ -251,6 +265,32 @@ pub fn sample_scalar_orbitals(
         .cell_volume()
         .get()
         .sqrt();
+    #[cfg(feature = "fft-fftw")]
+    let fft_interstitial = if let Some(mut fft) =
+        NaturalInterstitialFft::new(grid).map_err(map_fft_init_error)?
+    {
+        for k in 0..n_k {
+            for band in 0..n_orb {
+                fft.synthesize(
+                    channel.bases[k]
+                        .plane_waves
+                        .iter()
+                        .enumerate()
+                        .map(|(row, wave)| (wave.g.index, channel.eigenvectors[k].at(row, band))),
+                    volume.recip(),
+                    |point, value| {
+                        let index = samples.index(point, k, band);
+                        samples.large[index] = value;
+                    },
+                )?;
+            }
+        }
+        true
+    } else {
+        false
+    };
+    #[cfg(not(feature = "fft-fftw"))]
+    let fft_interstitial = false;
     let mut site_proj = Vec::with_capacity(n_k);
     for k in 0..n_k {
         let mut per_site = Vec::with_capacity(input.source.partition.site_count());
@@ -294,22 +334,33 @@ pub fn sample_scalar_orbitals(
                 }
             }
             ThcRegion::Interstitial => {
-                for k in 0..n_k {
-                    for band in 0..n_orb {
-                        let index = samples.index(p, k, band);
-                        samples.large[index] = interstitial_orbital(
-                            &channel.bases[k],
-                            &channel.eigenvectors[k],
-                            band,
-                            point.coordinate,
-                            volume,
-                        );
+                if !fft_interstitial {
+                    for k in 0..n_k {
+                        for band in 0..n_orb {
+                            let index = samples.index(p, k, band);
+                            samples.large[index] = interstitial_orbital(
+                                &channel.bases[k],
+                                &channel.eigenvectors[k],
+                                band,
+                                point.coordinate,
+                                volume,
+                            );
+                        }
                     }
                 }
             }
         }
     }
     Ok(samples)
+}
+
+#[cfg(feature = "fft-fftw")]
+fn map_fft_init_error(error: NaturalInterstitialFftError) -> ScalarThcError {
+    match error {
+        NaturalInterstitialFftError::Grid(error) => ScalarThcError::Grid(error),
+        NaturalInterstitialFftError::Fft(error) => ScalarThcError::Fft(error),
+        NaturalInterstitialFftError::ParentGridOrder => ScalarThcError::NaturalGridOrder,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

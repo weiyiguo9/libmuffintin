@@ -18,6 +18,8 @@ mod input;
 mod isdf_exchange;
 mod mldump_header;
 mod mldump_write;
+#[cfg(feature = "fft-fftw")]
+mod pair_fft;
 mod q_mesh;
 mod runner;
 mod scalar_coqui_cholesky;
@@ -38,6 +40,8 @@ mod spinor_product;
 mod spinor_sector_exchange;
 mod spinor_sector_thc;
 mod spinor_thc;
+#[cfg(feature = "fft-fftw")]
+mod thc_fft;
 mod thc_grid;
 
 pub use channel_recipe::{

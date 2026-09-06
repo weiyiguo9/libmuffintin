@@ -6,20 +6,20 @@ use super::{FftError, FftGrid};
 
 /// Separable direct DFT, retained as the dependency-free implementation.
 #[derive(Debug)]
-pub(crate) struct FftPlan {
+pub struct FftPlan {
     grid: FftGrid,
 }
 
 impl FftPlan {
-    pub(crate) fn new(grid: FftGrid) -> Result<Self, FftError> {
+    pub fn new(grid: FftGrid) -> Result<Self, FftError> {
         Ok(Self { grid })
     }
 
-    pub(crate) fn forward(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, FftError> {
+    pub fn forward(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, FftError> {
         self.transform(input, -1.0)
     }
 
-    pub(crate) fn inverse(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, FftError> {
+    pub fn inverse(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, FftError> {
         let mut result = self.transform(input, 1.0)?;
         for value in &mut result {
             *value /= self.grid.len() as f64;

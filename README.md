@@ -35,7 +35,8 @@ under [`doc/`](doc/) carry the exact contracts and derivations.
 - `libmuffintin-tensor`: backend-neutral `einsum` over dense complex tensors:
   RSTSR linked with TBLIS by default, `tenferro` as an optional second engine,
   faer as the Hermitian eigensolver, and column-major `[basis, band]`
-  eigenvector storage.
+  eigenvector storage. Its `fft` module supplies the shared dense Fourier
+  transforms used by DFT and product-space consumers.
 - `libmuffintin-sphere`: everything inside the muffin-tin sphere:
   nonrelativistic, scalar-relativistic, and four-component Dirac radial
   solutions with energy derivatives and local orbitals, the bound-core
@@ -151,8 +152,8 @@ requires rustc 1.96. Leave the workspace at 1.89 unless you enable that
 feature; if you do, raise `rust-version` to 1.96 in the root `Cargo.toml` or
 the tenferro backend will not compile.
 
-DFT transforms live in the private `mt-dft/src/fft/` module, not a separate
-crate. The dependency-free direct implementation remains available;
+Dense transforms live in `mt-tensor/src/fft/`, shared by DFT, MPB, and sampled
+Coulomb consumers without adding a crate. The direct implementation remains available;
 `fft-fftw` selects the [`fftw` Rust interface](https://docs.rs/fftw/0.8.0/fftw/)
 to a system FFTW3 installation at compile time, with no runtime fallback.
 `libmuffintin-runtime` and `libmuffintin-python` forward the same feature.
@@ -179,6 +180,14 @@ wraparound in the retained modes. XC keeps its midpoint grid, sphere exclusion,
 quadrature weights, and derivative conventions. The dense transform contract
 uses last-axis-fastest storage, an unnormalized negative-exponent forward
 transform, and a positive-exponent inverse divided by the grid size.
+
+With `fft-fftw`, valence-density synthesis and the interstitial part of exact
+MPB orbital-pair construction use padded reciprocal correlations. Natural-grid
+THC orbital sampling and sampled $\zeta$ projection use the recorded uniform
+midpoint grid, gathering or scattering its interstitial subset. Arbitrary
+parent grids retain direct sums; they are not guessed to be uniform. Muffin-tin
+radial/angular evaluation, auxiliary-space exchange contraction, and the dense
+eigensolver are unchanged.
 
 `libmuffintin-python` pins `pyo3` 0.27.2 and `numpy` 0.27.1; both have MSRV
 1.74, comfortably under the workspace floor. The extension uses `abi3-py310`

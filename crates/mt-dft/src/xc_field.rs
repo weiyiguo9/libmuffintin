@@ -1,6 +1,5 @@
 //! Deterministic regional transforms around the pointwise LDA/PBE kernel.
 
-use crate::fft::{FftGrid, FftPlan};
 use crate::{
     DensityJet2, InterstitialField, MuffinTinField, RegionalDensity, RegionalError,
     RegionalPotential, RegionalScalarField, XcError, XcFunctional, evaluate_xc_point,
@@ -11,6 +10,7 @@ use muffintin_core::{
     lm_count, real_spherical_harmonics,
 };
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
+use muffintin_tensor::fft::{FftGrid, FftPlan};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 use std::f64::consts::TAU;
@@ -1124,7 +1124,7 @@ pub enum RegionalXcError {
     #[error(transparent)]
     Grid(#[from] GridError),
     #[error(transparent)]
-    Fft(#[from] crate::fft::FftError),
+    Fft(#[from] muffintin_tensor::fft::FftError),
 }
 
 /// XC field controls derived from a density: interstitial divisions covering

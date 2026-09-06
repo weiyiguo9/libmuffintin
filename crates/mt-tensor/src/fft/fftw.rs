@@ -6,15 +6,24 @@ use num_complex::Complex64;
 use super::{FftError, FftGrid};
 
 /// Reuses FFTW plans and their aligned workspace across field components.
-pub(crate) struct FftPlan {
+pub struct FftPlan {
     forward: C2CPlan64,
     inverse: C2CPlan64,
     input: AlignedVec<Complex64>,
     output: AlignedVec<Complex64>,
 }
 
+impl std::fmt::Debug for FftPlan {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("FftPlan")
+            .field("len", &self.input.len())
+            .finish_non_exhaustive()
+    }
+}
+
 impl FftPlan {
-    pub(crate) fn new(grid: FftGrid) -> Result<Self, FftError> {
+    pub fn new(grid: FftGrid) -> Result<Self, FftError> {
         let mut input = AlignedVec::new(grid.len());
         let mut output = AlignedVec::new(grid.len());
         let forward = C2CPlan64::new(
@@ -41,7 +50,7 @@ impl FftPlan {
         })
     }
 
-    pub(crate) fn forward(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, FftError> {
+    pub fn forward(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, FftError> {
         self.load(input)?;
         self.forward
             .c2c(&mut self.input, &mut self.output)
@@ -49,7 +58,7 @@ impl FftPlan {
         Ok(self.output.to_vec())
     }
 
-    pub(crate) fn inverse(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, FftError> {
+    pub fn inverse(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, FftError> {
         self.load(input)?;
         self.inverse
             .c2c(&mut self.input, &mut self.output)

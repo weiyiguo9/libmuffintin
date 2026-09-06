@@ -20,7 +20,7 @@ use std::f64::consts::PI;
 use thiserror::Error;
 
 #[cfg(feature = "fft-fftw")]
-use crate::fft::{FftGrid, FftPlan};
+use muffintin_tensor::fft::{FftGrid, FftPlan};
 
 const REALITY_TOLERANCE: f64 = 4096.0 * f64::EPSILON;
 const TOTAL_CHARGE_TOLERANCE: f64 = 1.0e-8;
@@ -670,7 +670,7 @@ pub enum RegionalElectrostaticError {
     StepFunction(#[from] StepFunctionError),
     #[cfg(feature = "fft-fftw")]
     #[error(transparent)]
-    Fft(#[from] crate::fft::FftError),
+    Fft(#[from] muffintin_tensor::fft::FftError),
     #[error("regional electrostatics requires ElectronicWithUniformBackground")]
     NonElectronicChargeTreatment,
     #[error("raw charge and potential layouts differ")]

@@ -1,14 +1,14 @@
 use super::FftError;
 
 /// Dense periodic storage, with the last axis contiguous.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct FftGrid {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FftGrid {
     pub(super) dimensions: [usize; 3],
     len: usize,
 }
 
 impl FftGrid {
-    pub(crate) fn new(dimensions: [usize; 3]) -> Result<Self, FftError> {
+    pub fn new(dimensions: [usize; 3]) -> Result<Self, FftError> {
         let len = dimensions
             .iter()
             .try_fold(1usize, |n, &d| {
@@ -22,11 +22,19 @@ impl FftGrid {
         Ok(Self { dimensions, len })
     }
 
-    pub(crate) fn len(self) -> usize {
+    pub fn len(self) -> usize {
         self.len
     }
 
-    pub(crate) fn index(self, index: [i32; 3]) -> usize {
+    pub fn dimensions(self) -> [usize; 3] {
+        self.dimensions
+    }
+
+    pub fn is_empty(self) -> bool {
+        false
+    }
+
+    pub fn index(self, index: [i32; 3]) -> usize {
         let [i, j, k] = std::array::from_fn(|axis| {
             index[axis].rem_euclid(self.dimensions[axis] as i32) as usize
         });

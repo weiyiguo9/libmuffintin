@@ -10,10 +10,9 @@ rust-version.workspace = true
 name = "muffintin_dft"
 
 [features]
-fft-fftw = ["dep:fftw"]
+fft-fftw = ["libmuffintin-tensor/fft-fftw", "libmuffintin-coulomb/fft-fftw"]
 
 [dependencies]
-fftw = { version = "0.8.0", optional = true, default-features = false, features = ["system"] }
 libmuffintin-envelope = { path = "../mt-envelope" }
 libmuffintin-core = { path = "../mt-core" }
 libmuffintin-coulomb = { path = "../mt-coulomb" }

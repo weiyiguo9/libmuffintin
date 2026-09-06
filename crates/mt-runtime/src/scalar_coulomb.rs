@@ -578,14 +578,18 @@ pub(crate) fn sampled_from_thc_record(
         .iter()
         .map(|point| sampled_support(point.region))
         .collect::<Vec<_>>();
-    SampledAuxiliaryFunctions::new(
+    let sampled = SampledAuxiliaryFunctions::new(
         record.auxiliary.layout(),
         site_meshes,
         points,
         weights,
         supports,
         record.fit.zeta.clone(),
-    )
+    )?;
+    match grid.uniform_interstitial_grid()? {
+        Some(uniform) => Ok(sampled.with_uniform_interstitial_grid(&uniform)?),
+        None => Ok(sampled),
+    }
 }
 
 fn sampled_support(region: ThcRegion) -> SampledPointSupport {

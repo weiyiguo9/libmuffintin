@@ -16,7 +16,7 @@ name = "muffintin"
 path = "src/main.rs"
 
 [features]
-fft-fftw = ["libmuffintin-dft/fft-fftw"]
+fft-fftw = ["libmuffintin-dft/fft-fftw", "libmuffintin-coulomb/fft-fftw", "libmuffintin-tensor/fft-fftw"]
 
 [dependencies]
 libmuffintin-prodbasis = { path = "../mt-prodbasis" }

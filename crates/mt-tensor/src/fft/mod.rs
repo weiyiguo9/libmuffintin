@@ -1,4 +1,4 @@
-//! Internal dense transforms: last axis fastest, forward unnormalized,
+//! Dense transforms shared by DFT and product-space consumers: last axis fastest, forward unnormalized,
 //! inverse normalized by the number of grid points. Physical sampling and
 //! sparse Fourier-field contracts remain with the consumers.
 
@@ -9,10 +9,10 @@ mod fftw;
 mod layout;
 
 #[cfg(not(feature = "fft-fftw"))]
-pub(crate) use direct::FftPlan;
+pub use direct::FftPlan;
 #[cfg(feature = "fft-fftw")]
-pub(crate) use fftw::FftPlan;
-pub(crate) use layout::FftGrid;
+pub use fftw::FftPlan;
+pub use layout::FftGrid;
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum FftError {

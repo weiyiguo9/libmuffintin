@@ -168,6 +168,7 @@ pub struct ThcParentGrid {
 struct NaturalThcLatticeIdentity {
     cell: Cell,
     reciprocal: ReciprocalLattice,
+    divisions: [usize; 3],
 }
 
 impl ThcParentGrid {
@@ -229,6 +230,15 @@ impl ThcParentGrid {
         self.natural_lattice
             .as_ref()
             .is_none_or(|identity| &identity.reciprocal == reciprocal)
+    }
+
+    /// Reconstruct the uniform midpoint grid underlying the natural
+    /// interstitial subset. Externally supplied parent grids have no such
+    /// provenance and therefore return `None`.
+    pub(crate) fn uniform_interstitial_grid(&self) -> Result<Option<UniformGrid>, GridError> {
+        self.natural_lattice
+            .map(|identity| UniformGrid::new(identity.cell, identity.divisions))
+            .transpose()
     }
 
     pub(crate) fn cartesian(&self) -> Vec<[f64; 3]> {
@@ -321,7 +331,11 @@ pub fn build_natural_thc_parent_grid(
         region: ThcRegion::Interstitial,
     }));
     let mut grid = ThcParentGrid::new(partition, provenance, points)?;
-    grid.natural_lattice = Some(NaturalThcLatticeIdentity { cell, reciprocal });
+    grid.natural_lattice = Some(NaturalThcLatticeIdentity {
+        cell,
+        reciprocal,
+        divisions: spec.interstitial_divisions,
+    });
     Ok(grid)
 }
 

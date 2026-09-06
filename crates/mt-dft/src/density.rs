@@ -16,6 +16,8 @@ use muffintin_sphere::{
     DensityProjectionError, HarmonicConvention, SphereField, SphereFieldError, SphereOrbital,
     SpinorSphereOrbital, scalar_pair_density_angular, spinor_pair_density_angular,
 };
+#[cfg(feature = "fft-fftw")]
+use muffintin_tensor::fft::{FftGrid, FftPlan};
 use muffintin_tensor::{
     Axis, ComplexTensor, DenseEigenvectors, DenseHermitianMatrix, TensorError, einsum,
 };
@@ -509,26 +511,36 @@ pub fn synthesize_second_variation_valence_density(
 
         let plane_wave_count = point.compiled.plane_waves.len();
         if plane_wave_count != 0 {
-            let up = select_plane_wave_bands(
-                &point.solutions.up.eigenvectors,
-                plane_wave_count,
-                point.occupations.len(),
-            )?;
-            let down = select_plane_wave_bands(
-                &point.solutions.down.eigenvectors,
-                plane_wave_count,
-                point.occupations.len(),
-            )?;
-            let components = pauli_density_matrices(&up, &down, &state_weights)?;
-            for (component, density) in components.iter().enumerate() {
-                accumulate_scalar_interstitial_matrix(
-                    &point.compiled.plane_waves,
-                    &layout,
-                    &density.to_host_row_major(),
-                    &mut interstitial[component],
-                    inverse_volume,
+            #[cfg(not(feature = "fft-fftw"))]
+            {
+                let up = select_plane_wave_bands(
+                    &point.solutions.up.eigenvectors,
+                    plane_wave_count,
+                    point.occupations.len(),
                 )?;
+                let down = select_plane_wave_bands(
+                    &point.solutions.down.eigenvectors,
+                    plane_wave_count,
+                    point.occupations.len(),
+                )?;
+                let components = pauli_density_matrices(&up, &down, &state_weights)?;
+                for (component, density) in components.iter().enumerate() {
+                    accumulate_scalar_interstitial_matrix(
+                        &point.compiled.plane_waves,
+                        &layout,
+                        &density.to_host_row_major(),
+                        &mut interstitial[component],
+                        inverse_volume,
+                    )?;
+                }
             }
+            #[cfg(feature = "fft-fftw")]
+            accumulate_second_variation_interstitial_fft(
+                point,
+                &layout,
+                &mut interstitial,
+                inverse_volume,
+            )?;
         }
     }
 
@@ -1023,6 +1035,7 @@ fn full_spinor_coordinate_channels(
     Ok(result)
 }
 
+#[cfg(not(feature = "fft-fftw"))]
 fn accumulate_spinor_interstitial(
     k_point: &FullSpinorKPoint<'_>,
     layout: &FourierLayout,
@@ -1060,6 +1073,49 @@ fn accumulate_spinor_interstitial(
     Ok(())
 }
 
+#[cfg(feature = "fft-fftw")]
+fn accumulate_spinor_interstitial(
+    k_point: &FullSpinorKPoint<'_>,
+    layout: &FourierLayout,
+    interstitial: &mut [Vec<Complex64>; 4],
+    inverse_volume: f64,
+) -> Result<(), DensityError> {
+    let plane_waves = &k_point.compiled.plane_waves;
+    if plane_waves.is_empty() {
+        return Ok(());
+    }
+    let n_g = k_point.compiled.layout.spatial_plane_wave_count();
+    let mut fft = DensityFft::new(plane_waves)?;
+    if k_point
+        .occupations
+        .iter()
+        .any(|&occupation| k_point.weight * occupation != 0.0)
+    {
+        fft.require_complete_layout(plane_waves, layout)?;
+    }
+    for (band, &occupation) in k_point.occupations.iter().enumerate() {
+        let state_weight = k_point.weight * occupation;
+        if state_weight == 0.0 {
+            continue;
+        }
+        let up = fft.orbital_samples(plane_waves, |row| {
+            k_point.solution.eigenvectors.at(row, band)
+        })?;
+        let down = fft.orbital_samples(plane_waves, |row| {
+            k_point.solution.eigenvectors.at(n_g + row, band)
+        })?;
+        fft.accumulate_pauli_fields(
+            &up,
+            &down,
+            layout,
+            interstitial,
+            state_weight * inverse_volume,
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(any(not(feature = "fft-fftw"), test))]
 fn reciprocal_difference(right: [i32; 3], left: [i32; 3]) -> Result<[i32; 3], DensityError> {
     let difference = [
         right[0].checked_sub(left[0]),
@@ -1253,27 +1309,43 @@ fn accumulate_spin(
 
     let plane_waves = &k_point.compiled.plane_waves;
     if !plane_waves.is_empty() {
-        let coefficients =
-            select_plane_wave_bands(&solution.eigenvectors, plane_waves.len(), occupations.len())?;
-        let weighted = einsum("ib,b->ib", &[&coefficients, &state_weights])?;
-        let density_matrix =
-            einsum("ib,jb->ij", &[&coefficients.conjugate(), &weighted])?.to_host_row_major();
-        for (left, left_wave) in plane_waves.iter().enumerate() {
-            for (right, right_wave) in plane_waves.iter().enumerate() {
-                let difference = [
-                    right_wave.g.index[0].checked_sub(left_wave.g.index[0]),
-                    right_wave.g.index[1].checked_sub(left_wave.g.index[1]),
-                    right_wave.g.index[2].checked_sub(left_wave.g.index[2]),
-                ];
-                let [Some(g0), Some(g1), Some(g2)] = difference else {
-                    return Err(DensityError::ReciprocalDifferenceOverflow);
-                };
-                if let Some(position) = layout.index([g0, g1, g2]) {
-                    interstitial[position] +=
-                        inverse_volume * density_matrix[left * plane_waves.len() + right];
+        #[cfg(not(feature = "fft-fftw"))]
+        {
+            let coefficients = select_plane_wave_bands(
+                &solution.eigenvectors,
+                plane_waves.len(),
+                occupations.len(),
+            )?;
+            let weighted = einsum("ib,b->ib", &[&coefficients, &state_weights])?;
+            let density_matrix =
+                einsum("ib,jb->ij", &[&coefficients.conjugate(), &weighted])?.to_host_row_major();
+            for (left, left_wave) in plane_waves.iter().enumerate() {
+                for (right, right_wave) in plane_waves.iter().enumerate() {
+                    let difference = [
+                        right_wave.g.index[0].checked_sub(left_wave.g.index[0]),
+                        right_wave.g.index[1].checked_sub(left_wave.g.index[1]),
+                        right_wave.g.index[2].checked_sub(left_wave.g.index[2]),
+                    ];
+                    let [Some(g0), Some(g1), Some(g2)] = difference else {
+                        return Err(DensityError::ReciprocalDifferenceOverflow);
+                    };
+                    if let Some(position) = layout.index([g0, g1, g2]) {
+                        interstitial[position] +=
+                            inverse_volume * density_matrix[left * plane_waves.len() + right];
+                    }
                 }
             }
         }
+        #[cfg(feature = "fft-fftw")]
+        accumulate_scalar_interstitial_fft(
+            plane_waves,
+            &solution.eigenvectors,
+            occupations,
+            k_point.weight,
+            layout,
+            interstitial,
+            inverse_volume,
+        )?;
     }
     Ok(())
 }
@@ -1323,6 +1395,7 @@ fn pauli_density_matrices(
     Ok([build(0)?, build(1)?, build(2)?, build(3)?])
 }
 
+#[cfg(not(feature = "fft-fftw"))]
 fn accumulate_scalar_interstitial_matrix(
     plane_waves: &[muffintin_envelope::PlaneWave],
     layout: &FourierLayout,
@@ -1345,6 +1418,218 @@ fn accumulate_scalar_interstitial_matrix(
                     inverse_volume * density_matrix[left * plane_waves.len() + right];
             }
         }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "fft-fftw")]
+struct DensityFft {
+    grid: FftGrid,
+    plan: FftPlan,
+    pair_support: [i32; 3],
+}
+
+#[cfg(feature = "fft-fftw")]
+impl DensityFft {
+    fn new(plane_waves: &[muffintin_envelope::PlaneWave]) -> Result<Self, DensityError> {
+        let first = plane_waves
+            .first()
+            .expect("density FFT is only constructed for a nonempty plane-wave basis")
+            .g
+            .index;
+        let mut minimum = first;
+        let mut maximum = first;
+        for wave in &plane_waves[1..] {
+            for axis in 0..3 {
+                minimum[axis] = minimum[axis].min(wave.g.index[axis]);
+                maximum[axis] = maximum[axis].max(wave.g.index[axis]);
+            }
+        }
+        let mut pair_support = [0; 3];
+        let mut dimensions = [0; 3];
+        for axis in 0..3 {
+            let span = i64::from(maximum[axis]) - i64::from(minimum[axis]);
+            pair_support[axis] =
+                i32::try_from(span).map_err(|_| DensityError::ReciprocalDifferenceOverflow)?;
+            // Every linear pair difference in [-span, span] has a unique
+            // periodic grid index. Requested modes outside that box stay zero.
+            dimensions[axis] = usize::try_from(2 * span + 1)
+                .map_err(|_| DensityError::ReciprocalDifferenceOverflow)?;
+        }
+        let grid = FftGrid::new(dimensions)?;
+        let plan = FftPlan::new(grid)?;
+        Ok(Self {
+            grid,
+            plan,
+            pair_support,
+        })
+    }
+
+    fn orbital_samples(
+        &mut self,
+        plane_waves: &[muffintin_envelope::PlaneWave],
+        mut coefficient: impl FnMut(usize) -> Complex64,
+    ) -> Result<Vec<Complex64>, DensityError> {
+        let mut reciprocal = vec![Complex64::default(); self.grid.len()];
+        for (row, wave) in plane_waves.iter().enumerate() {
+            reciprocal[self.grid.index(wave.g.index)] += coefficient(row);
+        }
+        Ok(self.plan.inverse(&reciprocal)?)
+    }
+
+    fn require_complete_layout(
+        &mut self,
+        plane_waves: &[muffintin_envelope::PlaneWave],
+        layout: &FourierLayout,
+    ) -> Result<(), DensityError> {
+        let reciprocal = self.orbital_samples(plane_waves, |_| Complex64::new(1.0, 0.0))?;
+        let pair_counts = reciprocal
+            .iter()
+            .map(|value| Complex64::new(value.norm_sqr(), 0.0))
+            .collect::<Vec<_>>();
+        let pair_counts = self.plan.forward(&pair_counts)?;
+        let normalization = self.grid.len() as f64;
+        for i in -self.pair_support[0]..=self.pair_support[0] {
+            for j in -self.pair_support[1]..=self.pair_support[1] {
+                for k in -self.pair_support[2]..=self.pair_support[2] {
+                    let difference = [i, j, k];
+                    if normalization * pair_counts[self.grid.index(difference)].re > 0.5
+                        && layout.index(difference).is_none()
+                    {
+                        return Err(DensityError::MissingReciprocalDifference { g: difference });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn accumulate_scalar_field(
+        &mut self,
+        orbital: &[Complex64],
+        layout: &FourierLayout,
+        interstitial: &mut [Complex64],
+        scale: f64,
+    ) -> Result<(), DensityError> {
+        let samples = orbital
+            .iter()
+            .map(|value| Complex64::new(value.norm_sqr(), 0.0))
+            .collect::<Vec<_>>();
+        self.accumulate_samples(&samples, layout, interstitial, scale)
+    }
+
+    fn accumulate_pauli_fields(
+        &mut self,
+        up: &[Complex64],
+        down: &[Complex64],
+        layout: &FourierLayout,
+        interstitial: &mut [Vec<Complex64>; 4],
+        scale: f64,
+    ) -> Result<(), DensityError> {
+        for component in 0..4 {
+            let samples = up
+                .iter()
+                .zip(down)
+                .map(|(&up, &down)| {
+                    let up_up = up.norm_sqr();
+                    let down_down = down.norm_sqr();
+                    let up_down = up.conj() * down;
+                    Complex64::new(
+                        match component {
+                            0 => up_up + down_down,
+                            1 => 2.0 * up_down.re,
+                            2 => 2.0 * up_down.im,
+                            3 => up_up - down_down,
+                            _ => unreachable!(),
+                        },
+                        0.0,
+                    )
+                })
+                .collect::<Vec<_>>();
+            self.accumulate_samples(&samples, layout, &mut interstitial[component], scale)?;
+        }
+        Ok(())
+    }
+
+    fn accumulate_samples(
+        &mut self,
+        samples: &[Complex64],
+        layout: &FourierLayout,
+        interstitial: &mut [Complex64],
+        scale: f64,
+    ) -> Result<(), DensityError> {
+        let spectrum = self.plan.forward(samples)?;
+        // `inverse` contributes 1/N to each orbital, so the forward transform
+        // of their pointwise product is the desired correlation divided by N.
+        let scale = scale * self.grid.len() as f64;
+        for (position, vector) in layout.vectors().iter().enumerate() {
+            if vector
+                .index
+                .iter()
+                .zip(self.pair_support)
+                .all(|(&component, support)| i64::from(component).abs() <= i64::from(support))
+            {
+                interstitial[position] += scale * spectrum[self.grid.index(vector.index)];
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "fft-fftw")]
+fn accumulate_scalar_interstitial_fft(
+    plane_waves: &[muffintin_envelope::PlaneWave],
+    eigenvectors: &DenseEigenvectors,
+    occupations: &[f64],
+    k_weight: f64,
+    layout: &FourierLayout,
+    interstitial: &mut [Complex64],
+    inverse_volume: f64,
+) -> Result<(), DensityError> {
+    let mut fft = DensityFft::new(plane_waves)?;
+    for (band, &occupation) in occupations.iter().enumerate() {
+        let state_weight = k_weight * occupation;
+        if state_weight == 0.0 {
+            continue;
+        }
+        let orbital = fft.orbital_samples(plane_waves, |row| eigenvectors.at(row, band))?;
+        fft.accumulate_scalar_field(
+            &orbital,
+            layout,
+            interstitial,
+            state_weight * inverse_volume,
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(feature = "fft-fftw")]
+fn accumulate_second_variation_interstitial_fft(
+    point: &SecondVariationKPoint<'_>,
+    layout: &FourierLayout,
+    interstitial: &mut [Vec<Complex64>; 4],
+    inverse_volume: f64,
+) -> Result<(), DensityError> {
+    let plane_waves = &point.compiled.plane_waves;
+    let mut fft = DensityFft::new(plane_waves)?;
+    for (band, &occupation) in point.occupations.iter().enumerate() {
+        let state_weight = point.weight * occupation;
+        if state_weight == 0.0 {
+            continue;
+        }
+        let up = fft.orbital_samples(plane_waves, |row| {
+            point.solutions.up.eigenvectors.at(row, band)
+        })?;
+        let down = fft.orbital_samples(plane_waves, |row| {
+            point.solutions.down.eigenvectors.at(row, band)
+        })?;
+        fft.accumulate_pauli_fields(
+            &up,
+            &down,
+            layout,
+            interstitial,
+            state_weight * inverse_volume,
+        )?;
     }
     Ok(())
 }
@@ -1387,6 +1672,7 @@ fn synthesize_scalar_site_density(
     blocks.into_iter().collect()
 }
 
+#[cfg(not(feature = "fft-fftw"))]
 fn select_plane_wave_bands(
     eigenvectors: &DenseEigenvectors,
     plane_wave_count: usize,
@@ -1720,6 +2006,9 @@ pub enum DensityError {
     Regional(#[from] RegionalError),
     #[error(transparent)]
     Fourier(#[from] muffintin_core::FourierFieldError),
+    #[cfg(feature = "fft-fftw")]
+    #[error(transparent)]
+    Fft(#[from] muffintin_tensor::fft::FftError),
 }
 
 #[cfg(test)]
@@ -1901,6 +2190,100 @@ mod tests {
             density.charge().interstitial()
         );
         assert!((electron_count(&density).unwrap() - 1.0).abs() < 1.0e-14);
+    }
+
+    #[test]
+    fn second_variation_interstitial_matches_pair_sum_without_fft_aliases() {
+        let reciprocal = ReciprocalLattice::new([
+            [InverseBohr(1.0), InverseBohr(0.0), InverseBohr(0.0)],
+            [InverseBohr(0.0), InverseBohr(1.0), InverseBohr(0.0)],
+            [InverseBohr(0.0), InverseBohr(0.0), InverseBohr(1.0)],
+        ])
+        .unwrap();
+        let vectors = reciprocal.enumerate(InverseBohr(2.0)).unwrap();
+        let zero = *vectors
+            .iter()
+            .find(|vector| vector.index == [0, 0, 0])
+            .unwrap();
+        let plus_x = *vectors
+            .iter()
+            .find(|vector| vector.index == [1, 0, 0])
+            .unwrap();
+        let plane_waves = vec![
+            PlaneWave::new([InverseBohr(0.0); 3], zero),
+            PlaneWave::new([InverseBohr(0.0); 3], plus_x),
+        ];
+        let compiled = CompiledBasis {
+            layout: BasisLayout::new(2, Vec::new()),
+            plane_waves: plane_waves.clone(),
+            site_augmentations: Vec::new(),
+            site_geometry: Vec::new(),
+            provenance: Provenance::default(),
+        };
+        let up_coefficients = [Complex64::new(0.5, 0.0), Complex64::new(0.0, 0.5)];
+        let down_coefficients = [Complex64::new(0.5, 0.0), Complex64::new(-0.5, 0.0)];
+        let solution = |coefficients: &[Complex64]| GeneralizedEigensolution {
+            eigenvalues: vec![Hartree(0.0)],
+            eigenvectors: DenseEigenvectors::from_host_column_major(
+                coefficients.len(),
+                1,
+                coefficients.to_vec(),
+            )
+            .unwrap(),
+            retained_dimension: 1,
+            filtered_dimension: 1,
+            residuals: Vec::new(),
+        };
+        let up = solution(&up_coefficients);
+        let down = solution(&down_coefficients);
+        let occupation = 0.7;
+        let volume = (2.0 * PI).powi(3);
+        let layout = FourierLayout::new(reciprocal, vectors).unwrap();
+        let density = synthesize_second_variation_valence_density(
+            InterstitialGeometry::new(VolumeBohr3(volume), Vec::new()).unwrap(),
+            layout.clone(),
+            &[],
+            &[SecondVariationKPoint {
+                weight: 1.0,
+                compiled: &compiled,
+                solutions: Collinear::new(&up, &down),
+                occupations: &[occupation],
+            }],
+        )
+        .unwrap();
+
+        let fields = std::iter::once(density.charge())
+            .chain(density.magnetization())
+            .collect::<Vec<_>>();
+        for (component, field) in fields.into_iter().enumerate() {
+            for vector in layout.vectors() {
+                let mut expected = Complex64::default();
+                for (left, left_wave) in plane_waves.iter().enumerate() {
+                    for (right, right_wave) in plane_waves.iter().enumerate() {
+                        if reciprocal_difference(right_wave.g.index, left_wave.g.index).unwrap()
+                            != vector.index
+                        {
+                            continue;
+                        }
+                        let uu = up_coefficients[left].conj() * up_coefficients[right];
+                        let dd = down_coefficients[left].conj() * down_coefficients[right];
+                        let ud = up_coefficients[left].conj() * down_coefficients[right];
+                        let du = down_coefficients[left].conj() * up_coefficients[right];
+                        expected += occupation / volume
+                            * match component {
+                                0 => uu + dd,
+                                1 => ud + du,
+                                2 => Complex64::new(0.0, -1.0) * ud + Complex64::new(0.0, 1.0) * du,
+                                3 => uu - dd,
+                                _ => unreachable!(),
+                            };
+                    }
+                }
+                let actual = field.interstitial().coefficient(vector.index).unwrap();
+                assert!((actual - expected).norm() < 2.0e-13 * (1.0 + expected.norm()));
+            }
+        }
+        assert!((electron_count(&density).unwrap() - occupation).abs() < 1.0e-14);
     }
 
     #[test]

@@ -267,8 +267,16 @@ The interstitial energy contractions and operator-facing potential masking
 reuse the analytic step-function coefficient for each exact integer
 reciprocal difference. This avoids repeating sphere Bessel transforms and
 site phases for every pair of field coefficients. Only distinct differences
-are stored, not a dense field-overlap matrix; the contraction order,
-normalization, and reality checks are unchanged.
+are stored, not a dense field-overlap matrix. With `fft-fftw`, the same analytic
+kernel is embedded in an alias-free periodic convolution; energy contractions
+retain the physical normalization and reality checks, not the direct summation
+order. Dense transform plans are shared through `muffintin_tensor::fft`.
+
+The same feature synthesizes valence interstitial charge and Pauli components
+by transforming occupied plane-wave orbitals, forming their pointwise products,
+and projecting back onto the requested Fourier layout. The transform grid is
+padded for the complete orbital difference support, independently of the XC
+quadrature grid; muffin-tin density contractions remain unchanged.
 
 ## 6. LDA/PW92, PBE, and noncollinear XC
 

@@ -3,7 +3,7 @@
 use muffintin_core::GridError;
 use muffintin_core::{LatticeError, LmError, MeshError, StepFunctionError};
 use muffintin_prodbasis::AuxiliaryIrError;
-use muffintin_tensor::TensorError;
+use muffintin_tensor::{TensorError, fft::FftError};
 use thiserror::Error;
 
 /// Coulomb operator construction or application error.
@@ -23,6 +23,8 @@ pub enum CoulombError {
     Angular(#[from] LmError),
     #[error(transparent)]
     Tensor(#[from] TensorError),
+    #[error(transparent)]
+    Fft(#[from] FftError),
     #[error("Weinert angular cutoff must be at most {max}, got {0}", max = crate::MAX_LEXP)]
     InvalidLexp(u32),
     #[error("interpolation-point Coulomb assembly requires sampled zeta functions")]
@@ -126,6 +128,10 @@ pub enum CoulombError {
     NegativeSampledWeight(usize),
     #[error("sampled grid has no strictly positive quadrature weight")]
     NoPositiveSampledWeight,
+    #[error("sampled point {0} is not a point of the declared uniform grid")]
+    SampledPointNotOnUniformGrid(usize),
+    #[error("sampled uniform grid cell does not match the Coulomb projection cell")]
+    SampledUniformGridCellMismatch,
     #[error("sampled point {0} has a non-finite coordinate")]
     NonFiniteSampledPoint(usize),
     #[error("sampled zeta entry {0} is not finite")]

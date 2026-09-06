@@ -18,8 +18,13 @@ use muffintin_prodbasis::{
 use muffintin_tensor::{Axis, ComplexTensor, TensorError, einsum};
 use num_complex::Complex64;
 use rayon::prelude::*;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+#[cfg(not(feature = "fft-fftw"))]
+use std::collections::BTreeMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use thiserror::Error;
+
+#[cfg(feature = "fft-fftw")]
+use crate::pair_fft::PairFft;
 
 /// SPEX overlap-cutoff spin factor for one spinor band manifold (`nspin = 1`).
 pub const SPINOR_MPB_NSPIN: f64 = 1.0;
@@ -117,6 +122,9 @@ pub enum SpinorMpbError {
     Operator(#[from] OperatorError),
     #[error(transparent)]
     Tensor(#[from] TensorError),
+    #[cfg(feature = "fft-fftw")]
+    #[error(transparent)]
+    Fft(#[from] muffintin_tensor::fft::FftError),
     #[error("spinor MPB selections must be nonempty")]
     EmptySelection,
     #[error(
@@ -639,6 +647,7 @@ fn select_site_bands(
     )?)
 }
 
+#[cfg(not(feature = "fft-fftw"))]
 fn contract_interstitial_selections(
     input: &SpinorProductInput,
     spec: &SpinorMpbSpec,
@@ -812,6 +821,118 @@ fn contract_interstitial_selections(
     Ok(vertices)
 }
 
+#[cfg(feature = "fft-fftw")]
+fn contract_interstitial_selections(
+    input: &SpinorProductInput,
+    spec: &SpinorMpbSpec,
+    theta: &ComplexTensor,
+) -> Result<Vec<Vec<Complex64>>, SpinorMpbError> {
+    let _total_timer = HfPhaseTimer::new("vv.interstitial");
+    let components = &input.source.interstitial_pair_support.components;
+    let n_raw = components.len();
+    let n_pw = theta.shape()[1];
+    if n_raw == 0 || n_pw == 0 {
+        return Ok(vec![
+            vec![Complex64::default(); n_pw];
+            spec.selections.len()
+        ]);
+    }
+    let raw_indices = components
+        .iter()
+        .map(|component| component.g_relative.index)
+        .collect::<Vec<_>>();
+    let volume = input.source.partition.interstitial().cell_volume().get();
+    let mut by_selection = HashMap::new();
+    let selected_k = spec
+        .selections
+        .iter()
+        .map(|selection| selection.k)
+        .collect::<BTreeSet<_>>();
+    for k in selected_k {
+        let mapped = input
+            .k_minus_q
+            .iter()
+            .copied()
+            .find(|mapped| mapped.k_index == k)
+            .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
+        let left_basis = &input.orbitals.bases[mapped.kq_index];
+        let right_basis = &input.orbitals.bases[mapped.k_index];
+        let left_indices = left_basis
+            .plane_waves
+            .iter()
+            .map(|wave| wave.g.index)
+            .collect::<Vec<_>>();
+        let right_indices = right_basis
+            .plane_waves
+            .iter()
+            .map(|wave| wave.g.index)
+            .collect::<Vec<_>>();
+        let mut fft = PairFft::new(
+            &left_indices,
+            &right_indices,
+            &raw_indices,
+            mapped.umklapp.index,
+        )?;
+        let pairs = spec
+            .selections
+            .iter()
+            .filter(|selection| selection.k == k)
+            .map(|selection| (selection.left_band, selection.right_band))
+            .collect::<BTreeSet<_>>();
+        for (left_band, right_band) in pairs {
+            let mut amplitudes = vec![Complex64::default(); n_raw];
+            for spin in 0..2 {
+                let left = (0..left_indices.len())
+                    .map(|g| {
+                        let row = left_basis
+                            .layout
+                            .plane_wave_index(spin, g)
+                            .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
+                        Ok(input.orbitals.eigenvectors[mapped.kq_index].at(row, left_band))
+                    })
+                    .collect::<Result<Vec<_>, SpinorMpbError>>()?;
+                let right = (0..right_indices.len())
+                    .map(|g| {
+                        let row = right_basis
+                            .layout
+                            .plane_wave_index(spin, g)
+                            .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
+                        Ok(input.orbitals.eigenvectors[mapped.k_index].at(row, right_band))
+                    })
+                    .collect::<Result<Vec<_>, SpinorMpbError>>()?;
+                let spin_amplitudes = fft.correlate(
+                    &left_indices,
+                    &left,
+                    &right_indices,
+                    &right,
+                    &raw_indices,
+                    mapped.umklapp.index,
+                )?;
+                for (amplitude, spin_amplitude) in amplitudes.iter_mut().zip(spin_amplitudes) {
+                    *amplitude += spin_amplitude / volume;
+                }
+            }
+            let raw = ComplexTensor::from_host_row_major(
+                &[1, n_raw],
+                &[Axis::PairColumn, Axis::Auxiliary],
+                amplitudes,
+            )?;
+            let projected = einsum("pr,ra->pa", &[&raw, theta])?.to_host_row_major();
+            by_selection.insert((k, left_band, right_band), projected);
+        }
+    }
+    spec.selections
+        .iter()
+        .map(|selection| {
+            by_selection
+                .get(&(selection.k, selection.left_band, selection.right_band))
+                .cloned()
+                .ok_or(SpinorMpbError::IncompatiblePairLayout)
+        })
+        .collect()
+}
+
+#[cfg(not(feature = "fft-fftw"))]
 fn interstitial_amplitudes(
     gather: &[usize],
     conjugate_left: &[Complex64],

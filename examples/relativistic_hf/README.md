@@ -40,6 +40,10 @@ an $8$ bohr cubic cell and derives the 28 core and 8 valence electrons from
 `fleur_default_atomic_configuration`. Its default `spinor-first` route runs
 Gamma relaxed-core HF with explicit finite-body exchange:
 
+Add `--features fft-fftw` before the argument separator to use the system FFTW
+backend for Hartree masking, valence-density synthesis, and interstitial MPB
+orbital-pair construction. See the root README for native FFTW library setup.
+
 ```sh
 cargo run -p libmuffintin-runtime --example kr_relaxed_core_hf -- \
   --out kr-relaxed-core-hf-p0 \
