@@ -1627,6 +1627,18 @@ alter nuclear parameters, or close the GTO acceptance gap. The next step is
 the sourced-core primitive contract and final-frame coupled update, including
 the affected fixed-basis caches, not silently unfreezing one cached array.
 
+The accompanying atomic-initialization investigation replaced first-iteration
+unseeded searches with analytic Dirac energy seeds for the exact starting
+$-Z/r$ potential; subsequent numerical seeds and solver acceptance remain
+unchanged. An orbital-level parallelization experiment was withdrawn because
+it had no measured benefit over the already parallel bracket scans. The
+retained seed change passed the occupied-channel boron test and a bounded
+two-iteration Kr reproduction (maximum total-energy change
+$7.74\times10^{-12}$ Ha). Atomic superposition density took 21.00 seconds
+versus the earlier 20.44 seconds, so wall-time acceleration is **not yet
+established**; unchanged phases also varied on the shared Mac. This experiment
+does not change the frozen-core model used by that Kr probe.
+
 ## 5. Explicit exclusions
 
 This contract does not include:

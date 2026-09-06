@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 
 use muffintin_core::{ExponentialMesh, Hartree, Kappa, MeshError};
 use muffintin_coulomb::{CoulombError, radial_primitive};
-use muffintin_sphere::{CoreDiracSolution, CoreState};
+use muffintin_sphere::{CoreDiracSolution, CoreState, SPEX_SPEED_OF_LIGHT};
 use thiserror::Error;
 
 use crate::atomic_configuration::{AtomicNumber, fleur_default_atomic_configuration};
@@ -104,9 +104,23 @@ pub fn run_free_atom_lda(
     let mut potential_residual = f64::INFINITY;
     let mut charge_error = f64::INFINITY;
     let mut tail_charge = f64::INFINITY;
-    // The potential moves by less than a full bracket scan between steps, so
-    // each state re-enters its search seeded by the previous step's energy.
-    let mut seeds = vec![None; configuration.occupations().len()];
+    // The first potential is exactly -Z/r. Seed its search with the point-nucleus
+    // Dirac energy, excluding rest energy; later steps use the numerical energy.
+    let mut seeds = configuration
+        .occupations()
+        .iter()
+        .map(|occupation| {
+            let n = f64::from(occupation.orbital.principal_quantum_number());
+            let kappa = f64::from(occupation.orbital.kappa());
+            let z_over_c = nuclear_charge / SPEX_SPEED_OF_LIGHT;
+            let nu = n - kappa.abs() + (kappa * kappa - z_over_c * z_over_c).sqrt();
+            let root = (1.0 + (z_over_c / nu).powi(2)).sqrt();
+            // Rationalize c^2 * (1/root - 1) to avoid cancellation.
+            Some(Hartree(
+                -(nuclear_charge / nu).powi(2) / (root * (1.0 + root)),
+            ))
+        })
+        .collect::<Vec<_>>();
 
     for iteration in 1..=spec.max_iterations {
         let mut orbitals = Vec::with_capacity(configuration.occupations().len());
