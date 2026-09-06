@@ -13,8 +13,10 @@ name follows libraries such as libxc, libpaw, and libcint.
 
 ## Workspace
 
-One crate per boundary; the numbered notes under [`doc/`](doc/) carry the
-exact contracts and derivations.
+New functionality belongs in the closest existing crate. A second real
+consumer can justify reconsidering a crate boundary only when extraction
+reduces coupling and leaves a clear dependency direction. The numbered notes
+under [`doc/`](doc/) carry the exact contracts and derivations.
 
 - `libmuffintin-core`: Hartree/Bohr units, real and complex spherical
   harmonics and Gaunt coefficients in SPEX conventions, spherical Bessel
@@ -148,6 +150,35 @@ The optional `backend-tenferro` feature uses `tenferro-einsum` 0.3.0, which
 requires rustc 1.96. Leave the workspace at 1.89 unless you enable that
 feature; if you do, raise `rust-version` to 1.96 in the root `Cargo.toml` or
 the tenferro backend will not compile.
+
+DFT transforms live in the private `mt-dft/src/fft/` module, not a separate
+crate. The dependency-free direct implementation remains available;
+`fft-fftw` selects the [`fftw` Rust interface](https://docs.rs/fftw/0.8.0/fftw/)
+to a system FFTW3 installation at compile time, with no runtime fallback.
+`libmuffintin-runtime` and `libmuffintin-python` forward the same feature.
+Install FFTW3 development libraries (including double and single precision);
+on macOS, use `brew install fftw` and expose its library directory to rustc:
+
+```sh
+RUSTFLAGS="-L native=$(brew --prefix fftw)/lib" \
+  cargo build -p libmuffintin-runtime --features fft-fftw
+```
+
+Build the Python extension from `python/` so maturin reads the module name
+and supplies the platform-specific Python extension linker flags:
+
+```sh
+cd python
+RUSTFLAGS="-L native=$(brew --prefix fftw)/lib" \
+  maturin build --features fft-fftw
+```
+
+This is a binding to FFTW, not a pure Rust port. Hartree masking keeps the
+analytic step-function Fourier coefficients and pads the convolution to avoid
+wraparound in the retained modes. XC keeps its midpoint grid, sphere exclusion,
+quadrature weights, and derivative conventions. The dense transform contract
+uses last-axis-fastest storage, an unnormalized negative-exponent forward
+transform, and a positive-exponent inverse divided by the grid size.
 
 `libmuffintin-python` pins `pyo3` 0.27.2 and `numpy` 0.27.1; both have MSRV
 1.74, comfortably under the workspace floor. The extension uses `abi3-py310`

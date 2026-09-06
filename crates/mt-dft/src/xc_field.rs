@@ -1,5 +1,6 @@
 //! Deterministic regional transforms around the pointwise LDA/PBE kernel.
 
+use crate::fft::{FftGrid, FftPlan};
 use crate::{
     DensityJet2, InterstitialField, MuffinTinField, RegionalDensity, RegionalError,
     RegionalPotential, RegionalScalarField, XcError, XcFunctional, evaluate_xc_point,
@@ -198,11 +199,25 @@ fn transform_interstitial(
     let cell = direct_cell(layout)?;
     let uniform = UniformGrid::new(cell, divisions)?;
     let interstitial_grid = InterstitialGrid::new(&uniform, density.geometry().spheres())?;
-    let volume = density.geometry().cell_volume().get();
-    let mut coefficients: [Vec<Complex64>; 4] =
-        std::array::from_fn(|_| vec![Complex64::new(0.0, 0.0); layout.len()]);
-    let mut exchange_correlation_energy = 0.0;
-    let mut density_potential_integral = 0.0;
+    let fft_grid = FftGrid::new(divisions)?;
+    let mut fft = FftPlan::new(fft_grid)?;
+    let mut interstitial_points = interstitial_grid.points().iter().peekable();
+    let point_indices = uniform
+        .points()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, point)| {
+            if interstitial_points
+                .peek()
+                .is_some_and(|next| next.position == point.position)
+            {
+                interstitial_points.next();
+                Some(index)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
     let density_fields = [
         density.charge().interstitial(),
         density.magnetization()[0].interstitial(),
@@ -216,35 +231,74 @@ fn transform_interstitial(
             .iter()
             .all(|&coefficient| coefficient == Complex64::default())
     });
-
-    for point in interstitial_grid.points() {
-        let [charge, mx, my, mz] = [0, 1, 2, 3].map(|component| {
-            if zero_fields[component] {
-                Ok(FieldJet::value(0.0))
-            } else if functional == XcFunctional::LdaPw92 {
-                interstitial_field_value(density_fields[component], point.position)
-                    .map(FieldJet::value)
+    let density_samples: [Option<InterstitialFftSamples>; 4] = density_fields
+        .into_iter()
+        .zip(zero_fields)
+        .map(|(field, zero)| {
+            if zero {
+                Ok(None)
             } else {
-                interstitial_field_jet(density_fields[component], point.position)
+                interstitial_field_fft_samples(
+                    field,
+                    functional == XcFunctional::Pbe,
+                    fft_grid,
+                    divisions,
+                    &mut fft,
+                    &point_indices,
+                )
+                .map(Some)
             }
+        })
+        .collect::<Result<Vec<_>, RegionalXcError>>()?
+        .try_into()
+        .expect("four density fields produce four FFT sample sets");
+
+    let mut potential_samples: [Vec<f64>; 4] =
+        std::array::from_fn(|_| vec![0.0; point_indices.len()]);
+    let mut exchange_correlation_energy = 0.0;
+    let mut density_potential_integral = 0.0;
+    for (sample_index, point) in interstitial_grid.points().iter().enumerate() {
+        let [charge, mx, my, mz] = std::array::from_fn(|component| {
+            density_samples[component]
+                .as_ref()
+                .map_or(FieldJet::value(0.0), |samples| {
+                    samples.field_jet(sample_index)
+                })
         });
-        let xc = evaluate_noncollinear_xc_point(functional, route, charge?, [mx?, my?, mz?])?;
+        let xc = evaluate_noncollinear_xc_point(functional, route, charge, [mx, my, mz])?;
         exchange_correlation_energy += point.weight.get() * xc.energy_density;
         density_potential_integral += point.weight.get() * xc.density_potential;
-        let normalized_weight = point.weight.get() / volume;
-        for (position, vector) in layout.vectors().iter().enumerate() {
-            let phase = -dot_g_r(vector.cartesian, point.position);
-            let transform = Complex64::from_polar(normalized_weight, phase);
-            for (target, value) in coefficients.iter_mut().zip(xc.potential) {
-                if value != 0.0 {
-                    target[position] += value * transform;
-                }
-            }
+        for (target, value) in potential_samples.iter_mut().zip(xc.potential) {
+            target[sample_index] = value;
         }
     }
-    for component in &mut coefficients {
-        enforce_fourier_reality(layout, component)?;
-    }
+    drop(density_samples);
+
+    let normalized_weight =
+        uniform.points()[0].weight.get() / density.geometry().cell_volume().get();
+    let mut spectrum = vec![Complex64::default(); fft_grid.len()];
+    let coefficients: [Vec<Complex64>; 4] = potential_samples
+        .into_iter()
+        .map(|samples| {
+            for (&index, value) in point_indices.iter().zip(samples) {
+                spectrum[index] = Complex64::new(value, 0.0);
+            }
+            let transformed = fft.forward(&spectrum)?;
+            let mut coefficients = layout
+                .vectors()
+                .iter()
+                .map(|vector| {
+                    transformed[fft_grid.index(vector.index)]
+                        * midpoint_phase(vector.index, divisions, -1.0)
+                        * normalized_weight
+                })
+                .collect::<Vec<_>>();
+            enforce_fourier_reality(layout, &mut coefficients)?;
+            Ok(coefficients)
+        })
+        .collect::<Result<Vec<_>, RegionalXcError>>()?
+        .try_into()
+        .expect("four potential fields produce four coefficient sets");
     let [scalar, bx, by, bz] = coefficients;
     let fields = [
         interstitial_from_ordered(layout.clone(), scalar)?,
@@ -257,6 +311,112 @@ fn transform_interstitial(
         exchange_correlation_energy,
         density_potential_integral,
     })
+}
+
+#[derive(Debug)]
+struct InterstitialFftSamples {
+    value: Vec<f64>,
+    gradient: Option<[Vec<f64>; 3]>,
+    hessian: Option<[Vec<f64>; 6]>,
+}
+
+impl InterstitialFftSamples {
+    fn field_jet(&self, index: usize) -> FieldJet {
+        FieldJet {
+            value: self.value[index],
+            gradient: self.gradient.as_ref().map_or([0.0; 3], |gradient| {
+                std::array::from_fn(|axis| gradient[axis][index])
+            }),
+            hessian: self.hessian.as_ref().map_or([0.0; 6], |hessian| {
+                std::array::from_fn(|axis| hessian[axis][index])
+            }),
+        }
+    }
+}
+
+fn interstitial_field_fft_samples(
+    field: &InterstitialField,
+    derivatives: bool,
+    grid: FftGrid,
+    divisions: [usize; 3],
+    fft: &mut FftPlan,
+    point_indices: &[usize],
+) -> Result<InterstitialFftSamples, RegionalXcError> {
+    let transform_scale = grid.len() as f64;
+    let mut modes = Vec::with_capacity(field.field().coefficients().len());
+    let mut reality_scale = 0.0;
+    for (vector, &coefficient) in field.field().iter() {
+        if coefficient == Complex64::default() {
+            continue;
+        }
+        let g = vector.cartesian.map(|component| component.get());
+        let products = [
+            g[0] * g[0],
+            g[1] * g[1],
+            g[2] * g[2],
+            g[0] * g[1],
+            g[0] * g[2],
+            g[1] * g[2],
+        ];
+        let position = grid.index(vector.index);
+        let term = coefficient * midpoint_phase(vector.index, divisions, 1.0) * transform_scale;
+        modes.push((position, term, g, products));
+        reality_scale += coefficient.norm()
+            * if derivatives {
+                1.0 + g.iter().map(|component| component.abs()).sum::<f64>()
+                    + products.iter().map(|product| product.abs()).sum::<f64>()
+            } else {
+                1.0
+            };
+    }
+    // Keep one complex spectrum at a time; retain only checked real values
+    // at interstitial points, never full complex derivative-grid copies.
+    let mut spectrum = vec![Complex64::default(); grid.len()];
+    let mut samples = Vec::with_capacity(if derivatives { 10 } else { 1 });
+    for component in 0..if derivatives { 10 } else { 1 } {
+        spectrum.fill(Complex64::default());
+        for &(position, term, g, products) in &modes {
+            spectrum[position] += match component {
+                0 => term,
+                1..=3 => Complex64::new(0.0, g[component - 1]) * term,
+                _ => -products[component - 4] * term,
+            };
+        }
+        let transformed = fft.inverse(&spectrum)?;
+        let quantity = match component {
+            0 => "interstitial field",
+            1..=3 => "interstitial gradient",
+            _ => "interstitial Hessian",
+        };
+        samples.push(
+            point_indices
+                .iter()
+                .map(|&index| checked_real(transformed[index], reality_scale, quantity))
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+    }
+    let mut samples = samples.into_iter();
+    let value = samples.next().expect("value transform is always present");
+    let gradient = derivatives
+        .then(|| std::array::from_fn(|_| samples.next().expect("three gradient transforms")));
+    let hessian = derivatives
+        .then(|| std::array::from_fn(|_| samples.next().expect("six Hessian transforms")));
+    Ok(InterstitialFftSamples {
+        value,
+        gradient,
+        hessian,
+    })
+}
+
+fn midpoint_phase(index: [i32; 3], divisions: [usize; 3], sign: f64) -> Complex64 {
+    let angle = index
+        .into_iter()
+        .zip(divisions)
+        .map(|(frequency, count)| f64::from(frequency) / count as f64)
+        .sum::<f64>()
+        * std::f64::consts::PI
+        * sign;
+    Complex64::from_polar(1.0, angle)
 }
 
 fn transform_muffin_tins(
@@ -605,24 +765,6 @@ fn interstitial_field_jet(
     })
 }
 
-fn interstitial_field_value(
-    field: &InterstitialField,
-    position: [Bohr; 3],
-) -> Result<f64, RegionalXcError> {
-    let mut value = Complex64::new(0.0, 0.0);
-    let mut scale = 0.0;
-    for (vector, &coefficient) in field.field().iter() {
-        if coefficient == Complex64::default() {
-            continue;
-        }
-        let phase = Complex64::from_polar(1.0, dot_g_r(vector.cartesian, position));
-        let term = coefficient * phase;
-        value += term;
-        scale += term.norm();
-    }
-    checked_real(value, scale, "interstitial field")
-}
-
 fn muffin_tin_field_jet(
     field: &MuffinTinField,
     radial_index: usize,
@@ -926,13 +1068,6 @@ fn checked_real_array<const N: usize>(
     Ok(result)
 }
 
-fn dot_g_r(g: [muffintin_core::InverseBohr; 3], r: [Bohr; 3]) -> f64 {
-    g.into_iter()
-        .zip(r)
-        .map(|(left, right)| left.get() * right.get())
-        .sum()
-}
-
 fn dot_raw(left: [f64; 3], right: [f64; 3]) -> f64 {
     left.into_iter().zip(right).map(|(x, y)| x * y).sum()
 }
@@ -988,6 +1123,8 @@ pub enum RegionalXcError {
     Mesh(#[from] MeshError),
     #[error(transparent)]
     Grid(#[from] GridError),
+    #[error(transparent)]
+    Fft(#[from] crate::fft::FftError),
 }
 
 /// XC field controls derived from a density: interstitial divisions covering
@@ -1516,6 +1653,182 @@ mod tests {
         let plus = spin_potential_coefficient(&pbe, 0, [1, 0, 0]);
         let minus = spin_potential_coefficient(&pbe, 0, [-1, 0, 0]);
         assert_eq!(minus, plus.conj());
+    }
+
+    #[test]
+    fn skew_three_dimensional_pbe_fft_matches_direct_interstitial_transform() {
+        let direct = [
+            [Bohr(5.0), Bohr(0.0), Bohr(0.0)],
+            [Bohr(1.0), Bohr(4.5), Bohr(0.0)],
+            [Bohr(0.4), Bohr(0.7), Bohr(4.0)],
+        ];
+        let reciprocal = ReciprocalLattice::from_direct(direct).unwrap();
+        let indices = [
+            [0, 0, 0],
+            [-1, -1, 0],
+            [1, 1, 0],
+            [0, -1, -1],
+            [0, 1, 1],
+            [-1, 0, 1],
+            [1, 0, -1],
+        ];
+        let layout = FourierLayout::new(
+            reciprocal,
+            indices
+                .into_iter()
+                .map(|index| {
+                    let cartesian = reciprocal.cartesian(index);
+                    GVector {
+                        index,
+                        norm: InverseBohr(
+                            cartesian
+                                .iter()
+                                .map(|component| component.get().powi(2))
+                                .sum::<f64>()
+                                .sqrt(),
+                        ),
+                        cartesian,
+                    }
+                })
+                .collect(),
+        )
+        .unwrap();
+        let cell = direct_cell(&layout).unwrap();
+        let divisions = [5, 5, 5];
+        let excluded_midpoint = cell.cartesian([0.3, 0.5, 0.7]);
+        let geometry = InterstitialGeometry::new(
+            cell.volume(),
+            vec![Sphere {
+                center: excluded_midpoint,
+                radius: Bohr(0.2),
+            }],
+        )
+        .unwrap();
+        let mesh = muffintin_core::ExponentialMesh::new(Bohr(0.05), 0.2, 7).unwrap();
+        let zero_muffin_tin = MuffinTinField::new(
+            mesh.clone(),
+            SphereField::new(
+                HarmonicConvention::Real,
+                [((0, 0), vec![Complex64::default(); mesh.len()])],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let coefficients = |constant: f64, positive: [Complex64; 3]| {
+            [
+                Complex64::new(constant, 0.0),
+                positive[0].conj(),
+                positive[0],
+                positive[1].conj(),
+                positive[1],
+                positive[2].conj(),
+                positive[2],
+            ]
+        };
+        let field = |values| {
+            RegionalScalarField::new(
+                geometry.clone(),
+                vec![zero_muffin_tin.clone()],
+                interstitial_field(layout.clone(), indices.into_iter().zip(values)),
+            )
+            .unwrap()
+        };
+        let density = RegionalDensity::new(
+            field(coefficients(
+                0.8,
+                [
+                    Complex64::new(0.025, 0.010),
+                    Complex64::new(-0.018, 0.007),
+                    Complex64::new(0.012, -0.009),
+                ],
+            )),
+            [
+                field(coefficients(
+                    0.04,
+                    [
+                        Complex64::new(0.004, -0.002),
+                        Complex64::new(0.003, 0.001),
+                        Complex64::new(-0.002, 0.003),
+                    ],
+                )),
+                field(coefficients(
+                    -0.03,
+                    [
+                        Complex64::new(-0.003, 0.001),
+                        Complex64::new(0.002, -0.003),
+                        Complex64::new(0.004, 0.002),
+                    ],
+                )),
+                field(coefficients(
+                    0.05,
+                    [
+                        Complex64::new(0.002, 0.003),
+                        Complex64::new(-0.004, -0.001),
+                        Complex64::new(0.003, -0.002),
+                    ],
+                )),
+            ],
+        )
+        .unwrap();
+
+        let uniform = UniformGrid::new(cell, divisions).unwrap();
+        let interstitial = InterstitialGrid::new(&uniform, geometry.spheres()).unwrap();
+        assert_eq!(interstitial.len() + 1, uniform.len());
+        assert!(
+            !interstitial
+                .points()
+                .iter()
+                .any(|point| point.position == excluded_midpoint)
+        );
+
+        let mut direct_coefficients: [Vec<Complex64>; 4] =
+            std::array::from_fn(|_| vec![Complex64::default(); layout.len()]);
+        let mut direct_energy = 0.0;
+        let mut direct_density_potential = 0.0;
+        for point in interstitial.points() {
+            let (charge, magnetization) =
+                interstitial_pauli_jets(&density, point.position).unwrap();
+            let xc = evaluate_noncollinear_xc_point(
+                XcFunctional::Pbe,
+                NoncollinearXcRoute::LocalSpinFrame,
+                charge,
+                magnetization,
+            )
+            .unwrap();
+            direct_energy += point.weight.get() * xc.energy_density;
+            direct_density_potential += point.weight.get() * xc.density_potential;
+            let normalized_weight = point.weight.get() / geometry.cell_volume().get();
+            for (position, vector) in layout.vectors().iter().enumerate() {
+                let phase = -dot_raw(
+                    vector.cartesian.map(InverseBohr::get),
+                    point.position.map(Bohr::get),
+                );
+                let transform = Complex64::from_polar(normalized_weight, phase);
+                for (target, value) in direct_coefficients.iter_mut().zip(xc.potential) {
+                    target[position] += value * transform;
+                }
+            }
+        }
+        for coefficients in &mut direct_coefficients {
+            enforce_fourier_reality(&layout, coefficients).unwrap();
+        }
+
+        let transformed = transform_interstitial(
+            XcFunctional::Pbe,
+            &density,
+            divisions,
+            NoncollinearXcRoute::LocalSpinFrame,
+        )
+        .unwrap();
+        for (actual, expected) in transformed.fields.iter().zip(direct_coefficients) {
+            for (vector, expected) in layout.vectors().iter().zip(expected) {
+                assert!((actual.coefficient(vector.index).unwrap() - expected).norm() < 2.0e-13);
+            }
+        }
+        assert!((transformed.exchange_correlation_energy - direct_energy).abs() < 2.0e-12);
+        assert!(
+            (transformed.density_potential_integral - direct_density_potential).abs() < 2.0e-12
+        );
     }
 
     #[test]

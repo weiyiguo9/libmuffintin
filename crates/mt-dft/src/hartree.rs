@@ -12,10 +12,15 @@ use muffintin_coulomb::{
 };
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
 use num_complex::Complex64;
+#[cfg(not(feature = "fft-fftw"))]
 use rustc_hash::FxHashMap;
+#[cfg(not(feature = "fft-fftw"))]
 use std::collections::hash_map::Entry;
 use std::f64::consts::PI;
 use thiserror::Error;
+
+#[cfg(feature = "fft-fftw")]
+use crate::fft::{FftGrid, FftPlan};
 
 const REALITY_TOLERANCE: f64 = 4096.0 * f64::EPSILON;
 const TOTAL_CHARGE_TOLERANCE: f64 = 1.0e-8;
@@ -131,24 +136,17 @@ pub fn evaluate_regional_electrostatics(
     ];
     let volume = weinert_density.geometry().cell_volume().get();
     let density_coefficients = weinert_density.interstitial().coefficients();
-    // Share theta lookups with the total-potential mask, but retain each
-    // original energy's MT-first, left/right summation and multiplication order.
-    let mut masked_total = mask_fourier_coefficients(
+    let (mut masked_total, interstitial_integrals) = mask_and_integrate_interstitial(
         charge.geometry(),
         layout,
-        &coefficients[2],
-        |target, source, theta| {
-            let rho = density_coefficients[target];
-            if rho == Complex64::default() {
-                return;
-            }
-            for field in 0..3 {
-                let term = volume * rho.conj() * theta * coefficients[field][source];
-                integrals[field].0 += term;
-                integrals[field].1 += term.norm();
-            }
-        },
+        &coefficients,
+        density_coefficients,
+        volume,
     )?;
+    for (integral, interstitial) in integrals.iter_mut().zip(interstitial_integrals) {
+        integral.0 += interstitial.0;
+        integral.1 += interstitial.1;
+    }
     let [
         (hartree_value, hartree_scale),
         (nuclear_value, nuclear_scale),
@@ -309,18 +307,24 @@ fn raw_muffin_tin_field(
     )?)
 }
 
-fn mask_fourier_coefficients(
+#[cfg(not(feature = "fft-fftw"))]
+fn mask_and_integrate_interstitial(
     geometry: &InterstitialGeometry,
     layout: &FourierLayout,
-    raw_coefficients: &[Complex64],
-    mut accumulate_energy: impl FnMut(usize, usize, Complex64),
-) -> Result<Vec<Complex64>, RegionalElectrostaticError> {
-    if raw_coefficients.len() != layout.len() {
+    coefficients: &[Vec<Complex64>; 3],
+    density_coefficients: &[Complex64],
+    volume: f64,
+) -> Result<(Vec<Complex64>, [(Complex64, f64); 3]), RegionalElectrostaticError> {
+    if coefficients.iter().any(|field| field.len() != layout.len())
+        || density_coefficients.len() != layout.len()
+    {
         return Err(RegionalElectrostaticError::RawLayoutMismatch);
     }
+
     let reciprocal = layout.reciprocal();
     let mut masked = Vec::with_capacity(layout.len());
     let mut step_coefficients = FxHashMap::default();
+    let mut integrals = [(Complex64::default(), 0.0); 3];
     for (target_position, target) in layout.vectors().iter().enumerate() {
         let mut value = Complex64::default();
         for (source_position, source) in layout.vectors().iter().enumerate() {
@@ -331,12 +335,155 @@ fn mask_fourier_coefficients(
                     *entry.insert(geometry.coefficient(reciprocal.cartesian(difference))?)
                 }
             };
+            value += theta * coefficients[2][source_position];
+            let rho = density_coefficients[target_position];
+            if rho != Complex64::default() {
+                for field in 0..3 {
+                    let term = volume * rho.conj() * theta * coefficients[field][source_position];
+                    integrals[field].0 += term;
+                    integrals[field].1 += term.norm();
+                }
+            }
+        }
+        masked.push(value);
+    }
+    Ok((masked, integrals))
+}
+
+#[cfg(feature = "fft-fftw")]
+fn mask_and_integrate_interstitial(
+    geometry: &InterstitialGeometry,
+    layout: &FourierLayout,
+    coefficients: &[Vec<Complex64>; 3],
+    density_coefficients: &[Complex64],
+    volume: f64,
+) -> Result<(Vec<Complex64>, [(Complex64, f64); 3]), RegionalElectrostaticError> {
+    if density_coefficients.len() != layout.len() {
+        return Err(RegionalElectrostaticError::RawLayoutMismatch);
+    }
+    let fields = coefficients.iter().map(Vec::as_slice).collect::<Vec<_>>();
+    let masked = mask_fourier_fields_fft(geometry, layout, &fields)?;
+    let mut integrals = [(Complex64::default(), 0.0); 3];
+    for (field, values) in masked.iter().enumerate() {
+        for (&rho, &potential) in density_coefficients.iter().zip(values) {
+            if rho != Complex64::default() {
+                let term = volume * rho.conj() * potential;
+                integrals[field].0 += term;
+                integrals[field].1 += term.norm();
+            }
+        }
+    }
+    let masked_total = masked
+        .into_iter()
+        .nth(2)
+        .expect("three electrostatic fields were transformed");
+    Ok((masked_total, integrals))
+}
+
+#[cfg(all(test, not(feature = "fft-fftw")))]
+fn mask_fourier_coefficients(
+    geometry: &InterstitialGeometry,
+    layout: &FourierLayout,
+    raw_coefficients: &[Complex64],
+) -> Result<Vec<Complex64>, RegionalElectrostaticError> {
+    if raw_coefficients.len() != layout.len() {
+        return Err(RegionalElectrostaticError::RawLayoutMismatch);
+    }
+    let reciprocal = layout.reciprocal();
+    let mut masked = Vec::with_capacity(layout.len());
+    let mut step_coefficients = FxHashMap::default();
+    for target in layout.vectors() {
+        let mut value = Complex64::default();
+        for (source_position, source) in layout.vectors().iter().enumerate() {
+            let difference = reciprocal_difference(target.index, source.index)?;
+            let theta = match step_coefficients.entry(difference) {
+                Entry::Occupied(entry) => *entry.get(),
+                Entry::Vacant(entry) => {
+                    *entry.insert(geometry.coefficient(reciprocal.cartesian(difference))?)
+                }
+            };
             value += theta * raw_coefficients[source_position];
-            accumulate_energy(target_position, source_position, theta);
         }
         masked.push(value);
     }
     Ok(masked)
+}
+
+#[cfg(all(test, feature = "fft-fftw"))]
+fn mask_fourier_coefficients(
+    geometry: &InterstitialGeometry,
+    layout: &FourierLayout,
+    raw_coefficients: &[Complex64],
+) -> Result<Vec<Complex64>, RegionalElectrostaticError> {
+    Ok(
+        mask_fourier_fields_fft(geometry, layout, &[raw_coefficients])?
+            .pop()
+            .expect("one Fourier field was transformed"),
+    )
+}
+
+#[cfg(feature = "fft-fftw")]
+fn mask_fourier_fields_fft(
+    geometry: &InterstitialGeometry,
+    layout: &FourierLayout,
+    raw_fields: &[&[Complex64]],
+) -> Result<Vec<Vec<Complex64>>, RegionalElectrostaticError> {
+    if raw_fields
+        .iter()
+        .any(|coefficients| coefficients.len() != layout.len())
+    {
+        return Err(RegionalElectrostaticError::RawLayoutMismatch);
+    }
+    if layout.vectors().is_empty() {
+        return Ok(vec![Vec::new(); raw_fields.len()]);
+    }
+
+    let mut minimum = layout.vectors()[0].index;
+    let mut maximum = minimum;
+    for vector in &layout.vectors()[1..] {
+        for axis in 0..3 {
+            minimum[axis] = minimum[axis].min(vector.index[axis]);
+            maximum[axis] = maximum[axis].max(vector.index[axis]);
+        }
+    }
+    let span = reciprocal_difference(maximum, minimum)?;
+    let dimensions = span.map(|component| 2 * component as usize + 1);
+    let grid = FftGrid::new(dimensions)?;
+    let mut plan = FftPlan::new(grid)?;
+
+    let reciprocal = layout.reciprocal();
+    let mut step = vec![Complex64::default(); grid.len()];
+    for first in -span[0]..=span[0] {
+        for second in -span[1]..=span[1] {
+            for third in -span[2]..=span[2] {
+                let difference = [first, second, third];
+                step[grid.index(difference)] =
+                    geometry.coefficient(reciprocal.cartesian(difference))?;
+            }
+        }
+    }
+    let step_spectrum = plan.forward(&step)?;
+
+    let mut masked_fields = Vec::with_capacity(raw_fields.len());
+    for raw_coefficients in raw_fields {
+        let mut source = vec![Complex64::default(); grid.len()];
+        for (vector, &coefficient) in layout.vectors().iter().zip(*raw_coefficients) {
+            source[grid.index(vector.index)] = coefficient;
+        }
+        let mut spectrum = plan.forward(&source)?;
+        for (value, &theta) in spectrum.iter_mut().zip(&step_spectrum) {
+            *value *= theta;
+        }
+        let convolution = plan.inverse(&spectrum)?;
+        masked_fields.push(
+            layout
+                .vectors()
+                .iter()
+                .map(|vector| convolution[grid.index(vector.index)])
+                .collect(),
+        );
+    }
+    Ok(masked_fields)
 }
 
 fn muffin_tin_density_potential_integral(
@@ -521,6 +668,9 @@ pub enum RegionalElectrostaticError {
     Mesh(#[from] MeshError),
     #[error(transparent)]
     StepFunction(#[from] StepFunctionError),
+    #[cfg(feature = "fft-fftw")]
+    #[error(transparent)]
+    Fft(#[from] crate::fft::FftError),
     #[error("regional electrostatics requires ElectronicWithUniformBackground")]
     NonElectronicChargeTreatment,
     #[error("raw charge and potential layouts differ")]
@@ -800,8 +950,7 @@ mod tests {
             Complex64::new(2.0, 0.0),
             Complex64::default(),
         ];
-        let mut masked_uniform =
-            mask_fourier_coefficients(&geometry, &layout, &uniform, |_, _, _| {}).unwrap();
+        let mut masked_uniform = mask_fourier_coefficients(&geometry, &layout, &uniform).unwrap();
         canonicalize_fourier(&layout, &mut masked_uniform).unwrap();
         for (position, target) in layout.vectors().iter().enumerate() {
             let expected = 2.0 * geometry.coefficient(target.cartesian).unwrap();
@@ -810,8 +959,7 @@ mod tests {
 
         let mode = Complex64::new(0.7, 0.2);
         let finite = [mode.conj(), Complex64::default(), mode];
-        let mut masked_finite =
-            mask_fourier_coefficients(&geometry, &layout, &finite, |_, _, _| {}).unwrap();
+        let mut masked_finite = mask_fourier_coefficients(&geometry, &layout, &finite).unwrap();
         canonicalize_fourier(&layout, &mut masked_finite).unwrap();
         for (position, target) in layout.vectors().iter().enumerate() {
             let minus = reciprocal_difference(target.index, [-1, 0, 0]).unwrap();
@@ -827,6 +975,103 @@ mod tests {
             assert!((masked_finite[position] - expected).norm() < 1.0e-14);
         }
         HermitianFourierField::new(layout, masked_finite).unwrap();
+    }
+
+    #[test]
+    fn mask_and_interstitial_integrals_match_sparse_three_dimensional_finite_sum() {
+        let reciprocal = reciprocal();
+        let vectors = [[1, -1, 0], [1, 0, -1], [0, 0, 0], [-1, 1, 0], [-1, 0, 1]]
+            .into_iter()
+            .map(|index| {
+                let cartesian = reciprocal.cartesian(index);
+                let norm = cartesian
+                    .iter()
+                    .map(|component| component.get().powi(2))
+                    .sum::<f64>()
+                    .sqrt();
+                GVector {
+                    index,
+                    cartesian,
+                    norm: InverseBohr(norm),
+                }
+            })
+            .collect();
+        let layout = FourierLayout::new(reciprocal, vectors).unwrap();
+        let geometry = InterstitialGeometry::new(
+            VolumeBohr3(LATTICE.powi(3)),
+            vec![Sphere {
+                center: [Bohr(1.25), Bohr(2.375), Bohr(3.5)],
+                radius: Bohr(0.5),
+            }],
+        )
+        .unwrap();
+        let first = Complex64::new(0.7, 0.2);
+        let second = Complex64::new(-0.3, 0.4);
+        let finite = [
+            first,
+            second.conj(),
+            Complex64::new(0.1, 0.0),
+            first.conj(),
+            second,
+        ];
+        HermitianFourierField::new(layout.clone(), finite.to_vec()).unwrap();
+
+        let finite_sum = |coefficients: &[Complex64]| {
+            layout
+                .vectors()
+                .iter()
+                .map(|target| {
+                    layout
+                        .vectors()
+                        .iter()
+                        .zip(coefficients)
+                        .map(|(source, &coefficient)| {
+                            let difference =
+                                reciprocal_difference(target.index, source.index).unwrap();
+                            geometry
+                                .coefficient(layout.reciprocal().cartesian(difference))
+                                .unwrap()
+                                * coefficient
+                        })
+                        .sum::<Complex64>()
+                })
+                .collect::<Vec<_>>()
+        };
+        let fields = [
+            finite.iter().map(|&value| value * 0.75).collect(),
+            finite.iter().map(|&value| value * -1.25).collect(),
+            finite.to_vec(),
+        ];
+        let density = [
+            Complex64::new(0.2, -0.1),
+            Complex64::new(-0.4, -0.05),
+            Complex64::new(0.3, 0.0),
+            Complex64::new(0.2, 0.1),
+            Complex64::new(-0.4, 0.05),
+        ];
+        HermitianFourierField::new(layout.clone(), density.to_vec()).unwrap();
+        let expected_fields = fields
+            .iter()
+            .map(|coefficients| finite_sum(coefficients))
+            .collect::<Vec<_>>();
+        let volume = geometry.cell_volume().get();
+        let (mut masked, integrals) =
+            mask_and_integrate_interstitial(&geometry, &layout, &fields, &density, volume).unwrap();
+
+        for (&actual, &expected) in masked.iter().zip(&expected_fields[2]) {
+            assert!((actual - expected).norm() < 1.0e-14);
+        }
+        for ((actual, _), expected_values) in integrals.into_iter().zip(expected_fields) {
+            let expected = volume
+                * density
+                    .iter()
+                    .zip(expected_values)
+                    .map(|(&rho, potential)| rho.conj() * potential)
+                    .sum::<Complex64>();
+            assert!((actual - expected).norm() < 2.0e-10);
+        }
+        canonicalize_fourier(&layout, &mut masked).unwrap();
+        HermitianFourierField::new(layout, masked).unwrap();
     }
 
     #[test]
@@ -873,7 +1118,6 @@ mod tests {
             charge.geometry(),
             charge.interstitial().layout(),
             &raw_coefficients,
-            |_, _, _| {},
         )
         .unwrap();
         canonicalize_fourier(charge.interstitial().layout(), &mut expected_masked).unwrap();

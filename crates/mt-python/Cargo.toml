@@ -15,6 +15,9 @@ crate-type = ["cdylib"]
 test = false
 doctest = false
 
+[features]
+fft-fftw = ["libmuffintin-runtime/fft-fftw"]
+
 [dependencies]
 libmuffintin-coulomb = { path = "../mt-coulomb" }
 libmuffintin-core = { path = "../mt-core" }
