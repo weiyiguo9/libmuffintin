@@ -210,6 +210,49 @@ Two statements bound its cost and comparison scope:
   $\delta_c$ is reported every iteration; an exact nonlocal core solve is out
   of scope (section 5).
 
+#### Same-kernel onsite radial action
+
+The common-kernel prerequisite uses the **onsite, muffin-tin-supported Gamma
+restriction** of the same `CoulombRequest` as the MPB assembler. It is not an
+extended-core or finite-transfer implementation. In channel-major order,
+define $b_{LM}(r)=r\rho_{LM}(r)$ and $u_{LM}(r)=rV_{LM}(r)$, so the bilinear
+form is $\sum_{LM}\int b_{LM}^*(r)u_{LM}(r)\,\mathrm{d}r$.
+
+For each reciprocal vector in the assembler's exact finite set, define
+
+```math
+\Phi_{G,LM}(r)=\frac{4\pi}{\sqrt{\Omega}}(-i)^L
+Y_{LM}(\widehat G)\,rj_L(Gr),\qquad
+F_G[b]=\sum_{LM}\int\Phi_{G,LM}(r)b_{LM}(r)\,\mathrm{d}r.
+```
+
+An onsite phase cancels between the transform and its adjoint. The reciprocal
+action is
+
+```math
+u_{LM}^{G}(r)=\sum_G\Phi_{G,LM}^*(r)w_GF_G[b].
+```
+
+Sharp spherical truncation uses the assembler's full finite reciprocal kernel.
+Smoothed truncation retains the periodic Weinert onsite body, its Gamma moment
+correction, and adds only the shared damped boundary correction above. A full
+finite-Fourier replacement would drop the retained short-range contribution.
+The periodic regular term uses the same structure constants and Gaunt factors
+as the MT–MT assembler; its Gamma correction uses the adjoints of the charge,
+second-moment, and dipole functionals. No new continuum or isolated $1/r$
+substitute is inserted for either truncated request.
+
+All magnetic-channel and reciprocal-direction couplings remain explicit. Exact
+$|G|$ shell reuse applies only to Bessel rows, not to angular averaging of the
+kernel: cubic reciprocal shells are not exact rotational quadratures. The
+CC/VC consumer forms the complete occupied-core pair density before applying
+this action and contracts every output channel afterward. Source occupations
+and the Fock minus sign enter once, with target-core magnetic averaging last.
+Core normalization remains the supplied full norm, while source support and
+returned exchange actions are restricted to the exact MT mesh; actions beyond
+it are zero. This support choice must not be confused with an extended-tail
+core solve or with freezing the core radial functions.
+
 ### 1.5 Gamma and the core–valence constant mode
 
 At $q\to0$ the auxiliary constant mode couples to the pair charge
@@ -1517,12 +1560,49 @@ by enlarging every existing VV contraction.
 
 ### 4.4 Appended follow-up: self-consistent core updates
 
-**Status: queued after the current performance optimization and publication;
-not implemented by that work.** Investigate an EMTO soft-core or standard
-LAPW-style core-update policy instead of keeping the initial core radial
-orbitals and density fixed throughout the valence HF loop. This extends the
-existing M3c core-update work; it is not a second unrelated relaxed-core driver.
-Frozen core occupations and frozen core radial functions are separate choices.
+**Status: HF core policy and shared Coulomb kernel selected; the
+common-kernel onsite radial prerequisite is implemented, not yet a coupled SRA core-update
+driver.** Keep core occupations fixed while updating radial functions using
+both CC and VC exchange. The selected core kernel must match the valence
+`CoulombRequest`, rather than silently using the older isolated Slater kernel.
+This extends M3c rather than adding an unrelated driver.
+
+The [EMTO manual](https://emto.gitlab.io/manual/manual.html#kgrn) defines `SOFC`
+as updating core states each SCF iteration versus frozen atomic core states.
+[FLEUR's core documentation](https://www.flapw.de/master/documentation/coreElectrons/)
+separates `frcor` (core updating) from `ctail` (tail treatment), and describes
+a local Kohn–Sham–Dirac core equation. These references justify the update
+policy, not replacing CC/VC Fock exchange with a local DFT core solve. Fixed
+core occupations and frozen radial functions are distinct choices.
+
+`OnsiteRadialCoulomb` retains the source request, exact MT mesh, and site. It
+implements the full angular Gamma MT restriction for periodic, sharp-sphere,
+and smoothed-sphere requests. `onsite_radial_core_fock_actions` uses it for
+both occupied-core and preweighted-valence contributions, including a complex
+Hermitian valence density matrix. The existing isolated radial APIs remain
+separate and are not relabeled as common-kernel calculations.
+
+A local independent MPB contraction probe exercised all three kernels with
+multiple radial modes, full angular mixing, and a complex Hermitian valence
+density. The largest quadratic-form discrepancy was
+$4.87\times10^{-13}$ Ha; CC and VC action-trace discrepancies were at most
+$6.22\times10^{-15}$ Ha and $8.89\times10^{-16}$ Ha, respectively. Five
+adjacent existing tests passed (radial CC/VC conventions, truncated-kernel
+assembly, and occupied-channel free-atom convergence). The probe's nonzero
+imaginary radial-action residuals remain explicit diagnostics; real energy
+agreement does not establish that arbitrary complex actions can be used in
+the real radial core solver. This is operator/action validation, not coupled
+core convergence or GTO physical acceptance.
+
+The integration audit found two prerequisites beyond the kernel. Current M3c
+updates core against provisional H0 valence before solving valence HF; a new
+coupled loop must instead establish core stationarity against its final HF
+valence frame. Also, the current SRA core-cancellation primitives assume
+homogeneous radial core equations. A sourced HF core requires retaining the
+fresh signed exchange action and subtracting its contribution from primitive
+local-Hamiltonian matrix elements. After a core update, rebuild the embedding
+and all affected VV/core product and Coulomb objects, and reset the Fock/DIIS
+history. These changes are not implemented by the onsite primitive alone.
 
 The completed Snellius performance run `26403808` retained the frozen-checkpoint
 SRA model and reproduced $E=-2787.682192574881$ Ha, compared with
@@ -1542,10 +1622,10 @@ acceptance, which remains open.
 | Separate physical differences | Compare frozen and updated-core calculations with the same nuclear model, basis, cutoffs, and exchange controls first. Keep the pending nuclear-parameter comparison and the SRA versus fully optimized 4c Hamiltonian comparison as separate controls. |
 | Record acceptance evidence | Report core radial/density changes, core convergence and spill, total energy, relative 4s/4p levels, and matched sector energies. Do not claim that core relaxation must remove the GTO discrepancy before these controls are evaluated. |
 
-The current performance commits do not activate this policy, alter nuclear
-parameters, or close the GTO acceptance gap. The next implementation step starts
-with the explicit core-update contract and its interaction with the existing
-fixed-basis caches, not by silently unfreezing one cached array.
+The current implementation does not activate this policy in the SRA driver,
+alter nuclear parameters, or close the GTO acceptance gap. The next step is
+the sourced-core primitive contract and final-frame coupled update, including
+the affected fixed-basis caches, not silently unfreezing one cached array.
 
 ## 5. Explicit exclusions
 

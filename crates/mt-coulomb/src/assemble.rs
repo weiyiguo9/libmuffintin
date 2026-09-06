@@ -312,11 +312,7 @@ fn smoothed_truncation_correction(
         .iter()
         .map(|wave| {
             let q = wave.q_plus_g_norm.get();
-            if is_zero_norm(q) {
-                2.0 * PI * radius * radius + PI / (omega * omega)
-            } else {
-                -4.0 * PI / (q * q) * (q * radius).cos() * (-(q / (2.0 * omega)).powi(2)).exp()
-            }
+            smoothed_truncation_kernel(q, radius, omega)
         })
         .collect::<Vec<_>>();
     let conjugate = ComplexTensor::from_host_row_major(
@@ -532,11 +528,19 @@ fn truncated_fourier_coefficient(
     Ok(coefficient)
 }
 
-fn spencer_alavi_kernel(q_norm: f64, radius: f64) -> f64 {
+pub(crate) fn spencer_alavi_kernel(q_norm: f64, radius: f64) -> f64 {
     if is_zero_norm(q_norm) {
         2.0 * PI * radius * radius
     } else {
         8.0 * PI * (0.5 * q_norm * radius).sin().powi(2) / (q_norm * q_norm)
+    }
+}
+
+pub(crate) fn smoothed_truncation_kernel(q: f64, radius: f64, omega: f64) -> f64 {
+    if is_zero_norm(q) {
+        2.0 * PI * radius * radius + PI / (omega * omega)
+    } else {
+        -4.0 * PI / (q * q) * (q * radius).cos() * (-(q / (2.0 * omega)).powi(2)).exp()
     }
 }
 

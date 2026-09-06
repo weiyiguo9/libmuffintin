@@ -3,8 +3,8 @@
 use crate::radial_slater::{
     BorrowedCoreShell, BorrowedValenceRadial, ClosedCoreOccupations, RadialSlaterSite,
 };
-use crate::{CoulombError, radial_primitive};
-use muffintin_core::{ExponentialMesh, Hartree, Lm, RelativisticChannel, spinor_gaunt};
+use crate::{CoulombError, OnsiteRadialCoulomb, OnsiteRadialCoulombError, radial_primitive};
+use muffintin_core::{ExponentialMesh, Hartree, Lm, RelativisticChannel, lm_count, spinor_gaunt};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 use thiserror::Error;
@@ -36,6 +36,31 @@ pub struct RadialValenceCoreActions {
     pub shells: Vec<RadialValenceCoreShellAction>,
     pub action_trace: Hartree,
     pub imaginary_residual: f64,
+}
+
+/// Core-target CC and VC actions from the same onsite Coulomb operator.
+///
+/// All complex-harmonic couplings are retained before the target-mu average.
+/// Both sectors have MT-only support and retain the full core normalization;
+/// neither contains a one-half energy factor.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OnsiteRadialCoreFockActions {
+    pub core_core: RadialValenceCoreActions,
+    pub valence_core: RadialValenceCoreActions,
+}
+
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum OnsiteRadialCoreFockError {
+    #[error(transparent)]
+    Radial(#[from] RadialValenceCoreError),
+    #[error(transparent)]
+    Kernel(#[from] OnsiteRadialCoulombError),
+    #[error("onsite radial core Fock kernel site {kernel} does not match radial site {site}")]
+    Site { kernel: usize, site: usize },
+    #[error("onsite radial core Fock kernel does not use site {site}'s exact MT mesh")]
+    Mesh { site: usize },
+    #[error("onsite radial core Fock kernel l_max={actual} is below required {required}")]
+    AngularRange { actual: u32, required: u32 },
 }
 
 #[derive(Clone, Debug, Error, PartialEq)]
@@ -80,6 +105,208 @@ struct OrbitalRef<'a> {
     p: &'a [f64],
     q: &'a [f64],
     normalization: f64,
+}
+
+/// Apply one common-kernel operator to occupied core and valence pair densities.
+///
+/// Core occupations must be closed and mu resolved. The valence density matrix
+/// already includes its k weights and occupations. Source and output LM
+/// channels are contracted independently, so anisotropic lattice and finite-G
+/// couplings are not replaced by a spherical Slater kernel. Returned radial
+/// actions average the target magnetic channels only after this contraction.
+pub fn onsite_radial_core_fock_actions(
+    kernel: &OnsiteRadialCoulomb,
+    site: &RadialSlaterSite<'_>,
+) -> Result<OnsiteRadialCoreFockActions, OnsiteRadialCoreFockError> {
+    validate_site(site)?;
+    if kernel.site_index() != site.site_index {
+        return Err(OnsiteRadialCoreFockError::Site {
+            kernel: kernel.site_index(),
+            site: site.site_index,
+        });
+    }
+    if kernel.mesh() != site.mt_mesh {
+        return Err(OnsiteRadialCoreFockError::Mesh {
+            site: site.site_index,
+        });
+    }
+    let mut cores = Vec::new();
+    let mut occupations = Vec::new();
+    for shell in site.cores {
+        for (twice_mu, occupation) in closed_occupations(site.site_index, shell)? {
+            cores.push(OrbitalRef {
+                channel: RelativisticChannel::new(shell.kappa, twice_mu)
+                    .expect("validated core magnetic channel"),
+                p: &shell.p[..site.mt_mesh.len()],
+                q: &shell.q[..site.mt_mesh.len()],
+                normalization: shell.normalization,
+            });
+            occupations.push(occupation);
+        }
+    }
+    let valence = site
+        .valence
+        .orbitals
+        .iter()
+        .map(valence_ref)
+        .collect::<Vec<_>>();
+    let required = cores
+        .iter()
+        .flat_map(|core| {
+            cores
+                .iter()
+                .chain(&valence)
+                .map(move |occupied| pair_l_max(core.channel, occupied.channel))
+        })
+        .max()
+        .unwrap_or(0);
+    if kernel.l_max() < required {
+        return Err(OnsiteRadialCoreFockError::AngularRange {
+            actual: kernel.l_max(),
+            required,
+        });
+    }
+    let mut core_density = vec![Complex64::default(); cores.len() * cores.len()];
+    for (index, occupation) in occupations.into_iter().enumerate() {
+        core_density[index * cores.len() + index] = Complex64::new(occupation, 0.0);
+    }
+    Ok(OnsiteRadialCoreFockActions {
+        core_core: onsite_sector_actions(kernel, site, &cores, &core_density)?,
+        valence_core: onsite_sector_actions(kernel, site, &valence, site.valence.matrix)?,
+    })
+}
+
+fn onsite_sector_actions(
+    kernel: &OnsiteRadialCoulomb,
+    site: &RadialSlaterSite<'_>,
+    occupied: &[OrbitalRef<'_>],
+    density: &[Complex64],
+) -> Result<RadialValenceCoreActions, OnsiteRadialCoreFockError> {
+    let mut result = RadialValenceCoreActions::default();
+    let mut trace = Complex64::default();
+    for (shell_index, shell) in site.cores.iter().enumerate() {
+        let occupations = closed_occupations(site.site_index, shell)?;
+        let degeneracy = occupations.len() as f64;
+        let mut average_p = vec![Complex64::default(); site.mt_mesh.len()];
+        let mut average_q = average_p.clone();
+        let mut average_expectation = Complex64::default();
+        let mut shell_trace = Complex64::default();
+        for (twice_mu, occupation) in occupations {
+            let core = OrbitalRef {
+                channel: RelativisticChannel::new(shell.kappa, twice_mu)
+                    .expect("validated core magnetic channel"),
+                p: &shell.p[..site.mt_mesh.len()],
+                q: &shell.q[..site.mt_mesh.len()],
+                normalization: shell.normalization,
+            };
+            let (p, q) = onsite_action_for_mu(kernel, core, occupied, density)?;
+            let expectation = action_expectation(site.mt_mesh, core, &p, &q)?;
+            for (average, value) in average_p.iter_mut().zip(p) {
+                *average += value / degeneracy;
+            }
+            for (average, value) in average_q.iter_mut().zip(q) {
+                *average += value / degeneracy;
+            }
+            average_expectation += expectation / degeneracy;
+            shell_trace += occupation * expectation;
+        }
+        let imaginary_residual = average_p
+            .iter()
+            .chain(&average_q)
+            .map(|value| value.im.abs())
+            .fold(
+                shell_trace.im.abs().max(average_expectation.im.abs()),
+                f64::max,
+            );
+        let mut p = average_p
+            .into_iter()
+            .map(|value| value.re)
+            .collect::<Vec<_>>();
+        let mut q = average_q
+            .into_iter()
+            .map(|value| value.re)
+            .collect::<Vec<_>>();
+        p.resize(site.extended_mesh.len(), 0.0);
+        q.resize(site.extended_mesh.len(), 0.0);
+        result.shells.push(RadialValenceCoreShellAction {
+            site_index: site.site_index,
+            shell_index,
+            kappa: shell.kappa,
+            p,
+            q,
+            spherical_expectation: Hartree(average_expectation.re),
+            action_trace: Hartree(shell_trace.re),
+            imaginary_residual,
+        });
+        result.imaginary_residual = result.imaginary_residual.max(imaginary_residual);
+        trace += shell_trace;
+    }
+    result.action_trace = Hartree(trace.re);
+    result.imaginary_residual = result.imaginary_residual.max(trace.im.abs());
+    Ok(result)
+}
+
+fn onsite_action_for_mu(
+    kernel: &OnsiteRadialCoulomb,
+    core: OrbitalRef<'_>,
+    occupied: &[OrbitalRef<'_>],
+    density: &[Complex64],
+) -> Result<(Vec<Complex64>, Vec<Complex64>), OnsiteRadialCoreFockError> {
+    let mesh = kernel.mesh();
+    let nr = mesh.len();
+    let n = occupied.len();
+    let mut p = vec![Complex64::default(); nr];
+    let mut q = p.clone();
+    for (inner_index, inner) in occupied.iter().copied().enumerate() {
+        let weights = &density[inner_index * n..(inner_index + 1) * n];
+        if weights.iter().all(|value| *value == Complex64::default()) {
+            continue;
+        }
+        let mut source = vec![Complex64::default(); lm_count(kernel.l_max()) * nr];
+        for l in 0..=pair_l_max(inner.channel, core.channel) {
+            for m in -(l as i32)..=l as i32 {
+                let lm = Lm::new(l, m)
+                    .map_err(CoulombError::from)
+                    .map_err(RadialValenceCoreError::from)?;
+                // The common operator consumes inner^dagger * core, not its
+                // conjugate: reverse the isolated helper's angular operands.
+                let radial = physical_pair_radial(mesh, core, inner, l, m)?;
+                for (target, value) in source[lm.index() * nr..(lm.index() + 1) * nr]
+                    .iter_mut()
+                    .zip(radial)
+                {
+                    *target = Complex64::new(value, 0.0);
+                }
+            }
+        }
+        let potential = kernel.apply(&source)?;
+        for (outer, &weight) in occupied.iter().zip(weights) {
+            if weight == Complex64::default() {
+                continue;
+            }
+            let outer_norm = outer.normalization.sqrt();
+            for l in 0..=pair_l_max(core.channel, outer.channel) {
+                for m in -(l as i32)..=l as i32 {
+                    let lm = Lm::new(l, m)
+                        .map_err(CoulombError::from)
+                        .map_err(RadialValenceCoreError::from)?;
+                    let pp = spinor_gaunt(core.channel, lm, outer.channel);
+                    let qq = spinor_gaunt(
+                        core.channel.opposite_kappa(),
+                        lm,
+                        outer.channel.opposite_kappa(),
+                    );
+                    for index in 0..nr {
+                        let value = weight * potential[lm.index() * nr + index]
+                            / (mesh.radii()[index].get() * outer_norm);
+                        p[index] -= value * (pp * outer.p[index]);
+                        q[index] -= value * (qq * outer.q[index]);
+                    }
+                }
+            }
+        }
+    }
+    Ok((p, q))
 }
 
 /// Apply the spherical VC exchange kernel generated by occupied valence density.
