@@ -1,0 +1,5 @@
+{
+  "repository": "https://github.com/RESTGroup/tblis-rs.git",
+  "commit": "daa44915913eb125cd4a0f5dae3e1515aa0229cf",
+  "patch": "dependencies/tblis.patch"
+}

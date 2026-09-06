@@ -15,7 +15,7 @@ members = [
     "crates/mt-runtime",
     "crates/mt-python",
 ]
-exclude = ["vendor/tblis-src"]
+exclude = ["vendor/tblis-src", ".local-deps/tblis-rs"]
 
 [workspace.package]
 version = "0.2.0"
@@ -38,6 +38,8 @@ toml = "0.8.20"
 # Preserve tblis-src's bundled default, but let machine-local TBLIS_DIR select
 # an installed library without attempting the source build.
 tblis-src = { path = "vendor/tblis-src" }
+# Einsum temporaries must use the same allocation layout as Vec's deallocator.
+tblis = { path = ".local-deps/tblis-rs/tblis" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

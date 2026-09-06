@@ -98,6 +98,28 @@ normative convention summary is in [CONVENTIONS.md](CONVENTIONS.md).
 
 ## Build and test
 
+Before running Cargo or maturin, fetch the pinned Rust TBLIS wrapper and apply
+the repository's small patch (requires Git and Python 3):
+
+```sh
+python scripts/prepare_tblis.py
+```
+
+`dependencies/tblis.json` pins the full upstream commit; the checkout lives in
+`.local-deps/tblis-rs`, excluded through Git's local `info/exclude`. No upstream
+wrapper sources are tracked here. Repeating preparation checks the pin and
+applied patch without fetching a moving branch. Cargo alone does not perform
+this preparation. The patch keeps `tblis-ffi` on the registry and `tblis-src`
+on our existing override, and uses ordinary `Vec` allocation for einsum
+temporaries so allocation and deallocation layouts match on Windows. It removes
+the extra 64-byte alignment; its performance impact has not been measured.
+
+Check upstream monthly and validate candidate commits in a separate checkout;
+do not advance the pin automatically. An approved upgrade changes the pin and,
+if necessary, the patch in one reviewed commit. Move the previous local checkout
+aside before preparing a changed pin or patch. Validate with the focused tensor
+tests and the native Windows build, including a large einsum intermediate.
+
 ```sh
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings

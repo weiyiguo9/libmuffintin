@@ -65,14 +65,19 @@ fn path_candidates(env_candidates: &[&str]) -> impl Iterator<Item = PathBuf> {
 }
 
 fn link_tblis() {
-    let env_candidates = [
-        "TBLIS_DIR",
-        "REST_EXT_DIR",
-        "LD_LIBRARY_PATH",
-        "DYLD_LIBRARY_PATH",
-        "PATH",
-    ];
-    for path in path_candidates(&env_candidates) {
+    let env_candidates: &[&str] = if std::env::var_os("TBLIS_DIR").is_some() {
+        // An explicit installation must not add unrelated PATH DLLs to the
+        // linker's search path (e.g. MSYS2's libpython3.dll or System32 CRTs).
+        &["TBLIS_DIR"]
+    } else {
+        &[
+            "REST_EXT_DIR",
+            "LD_LIBRARY_PATH",
+            "DYLD_LIBRARY_PATH",
+            "PATH",
+        ]
+    };
+    for path in path_candidates(env_candidates) {
         println!("cargo:rustc-link-search=native={}", path.display());
     }
     if cfg!(feature = "static") {

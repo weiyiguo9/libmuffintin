@@ -1069,6 +1069,7 @@ name = "libmuffintin-io"
 version = "0.2.0"
 dependencies = [
  "hdf5-metno",
+ "hdf5-metno-types",
  "libmuffintin-core",
  "libmuffintin-symmetry",
  "num-complex",
@@ -2579,8 +2580,6 @@ checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 [[package]]
 name = "tblis"
 version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0043f8c30641ed3d3e132c56fc71c39cd13a6d1992c5910f49dc7259c3853f31"
 dependencies = [
  "derive_builder",
  "duplicate",

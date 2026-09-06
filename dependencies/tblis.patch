@@ -1,0 +1,32 @@
+diff --git a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -14,6 +14,6 @@ license = "Apache-2.0"
+ [workspace.dependencies]
+-tblis-ffi = { path = "./tblis-ffi", version = "0.2.6" }
+-tblis-src = { path = "./tblis-src", version = "0.2.6" }
++tblis-ffi = { version = "=0.2.6" }
++tblis-src = { version = "=0.2.6" }
+ num = { version = "0.4" }
+ libloading = { version = "0.8" }
+ cmake = { version = "0.1" }
+diff --git a/tblis/src/alloc_vec.rs b/tblis/src/alloc_vec.rs
+--- a/tblis/src/alloc_vec.rs
++++ b/tblis/src/alloc_vec.rs
+@@ -3,8 +3,7 @@ use core::ptr::NonNull;
+ /// Create an uninitialized vector with the given size.
+ ///
+-/// This function depends on `aligned_alloc` feature.
+-/// If `aligned_alloc` is enabled, it will align at 64-bit when size of vector
+-/// elements is larger than 128.
++/// Use Vec's allocation layout so its deallocator receives the same layout.
++/// Over-aligned allocations cannot be owned by an ordinary Vec on Windows.
+ ///
+ /// # Safety
+ ///
+@@ -15,4 +14,4 @@ use core::ptr::NonNull;
+ /// Nevertheless, if `T` is some type of `MaybeUninit`, then this will not UB.
+ pub unsafe fn uninitialized_vec<T>(size: usize) -> Result<Vec<T>, String> {
+-    unsafe { aligned_uninitialized_vec::<T, 128>(size, 64) }
++    unsafe { unaligned_uninitialized_vec(size) }
+ }

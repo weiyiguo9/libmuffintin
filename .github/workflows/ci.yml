@@ -22,6 +22,8 @@ jobs:
           components: rustfmt, clippy
       - name: Install libhdf5
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libhdf5-dev
+      - name: Prepare pinned TBLIS wrapper
+        run: python3 scripts/prepare_tblis.py
       - name: Formatting
         run: cargo fmt --all --check
       - name: Clippy

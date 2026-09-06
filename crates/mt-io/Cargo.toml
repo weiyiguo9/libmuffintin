@@ -19,5 +19,9 @@ serde.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# GNU Rust and the HDF5 DLL may use different CRT heaps.
+hdf5-metno-types = { version = "=0.11.0", features = ["h5-alloc"] }
+
 [lints]
 workspace = true
