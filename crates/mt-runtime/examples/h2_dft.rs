@@ -23,7 +23,7 @@ use muffintin_io::{
 };
 
 const BOND_LENGTH_BOHR: f64 = 1.4;
-const MUFFIN_TIN_RADIUS_BOHR: f64 = 0.65;
+const DEFAULT_MUFFIN_TIN_RADIUS_BOHR: f64 = 0.65;
 const RADIAL_FIRST_BOHR: f64 = 1.0e-6;
 const RADIAL_POINTS: usize = 401;
 const FREE_ATOM_FIRST_BOHR: f64 = 1.0e-8;
@@ -51,6 +51,7 @@ struct Options {
     field_g_cutoff: f64,
     speed_of_light: f64,
     xc_grid: Option<[usize; 3]>,
+    muffin_tin_radius: f64,
 }
 
 impl Default for Options {
@@ -62,6 +63,7 @@ impl Default for Options {
             field_g_cutoff: 12.0,
             speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             xc_grid: None,
+            muffin_tin_radius: DEFAULT_MUFFIN_TIN_RADIUS_BOHR,
         }
     }
 }
@@ -88,9 +90,12 @@ impl Options {
         if let Some(value) = arguments.next() {
             options.xc_grid = Some([value.parse()?; 3]);
         }
+        if let Some(value) = arguments.next() {
+            options.muffin_tin_radius = value.parse()?;
+        }
         if arguments.next().is_some() {
             return Err(
-                "usage: h2_dft [output-directory] [box-bohr] [orbital-g] [field-g] [speed-of-light-au] [xc-grid-size]"
+                "usage: h2_dft [output-directory] [box-bohr] [orbital-g] [field-g] [speed-of-light-au] [xc-grid-size] [muffin-tin-radius-bohr]"
                     .into(),
             );
         }
@@ -99,12 +104,20 @@ impl Options {
             ("orbital-g-bohr-inverse", options.orbital_g_cutoff),
             ("field-g-bohr-inverse", options.field_g_cutoff),
             ("speed-of-light-au", options.speed_of_light),
+            ("muffin-tin-radius-bohr", options.muffin_tin_radius),
         ] {
             if !value.is_finite() || value <= 0.0 {
                 return Err(format!("{name} must be finite and positive, got {value}").into());
             }
         }
-        if options.box_size_bohr <= BOND_LENGTH_BOHR + 2.0 * MUFFIN_TIN_RADIUS_BOHR {
+        if 2.0 * options.muffin_tin_radius >= BOND_LENGTH_BOHR {
+            return Err(format!(
+                "muffin-tin spheres overlap: radius {} exceeds half the H2 bond",
+                options.muffin_tin_radius
+            )
+            .into());
+        }
+        if options.box_size_bohr <= BOND_LENGTH_BOHR + 2.0 * options.muffin_tin_radius {
             return Err(format!(
                 "box-bohr must exceed the H2 bond plus both muffin-tin radii, got {}",
                 options.box_size_bohr
@@ -121,8 +134,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("speed_of_light_au={:.10}", options.speed_of_light);
 
     let radial_log_increment =
-        (MUFFIN_TIN_RADIUS_BOHR / RADIAL_FIRST_BOHR).ln() / (RADIAL_POINTS - 1) as f64;
-    let geometry = h2_geometry(options.box_size_bohr, radial_log_increment);
+        (options.muffin_tin_radius / RADIAL_FIRST_BOHR).ln() / (RADIAL_POINTS - 1) as f64;
+    let geometry = h2_geometry(
+        options.box_size_bohr,
+        options.muffin_tin_radius,
+        radial_log_increment,
+    );
     let structure = Structure::new(geometry)?;
     let field_layout = RegionalFieldLayout::from_g_cutoff(
         &structure,
@@ -166,8 +183,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("system=H2 bond_bohr={BOND_LENGTH_BOHR:.6} electron_count={ELECTRON_COUNT:.1}");
     println!(
-        "route=scalar-koelling-harmon exchange_correlation=lda-pw92 cores=none box_bohr={:.6} rmt_bohr={MUFFIN_TIN_RADIUS_BOHR:.6} orbital_g_bohr_inverse={:.6} orbital_l_max={SCF_ORBITAL_L_MAX} field_g_bohr_inverse={:.6} field_l_max={ATOMIC_START_FIELD_L_MAX}",
-        options.box_size_bohr, options.orbital_g_cutoff, options.field_g_cutoff,
+        "route=scalar-koelling-harmon exchange_correlation=lda-pw92 cores=none box_bohr={:.6} rmt_bohr={:.6} orbital_g_bohr_inverse={:.6} orbital_l_max={SCF_ORBITAL_L_MAX} field_g_bohr_inverse={:.6} field_l_max={ATOMIC_START_FIELD_L_MAX}",
+        options.box_size_bohr,
+        options.muffin_tin_radius,
+        options.orbital_g_cutoff,
+        options.field_g_cutoff,
     );
     println!(
         "atomic_start_checkpoint={} charge_target={:.16e} charge_represented={:.16e} charge_error={:.3e} normalization_scale={:.16e}",
@@ -232,7 +252,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn h2_geometry(box_size_bohr: f64, radial_log_increment: f64) -> GeometryV2 {
+fn h2_geometry(
+    box_size_bohr: f64,
+    muffin_tin_radius: f64,
+    radial_log_increment: f64,
+) -> GeometryV2 {
     let half_separation_fraction = BOND_LENGTH_BOHR / (2.0 * box_size_bohr);
     let sites = [
         ("H-1", [0.5 - half_separation_fraction, 0.5, 0.5]),
@@ -254,7 +278,7 @@ fn h2_geometry(box_size_bohr: f64, radial_log_increment: f64) -> GeometryV2 {
                 atomic_number: 1,
                 fractional_position: *fractional_position,
                 muffin_tin_radius_unit: LengthUnit::Bohr,
-                muffin_tin_radius: MUFFIN_TIN_RADIUS_BOHR,
+                muffin_tin_radius,
             })
             .collect(),
         radial_basis: sites
@@ -267,7 +291,7 @@ fn h2_geometry(box_size_bohr: f64, radial_log_increment: f64) -> GeometryV2 {
                     first: RADIAL_FIRST_BOHR,
                     log_increment: radial_log_increment,
                     point_count: RADIAL_POINTS,
-                    last: MUFFIN_TIN_RADIUS_BOHR,
+                    last: muffin_tin_radius,
                     consistency_tolerance: 1.0e-12,
                 },
                 radial_equation: RadialEquationTag::ScalarKoellingHarmon,

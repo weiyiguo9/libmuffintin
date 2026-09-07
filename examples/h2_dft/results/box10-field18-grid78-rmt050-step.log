@@ -1,0 +1,18 @@
+speed_of_light_au=137035.9895000000
+system=H2 bond_bohr=1.400000 electron_count=2.0
+route=scalar-koelling-harmon exchange_correlation=lda-pw92 cores=none box_bohr=10.000000 rmt_bohr=0.500000 orbital_g_bohr_inverse=6.000000 orbital_l_max=8 field_g_bohr_inverse=18.000000 field_l_max=8
+atomic_start_checkpoint=/private/tmp/claude-501/-Users-zerozaki07-tmp-libmuffintin/2869657f-a6cb-4121-80c4-3807aa7ee834/scratchpad/h2-runs/box10-field18-grid78-rmt050-step/h2.atomic-start.toml charge_target=2.0000000000000000e0 charge_represented=1.9999999999999554e0 charge_error=-4.463e-14 normalization_scale=9.5475825094923727e-1
+input=/private/tmp/claude-501/-Users-zerozaki07-tmp-libmuffintin/2869657f-a6cb-4121-80c4-3807aa7ee834/scratchpad/h2-runs/box10-field18-grid78-rmt050-step/h2.input.toml
+scf_iteration=1 total_energy_ha=-1.1712343865752284e0 energy_change_ha=none density_rms=4.2613088986662561e-3
+scf_iteration=2 total_energy_ha=-1.1446804947076195e0 energy_change_ha=2.6553891867608925e-2 density_rms=1.9937751529610619e-3
+scf_iteration=3 total_energy_ha=-1.1368049739271446e0 energy_change_ha=7.8755207804748206e-3 density_rms=1.1034896027459280e-4
+scf_iteration=4 total_energy_ha=-1.1368260683084499e0 energy_change_ha=2.1094381305264420e-5 density_rms=8.9425202134163904e-5
+scf_iteration=5 total_energy_ha=-1.1368094317790114e0 energy_change_ha=1.6636529438507353e-5 density_rms=2.4075775648436689e-6
+scf_iteration=6 total_energy_ha=-1.1368094301232987e0 energy_change_ha=1.6557126780725184e-9 density_rms=3.2439539881460286e-6
+scf_iteration=7 total_energy_ha=-1.1368094215083948e0 energy_change_ha=8.6149039013605488e-9 density_rms=3.9531380189270518e-8
+final_electron_count=2.0000000000002736e0
+scf_final iterations=7 total_energy_ha=-1.1368094215083948e0 energy_change_ha=Some(8.614903901360549e-9) density_rms=3.9531380189270518e-8 restart_checkpoint=/private/tmp/claude-501/-Users-zerozaki07-tmp-libmuffintin/2869657f-a6cb-4121-80c4-3807aa7ee834/scratchpad/h2-runs/box10-field18-grid78-rmt050-step/h2.restart.toml
+energy_terms_ha band=-7.4409228750472367e-1 core_eigenvalues=0.0000000000000000e0 madelung=-2.1606026073624429e0 coulomb=-9.7900046022034748e-1 exchange_correlation=-6.4704157977632437e-1 exchange_correlation_potential=-8.4512551934370084e-1 occupation_correction=-4.2612469394904728e-33 total=-1.1368094215083948e0
+real 459.46
+user 2194.53
+sys 101.93

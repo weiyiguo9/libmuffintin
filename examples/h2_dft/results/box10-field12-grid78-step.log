@@ -1,0 +1,18 @@
+speed_of_light_au=137035.9895000000
+system=H2 bond_bohr=1.400000 electron_count=2.0
+route=scalar-koelling-harmon exchange_correlation=lda-pw92 cores=none box_bohr=10.000000 rmt_bohr=0.650000 orbital_g_bohr_inverse=6.000000 orbital_l_max=8 field_g_bohr_inverse=12.000000 field_l_max=8
+atomic_start_checkpoint=/private/tmp/claude-501/-Users-zerozaki07-tmp-libmuffintin/2869657f-a6cb-4121-80c4-3807aa7ee834/scratchpad/h2-runs/box10-field12-grid78-step/h2.atomic-start.toml charge_target=2.0000000000000000e0 charge_represented=1.9999999999999785e0 charge_error=-2.154e-14 normalization_scale=9.5480569251790715e-1
+input=/private/tmp/claude-501/-Users-zerozaki07-tmp-libmuffintin/2869657f-a6cb-4121-80c4-3807aa7ee834/scratchpad/h2-runs/box10-field12-grid78-step/h2.input.toml
+scf_iteration=1 total_energy_ha=-1.1754956506767023e0 energy_change_ha=none density_rms=4.2949526633581552e-3
+scf_iteration=2 total_energy_ha=-1.1487262990555736e0 energy_change_ha=2.6769351621128701e-2 density_rms=2.0099163384263439e-3
+scf_iteration=3 total_energy_ha=-1.1407774688147450e0 energy_change_ha=7.9488302408285971e-3 density_rms=1.0914936337659137e-4
+scf_iteration=4 total_energy_ha=-1.1407978516750665e0 energy_change_ha=2.0382860321577212e-5 density_rms=8.6061175895110260e-5
+scf_iteration=5 total_energy_ha=-1.1407821018154551e0 energy_change_ha=1.5749859611391415e-5 density_rms=2.3278416336411909e-6
+scf_iteration=6 total_energy_ha=-1.1407820777944018e0 energy_change_ha=2.4021053368628031e-8 density_rms=3.2677832641787415e-6
+scf_iteration=7 total_energy_ha=-1.1407820830221824e0 energy_change_ha=5.2277806528167048e-9 density_rms=3.7740985139594549e-8
+final_electron_count=2.0000000000000124e0
+scf_final iterations=7 total_energy_ha=-1.1407820830221824e0 energy_change_ha=Some(5.227780652816705e-9) density_rms=3.7740985139594549e-8 restart_checkpoint=/private/tmp/claude-501/-Users-zerozaki07-tmp-libmuffintin/2869657f-a6cb-4121-80c4-3807aa7ee834/scratchpad/h2-runs/box10-field12-grid78-step/h2.restart.toml
+energy_terms_ha band=-7.4451381093489966e-1 core_eigenvalues=0.0000000000000000e0 madelung=-2.1746610208168922e0 coulomb=-9.8557088306578056e-1 exchange_correlation=-6.4764770286774809e-1 exchange_correlation_potential=-8.4592449965602112e-1 occupation_correction=-3.5377094400738811e-33 total=-1.1407820830221824e0
+real 466.42
+user 2372.43
+sys 112.08

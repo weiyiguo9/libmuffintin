@@ -78,9 +78,10 @@ HDF5_DIR="$(brew --prefix hdf5)" TBLIS_DIR="$(brew --prefix tblis)" \
 
 The arguments are output directory, cubic box side in Bohr, orbital reciprocal
 cutoff, density/potential reciprocal cutoff in inverse Bohr, speed of light in
-atomic units, and cubic XC integration grid size. The example uses a 0.65 Bohr
-muffin-tin radius, 401 radial points, orbital angular cutoff 8, field angular
-cutoff 8, and explicit −0.4 Ha linearization energies. It writes the
+atomic units, cubic XC integration grid size, and an optional muffin-tin
+radius in Bohr (default 0.65; the spheres must not overlap). The example uses
+401 radial points, orbital angular cutoff 8, field angular cutoff 8, and
+explicit −0.4 Ha linearization energies. It writes the
 atomic-start checkpoint and Input V3 before SCF, and the accepted restart only
 after SCF converges.
 
@@ -113,13 +114,43 @@ real-space mask, kept for scale (its log is in the history of this directory).
 
 Both truncated-step runs converge in seven iterations and pass every gate, and
 their energies agree to 3e-13 Ha, against the 0.95 mHa that the mask moved
-between 39³ and 78³: the XC grid is no longer a physical parameter here. The
-remaining 0.8 mHa total-energy offset splits into 0.59 mHa in $E_{xc}$ and
-0.23 mHa in $E-E_{xc}$; the field cutoff (12 → 18 moved the energy by 2.5 mHa)
-and the 0.65 Bohr sphere radius have not been converged, and the periodic
-Gaussian reference carries its own density-fitting error, so the offset is not
-attributed to either code. Raw logs are `results/box10-field18-grid78-step.log`
-and `results/box10-field18-grid60-step.log`.
+between 39³ and 78³: the XC grid is no longer a physical parameter here.
+
+## Where the remaining offset sits
+
+The 0.8 mHa offset of the 78³ row was split by varying one parameter at a
+time at 10 Bohr, all against the 10 Bohr periodic reference. Differences are
+LAPW minus PySCF in mHa; "rest" is $E-E_{xc}$.
+
+| RMT (Bohr) | orbital cutoff | field cutoff | Energy (Ha) | ΔHOMO | ΔE | Δ$E_{xc}$ | Δrest | Wall (s) |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.65 | 6 | 12 | −1.1407820830 | 0.546 | −1.652 | 1.053 | −2.705 | 466 |
+| 0.65 | 6 | 18 | −1.1383185408 | 0.171 | 0.812 | 0.585 | 0.227 | 458 |
+| 0.65 | 6 | 24 | −1.1381825688 | 0.154 | 0.948 | 0.564 | 0.384 | 555 |
+| 0.50 | 6 | 18 | −1.1368094215 | 0.757 | 2.321 | 1.660 | 0.662 | 459 |
+| 0.60 | 6 | 18 | −1.1380697975 | 0.323 | 1.061 | 0.873 | 0.188 | 437 |
+| 0.65 | 7 | 18 | −1.1390599351 | 0.050 | 0.071 | 0.188 | −0.117 | 1314 |
+
+- Field cutoff: 12 → 18 moves the energy by 2.46 mHa, 18 → 24 by 0.14 mHa,
+  so 18 is converged to about 0.1 mHa and the remaining offset does not sit
+  there. Note that the field layout now also truncates the XC step function.
+- Sphere radius at fixed plane-wave cutoff 6: 0.50 → 0.60 → 0.65 lowers the
+  energy by 1.26 and 0.25 mHa, with ΔHOMO and Δ$E_{xc}$ shrinking in step.
+  That is the plane-wave basis becoming more complete (RKmax 3.0 → 3.9), not
+  an independent sphere effect.
+- Orbital cutoff 6 → 7 (RKmax 3.9 → 4.55) lowers the energy by 0.74 mHa and
+  leaves 0.07 mHa in the total, 0.05 mHa in the HOMO and 0.19 mHa in
+  $E_{xc}$. The variational basis was the offset.
+
+The reference side was checked independently: Gaussian density fitting with
+the same auxiliary basis changes the isolated energy by 0.001 mHa; the
+periodic reference converges to the isolated exact value as −1.83, −0.27,
+−0.04 and −0.006 mHa at 10, 12, 14 and 16 Bohr; and aug-cc-pV6Z lowers the
+aug-cc-pV5Z energy by 0.014 mHa both isolated and in the 10 Bohr box. The
+periodic HOMO stays 4.5 to 2.2 mHa below the isolated value from 10 to 16 Bohr
+because of the $1/L^3$ average-potential offset, which is why the eigenvalue
+gate compares boxes of the same size. Raw logs are the
+`results/box10-*-step.log` files.
 
 ## Execution cost
 
