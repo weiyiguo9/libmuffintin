@@ -2,7 +2,7 @@
 
 - Workstream ID: `ctf-rs`
 - Plan version: 1
-- Approval: proposed (awaiting user acceptance)
+- Approval: accepted 2026-09-08 (immutable; direction changes make plan.v2)
 - Supersedes: `plans/ctf-slate-binding/plan.v1.md` (frozen)
 - Repository: `~/tmp/ctf-rs` on the Mac, `D:/projects/ctf-rs` on MSI; upstream
   cc4s/ctf pinned at `f69cbb46e23bc2f39cda5722ce096f56301dab4f`

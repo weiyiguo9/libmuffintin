@@ -93,3 +93,14 @@ restated here so the generator has a complete input; nothing changes state.
 - note: h2-hf = awaiting user acceptance before Codex starts
 - state: kr-hf = open
 - note: kr-hf = 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested
+
+## 2026-09-08 · evt-0008 · ctf-rs plan.v1 accepted · actor: user
+
+The user accepted `plans/ctf-rs/plan.v1.md` and handed it to Codex on MSI
+(`D:/projects/ctf-rs`, harness mirror read-only). Authorized: B0, then D1 to
+D6 in order; S1 stays deferred. Milestone closes and handoffs arrive as
+ctf-rs commits plus `docs/validation.md` sections and are recorded here as
+`evd` entries with the ctf-rs SHA.
+
+- state: ctf-rs = active: B0 authorized, D1 to D6 in order; S1 deferred
+- note: ctf-rs = plan.v1 accepted 2026-09-08; Codex on MSI executes; evidence in ctf-rs docs/validation.md
