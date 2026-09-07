@@ -266,3 +266,17 @@ the run; no bound, row, or setting of plan.v1 changes.
 
 - state: h2-hf = handoff: A0 blocked by the fft-fftw interstitial MPB contraction (>300 s per rebuild, one core); memory peak 2.1 GB
 - note: h2-hf = evd-0002 handoff re-read by evt-0013; perf fix on main needed before A0 can complete
+
+## 2026-09-08 · evt-0014 · h2-hf resumes after a perf fix on main · actor: user
+
+The user authorized a performance commit on `main` before A0 is rerun:
+batch the `fft-fftw` variant of `spinor_mpb::contract_interstitial_selections`
+per left band (the non-fftw variant already batches 64 selections per
+einsum) and name where `vv.mt_contraction` spends its 49.7 s. Acceptance
+is class R only: the `gamma_valence_hf` identities stay at 1e-8 and the
+fftw and non-fftw vertices agree to 1e-10. Codex on the Mac executes, then
+resumes plan.v1 at A0 with the exact evd-0002 command; the plan is
+unchanged. Codex writes `evd-0003`+ and `evt-0015`+.
+
+- state: h2-hf = active: perf fix on the fft-fftw interstitial contraction, then A0 to Bv as in plan.v1
+- note: h2-hf = evt-0013 diagnosis; Codex on the Mac executes; evd-0003+ / evt-0015+
