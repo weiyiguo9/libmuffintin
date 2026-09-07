@@ -296,3 +296,19 @@ command: MPI runner cargo test for the twelve D5 drivers; acceptance-native.ps1 
 
 - state: ctf-rs = D5 closed
 - note: ctf-rs = native partition/value/algebra/common interfaces and FFT/DFT drivers closed; D6 next
+
+## 2026-09-08 · evd-1007 · ctf-rs D6 native runtime handoff · ctf-rs 17402f3c8cfbbfd3467d8092682ae77eabe4fbfb
+
+```text
+DIGIT / HANDOFF
+milestone: D6; commit: 17402f3c8cfbbfd3467d8092682ae77eabe4fbfb
+validation.md section: D6 dense drivers and native runtime handoff (2026-09-08)
+Q: dense test_suite subset, eleven examples, dense low-memory path, two informational benchmarks and native dense runtime; class: R; ref: pinned f69cbb46
+bound: upstream per driver; observed: all WSL values within, native produced no value
+runs: WSL world/parity at 1/2/4 once; benchmarks once at four ranks; native compile/link passed; native runtime stopped before first driver
+open: can Microsoft MPI mpiexec be installed so the native 1/2/4-rank dense runtime can execute?
+command: MPI runner cargo test for D6 drivers; acceptance-native.ps1 -BuildOnly; acceptance-native.ps1 -D6Only
+```
+
+- state: ctf-rs = D6 handoff: d4_blas_flops never executed because mpiexec was not found
+- note: ctf-rs = D6 code and WSL 1/2/4 closed; native compile/link passed; install Microsoft MPI launcher before the one remaining runtime gate

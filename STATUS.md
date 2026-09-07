@@ -5,11 +5,11 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `69dafb8ea207a43d5aea39bda9e81a4e18a74385` (2026-09-08)
-- Last ledger entries: evd-1006 (MSI), evd-0002 (Mac), evt-0014 (Mac)
+- Last ledger entries: evd-1007 (MSI), evd-0002 (Mac), evt-0014 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
-| `ctf-rs` | D5 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | native partition/value/algebra/common interfaces and FFT/DFT drivers closed; D6 next |
+| `ctf-rs` | D6 handoff: d4_blas_flops never executed because mpiexec was not found | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | D6 code and WSL 1/2/4 closed; native compile/link passed; install Microsoft MPI launcher before the one remaining runtime gate |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
 | `h2-hf` | active: perf fix on the fft-fftw interstitial contraction, then A0 to Bv as in plan.v1 | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evt-0013 diagnosis; Codex on the Mac executes; evd-0003+ / evt-0015+ |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
