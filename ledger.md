@@ -280,3 +280,19 @@ unchanged. Codex writes `evd-0003`+ and `evt-0015`+.
 
 - state: h2-hf = active: perf fix on the fft-fftw interstitial contraction, then A0 to Bv as in plan.v1
 - note: h2-hf = evt-0013 diagnosis; Codex on the Mac executes; evd-0003+ / evt-0015+
+
+## 2026-09-08 · evd-1006 · ctf-rs D5 native interface close · ctf-rs 36fe4f7
+
+```text
+DIGIT / PASS
+milestone: D5; commit: 36fe4f7
+validation.md section: D5 native interface and FFT close (2026-09-08)
+Q: partition, algebra, vector/scalar, common helpers, FFT/DFT and endomorphism/function drivers; class: R; ref: pinned f69cbb46
+bound: exact interface checks and upstream per-driver numerical bounds; observed: all within
+runs: WSL world/parity at 1/2/4 once; native compile/link
+open: none
+command: MPI runner cargo test for the twelve D5 drivers; acceptance-native.ps1 -BuildOnly
+```
+
+- state: ctf-rs = D5 closed
+- note: ctf-rs = native partition/value/algebra/common interfaces and FFT/DFT drivers closed; D6 next
