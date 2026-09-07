@@ -155,3 +155,16 @@ command: cargo test --test scaling; MPI runner cargo test --test upstream_scalar
 
 - state: ctf-rs = D1 closed
 - note: ctf-rs = dense scaling, virtual traversal, strip/restore and packed indexed scaling closed; D2 next
+## 2026-09-08 · evt-0011 · hf-input proposed; ADR-0005 recorded · actor: user
+
+The user decided that Hartree–Fock enters through the same input file and
+`dft-scf` task as DFT, as `xc.kind = "exact-exchange"`, with the driver
+family chosen from `xc`, `relativity`, and the core channels
+(`decisions/ADR-0005-hf-is-an-xc-kind-of-dft-scf.md`). The refactor is
+`plans/hf-input/plan.v1.md`: schema, lowering, an exact spec-equality test,
+and the two HF examples reduced to input files plus printing. Gates G-HFI-1
+and G-HFI-2 are class R. It starts after `h2-hf` closes or hands off;
+`h2-hf` deliverables 1 and 2 are already on `main` (465be6e, 3ef6bca).
+
+- state: hf-input = proposed
+- note: hf-input = ADR-0005; starts after h2-hf is closed or handoff; no physics gates

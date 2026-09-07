@@ -18,7 +18,8 @@ the crates on `main` are not gates and are not listed here.
 | G-KR-HF | `kr-hf` | frozen-SRA total energy | GTO 4c-DC-HF, −2788.884 Ha | none set | `examples/relativistic_hf/` | open; 1.2 Ha gap as reported 2026-09-05 |
 | G-CTF-D1 to D6 | `ctf-rs` | each upstream driver's own metric, class R | pinned cc4s/ctf `f69cbb46` | upstream tolerance, unchanged | ctf-rs `docs/validation.md`, WSL 1/2/4; native runtime at D6 | proposed |
 | G-CTF-S1 | `ctf-rs` | sparse drivers listed in `plans/ctf-rs/plan.v1.md` | same | same | same | proposed, after D6 |
-
+| G-HFI-1 | `hf-input` | lowered HF spec vs hand-built spec, six rows in `plans/hf-input/plan.v1.md` | the hand-built spec | exact (`PartialEq`) | `crates/mt-runtime/tests/input_exact_exchange.rs` (planned) | proposed |
+| G-HFI-2 | `hf-input` | `hf_energy_terms_ha total`, converted `h2_hf` example, A0 settings | the `h2-hf` A0 log on `main` | 1e-10 Ha | `examples/h2_dft/compare.py` HF mode | proposed |
 ## Discipline
 
 Every gate run follows Stop That Digit
