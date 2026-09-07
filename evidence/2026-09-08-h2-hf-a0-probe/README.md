@@ -20,3 +20,30 @@ Reading: the `fft-fftw` variant of `contract_interstitial_selections`
 issues one TBLIS einsum per band pair with a `[1, n_raw]` left factor; the
 non-fftw variant batches 64 selections per einsum. Time, not memory, killed
 A0.
+
+## After the batching commit (main 44fd188 / a5bd71d)
+
+- `sample-batched-top.txt`: 20 s sample at 120 s. Inside
+  `contract_interstitial_selections`: 43 % in the batched einsum (TBLIS →
+  BLIS gemm, six of every ten samples in `bli_thrcomm_barrier_atomic`),
+  46 % in the per-pair `PairFft::correlate` and amplitude copies, 9 % in
+  element-wise `DenseEigenvectors::at` reads.
+- `timing-sizes-1thread.log`: a scratch build printing the problem size at
+  the start of `vv.interstitial`:
+
+  ```text
+  selections=1060900  n_raw=3809  n_pw=515  theta_shape=[3809, 515]
+  pair fft grid dims=[21, 21, 21] len=9261
+  ```
+
+  `run_valence_hf` → `rebuild_exchange` (`crates/mt-runtime/src/hf_scf.rs`)
+  selects every `(left_band, right_band)` pair of the 1030-band spinor
+  window, 1030² = 1 060 900 vertices per MPB rebuild, six 21³ FFTs and one
+  gather each, before the exchange assembly applies the occupations. The
+  relaxed-core frame (`rebuild_core_feedback_frame`) already restricts
+  `left_band` to bands with nonzero valence occupation. Batching the
+  projection could not help: the pair count, not the per-pair cost, is the
+  problem.
+- Thread count is not the lever: with all thread counts forced to 1 the
+  first `vv.interstitial` was still running at a 420 s cap; with ten
+  threads at a 300 s cap (`vv.mt_contraction` 48.4 s and 37.1 s).

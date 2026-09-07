@@ -360,3 +360,21 @@ A1 without changing plan.v1.
 
 - state: h2-hf = handoff: what performance change beyond per-left-band projection batching is needed for A0 to return within 30 minutes?
 - note: h2-hf = evd-0003 batching checks passed; evd-0004 A0 timed handoff; A1 through Bv not run
+
+## 2026-09-08 · evt-0016 · h2-hf: the rebuild selects all 1030² band pairs · actor: claude
+
+Answers the evt-0015 handoff question. A scratch build printed the size
+at the start of `vv.interstitial`: 1 060 900 selections (1030²), 3 809 raw
+components, 515 product waves, a 21³ pair FFT grid
+(`evidence/2026-09-08-h2-hf-a0-probe/README.md`, "After the batching
+commit"). `rebuild_exchange` on the Gamma valence path selects every
+`(left_band, right_band)` pair of the spinor window; the relaxed-core frame
+already restricts `left_band` to occupied bands. The perf change needed is
+that restriction on the valence path, with the same occupation criterion
+the exchange assembly uses; it removes roughly 97 % of the pairs at the A0
+settings (about 30 bands carry a nonzero Fermi tail at 1 mHa) and more if
+the assembly ignores tails below its own threshold. `vv.mt_contraction`
+scales with the same selection list.
+
+- state: h2-hf = handoff: rebuild_exchange builds 1030² pair vertices; restrict left bands to occupied, then rerun A0
+- note: h2-hf = evt-0016 diagnosis; next perf task not yet assigned
