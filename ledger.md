@@ -312,3 +312,51 @@ command: MPI runner cargo test for D6 drivers; acceptance-native.ps1 -BuildOnly;
 
 - state: ctf-rs = D6 handoff: d4_blas_flops never executed because mpiexec was not found
 - note: ctf-rs = D6 code and WSL 1/2/4 closed; native compile/link passed; install Microsoft MPI launcher before the one remaining runtime gate
+
+## 2026-09-08 · evd-0003 · h2-hf FFTW interstitial batching · main 44fd1886a60bc6ee2b1ecb8cf303ab6cc4abc644
+
+```text
+DIGIT / PASS
+Q: exchange/eigenvalue/total identity residuals (Ha); class: R; ref: gamma_valence_hf fixture
+bound: 1e-8 unchanged; Delta: every residual passed the existing assertions
+checks: focused test once without and once with fft-fftw; runs: 2; numerical verification closed
+
+DIGIT / PASS
+Q: first-build interstitial vertex coefficients; class: R; ref: non-fftw build
+bound: 1e-10 absolute; Delta: 0; d: 0
+checks: 432 complex coefficients, no key mismatches; comparisons: 1; numerical verification closed
+
+STUDY / REPORT
+Q: first-rebuild vv.interstitial seconds; class: P; ref: >300 s before
+bound: none; observed: >564 s after, first rebuild incomplete at 600 s process cap
+context: vv.mt_contraction was 49.667629 s before and 35.201104 s after
+commands: cargo test -p libmuffintin-runtime --test gamma_valence_hf; cargo test -p libmuffintin-runtime --features fft-fftw --test gamma_valence_hf; gawk coefficient comparison recorded in the evidence README
+log: evidence/2026-09-08-h2-hf-fft-batching/timing-after.log
+scope: coefficient dumps and their exact comparison command are in evidence/2026-09-08-h2-hf-fft-batching/. The temporary test hook and timing example were never committed.
+```
+
+## 2026-09-08 · evd-0004 · h2-hf G-H2-HF-0 rerun · main 44fd1886a60bc6ee2b1ecb8cf303ab6cc4abc644, recorded through a5bd71dbc9a604c094ee60abfa1ab8541fce24a5
+
+```text
+DIGIT / HANDOFF
+Q: exchange/eigenvalue/total identity residuals (Ha); class: A; ref: 0
+bound: 1e-8; Delta: unavailable because no outer iteration completed
+checks: exact A0 rerun reached the authorized 1800 s wall limit; runs: 1
+unresolved: what performance change beyond per-left-band projection batching is needed for A0 to return within 30 minutes?
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a0 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 2>&1 | tee examples/h2_dft/results/hf-a0.log
+supervisor: /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 1800s
+log: examples/h2_dft/results/hf-a0.log (main)
+timing log: evidence/2026-09-08-h2-hf-fft-batching/timing-after.log
+scope: A0 stopped under the user-authorized wall-time rule. A1, A1v, A2, B, and Bv were not run; no downstream evidence entry is claimed.
+```
+
+## 2026-09-08 · evt-0015 · h2-hf handed off after bounded A0 rerun · actor: codex
+
+The requested `fft-fftw` projection batching is on `main` and passed both
+class-R checks. Its single timing probe still did not complete the first MPB
+rebuild, and the unchanged committed A0 example did not return within the
+authorized 30-minute wall limit. Numerical execution therefore stops before
+A1 without changing plan.v1.
+
+- state: h2-hf = handoff: what performance change beyond per-left-band projection batching is needed for A0 to return within 30 minutes?
+- note: h2-hf = evd-0003 batching checks passed; evd-0004 A0 timed handoff; A1 through Bv not run
