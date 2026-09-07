@@ -9,7 +9,8 @@ Usage, from the harness worktree root:
 Inputs:
 - ledger.md: entry headings ``## <date> · <evt|evd>-NNNN · <title>`` and, inside
   an entry, ``- state: <workstream> = <state>`` and ``- note: <workstream> = <text>``.
-  The last state and note per workstream win.
+  The state and note from the highest-numbered entry per workstream win;
+  file order is not chronological after a union merge of two writers.
 - plans/<workstream>/plan.vN.md headers: ``- Workstream ID:``, ``- Plan version:``,
   ``- Approval:``. The highest version per workstream is shown.
 - ``git rev-parse main`` in the shared repository, when available.
@@ -26,20 +27,31 @@ STATE_RE = re.compile(r"^- state: (\S+) = (.+?)\s*$")
 NOTE_RE = re.compile(r"^- note: (\S+) = (.+?)\s*$")
 
 
+def entry_number(entry_id):
+    return int(entry_id.split("-", 1)[1])
+
+
 def parse_ledger(path):
+    """Return (entries, states, notes); states and notes map a workstream to the
+    text from its highest-numbered entry, so an interleaved union merge cannot
+    resurrect an older state."""
     entries, states, notes = [], {}, {}
+    current = -1
     for line in path.read_text(encoding="utf-8").splitlines():
         match = HEAD_RE.match(line)
         if match:
             entries.append(match.groups())
+            current = entry_number(match.group(2))
             continue
-        match = STATE_RE.match(line)
-        if match:
-            states[match.group(1)] = match.group(2)
-            continue
-        match = NOTE_RE.match(line)
-        if match:
-            notes[match.group(1)] = match.group(2)
+        for regex, table in ((STATE_RE, states), (NOTE_RE, notes)):
+            match = regex.match(line)
+            if match:
+                workstream, text = match.groups()
+                if workstream not in table or current >= table[workstream][0]:
+                    table[workstream] = (current, text)
+                break
+    states = {k: v[1] for k, v in states.items()}
+    notes = {k: v[1] for k, v in notes.items()}
     return entries, states, notes
 
 
@@ -94,7 +106,14 @@ def main_tip(root):
 
 
 def render(entries, states, notes, plans, baseline):
-    last = f"{entries[-1][1]} ({entries[-1][0]})" if entries else "none"
+    latest = {}
+    for date, entry_id, _ in entries:
+        writer = "MSI" if entry_number(entry_id) >= 1000 else "Mac"
+        kind = entry_id.split("-", 1)[0]
+        key = (writer, kind)
+        if key not in latest or entry_number(entry_id) > entry_number(latest[key]):
+            latest[key] = entry_id
+    last = ", ".join(f"{latest[k]} ({k[0]})" for k in sorted(latest)) or "none"
     lines = [
         "# Status",
         "",
@@ -103,7 +122,7 @@ def render(entries, states, notes, plans, baseline):
         "`ledger.md` and the live `main` worktree are authoritative.",
         "",
         f"- Code baseline: {baseline}",
-        f"- Last ledger entry: {last}",
+        f"- Last ledger entries: {last}",
         "",
         "| Workstream | State | Plan | Notes |",
         "|---|---|---|---|",
