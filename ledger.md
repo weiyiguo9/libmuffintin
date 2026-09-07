@@ -52,3 +52,11 @@ Workstream registered without a plan on record. State as reported on
 0.82 Ha too weak, CV 0.12 Ha too strong, CC matches after the smoothed
 Spencer–Alavi kernel change; every run used box 8 and omega 0.8. The `h2-hf`
 workstream is the sector-targeted test for this gap.
+
+## 2026-09-08 · evt-0005 · ctf-slate-binding superseded · actor: user
+
+The CTF/SLATE binding plan is retired. Its role is taken by the standalone
+`ctf-rs` repository (`~/tmp/ctf-rs`, a Rust port of cc4s CTF pinned at
+`f69cbb46e23bc2f39cda5722ce096f56301dab4f`) with its own coverage inventory
+and validation record; nothing from it is tracked on this branch. The plan
+file stays as history with a superseded header.
