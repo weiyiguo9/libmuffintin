@@ -73,3 +73,23 @@ This restates evt-0005 with the new plan path.
 - note: ctf-rs = plan.v1 dense-first; per-run evidence stays in ctf-rs docs/validation.md
 - state: ctf-slate-binding = frozen
 - note: ctf-slate-binding = superseded by plans/ctf-rs/plan.v1.md
+
+## 2026-09-08 · evt-0007 · STATUS.md generated from ledger state lines · actor: claude
+
+`update-status.py` renders STATUS.md from `- state:` and `- note:` lines in
+this ledger, the plan headers, and the main tip. The current states are
+restated here so the generator has a complete input; nothing changes state.
+
+- state: v0.1-lapw-foundation = closed
+- note: v0.1-lapw-foundation = superseded by v0.2
+- state: v0.2-isdf-thc = active (M-A to M-Kc closed, M-L open)
+- note: v0.2-isdf-thc = first M-L probe in evidence/2026-08-28-ml0-adaptive-rank-probe/
+- state: v0.3-mto-family = draft, not authorized
+- state: v0.4-emto-nmto = draft, not authorized
+- note: v0.4-emto-nmto = inherits v0.3
+- state: h2-lda = closed 2026-09-07
+- note: h2-lda = evd-0001; gates in examples/h2_dft/README.md on main
+- state: h2-hf = proposed
+- note: h2-hf = awaiting user acceptance before Codex starts
+- state: kr-hf = open
+- note: kr-hf = 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested

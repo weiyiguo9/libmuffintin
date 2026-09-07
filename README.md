@@ -30,13 +30,19 @@ and the same repo-local Git identity as `main`.
 ## Layout
 
 ```text
-STATUS.md      tracker: one row per workstream (navigation, not authority)
-ledger.md      append-only events and evidence, newest last
-gates.md       acceptance gates: quantity, reference, bound, where enforced
-plans/<ws>/    plan.vN.md; an accepted version is immutable, changes make v(N+1)
-decisions/     ADR-NNNN-<slug>.md
-evidence/      <date>-<topic>/ scripts, logs, and results with no home on main
+STATUS.md         tracker, generated: one row per workstream (navigation, not authority)
+update-status.py  regenerates STATUS.md; run before every harness commit
+ledger.md         append-only events and evidence, newest last
+gates.md          acceptance gates: quantity, reference, bound, where enforced
+plans/<ws>/       plan.vN.md; an accepted version is immutable, changes make v(N+1)
+decisions/        ADR-NNNN-<slug>.md
+evidence/         <date>-<topic>/ scripts, logs, and results with no home on main
 ```
+
+A ledger entry that changes a workstream's state carries
+`- state: <workstream> = <state>` and optionally `- note: <workstream> = <text>`;
+`update-status.py` renders `STATUS.md` from the last such lines, the plan
+headers, and the `main` tip. `STATUS.md` is never edited by hand.
 
 ## Authority order
 

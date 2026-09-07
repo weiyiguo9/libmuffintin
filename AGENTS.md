@@ -7,7 +7,11 @@
   Then inspect the live `main` worktree; never infer code state from records.
 - `ledger.md` is append-only. Add `evt-NNNN` entries for state changes and
   `evd-NNNN` entries for gate runs, newest last. Supersede a wrong entry with
-  a later one that names it.
+  a later one that names it. An entry that changes a workstream's state
+  carries `- state: <workstream> = <state>` (and optionally `- note:`).
+- `STATUS.md` is generated. After appending to the ledger or changing a plan
+  header run `python3 update-status.py` and commit the result; never edit
+  `STATUS.md` by hand. `python3 update-status.py --check` exits 1 when stale.
 - An accepted plan is immutable; write `plan.v(N+1).md` for a change of
   direction. `proposed` and `draft` plans may be edited in place.
 - Numerical acceptance follows Stop That Digit
