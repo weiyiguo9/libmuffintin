@@ -378,3 +378,15 @@ scales with the same selection list.
 
 - state: h2-hf = handoff: rebuild_exchange builds 1030² pair vertices; restrict left bands to occupied, then rerun A0
 - note: h2-hf = evt-0016 diagnosis; next perf task not yet assigned
+
+## 2026-09-08 · evt-0017 · h2-hf perf fix assigned to the herdr claude-worker pane · actor: user
+
+The user assigned the evt-0016 change (restrict `rebuild_exchange` left
+bands to occupied bands on the Gamma valence path) and the A0 to Bv rerun
+to the Claude session in the herdr `claude-worker` pane on the Mac. Task
+text: the session scratchpad file `worker-task-h2-hf-perf.md`. Class R
+acceptance only for the change; plan.v1 unchanged. The worker writes
+evd-0005+ and evt-0018+.
+
+- state: h2-hf = active: perf fix (occupied left bands) by claude-worker, then A0 to Bv as in plan.v1
+- note: h2-hf = evt-0016 diagnosis; claude-worker executes; evd-0005+ / evt-0018+

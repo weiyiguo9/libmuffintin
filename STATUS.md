@@ -5,13 +5,13 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `a5bd71dbc9a604c094ee60abfa1ab8541fce24a5` (2026-09-08)
-- Last ledger entries: evd-1007 (MSI), evd-0004 (Mac), evt-0016 (Mac)
+- Last ledger entries: evd-1007 (MSI), evd-0004 (Mac), evt-0017 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
 | `ctf-rs` | D6 handoff: d4_blas_flops never executed because mpiexec was not found | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | D6 code and WSL 1/2/4 closed; native compile/link passed; install Microsoft MPI launcher before the one remaining runtime gate |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
-| `h2-hf` | handoff: rebuild_exchange builds 1030² pair vertices; restrict left bands to occupied, then rerun A0 | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evt-0016 diagnosis; next perf task not yet assigned |
+| `h2-hf` | active: perf fix (occupied left bands) by claude-worker, then A0 to Bv as in plan.v1 | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evt-0016 diagnosis; claude-worker executes; evd-0005+ / evt-0018+ |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |
