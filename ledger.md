@@ -113,3 +113,14 @@ ledger IDs from 1001, pushes that branch, and the Mac merges it into
 `harness`. `ledger.md` and `STATUS.md` are union-merged and `STATUS.md` is
 regenerated after each merge (README "Two writers"). The ctf-rs milestone
 records of evt-0008 therefore arrive as `evd-1xxx` entries.
+
+## 2026-09-08 · evt-0010 · h2-hf plan.v1 accepted · actor: user
+
+`plans/h2-hf/plan.v1.md` is accepted and immutable. Codex on the Mac
+executes it against `main` at 69dafb8: deliverables 1 to 4, then steps A0,
+A1, A1v, A2, B, Bv as Stop That Digit contracts. Gates G-H2-HF-0 to 5 are
+open with the bounds fixed in `gates.md`. Verify steps arrive as `evd`
+entries from evd-0002; the closing `evt` carries `closed` or `handoff`.
+
+- state: h2-hf = active: deliverables 1 to 4, then A0 to Bv in order
+- note: h2-hf = plan.v1 accepted 2026-09-08; Codex on the Mac executes; logs in examples/h2_dft/results/hf-*.log

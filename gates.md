@@ -9,12 +9,12 @@ the crates on `main` are not gates and are not listed here.
 |---|---|---|---|---|---|---|
 | G-H2-LDA-1 | `h2-lda` | HOMO eigenvalue, LDA-PW92, matched box | periodic PySCF, `examples/h2_dft/periodic-reference.json` | 1e-3 Ha | `examples/h2_dft/compare.py` | closed, evd-0001 |
 | G-H2-LDA-2 | `h2-lda` | total energy, matched box | same | 2e-2 Ha | `examples/h2_dft/compare.py` | closed, evd-0001 |
-| G-H2-HF-0 | `h2-hf` | exchange, eigenvalue, and total identity residuals | 0 | 1e-8 Ha | `crates/mt-runtime/tests/gamma_valence_hf.rs` | proposed |
-| G-H2-HF-1 | `h2-hf` | $\lvert E_x + E_H/2 \rvert$ at the converged product basis | 0 | 5e-4 Ha | `compare.py` HF mode (planned) | proposed |
-| G-H2-HF-2 | `h2-hf` | $E_H$, box 8, field 18 | periodic PySCF RHF `exxdiv=None` | 5e-4 Ha | same | proposed |
-| G-H2-HF-3 | `h2-hf` | total energy, box 8 | same | 2e-3 Ha | same | proposed |
-| G-H2-HF-4 | `h2-hf` | HOMO, box 8 | same | 1e-3 Ha | same | proposed |
-| G-H2-HF-5 | `h2-hf` | $E_x$, sharp Spencer–Alavi kernel, box 12 | isolated PySCF RHF, −0.6585914 Ha | 1e-3 Ha | same | proposed |
+| G-H2-HF-0 | `h2-hf` | exchange, eigenvalue, and total identity residuals | 0 | 1e-8 Ha | `crates/mt-runtime/tests/gamma_valence_hf.rs` | open, evt-0010 |
+| G-H2-HF-1 | `h2-hf` | $\lvert E_x + E_H/2 \rvert$ at the converged product basis | 0 | 5e-4 Ha | `compare.py` HF mode (planned) | open, evt-0010 |
+| G-H2-HF-2 | `h2-hf` | $E_H$, box 8, field 18 | periodic PySCF RHF `exxdiv=None` | 5e-4 Ha | same | open, evt-0010 |
+| G-H2-HF-3 | `h2-hf` | total energy, box 8 | same | 2e-3 Ha | same | open, evt-0010 |
+| G-H2-HF-4 | `h2-hf` | HOMO, box 8 | same | 1e-3 Ha | same | open, evt-0010 |
+| G-H2-HF-5 | `h2-hf` | $E_x$, sharp Spencer–Alavi kernel, box 12 | isolated PySCF RHF, −0.6585914 Ha | 1e-3 Ha | same | open, evt-0010 |
 | G-KR-HF | `kr-hf` | frozen-SRA total energy | GTO 4c-DC-HF, −2788.884 Ha | none set | `examples/relativistic_hf/` | open; 1.2 Ha gap as reported 2026-09-05 |
 | G-CTF-D1 to D6 | `ctf-rs` | each upstream driver's own metric, class R | pinned cc4s/ctf `f69cbb46` | upstream tolerance, unchanged | ctf-rs `docs/validation.md`, WSL 1/2/4; native runtime at D6 | proposed |
 | G-CTF-S1 | `ctf-rs` | sparse drivers listed in `plans/ctf-rs/plan.v1.md` | same | same | same | proposed, after D6 |
