@@ -312,3 +312,22 @@ command: MPI runner cargo test for D6 drivers; acceptance-native.ps1 -BuildOnly;
 
 - state: ctf-rs = D6 handoff: d4_blas_flops never executed because mpiexec was not found
 - note: ctf-rs = D6 code and WSL 1/2/4 closed; native compile/link passed; install Microsoft MPI launcher before the one remaining runtime gate
+
+## 2026-09-08 · evd-1008 · ctf-rs D6 native runtime close · ctf-rs 354cf7dc1e2f675d8ed88352e6f579aa70185970
+
+```text
+DIGIT / PASS
+milestone: D6; commit: 354cf7dc1e2f675d8ed88352e6f579aa70185970
+validation.md section: D6 dense drivers and native runtime close (2026-09-08)
+Q: dense test_suite subset, eleven examples, dense low-memory path, two informational benchmarks and native dense runtime; class: R; ref: pinned f69cbb46
+bound: exact or upstream per driver; observed: all within
+runs: WSL world/parity at 1/2/4 once; benchmarks once at four ranks; native compile/link once; native runtime at 1/2/4 once after Microsoft MPI installation
+open: none
+command: MPI runner cargo test for D6 drivers; acceptance-native.ps1 -BuildOnly; acceptance-native.ps1 -D6Only
+```
+
+This entry supersedes the native-runtime HANDOFF in evd-1007 after the required
+Microsoft MPI launcher became available; no acceptance bound or fixture changed.
+
+- state: ctf-rs = D6 closed
+- note: ctf-rs = D6 WSL and native 1/2/4 passed; dense-first objective complete; S1 not started
