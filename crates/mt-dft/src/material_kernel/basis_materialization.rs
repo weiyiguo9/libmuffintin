@@ -24,6 +24,13 @@ fn atomic_reference_potential(extended: &ExtendedCorePotential) -> (ExponentialM
 }
 
 impl MaterialKernel {
+    pub(super) fn requires_atomic_reference_potential(basis: &ScfBasis) -> bool {
+        basis.channels.iter().any(|recipe| {
+            recipe.treatment != ScfChannelTreatment::Core
+                && recipe.generator == LinearizationEnergyGenerator::Atomic
+        })
+    }
+
     pub fn scalar_linearization_energies(
         &self,
         basis: &ScfBasis,
@@ -238,18 +245,22 @@ impl MaterialKernel {
         potential: &RegionalPotential,
         basis: &ScfBasis,
     ) -> Result<ScfBasis, MaterialKernelError> {
-        let context = self
-            .core_potentials
-            .get(&iteration)
-            .ok_or(MaterialKernelError::MissingCoreContinuation(iteration))?;
-        let meshes = self.channel_meshes(basis)?;
-        let extended = build_extended_core_potentials(
-            &context.electrostatic,
-            &context.exchange_correlation,
-            context.source_density(),
-            &meshes,
-            context.core_spec,
-        )?;
+        let extended = if Self::requires_atomic_reference_potential(basis) {
+            let context = self
+                .core_potentials
+                .get(&iteration)
+                .ok_or(MaterialKernelError::MissingCoreContinuation(iteration))?;
+            let meshes = self.channel_meshes(basis)?;
+            build_extended_core_potentials(
+                &context.electrostatic,
+                &context.exchange_correlation,
+                context.source_density(),
+                &meshes,
+                context.core_spec,
+            )?
+        } else {
+            Vec::new()
+        };
         self.materialize_nonspectral_basis(potential, basis, &extended)
     }
 
@@ -291,7 +302,7 @@ impl MaterialKernel {
                     recipe,
                     site_index,
                     potential,
-                    &extended[site_index].potential,
+                    extended.get(site_index).map(|built| &built.potential),
                     lo_ordinal,
                 )?
             };
@@ -306,7 +317,7 @@ impl MaterialKernel {
         recipe: &ScfChannelRecipe,
         site_index: usize,
         potential: &RegionalPotential,
-        extended: &ExtendedCorePotential,
+        extended: Option<&ExtendedCorePotential>,
         lo_ordinal: Option<usize>,
     ) -> Result<ScfResolvedChannelEnergy, MaterialKernelError> {
         let site = &self.sites[site_index];
@@ -352,6 +363,7 @@ impl MaterialKernel {
                 });
             }
             LinearizationEnergyGenerator::Atomic => {
+                let extended = extended.expect("atomic generator requires extended site potential");
                 let (atomic_mesh, atomic_potential) = atomic_reference_potential(extended);
                 let seed = match recipe.seed {
                     Some(seed) => Some(seed),
@@ -542,5 +554,32 @@ impl MaterialKernel {
                 extend_core_mesh(&site.up.mesh, outer_radius).map_err(Into::into)
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_channels_do_not_require_an_atomic_reference_potential() {
+        let mut basis = ScfBasis {
+            plane_wave_cutoff: InverseBohr(6.0),
+            l_max: 0,
+            channels: vec![ScfChannelRecipe {
+                site: "H".to_owned(),
+                identity: ScfChannelIdentity::ScalarL { n: 1, l: 0 },
+                treatment: ScfChannelTreatment::Valence,
+                derivative_order: 0,
+                generator: LinearizationEnergyGenerator::Explicit,
+                seed: Some(Hartree(-0.4)),
+                provenance: crate::ScfChannelProvenance::TaskDefault,
+            }],
+            resolved_channels: Vec::new(),
+        };
+        assert!(!MaterialKernel::requires_atomic_reference_potential(&basis));
+
+        basis.channels[0].generator = LinearizationEnergyGenerator::Atomic;
+        assert!(MaterialKernel::requires_atomic_reference_potential(&basis));
     }
 }

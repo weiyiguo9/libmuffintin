@@ -931,6 +931,7 @@ impl MaterialKernel {
         &mut self,
         config: &ScfConfig,
     ) -> Result<InitialDensityComponents, MaterialKernelError> {
+        let has_core_states = config.core_sites.iter().any(|site| !site.states.is_empty());
         if let Some(mut total) = self.restart_density.clone() {
             let transforms = self
                 .reduced_sampling(config.k_mesh)?
@@ -943,14 +944,18 @@ impl MaterialKernel {
                 self.require_symmetry_equivalent_config(config, transforms)?;
                 total = self.project_scalar_density(&total, transforms)?;
             }
-            let meshes = self.channel_meshes(&config.basis)?;
-            let extended = build_extended_checkpoint_core_potentials(
-                &self.frozen_potential,
-                &self.geometry,
-                &self.nuclear_charges,
-                &meshes,
-                CorePotentialContinuationSpec::default(),
-            )?;
+            let extended = if has_core_states {
+                let meshes = self.channel_meshes(&config.basis)?;
+                build_extended_checkpoint_core_potentials(
+                    &self.frozen_potential,
+                    &self.geometry,
+                    &self.nuclear_charges,
+                    &meshes,
+                    CorePotentialContinuationSpec::default(),
+                )?
+            } else {
+                Vec::new()
+            };
             let mut core = self.solve_initial_core_density(&total, config, &extended)?;
             if let Some(transforms) = &transforms {
                 core = self.project_scalar_density(&core, transforms)?;
@@ -964,17 +969,22 @@ impl MaterialKernel {
             });
         }
 
-        let meshes = self.channel_meshes(&config.basis)?;
         if let Some((_, transforms, _)) = self.reduced_sampling(config.k_mesh)? {
             self.require_symmetry_equivalent_config(config, &transforms)?;
         }
-        let initial_extended = build_extended_checkpoint_core_potentials(
-            &self.frozen_potential,
-            &self.geometry,
-            &self.nuclear_charges,
-            &meshes,
-            CorePotentialContinuationSpec::default(),
-        )?;
+        let initial_extended =
+            if has_core_states || Self::requires_atomic_reference_potential(&config.basis) {
+                let meshes = self.channel_meshes(&config.basis)?;
+                build_extended_checkpoint_core_potentials(
+                    &self.frozen_potential,
+                    &self.geometry,
+                    &self.nuclear_charges,
+                    &meshes,
+                    CorePotentialContinuationSpec::default(),
+                )?
+            } else {
+                Vec::new()
+            };
         let basis = self.materialize_nonspectral_basis(
             &self.frozen_potential,
             &config.basis,
@@ -1030,6 +1040,9 @@ impl MaterialKernel {
         template: &RegionalDensity,
         config: &ScfConfig,
     ) -> Result<RegionalCoreResult, MaterialKernelError> {
+        if config.core_sites.iter().all(|site| site.states.is_empty()) {
+            return self.solve_initial_core(template, config, &[]);
+        }
         let meshes = self.channel_meshes(&config.basis)?;
         let extended = build_extended_checkpoint_core_potentials(
             &self.frozen_potential,
@@ -1409,14 +1422,18 @@ impl MaterialKernel {
         potential: &RegionalPotential,
         requested: &ScfBasis,
     ) -> Result<CheckpointOneParticle, MaterialKernelError> {
-        let meshes = self.channel_meshes(requested)?;
-        let extended = build_extended_checkpoint_core_potentials(
-            potential,
-            &self.geometry,
-            &self.nuclear_charges,
-            &meshes,
-            CorePotentialContinuationSpec::default(),
-        )?;
+        let extended = if Self::requires_atomic_reference_potential(requested) {
+            let meshes = self.channel_meshes(requested)?;
+            build_extended_checkpoint_core_potentials(
+                potential,
+                &self.geometry,
+                &self.nuclear_charges,
+                &meshes,
+                CorePotentialContinuationSpec::default(),
+            )?
+        } else {
+            Vec::new()
+        };
         let basis = self.materialize_nonspectral_basis(potential, requested, &extended)?;
         Ok(CheckpointOneParticle {
             potential: potential.clone(),
