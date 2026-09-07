@@ -186,15 +186,16 @@ For regional scalar fields, let $\langle a,b\rangle_R$ denote the muffin-tin rad
 
 When $m_x=m_y=0$, this reduces exactly to the previous sum of explicit up/down metrics. Every mixer and the reported density RMS uses this metric; serialized coefficient order is never treated as a Euclidean physical norm.
 
-The interstitial metric caches the analytic step coefficient for each exact
-integer reciprocal difference within one contraction. It does not allocate
-a dense $G,G'$ overlap matrix or change the summation order, absolute-error
-scale, or physical metric. A translated-sphere comparison with 4385 Fourier
-modes gave bitwise-identical complex sums and absolute scales; the uncached
-and cached calls took 1.016 and 0.388 seconds respectively. This is a
-single-contraction timing, not an SCF convergence or scaling claim. The
-temporary comparison is retained in
-`/tmp/libmuffintin-regional-metric-benchmark-98547bc.patch` and its `.log`.
+With `fft-fftw`, the interstitial metric scatters both coefficient fields onto
+an alias-free grid of length $2(G_{max}-G_{min})+1$ on each axis. The inverse
+transform of the conjugated left spectrum times the right spectrum gives the
+linear reciprocal correlation. Contracting displacement $mathbf d$ with the
+analytic step coefficient at $-\mathbf d$ and the cell volume recovers the
+same physical metric without a dense $G,G'$ matrix. A second magnitude
+correlation retains the direct contraction's absolute-error scale. The FFT
+path is checked against the direct sparse sum on an inversion-closed,
+noncanonical reciprocal layout. Without `fft-fftw`, independent left-vector
+rows use the existing Rayon pool and per-worker step-coefficient caches.
 
 ## 4. Four-component core density
 

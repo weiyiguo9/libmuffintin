@@ -7,8 +7,14 @@ use muffintin_core::{
 use muffintin_operators::lapw::{InterstitialPauliPotential, InterstitialPotential, LapwError};
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
 use muffintin_symmetry::CrystalSymmetryTransform;
+#[cfg(feature = "fft-fftw")]
+use muffintin_tensor::fft::{FftGrid, FftPlan};
 use num_complex::Complex64;
-use std::collections::{BTreeMap, BTreeSet, HashMap, hash_map::Entry};
+#[cfg(not(feature = "fft-fftw"))]
+use rayon::prelude::*;
+use std::collections::{BTreeMap, BTreeSet};
+#[cfg(not(feature = "fft-fftw"))]
+use std::collections::{HashMap, hash_map::Entry};
 use std::f64::consts::{PI, TAU};
 use thiserror::Error;
 
@@ -936,6 +942,7 @@ fn muffin_tin_inner_product(
     Ok(total)
 }
 
+#[cfg(not(feature = "fft-fftw"))]
 fn interstitial_inner_product(
     geometry: &InterstitialGeometry,
     left: &InterstitialField,
@@ -974,36 +981,157 @@ fn interstitial_inner_product(
         .collect::<Vec<_>>();
     let reciprocal = left.layout().reciprocal();
     let volume = geometry.cell_volume().get();
+    // Each left-vector row is independent. Rayon workers retain a local step
+    // coefficient cache; row results are collected in input order before the
+    // final reduction, keeping scheduling out of the numerical result.
+    let rows = left_nonzero
+        .par_iter()
+        .map_init(
+            HashMap::new,
+            |step_coefficients, &(left_vector, left_value)| {
+                let mut row_total = Complex64::new(0.0, 0.0);
+                let mut row_absolute_scale = 0.0;
+                for &(right_vector, right_value) in &right_nonzero {
+                    let difference = [
+                        left_vector.index[0].checked_sub(right_vector.index[0]),
+                        left_vector.index[1].checked_sub(right_vector.index[1]),
+                        left_vector.index[2].checked_sub(right_vector.index[2]),
+                    ];
+                    let difference = match difference {
+                        [Some(g0), Some(g1), Some(g2)] => [g0, g1, g2],
+                        _ => {
+                            return Err(RegionalError::ReciprocalDifferenceOverflow {
+                                left: left_vector.index,
+                                right: right_vector.index,
+                            });
+                        }
+                    };
+                    let theta = match step_coefficients.entry(difference) {
+                        Entry::Occupied(entry) => *entry.get(),
+                        Entry::Vacant(entry) => {
+                            *entry.insert(geometry.coefficient(reciprocal.cartesian(difference))?)
+                        }
+                    };
+                    let term = volume * left_value.conj() * theta * right_value;
+                    row_total += term;
+                    row_absolute_scale += term.norm();
+                }
+                Ok((row_total, row_absolute_scale))
+            },
+        )
+        .collect::<Vec<Result<_, RegionalError>>>();
     let mut total = Complex64::new(0.0, 0.0);
     let mut absolute_scale = 0.0;
-    let mut step_coefficients = HashMap::new();
-    // Keep the original ordering and absolute scale of every nonzero term.
-    // In particular, zero Pauli components need no quadratic convolution.
-    for (left_vector, &left_value) in left_nonzero {
-        for &(right_vector, &right_value) in &right_nonzero {
-            let difference = [
-                left_vector.index[0].checked_sub(right_vector.index[0]),
-                left_vector.index[1].checked_sub(right_vector.index[1]),
-                left_vector.index[2].checked_sub(right_vector.index[2]),
-            ];
-            let difference = match difference {
-                [Some(g0), Some(g1), Some(g2)] => [g0, g1, g2],
-                _ => {
-                    return Err(RegionalError::ReciprocalDifferenceOverflow {
-                        left: left_vector.index,
-                        right: right_vector.index,
-                    });
-                }
-            };
-            let theta = match step_coefficients.entry(difference) {
-                Entry::Occupied(entry) => *entry.get(),
-                Entry::Vacant(entry) => {
-                    *entry.insert(geometry.coefficient(reciprocal.cartesian(difference))?)
-                }
-            };
-            let term = volume * left_value.conj() * theta * right_value;
-            total += term;
-            absolute_scale += term.norm();
+    for row in rows {
+        let (row_total, row_absolute_scale) = row?;
+        total += row_total;
+        absolute_scale += row_absolute_scale;
+    }
+    Ok((total, absolute_scale))
+}
+
+#[cfg(feature = "fft-fftw")]
+fn interstitial_inner_product(
+    geometry: &InterstitialGeometry,
+    left: &InterstitialField,
+    right: &InterstitialField,
+) -> Result<(Complex64, f64), RegionalError> {
+    if left.layout() != right.layout() {
+        return Err(RegionalError::Fourier(FourierFieldError::LayoutMismatch));
+    }
+    let vectors = left.layout().vectors();
+    if vectors.is_empty() {
+        return Ok((Complex64::default(), 0.0));
+    }
+    let mut minimum = vectors[0].index;
+    let mut maximum = minimum;
+    for vector in &vectors[1..] {
+        for axis in 0..3 {
+            minimum[axis] = minimum[axis].min(vector.index[axis]);
+            maximum[axis] = maximum[axis].max(vector.index[axis]);
+        }
+    }
+    let span = [
+        maximum[0]
+            .checked_sub(minimum[0])
+            .ok_or(RegionalError::ReciprocalDifferenceOverflow {
+                left: maximum,
+                right: minimum,
+            })?,
+        maximum[1]
+            .checked_sub(minimum[1])
+            .ok_or(RegionalError::ReciprocalDifferenceOverflow {
+                left: maximum,
+                right: minimum,
+            })?,
+        maximum[2]
+            .checked_sub(minimum[2])
+            .ok_or(RegionalError::ReciprocalDifferenceOverflow {
+                left: maximum,
+                right: minimum,
+            })?,
+    ];
+    if left
+        .field
+        .iter()
+        .all(|(_, value)| *value == Complex64::default())
+        || right
+            .field
+            .iter()
+            .all(|(_, value)| *value == Complex64::default())
+    {
+        return Ok((Complex64::default(), 0.0));
+    }
+    let dimensions = span.map(|component| 2 * component as usize + 1);
+    let grid = FftGrid::new(dimensions)?;
+    let mut plan = FftPlan::new(grid)?;
+    // This zero padding makes the circular FFT correlation equal the linear
+    // correlation for every reciprocal difference present in the layout.
+    let mut left_dense = vec![Complex64::default(); grid.len()];
+    let mut right_dense = vec![Complex64::default(); grid.len()];
+    let mut left_absolute = vec![Complex64::default(); grid.len()];
+    let mut right_absolute = vec![Complex64::default(); grid.len()];
+    for (vector, coefficient) in left.field.iter() {
+        let position = grid.index(vector.index);
+        left_dense[position] = *coefficient;
+        left_absolute[position] = Complex64::new(coefficient.norm(), 0.0);
+    }
+    for (vector, coefficient) in right.field.iter() {
+        let position = grid.index(vector.index);
+        right_dense[position] = *coefficient;
+        right_absolute[position] = Complex64::new(coefficient.norm(), 0.0);
+    }
+    let left_spectrum = plan.forward(&left_dense)?;
+    let right_spectrum = plan.forward(&right_dense)?;
+    let correlation_spectrum = left_spectrum
+        .iter()
+        .zip(right_spectrum)
+        .map(|(&left_value, right_value)| left_value.conj() * right_value)
+        .collect::<Vec<_>>();
+    let correlation = plan.inverse(&correlation_spectrum)?;
+    let left_absolute_spectrum = plan.forward(&left_absolute)?;
+    let right_absolute_spectrum = plan.forward(&right_absolute)?;
+    let absolute_correlation_spectrum = left_absolute_spectrum
+        .iter()
+        .zip(right_absolute_spectrum)
+        .map(|(&left_value, right_value)| left_value.conj() * right_value)
+        .collect::<Vec<_>>();
+    let absolute_correlation = plan.inverse(&absolute_correlation_spectrum)?;
+
+    let reciprocal = left.layout().reciprocal();
+    let volume = geometry.cell_volume().get();
+    let mut total = Complex64::default();
+    let mut absolute_scale = 0.0;
+    for first in -span[0]..=span[0] {
+        for second in -span[1]..=span[1] {
+            for third in -span[2]..=span[2] {
+                let displacement = [first, second, third];
+                let opposite = [-first, -second, -third];
+                let theta = geometry.coefficient(reciprocal.cartesian(opposite))?;
+                let position = grid.index(displacement);
+                total += volume * correlation[position] * theta;
+                absolute_scale += volume * absolute_correlation[position].norm() * theta.norm();
+            }
         }
     }
     Ok((total, absolute_scale))
@@ -1049,6 +1177,8 @@ fn validate_reciprocal_volume(
 /// Invalid regional field, layout, or physical-metric operation.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum RegionalError {
+    #[error(transparent)]
+    Fft(#[from] muffintin_tensor::fft::FftError),
     #[error("muffin-tin field has {actual} radial samples, expected {expected}")]
     MuffinTinSampleCount { expected: usize, actual: usize },
     #[error("muffin-tin radial meshes differ")]
@@ -1152,6 +1282,31 @@ mod tests {
 
     fn geometry(spheres: Vec<Sphere>) -> InterstitialGeometry {
         InterstitialGeometry::new(VolumeBohr3(TAU.powi(3)), spheres).unwrap()
+    }
+
+    #[cfg(feature = "fft-fftw")]
+    fn direct_interstitial_reference(
+        geometry: &InterstitialGeometry,
+        left: &InterstitialField,
+        right: &InterstitialField,
+    ) -> (Complex64, f64) {
+        let reciprocal = left.layout().reciprocal();
+        let volume = geometry.cell_volume().get();
+        let mut total = Complex64::default();
+        let mut absolute_scale = 0.0;
+        for (left_vector, left_value) in left.field.iter() {
+            for (right_vector, right_value) in right.field.iter() {
+                let difference =
+                    std::array::from_fn(|axis| left_vector.index[axis] - right_vector.index[axis]);
+                let theta = geometry
+                    .coefficient(reciprocal.cartesian(difference))
+                    .unwrap();
+                let term = volume * left_value.conj() * theta * right_value;
+                total += term;
+                absolute_scale += term.norm();
+            }
+        }
+        (total, absolute_scale)
     }
 
     fn direct_lattice() -> [[Bohr; 3]; 3] {
@@ -1283,6 +1438,42 @@ mod tests {
         assert!((actual - expected).abs() < 1.0e-12);
         assert!((actual - diagonal_only).abs() > 1.0e-4);
         assert!(actual >= 0.0);
+    }
+
+    #[cfg(feature = "fft-fftw")]
+    #[test]
+    fn fft_interstitial_metric_matches_direct_sparse_reference() {
+        let reciprocal_layout =
+            layout(&[[2, -1, 0], [-1, -1, 0], [0, 0, 0], [-2, 1, 0], [1, 1, 0]]);
+        let left = interstitial(
+            reciprocal_layout.clone(),
+            [
+                ([2, -1, 0], Complex64::new(0.75, 0.2)),
+                ([-2, 1, 0], Complex64::new(0.75, -0.2)),
+                ([1, 1, 0], Complex64::new(-0.4, 0.1)),
+                ([-1, -1, 0], Complex64::new(-0.4, -0.1)),
+                ([0, 0, 0], Complex64::new(0.3, 0.0)),
+            ],
+        );
+        let right = interstitial(
+            reciprocal_layout,
+            [
+                ([2, -1, 0], Complex64::new(-0.15, 0.6)),
+                ([-2, 1, 0], Complex64::new(-0.15, -0.6)),
+                ([1, 1, 0], Complex64::new(0.25, -0.35)),
+                ([-1, -1, 0], Complex64::new(0.25, 0.35)),
+                ([0, 0, 0], Complex64::new(-0.2, 0.0)),
+            ],
+        );
+        let geometry = geometry(vec![Sphere {
+            center: [Bohr(0.31), Bohr(0.47), Bohr(0.19)],
+            radius: Bohr(0.5),
+        }]);
+        let expected = direct_interstitial_reference(&geometry, &left, &right);
+        let actual = interstitial_inner_product(&geometry, &left, &right).unwrap();
+        let tolerance = 4096.0 * f64::EPSILON * expected.1.max(1.0);
+        assert!((actual.0 - expected.0).norm() <= tolerance);
+        assert!((actual.1 - expected.1).abs() <= tolerance);
     }
 
     #[test]

@@ -181,13 +181,13 @@ quadrature weights, and derivative conventions. The dense transform contract
 uses last-axis-fastest storage, an unnormalized negative-exponent forward
 transform, and a positive-exponent inverse divided by the grid size.
 
-With `fft-fftw`, valence-density synthesis and the interstitial part of exact
-MPB orbital-pair construction use padded reciprocal correlations. Natural-grid
-THC orbital sampling and sampled $\zeta$ projection use the recorded uniform
-midpoint grid, gathering or scattering its interstitial subset. Arbitrary
-parent grids retain direct sums; they are not guessed to be uniform. Muffin-tin
-radial/angular evaluation, auxiliary-space exchange contraction, and the dense
-eigensolver are unchanged.
+With `fft-fftw`, valence-density synthesis, the interstitial physical metric,
+and the interstitial part of exact MPB orbital-pair construction use padded
+reciprocal correlations. Natural-grid THC orbital sampling and sampled $\zeta$
+projection use the recorded uniform midpoint grid, gathering or scattering its
+interstitial subset. Arbitrary parent grids retain direct sums; they are not
+guessed to be uniform. Muffin-tin radial/angular evaluation, auxiliary-space
+exchange contraction, and the dense eigensolver are unchanged.
 
 `libmuffintin-python` pins `pyo3` 0.27.2 and `numpy` 0.27.1; both have MSRV
 1.74, comfortably under the workspace floor. The extension uses `abi3-py310`
