@@ -30,7 +30,10 @@ use muffintin_tensor::{
 use num_complex::Complex64;
 use thiserror::Error;
 
-use crate::isdf_exchange::contract_scalar_mpb_exchange_with_operators;
+use crate::isdf_exchange::{
+    contract_scalar_mpb_exchange_with_operators,
+    contract_selected_spinor_mpb_exchange_with_operators,
+};
 use crate::q_mesh::{CanonicalQMapError, canonical_q_points};
 use crate::scalar_mpb::{
     ScalarMpbBasis, ScalarMpbSelection, ScalarMpbSpec, build_scalar_mpb_from_basis,
@@ -55,7 +58,7 @@ use crate::{
     SpinorExchangeMpbResult, SpinorExchangeMpbSpec, SpinorMpbError, SpinorMpbSelection,
     SpinorMpbSpec, SpinorProductInput, build_frozen_core_valence_exchange,
     build_frozen_site_valence_densities, build_spinor_exchange_mpb, build_spinor_mpb,
-    build_spinor_mpb_exchange, compare_frozen_core_valence, relax_frozen_core_at_fixed_potential,
+    compare_frozen_core_valence, relax_frozen_core_at_fixed_potential,
 };
 
 const SPECTRAL_REFINEMENT_PASSES: usize = 16;
@@ -3033,17 +3036,21 @@ fn rebuild_exchange(
     let first = inputs.first().ok_or(GammaValenceHfError::QTopology)?;
     let n_k = first.pair_columns.n_k;
     let n_orb = first.pair_columns.n_orb;
-    let selections: Vec<SpinorMpbSelection> = (0..n_k)
-        .flat_map(|k| {
-            (0..n_orb).flat_map(move |left_band| {
-                (0..n_orb).map(move |right_band| SpinorMpbSelection {
+    let occupied_bands = (0..n_orb)
+        .filter(|&band| occupations.iter().any(|row| row[band] != 0.0))
+        .collect::<Vec<_>>();
+    let mut selections = Vec::with_capacity(n_k * occupied_bands.len() * n_orb);
+    for k in 0..n_k {
+        for &left_band in &occupied_bands {
+            for right_band in 0..n_orb {
+                selections.push(SpinorMpbSelection {
                     k,
                     left_band,
                     right_band,
-                })
-            })
-        })
-        .collect();
+                });
+            }
+        }
+    }
     let mpb = inputs
         .iter()
         .map(|input| {
@@ -3058,11 +3065,17 @@ fn rebuild_exchange(
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let operators = mpb
+        .iter()
+        .map(|result| assemble_coulomb(&result.auxiliary, &spec.coulomb))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(IsdfExchangeError::from)?;
     let k_weights = k_weights(bands)?;
-    Ok(build_spinor_mpb_exchange(
+    Ok(contract_selected_spinor_mpb_exchange_with_operators(
         &inputs,
         &mpb,
-        &spec.coulomb,
+        &operators,
+        &occupied_bands,
         &IsdfExchangeSpec {
             k_weights,
             occupations: occupations.to_vec(),
