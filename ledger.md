@@ -139,3 +139,19 @@ entries from evd-0002; the closing `evt` carries `closed` or `handoff`.
 
 - state: h2-hf = active: deliverables 1 to 4, then A0 to Bv in order
 - note: h2-hf = plan.v1 accepted 2026-09-08; Codex on the Mac executes; logs in examples/h2_dft/results/hf-*.log
+
+## 2026-09-08 · evd-1002 · ctf-rs D1 dense scaling close · ctf-rs 43a06586567a20e3c533c8ab59656bd83eee318e
+
+```text
+DIGIT / PASS
+milestone: D1; commit: 43a06586567a20e3c533c8ab59656bd83eee318e
+validation.md section: D1 dense scaling and strip close (2026-09-08)
+Q: scaling exact strip, virtual and packed checks; scalar; diag_sym; weigh_4D; dft; class: R; ref: pinned f69cbb46
+bound: exact for integer/index/layout; upstream per driver otherwise; observed: all within
+runs: scaling exact checks once on final source; WSL driver world/parity at 1/2/4 once; native compile/link
+open: none
+command: cargo test --test scaling; MPI runner cargo test --test upstream_scalar --test upstream_diag_sym --test upstream_weigh4d --test upstream_dft
+```
+
+- state: ctf-rs = D1 closed
+- note: ctf-rs = dense scaling, virtual traversal, strip/restore and packed indexed scaling closed; D2 next
