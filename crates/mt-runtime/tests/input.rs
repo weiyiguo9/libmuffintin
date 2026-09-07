@@ -602,7 +602,7 @@ fn path_loader_resolves_checkpoint_relative_to_input_parent() {
     assert!(prepared.tasks[0].channel_recipe.is_some());
 
     let mut absolute = sample_input();
-    absolute.checkpoint = PathBuf::from("/tmp/checkpoint.toml");
+    absolute.checkpoint = Some(PathBuf::from("/tmp/checkpoint.toml"));
     assert!(matches!(
         absolute.validate(),
         Err(InputError::Validation(

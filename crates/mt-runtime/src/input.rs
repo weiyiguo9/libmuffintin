@@ -3,6 +3,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 use muffintin_core::{Hartree, InverseBohr};
+use muffintin_io::LengthUnit;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{finite, fraction, nonempty, positive};
@@ -22,7 +23,12 @@ pub struct Input {
     /// Checkpoint path relative to the input file that names this workflow.
     /// The pre-rename `snapshot` key is still accepted on read.
     #[serde(alias = "snapshot")]
-    pub checkpoint: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint: Option<PathBuf>,
+    /// Optional high-level periodic molecule source. Exactly one of this and
+    /// [`Self::checkpoint`] must be present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub molecule: Option<MoleculeInput>,
     /// Optional calculation-wide speed-of-light override in atomic units.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speed_of_light: Option<f64>,
@@ -35,7 +41,25 @@ impl Input {
         Self {
             format: INPUT_FORMAT.to_owned(),
             version: INPUT_VERSION,
-            checkpoint,
+            checkpoint: Some(checkpoint),
+            molecule: None,
+            speed_of_light: None,
+            workflow,
+            task,
+        }
+    }
+
+    /// Construct a workflow backed by a generated periodic molecule source.
+    pub fn new_molecule(
+        molecule: MoleculeInput,
+        workflow: Workflow,
+        task: BTreeMap<String, Task>,
+    ) -> Self {
+        Self {
+            format: INPUT_FORMAT.to_owned(),
+            version: INPUT_VERSION,
+            checkpoint: None,
+            molecule: Some(molecule),
             speed_of_light: None,
             workflow,
             task,
@@ -63,7 +87,14 @@ impl Input {
                 found: self.version,
             });
         }
-        validate_checkpoint_path(&self.checkpoint)?;
+        match (&self.checkpoint, &self.molecule) {
+            (Some(checkpoint), None) => validate_checkpoint_path(checkpoint)?,
+            (None, Some(molecule)) => molecule.validate("molecule")?,
+            (Some(_), Some(_)) => {
+                return Err(InputValidationError::ConflictingInputSources.into());
+            }
+            (None, None) => return Err(InputValidationError::MissingInputSource.into()),
+        }
         if let Some(speed_of_light) = self.speed_of_light {
             positive("speed-of-light", speed_of_light)?;
         }
@@ -83,6 +114,168 @@ impl Input {
             if let Some(source) = task.source() {
                 validate_source(self, &positions, index, task_id, task, source)?;
             }
+        }
+        if let Some(molecule) = &self.molecule {
+            validate_molecule_tasks(self, molecule)?;
+        }
+        Ok(())
+    }
+}
+
+/// High-level periodic molecule source for a Gamma-only LAPW workflow.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct MoleculeInput {
+    /// The boundary condition is explicit even though this source currently
+    /// supports only the periodic supercell route.
+    pub boundary: MoleculeBoundary,
+    pub cell_shape: MoleculeCellShape,
+    pub length_unit: LengthUnit,
+    /// Vacuum padding from the molecular bounding box to every cell face.
+    pub vacuum: f64,
+    pub muffin_tin_radius: f64,
+    /// First point and number of points for each generated site mesh. The
+    /// logarithmic increment is derived from this radius and point count.
+    pub radial_first: f64,
+    pub radial_points: usize,
+    /// Independent reciprocal support for the atomic-start density/potential.
+    pub field_g_cutoff: f64,
+    pub field_l_max: u32,
+    pub angular_points: usize,
+    pub free_atom: MoleculeFreeAtom,
+    pub atoms: Vec<MoleculeAtom>,
+}
+
+impl MoleculeInput {
+    fn validate(&self, path: &str) -> Result<(), InputValidationError> {
+        positive(format!("{path}.vacuum"), self.vacuum)?;
+        positive(format!("{path}.muffin-tin-radius"), self.muffin_tin_radius)?;
+        positive(format!("{path}.radial-first"), self.radial_first)?;
+        if self.radial_first >= self.muffin_tin_radius {
+            return Err(InputValidationError::InvalidRange {
+                path: format!("{path}.radial-first"),
+                minimum: self.radial_first,
+                maximum: self.muffin_tin_radius,
+            });
+        }
+        if self.radial_points < 7 {
+            return Err(InputValidationError::TooShort {
+                path: format!("{path}.radial-points"),
+                minimum: 7,
+                actual: self.radial_points,
+            });
+        }
+        positive(format!("{path}.field-g-cutoff"), self.field_g_cutoff)?;
+        if self.angular_points == 0 {
+            return Err(InputValidationError::Zero {
+                path: format!("{path}.angular-points"),
+            });
+        }
+        if self.atoms.is_empty() {
+            return Err(InputValidationError::Empty {
+                path: format!("{path}.atoms"),
+            });
+        }
+        let mut ids = BTreeSet::new();
+        for (index, atom) in self.atoms.iter().enumerate() {
+            atom.validate(&format!("{path}.atoms[{index}]"))?;
+            if !(1..=103).contains(&atom.atomic_number) {
+                return Err(InputValidationError::UnsupportedMoleculeAtomicNumber {
+                    site: atom.id.clone(),
+                    atomic_number: atom.atomic_number,
+                });
+            }
+            if !ids.insert(atom.id.as_str()) {
+                return Err(InputValidationError::DuplicateMoleculeAtomId {
+                    id: atom.id.clone(),
+                });
+            }
+        }
+        self.free_atom.validate(&format!("{path}.free-atom"))?;
+        Ok(())
+    }
+
+    pub(crate) fn neutral_electron_count(&self) -> f64 {
+        self.atoms
+            .iter()
+            .map(|atom| f64::from(atom.atomic_number))
+            .sum()
+    }
+}
+
+/// Explicit periodic boundary condition for a generated molecule cell.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MoleculeBoundary {
+    Periodic,
+}
+
+/// Shape of the automatically generated orthogonal direct lattice.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MoleculeCellShape {
+    Orthorhombic,
+    Cubic,
+}
+
+/// One Cartesian atom in the molecule source, in the declared length unit.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct MoleculeAtom {
+    pub id: String,
+    pub atomic_number: u16,
+    pub position: [f64; 3],
+}
+
+impl MoleculeAtom {
+    fn validate(&self, path: &str) -> Result<(), InputValidationError> {
+        nonempty(format!("{path}.id"), &self.id)?;
+        if self.atomic_number == 0 {
+            return Err(InputValidationError::Zero {
+                path: format!("{path}.atomic-number"),
+            });
+        }
+        for (axis, &coordinate) in self.position.iter().enumerate() {
+            finite(format!("{path}.position[{axis}]"), coordinate)?;
+        }
+        Ok(())
+    }
+}
+
+/// Explicit free-atom numerical controls used by the neutral atomic start.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct MoleculeFreeAtom {
+    pub first: f64,
+    pub log_increment: f64,
+    pub points: usize,
+    pub mixing: f64,
+    pub potential_tolerance: f64,
+    pub tail_tolerance: f64,
+    pub max_iterations: usize,
+}
+
+impl MoleculeFreeAtom {
+    fn validate(&self, path: &str) -> Result<(), InputValidationError> {
+        positive(format!("{path}.first"), self.first)?;
+        positive(format!("{path}.log-increment"), self.log_increment)?;
+        if self.points < 7 {
+            return Err(InputValidationError::TooShort {
+                path: format!("{path}.points"),
+                minimum: 7,
+                actual: self.points,
+            });
+        }
+        fraction(format!("{path}.mixing"), self.mixing)?;
+        positive(
+            format!("{path}.potential-tolerance"),
+            self.potential_tolerance,
+        )?;
+        positive(format!("{path}.tail-tolerance"), self.tail_tolerance)?;
+        if self.max_iterations == 0 {
+            return Err(InputValidationError::Zero {
+                path: format!("{path}.max-iterations"),
+            });
         }
         Ok(())
     }
@@ -634,6 +827,51 @@ fn validate_task_sets(input: &Input) -> Result<(), InputValidationError> {
         if !workflow_ids.contains(id.as_str()) {
             return Err(InputValidationError::OrphanTaskBlock { id: id.clone() });
         }
+    }
+    Ok(())
+}
+
+fn validate_molecule_tasks(
+    input: &Input,
+    molecule: &MoleculeInput,
+) -> Result<(), InputValidationError> {
+    let expected = molecule.neutral_electron_count();
+    let mut scf_count = 0;
+    for task_id in &input.workflow.tasks {
+        let Task::DftScf {
+            electron_count,
+            k_mesh,
+            basis,
+            ..
+        } = &input.task[task_id]
+        else {
+            continue;
+        };
+        scf_count += 1;
+        if *electron_count != expected {
+            return Err(InputValidationError::MoleculeElectronCountMismatch {
+                task_id: task_id.clone(),
+                expected,
+                actual: *electron_count,
+            });
+        }
+        let orbital_cutoff = basis.envelope.normalized_cutoff().get();
+        let required_field_cutoff = 2.0 * orbital_cutoff;
+        if molecule.field_g_cutoff < required_field_cutoff {
+            return Err(InputValidationError::MoleculeFieldCutoffTooSmall {
+                task_id: task_id.clone(),
+                actual: molecule.field_g_cutoff,
+                minimum: required_field_cutoff,
+            });
+        }
+        if k_mesh.mesh != [1, 1, 1] || k_mesh.shift != [0.0, 0.0, 0.0] {
+            return Err(InputValidationError::MoleculeRequiresGamma {
+                task_id: task_id.clone(),
+            });
+        }
+    }
+    if scf_count != 1 {
+        return Err(InputValidationError::MoleculeScfTaskCount { count: scf_count });
     }
     Ok(())
 }

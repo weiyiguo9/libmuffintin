@@ -13,6 +13,38 @@ pub enum InputValidationError {
     EmptyCheckpointPath,
     #[error("checkpoint path must be relative to the input file, got {path:?}")]
     AbsoluteCheckpointPath { path: PathBuf },
+    #[error("input must provide exactly one of checkpoint or molecule")]
+    MissingInputSource,
+    #[error("input cannot provide both checkpoint and molecule sources")]
+    ConflictingInputSources,
+    #[error("molecule source requires exactly one dft-scf task, found {count}")]
+    MoleculeScfTaskCount { count: usize },
+    #[error(
+        "molecule dft-scf task {task_id:?} must use the neutral electron count {expected}, got {actual}"
+    )]
+    MoleculeElectronCountMismatch {
+        task_id: String,
+        expected: f64,
+        actual: f64,
+    },
+    #[error(
+        "molecule dft-scf task {task_id:?} requires Gamma-only sampling: mesh [1, 1, 1] and shift [0, 0, 0]"
+    )]
+    MoleculeRequiresGamma { task_id: String },
+    #[error("molecule atom id {id:?} is duplicated")]
+    DuplicateMoleculeAtomId { id: String },
+    #[error(
+        "molecule atom {site:?} atomic number {atomic_number} is outside the supported neutral-atom range 1..=103"
+    )]
+    UnsupportedMoleculeAtomicNumber { site: String, atomic_number: u16 },
+    #[error(
+        "molecule dft-scf task {task_id:?} field-g-cutoff {actual} is smaller than the required plane-wave pair support {minimum}"
+    )]
+    MoleculeFieldCutoffTooSmall {
+        task_id: String,
+        actual: f64,
+        minimum: f64,
+    },
     #[error("basis recipe path must not be empty")]
     EmptyRecipePath,
     #[error("basis recipe path must be relative to the input file, got {path:?}")]
@@ -123,6 +155,8 @@ pub enum InputError {
     },
     #[error("invalid in-memory checkpoint: {0}")]
     InvalidCheckpoint(#[source] IoError),
+    #[error("could not materialize molecule atomic start: {0}")]
+    MoleculeStart(#[source] crate::MoleculeStartError),
     #[error("task {task_id:?} requires preloaded channel recipe artifact {path:?}")]
     MissingRecipeArtifact { task_id: String, path: PathBuf },
     #[error("task {task_id:?} could not read channel recipe file {path:?}: {source}")]

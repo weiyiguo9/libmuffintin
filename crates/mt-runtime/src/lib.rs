@@ -18,6 +18,7 @@ mod input;
 mod isdf_exchange;
 mod mldump_header;
 mod mldump_write;
+mod molecule;
 #[cfg(feature = "fft-fftw")]
 mod pair_fft;
 mod q_mesh;
@@ -78,7 +79,8 @@ pub use hf_scf::{
 };
 pub use input::{
     BandPathPoint, Basis, BasisEnvelope, BasisEnvelopeKind, Convergence, EnergyWindow,
-    ExchangeCorrelation, INPUT_FORMAT, INPUT_VERSION, Input, KMesh, Mixing, NoncollinearXcRoute,
+    ExchangeCorrelation, INPUT_FORMAT, INPUT_VERSION, Input, KMesh, Mixing, MoleculeAtom,
+    MoleculeBoundary, MoleculeCellShape, MoleculeFreeAtom, MoleculeInput, NoncollinearXcRoute,
     Occupations, Relativity, Symmetry, Task, TaskKind, Workflow, input_to_toml, parse_input_toml,
 };
 pub use isdf_exchange::{
@@ -86,6 +88,7 @@ pub use isdf_exchange::{
     IsdfExchangeSpec, build_scalar_isdf_exchange, build_scalar_mpb_exchange,
     build_second_variation_mpb_exchange, build_spinor_isdf_exchange, build_spinor_mpb_exchange,
 };
+pub use molecule::MoleculeStartError;
 pub use muffintin_dft::{ScalarRadialSamples, ScfKSamplingProvenance};
 pub use muffintin_prodbasis::thc::RankPolicy;
 pub use runner::{

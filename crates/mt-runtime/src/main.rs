@@ -52,12 +52,20 @@ fn print_summary(workflow: &PreparedWorkflow, result: &WorkflowResult) {
     );
     for (task, output) in workflow.tasks.iter().zip(&result.tasks) {
         match output {
-            TaskResult::Scf(state) => println!(
-                "task {} scf iterations={} total_energy_ha={:.16e}",
-                task.id,
-                state.iterations(),
-                state.energy.total.get()
-            ),
+            TaskResult::Scf(state) => {
+                let final_step = state
+                    .diagnostics
+                    .last()
+                    .expect("converged SCF has diagnostics");
+                println!(
+                    "task {} scf iterations={} total_energy_ha={:.16e} energy_change_ha={:?} density_rms={:.16e}",
+                    task.id,
+                    state.iterations(),
+                    state.energy.total.get(),
+                    final_step.energy_change.map(|energy| energy.get()),
+                    final_step.density_rms,
+                );
+            }
             TaskResult::Bands(bands) => {
                 println!("task {} bands points={}", task.id, bands.points.len());
                 for point in &bands.points {

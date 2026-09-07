@@ -15,6 +15,7 @@ use muffintin_dft::{
 use muffintin_io::{CheckpointFile, CheckpointV2, checkpoint_file_from_toml};
 
 use crate::input::parse_source;
+use crate::molecule::materialize_molecule_input;
 use crate::{
     ChannelEnergyGenerator, ChannelIdentity, ChannelProvenance, ChannelRecipeArtifact,
     ChannelTreatment, CompiledChannelRecipe, CompiledSiteRecipe, ExchangeCorrelation,
@@ -190,17 +191,26 @@ pub fn load_input_path(path: impl AsRef<Path>) -> Result<PreparedWorkflow, Input
         source,
     })?;
     let input = parse_input_toml(&input_text)?;
-    let checkpoint_path = resolve_checkpoint_path(input_path, &input.checkpoint);
-    let checkpoint_text =
-        fs::read_to_string(&checkpoint_path).map_err(|source| InputError::ReadCheckpoint {
-            path: checkpoint_path.clone(),
-            source,
-        })?;
-    let checkpoint =
+    let checkpoint = if let Some(checkpoint) = &input.checkpoint {
+        let checkpoint_path = resolve_checkpoint_path(input_path, checkpoint);
+        let checkpoint_text =
+            fs::read_to_string(&checkpoint_path).map_err(|source| InputError::ReadCheckpoint {
+                path: checkpoint_path.clone(),
+                source,
+            })?;
         checkpoint_file_from_toml(&checkpoint_text).map_err(|source| InputError::Checkpoint {
             path: checkpoint_path,
             source,
-        })?;
+        })?
+    } else {
+        let molecule = input
+            .molecule
+            .as_ref()
+            .expect("Input::validate requires a molecule when checkpoint is absent");
+        CheckpointFile::V2(
+            materialize_molecule_input(&input, molecule).map_err(InputError::MoleculeStart)?,
+        )
+    };
     let mut recipe_artifacts = BTreeMap::new();
     for task_id in &input.workflow.tasks {
         let Task::DftScf { basis, .. } = &input.task[task_id] else {

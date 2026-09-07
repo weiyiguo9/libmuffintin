@@ -371,6 +371,15 @@ checkpoint. Radial, atomic/core, spinor and SOC computations receive it
 explicitly; no process-global mutable constant is used. Increasing it provides
 the nonrelativistic limit of the same relativistic implementation.
 
+Input provides exactly one of `checkpoint` or `[molecule]`. Molecule input
+specifies Cartesian atoms, length unit, muffin-tin/radial controls, vacuum
+padding and cell shape, plus explicit atomic-start numerical controls. It
+centers the atoms in an automatically constructed periodic supercell and
+requires a neutral Gamma-only SCF. `boundary = "periodic"` is mandatory:
+this is not an isolated Poisson or Coulomb solver. Vacuum denotes padding from
+the nuclear-coordinate bounding box to each cell face; the generated geometry
+must keep the muffin-tin spheres nonoverlapping and inside the cell.
+
 The optional `interstitial-grid = [nx, ny, nz]` in `[task.scf.xc]` controls
 nonlinear XC quadrature independently of orbital and density Fourier cutoffs.
 It must resolve the stored density Fourier support; undersampled or zero grids
