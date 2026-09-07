@@ -122,6 +122,10 @@ pub struct GammaValenceHfIterationDiagnostic {
     pub iteration: usize,
     pub fock_iterations: usize,
     pub exchange_rebuilds: usize,
+    pub h0_expectation: Hartree,
+    pub electron_hartree: Hartree,
+    pub electron_nuclear: Hartree,
+    pub nuclear_nuclear: Hartree,
     pub exchange_energy: Hartree,
     pub maximum_antihermitian_residual: f64,
     pub fock_fixed_point_residual: f64,
@@ -154,6 +158,10 @@ pub struct GammaValenceHfResult {
     /// mesh-shaped boundary needed by a later regular-k engine.
     pub occupations: Vec<Vec<f64>>,
     pub orbital_energies: Vec<Vec<Hartree>>,
+    pub h0_expectation: Hartree,
+    pub electron_hartree: Hartree,
+    pub electron_nuclear: Hartree,
+    pub nuclear_nuclear: Hartree,
     pub exchange_energy: Hartree,
     pub maximum_antihermitian_residual: f64,
     pub fock_fixed_point_residual: f64,
@@ -712,6 +720,10 @@ pub fn run_valence_hf(
             iteration: outer_iteration,
             fock_iterations: fixed.fock_iterations,
             exchange_rebuilds: fixed.exchange_rebuilds,
+            h0_expectation: energy.h0_expectation,
+            electron_hartree: energy.electron_hartree,
+            electron_nuclear: energy.electron_nuclear,
+            nuclear_nuclear: energy.nuclear_nuclear,
             exchange_energy: fixed.exchange.exchange_energy,
             maximum_antihermitian_residual: fixed.exchange.maximum_antihermitian_residual,
             fock_fixed_point_residual: fixed.fixed_point_residual,
@@ -740,6 +752,10 @@ pub fn run_valence_hf(
                 bands: fixed.bands,
                 occupations,
                 orbital_energies,
+                h0_expectation: energy.h0_expectation,
+                electron_hartree: energy.electron_hartree,
+                electron_nuclear: energy.electron_nuclear,
+                nuclear_nuclear: energy.nuclear_nuclear,
                 exchange_energy: fixed.exchange.exchange_energy,
                 maximum_antihermitian_residual: fixed.exchange.maximum_antihermitian_residual,
                 fock_fixed_point_residual: fixed.fixed_point_residual,
@@ -4018,6 +4034,10 @@ fn first_global_solve_identity(
 }
 
 struct EnergyDiagnostic {
+    h0_expectation: Hartree,
+    electron_hartree: Hartree,
+    electron_nuclear: Hartree,
+    nuclear_nuclear: Hartree,
     total: Hartree,
     exchange_identity_residual: f64,
     eigenvalue_identity_residual: f64,
@@ -4076,6 +4096,10 @@ fn energy_diagnostic(
         - exchange.exchange_energy.get()
         + occupation.correction.get();
     Ok(EnergyDiagnostic {
+        h0_expectation: Hartree(h0_expectation),
+        electron_hartree: electrostatic.electron_hartree,
+        electron_nuclear: electrostatic.electron_nuclear,
+        nuclear_nuclear: electrostatic.nuclear_nuclear,
         total: Hartree(direct),
         exchange_identity_residual,
         eigenvalue_identity_residual,
