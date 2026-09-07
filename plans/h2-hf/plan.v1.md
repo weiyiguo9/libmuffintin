@@ -2,7 +2,7 @@
 
 - Workstream ID: `h2-hf`
 - Plan version: 1
-- Approval: proposed (awaiting user acceptance)
+- Approval: accepted 2026-09-08 (immutable; direction changes make plan.v2)
 - Supersedes: none
 - Imported: 2026-09-08 from `scratch/h2_hf_plan.md` (last modified 2026-09-08), body unchanged
 - Status source: false; state lives in `STATUS.md` and `ledger.md`

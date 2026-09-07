@@ -6,12 +6,13 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 
 - Code baseline: `main` at `69dafb8ea207a43d5aea39bda9e81a4e18a74385` (2026-09-08)
 - Last ledger entry: evd-1001 (2026-09-08)
+- Last ledger entry: evt-0010 (2026-09-08)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
 | `ctf-rs` | B0 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | rejected sparse cache WIP retained on its branch; expression rows reconciled; D1 next |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
-| `h2-hf` | proposed | `plans/h2-hf/plan.v1.md`, proposed | awaiting user acceptance before Codex starts |
+| `h2-hf` | active: deliverables 1 to 4, then A0 to Bv in order | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | plan.v1 accepted 2026-09-08; Codex on the Mac executes; logs in examples/h2_dft/results/hf-*.log |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |
 | `v0.1-lapw-foundation` | closed | `plans/v0.1-lapw-foundation/plan.v1.md`, accepted | superseded by v0.2 |
