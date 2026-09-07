@@ -1,0 +1,5 @@
+# Both writers (Mac on harness, MSI on harness-msi) only append to the ledger
+# and regenerate STATUS.md, so a union merge never needs manual resolution.
+# Regenerate STATUS.md with update-status.py after every merge.
+ledger.md merge=union
+STATUS.md merge=union

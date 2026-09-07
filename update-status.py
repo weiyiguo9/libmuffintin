@@ -65,18 +65,35 @@ def short(text):
     return re.split(r"[;(]", text, maxsplit=1)[0].strip()
 
 
+BASELINE_RE = re.compile(r"^- Code baseline: (.+)$")
+
+
 def main_tip(root):
-    try:
-        sha = subprocess.check_output(["git", "rev-parse", "main"], cwd=root, text=True).strip()
-        date = subprocess.check_output(["git", "log", "-1", "--format=%cs", "main"], cwd=root, text=True).strip()
-        return sha, date
-    except (OSError, subprocess.CalledProcessError):
-        return None, None
+    """Return the `main` baseline text: live from git when a main ref is visible,
+    otherwise carried over from the existing STATUS.md (the MSI mirror sees no
+    main ref and its git dir is not visible from WSL Python)."""
+    for ref in ("main", "origin/main", "github/main"):
+        try:
+            sha = subprocess.check_output(
+                ["git", "rev-parse", "--verify", "--quiet", ref], cwd=root, text=True,
+                stderr=subprocess.DEVNULL).strip()
+            date = subprocess.check_output(
+                ["git", "log", "-1", "--format=%cs", ref], cwd=root, text=True,
+                stderr=subprocess.DEVNULL).strip()
+            if sha:
+                return f"`main` at `{sha}` ({date})"
+        except (OSError, subprocess.CalledProcessError):
+            continue
+    status = root / "STATUS.md"
+    if status.exists():
+        for line in status.read_text(encoding="utf-8").splitlines():
+            match = BASELINE_RE.match(line)
+            if match:
+                return match.group(1)
+    return "`main` tip not available in this checkout"
 
 
-def render(entries, states, notes, plans, tip):
-    sha, date = tip
-    baseline = f"`main` at `{sha}` ({date})" if sha else "`main` tip not available in this checkout"
+def render(entries, states, notes, plans, baseline):
     last = f"{entries[-1][1]} ({entries[-1][0]})" if entries else "none"
     lines = [
         "# Status",

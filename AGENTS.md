@@ -23,5 +23,9 @@
   files that exist on `main`. Point to logs, do not duplicate them.
 - Commits: Conventional Commits 1.0.0, scope `harness`, no attribution
   trailers, repo-local Git identity.
+- On MSI (`D:/projects/libmuffintin-harness`): commit only on `harness-msi`,
+  use ledger IDs `evt-1001`+ and `evd-1001`+, merge `github/harness` before
+  writing, regenerate `STATUS.md` through WSL Python, push `harness-msi` to
+  the `github` remote. Never commit to or push `harness`; the Mac merges.
 - Markdown mathematics and en-dash conventions of `main`'s `AGENTS.md` apply
   to every file here.

@@ -5,7 +5,7 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `69dafb8ea207a43d5aea39bda9e81a4e18a74385` (2026-09-08)
-- Last ledger entry: evt-0008 (2026-09-08)
+- Last ledger entry: evt-0009 (2026-09-08)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|

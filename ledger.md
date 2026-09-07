@@ -104,3 +104,12 @@ ctf-rs commits plus `docs/validation.md` sections and are recorded here as
 
 - state: ctf-rs = active: B0 authorized, D1 to D6 in order; S1 deferred
 - note: ctf-rs = plan.v1 accepted 2026-09-08; Codex on MSI executes; evidence in ctf-rs docs/validation.md
+
+## 2026-09-08 · evt-0009 · two-writer protocol adopted · actor: user
+
+Codex on MSI may now write harness records itself instead of handing lines
+back: it commits on `harness-msi` in `D:/projects/libmuffintin-harness` with
+ledger IDs from 1001, pushes that branch, and the Mac merges it into
+`harness`. `ledger.md` and `STATUS.md` are union-merged and `STATUS.md` is
+regenerated after each merge (README "Two writers"). The ctf-rs milestone
+records of evt-0008 therefore arrive as `evd-1xxx` entries.

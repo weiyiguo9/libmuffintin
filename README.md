@@ -27,6 +27,37 @@ Commits follow Conventional Commits 1.0.0 with scope `harness`
 (`docs(harness): …` for records, `test(harness): …` for evidence scripts)
 and the same repo-local Git identity as `main`.
 
+## Two writers
+
+The Mac writes `harness`. Codex on MSI writes `harness-msi` in the worktree
+`D:/projects/libmuffintin-harness` (remote `github`) and never touches
+`harness` itself; the Mac merges. Ledger IDs are split so the two sides never
+collide: Mac `evt-0001` to `evt-0999` and `evd-0001` to `evd-0999`, MSI
+`evt-1001` to `evt-1999` and `evd-1001` to `evd-1999`. `ledger.md` and
+`STATUS.md` carry `merge=union`, so a merge of two appended ledgers needs no
+manual resolution; `STATUS.md` is regenerated right after.
+
+On MSI (Windows git from the Cygwin shell; Python lives in WSL):
+
+```sh
+cd /cygdrive/d/projects/libmuffintin-harness
+export HOME=/cygdrive/c/Users/xylxp          # so ssh reads C:/Users/xylxp/.ssh
+git merge --no-edit github/harness           # take the Mac's records first
+#   ... append to ledger.md ...
+wsl -d Ubuntu-26.04 -- bash -lc 'cd /mnt/d/projects/libmuffintin-harness && python3 update-status.py'
+git add -A && git commit                     # docs(harness): ...
+git push github harness-msi
+```
+
+On the Mac:
+
+```sh
+cd ../libmuffintin-harness
+git fetch origin harness-msi && git merge --no-edit origin/harness-msi
+python3 update-status.py && git add STATUS.md && git commit --amend --no-edit
+git push origin harness
+```
+
 ## Layout
 
 ```text
