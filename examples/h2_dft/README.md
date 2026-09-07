@@ -199,21 +199,47 @@ are named options: `--box`, `--orbital-g`, `--field-g`, `--product-g`,
 `--fock-fourier-g`, `--fock-smoothing-omega`, `--lexp`, `--speed-of-light`,
 `--rmt`, and the A0 diagnostic control `--fock-max-iterations`.
 
+### FFTW interstitial batching
+
+The `fft-fftw` interstitial path retains one FFT correlation per band pair but
+projects up to 64 pairs sharing a left band in one TBLIS contraction. The
+focused fixture passed once in each build. Its 432 first-build interstitial
+coefficients were dumped from an untracked test hook and compared as
+$\max_i\lvert z_i^{\mathrm{FFTW}}-z_i^{\mathrm{direct}}\rvert$.
+
+```text
+DIGIT / PASS
+Q: exchange/eigenvalue/total identity residuals (Ha); class: R; ref: fixture
+bound: 1e-8; Delta: every residual passed the unchanged fixture assertions
+checks: default and fft-fftw focused tests passed; runs: 2; numerical verification closed
+
+DIGIT / PASS
+Q: first-build interstitial vertex coefficients; class: R; ref: non-fftw
+bound: 1e-10 absolute; Delta: 0; d: 0
+checks: 432 complex coefficients, no key mismatches; comparisons: 1; numerical verification closed
+```
+
+At the A0 settings, the pre-change timing had `vv.mt_contraction = 49.668 s`
+and `vv.interstitial > 300 s`. The single post-change scratch timing had
+`vv.mt_contraction = 35.201 s` and `vv.interstitial > 564 s` when the process
+cap was reached at 600 s, so the first MPB rebuild still did not complete.
+The muffin-tin time is spent in the already band-batched dense site contraction
+`einsum("il,aij,jr->alr")`; the same batching fix does not apply there.
+
 ### A0 smoke
 
-The sole A0 run used orbital cutoff 4, field cutoff 12, product cutoff 4,
-product $l_{max}=2$, and overlap tolerance $10^{-4}$. The 515-plane-wave
-basis has spinor dimension 1030. The process was killed with exit status 137
-after more than 4400 s, before the first outer iteration completed; the log is
-[`results/hf-a0.log`](results/hf-a0.log). The plan classifies this as a resource
-kill and requires an immediate handoff rather than a diagnostic run.
+The authorized rerun used the exact evd-0002 command with orbital cutoff 4,
+field cutoff 12, product cutoff 4, product $l_{max}=2$, and overlap tolerance
+$10^{-4}$. It was terminated at the new 1800 s wall-time limit before the
+first outer iteration completed; the log is
+[`results/hf-a0.log`](results/hf-a0.log).
 
 ```text
 DIGIT / HANDOFF
 Q: exchange/eigenvalue/total identity residuals (Ha); class: A; ref: 0
 bound: 1e-8; Delta: unavailable because no outer iteration completed
-checks: process killed with exit 137 at spinor dimension 1030; runs: 1
-unresolved: can A0 complete within the local 24 GB resource boundary?
+checks: exact A0 rerun reached its 1800 s wall limit; runs: 1
+unresolved: what performance change beyond per-left-band projection batching is needed for A0 to return within 30 minutes?
 ```
 
 ### A1 identity-floor study
