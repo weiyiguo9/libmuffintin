@@ -1,0 +1,7 @@
+independent-reference ERI convergence: 2.498e-02
+=== Synthetic periodic LAPW adaptive-grid ISDF/THC ===
+two atoms, s/p/d/f augmentation, 4 k/q points, Norb=6, Nmu=96; integer |G|^2 <= 12; q=0 G=0 omitted
+grid                       npts      pair-G       ERI-F     ERI-max      action       fit-F     fit-col
+adaptive 14x50 + 14^3      4041   1.792e-01   3.638e-01   3.244e-01   5.059e-01   1.697e-05   1.518e-03
+adaptive 26x86 + 18^3     10090   2.362e-02   4.932e-02   4.560e-02   6.230e-02   2.384e-05   2.109e-03
+uniform 16^3               4096   7.854e-01   8.800e-01   9.984e-01   1.020e+00   3.851e-05   7.201e-04

@@ -1,0 +1,96 @@
+M-L0 adaptive-weight rank-gate probe
+====================================
+
+This file is an immutable text record of the artifact, schema, and probe
+provenance. It does not claim all-q Weinert, canonical-q / Umklapp
+validation, or M-L completion. The probe tests adaptive weighted QRCP
+selection only.
+
+Artifact
+--------
+path:     /home/xylxp/projects/thc-smdy/runs/sm_fcc_3x3_ref/nufft_adaptive_tight_ls.bin
+size:     773385660 bytes
+sha256:   24f152cc9712aad4e6f90b2bbe07b5aa2a5bfa63e9bc8549231fd86ad53b2b6f
+schema:   NUF1 v2 (little-endian i32 header[11] + f64 payload)
+magic:    0x4e554631
+version:  2
+nk:       27
+nspin:    2
+bando:    13          # occupation / wintgr stride
+nband:    16          # wavefunction band stride
+npts:     27940
+nrad:     96
+nang:     194
+ninter:   24          # parent interstitial 24^3; MT-overlapping samples dropped
+components: 2         # scalar-relativistic large + small
+n_mt:     96 * 194 = 18624 (dump prefix)
+n_int:    27940 - 18624 = 9316
+volume:   224.04470535155772 bohr^3 (header)
+
+Wavefunction index (must not be mixed with occupations):
+  point + npts * (band + nband * (k + nk * spin))
+Occupation index:
+  k + nk * (band + bando * spin)
+
+Source log / 113-at-3e-3 baseline
+---------------------------------
+Local notes: scratch/thc_smdy_experiment/LOG.md and RESULTS.md
+Recorded 3x3x3 regular-grid THC scan (not this adaptive dump):
+  QR thresholds 1e-1, 3e-2, 1e-2, 3e-3 -> ranks 19, 39, 71, 113
+  n_keep = 128 (can silently saturate)
+  candidate subset: 8^3 strided samples of the uniform 24^3 grid (M=512)
+  weights: uniform vol / M
+  pair columns: experiment packed 10 Gamma-targets x occupied into a fake
+    PairColumnLayout::new(1, 12) 12x12 flattening (PACK_NORB=12, packed_col
+    = t * 14 + occ). That layout is rejected by this probe.
+
+Probe provenance
+----------------
+author_pane:     grok-worker3 w1:p6
+role:            unique writer/experimenter, M-L0 adaptive-weight rank gate
+local_repo:      /Users/zerozaki07/tmp/libmuffintin
+local_HEAD:      b2dc3099032bcde86ff4b435215073d0c55e88a3
+local_source:    scratch/ml0_adaptive_rank_probe/adaptive_rank_probe.rs
+remote_bin:      /home/xylxp/projects/thc-smdy/experiment/rust-thc/src/bin/adaptive_rank_probe.rs
+remote_crate:    /home/xylxp/projects/thc-smdy/experiment/rust-thc
+remote_output:   /home/xylxp/projects/thc-smdy/runs/rust_thc/ml0_adaptive_rank_probe*
+                 and ml0_adaptive_rank_probe_qindex0* (q_index metadata rerun)
+
+q_index metadata fix (incremental)
+----------------------------------
+PairBlock::new after the L+S sum previously passed q_index=spin, so the
+second spin block was mislabeled q=1. Both spin blocks now use q_index=0.
+Spin remains the block-loop identity (orbitals, evaluate_pair_block
+inputs, log messages). Matrix values, candidates, weights, thresholds,
+layout, n_keep, and reporting are unchanged. Prior
+ml0_adaptive_rank_probe* outputs are kept as provenance.
+
+Method (cheapest controlled A/B)
+--------------------------------
+- Read NUF1 v2 adaptive dump. Preserve bando=13 vs nband=16 strides.
+- Pair density is conj(L_i) L_j + conj(S_i) S_j via two public
+  evaluate_pair_block calls plus PairBlock::new on the summed values.
+- Semantic PairColumnLayout::new(nk, nband, None) with layout.encode(k, i, j).
+  n_k=27, n_orb=16, n_columns = 27 * 16 * 16 = 6912 per spin.
+- q = 0 only (KMesh::gamma_centred([3,3,3], |a1|), iq=0). Umklapp is
+  identically 1; this is not an Umklapp / all-q claim.
+- Both spins stacked as two PairBlocks into public pivots_from_pair_blocks.
+- Candidate subsets: independent deterministic region-strided samples at
+  M=512 and M=2048, allocating floor(M * n_mt / npts) muffin-tin indices
+  from the dump prefix and the remainder from the interstitial suffix.
+  Same subset is reused for the true-weight and uniform-weight arms.
+- True weights: dump quadrature on the candidate points, no clamp/floor.
+- Uniform weights: the mean of those true candidate weights (global scale
+  does not change relative QR ranks; this only matches R_00 magnitude).
+- n_keep = M (>= 512) so threshold ranks cannot silently stop at 128.
+- Rank from QRCP |R_kk| / |R_00| at 1e-1, 3e-2, 1e-2, 3e-3.
+
+Gate (no tighter physics tolerance)
+-----------------------------------
+Pass only if, on both M:
+  1. true-weight rank at 3e-3 is strictly below n_keep (not saturated)
+  2. true-weight ranks do not sharply diverge from the matched uniform arm
+  3. 3e-3 pivots do not collapse onto near-minimum-weight candidates
+Compare the M=512 uniform arm to the recorded 113-at-3e-3 number, and
+explain candidate / pair-space / n_keep differences rather than forcing
+equality.

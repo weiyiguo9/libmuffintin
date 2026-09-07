@@ -1,0 +1,50 @@
+ml0_adaptive_rank_probe: dump=/home/xylxp/projects/thc-smdy/runs/sm_fcc_3x3_ref/nufft_adaptive_tight_ls.bin prefix=runs/rust_thc/ml0_adaptive_rank_probe_qindex0
+scope: adaptive weighted selection only; no all-q Weinert / Umklapp / M-L completion claim
+schema: NUF1 v2 nk=27 nspin=2 bando=13 nband=16 npts=27940 nrad=96 nang=194 ninter=24 vol=224.044705351558 weight_sum=224.044705351497 n_mt=18624 n_int=9316 |a1|=6.817365225 layout n_columns=6912 encode(1,2,3)=291 occ_sums=[11.44443699577989, 4.555563004245555]
+M=512: n_mt_cand=341 n_int_cand=171 true_w_sum=4.097685077615 uniform_w=0.008003291167217387
+M=2048: n_mt_cand=1365 n_int_cand=683 true_w_sum=16.412818375888 uniform_w=0.00801407147260175
+csv=runs/rust_thc/ml0_adaptive_rank_probe_qindex0_ranks.csv
+baseline_m512_uniform_3e-3_recorded=113
+m512_uniform_3e-3_rank=84  delta_vs_recorded=-29  (different candidate geometry, semantic 27x16x16 q=0 L+S columns, n_keep=512, adaptive dump vs regular 24^3 12x12 packed scan)
+M=512 arm=true thresh=1e-1 rank=86 n_keep=512 mt_piv=86/86 (1.000) w_piv_mean=2.508398e-3 w_cand_mean=8.003291e-3 low_decile=0.000 sat=false wall=1.493s
+M=512 arm=true thresh=3e-2 rank=122 n_keep=512 mt_piv=120/122 (0.984) w_piv_mean=4.912131e-3 w_cand_mean=8.003291e-3 low_decile=0.057 sat=false wall=1.493s
+M=512 arm=true thresh=1e-2 rank=168 n_keep=512 mt_piv=147/168 (0.875) w_piv_mean=5.965628e-3 w_cand_mean=8.003291e-3 low_decile=0.048 sat=false wall=1.493s
+M=512 arm=true thresh=3e-3 rank=238 n_keep=512 mt_piv=195/238 (0.819) w_piv_mean=6.455683e-3 w_cand_mean=8.003291e-3 low_decile=0.034 sat=false wall=1.493s
+M=512 arm=uniform thresh=1e-1 rank=1 n_keep=512 mt_piv=1/1 (1.000) w_piv_mean=4.848189e-13 w_cand_mean=8.003291e-3 low_decile=1.000 sat=false wall=1.451s
+M=512 arm=uniform thresh=3e-2 rank=9 n_keep=512 mt_piv=9/9 (1.000) w_piv_mean=8.728340e-8 w_cand_mean=8.003291e-3 low_decile=1.000 sat=false wall=1.451s
+M=512 arm=uniform thresh=1e-2 rank=28 n_keep=512 mt_piv=28/28 (1.000) w_piv_mean=1.498828e-4 w_cand_mean=8.003291e-3 low_decile=0.357 sat=false wall=1.451s
+M=512 arm=uniform thresh=3e-3 rank=84 n_keep=512 mt_piv=84/84 (1.000) w_piv_mean=1.102877e-4 w_cand_mean=8.003291e-3 low_decile=0.274 sat=false wall=1.451s
+M=2048 arm=true thresh=1e-1 rank=89 n_keep=2048 mt_piv=89/89 (1.000) w_piv_mean=2.209954e-3 w_cand_mean=8.014071e-3 low_decile=0.000 sat=false wall=16.692s
+M=2048 arm=true thresh=3e-2 rank=124 n_keep=2048 mt_piv=124/124 (1.000) w_piv_mean=4.585412e-3 w_cand_mean=8.014071e-3 low_decile=0.073 sat=false wall=16.692s
+M=2048 arm=true thresh=1e-2 rank=171 n_keep=2048 mt_piv=156/171 (0.912) w_piv_mean=6.100755e-3 w_cand_mean=8.014071e-3 low_decile=0.053 sat=false wall=16.692s
+M=2048 arm=true thresh=3e-3 rank=262 n_keep=2048 mt_piv=231/262 (0.882) w_piv_mean=6.352048e-3 w_cand_mean=8.014071e-3 low_decile=0.034 sat=false wall=16.692s
+M=2048 arm=uniform thresh=1e-1 rank=1 n_keep=2048 mt_piv=1/1 (1.000) w_piv_mean=4.848189e-13 w_cand_mean=8.014071e-3 low_decile=1.000 sat=false wall=16.332s
+M=2048 arm=uniform thresh=3e-2 rank=9 n_keep=2048 mt_piv=9/9 (1.000) w_piv_mean=8.155941e-8 w_cand_mean=8.014071e-3 low_decile=1.000 sat=false wall=16.332s
+M=2048 arm=uniform thresh=1e-2 rank=36 n_keep=2048 mt_piv=36/36 (1.000) w_piv_mean=1.545485e-4 w_cand_mean=8.014071e-3 low_decile=0.333 sat=false wall=16.332s
+M=2048 arm=uniform thresh=3e-3 rank=91 n_keep=2048 mt_piv=91/91 (1.000) w_piv_mean=1.065307e-4 w_cand_mean=8.014071e-3 low_decile=0.264 sat=false wall=16.332s
+gate: M=512 3e-3: true_rank=238 uniform_rank=84 ratio=2.833 sat=false mt_frac=0.819 low_decile=0.034 w_piv_mean/w_cand_mean=0.807
+gate: M=2048 3e-3: true_rank=262 uniform_rank=91 ratio=2.879 sat=false mt_frac=0.882 low_decile=0.034 w_piv_mean/w_cand_mean=0.793
+verdict=PASS total_wall_s=36.340 peak_rss_kb=Some(2601104)
+	Command being timed: "experiment/rust-thc/target/release/adaptive_rank_probe /home/xylxp/projects/thc-smdy/runs/sm_fcc_3x3_ref/nufft_adaptive_tight_ls.bin runs/rust_thc/ml0_adaptive_rank_probe_qindex0"
+	User time (seconds): 242.67
+	System time (seconds): 5.98
+	Percent of CPU this job got: 683%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:36.35
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 2601104
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 1912214
+	Voluntary context switches: 203726
+	Involuntary context switches: 249
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 32
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
