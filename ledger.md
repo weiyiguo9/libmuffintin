@@ -113,3 +113,19 @@ ledger IDs from 1001, pushes that branch, and the Mac merges it into
 `harness`. `ledger.md` and `STATUS.md` are union-merged and `STATUS.md` is
 regenerated after each merge (README "Two writers"). The ctf-rs milestone
 records of evt-0008 therefore arrive as `evd-1xxx` entries.
+
+## 2026-09-08 · evd-1001 · ctf-rs B0 bookkeeping close · ctf-rs 4eb0a4b5e6efbde23446ac2a8093c5769a1315e2
+
+```text
+DIGIT / FAIL
+milestone: B0; commit: 4eb0a4b5e6efbde23446ac2a8093c5769a1315e2
+validation.md section: B0 sparse WIP disposition and expression inventory (2026-09-08)
+Q: distributed_sparse_search_cache exact i64 results, layouts and cache statistics; class: R; ref: pinned f69cbb46
+bound: exact; observed: WIP compilation failed before runtime (missing s/c/z GEMM declarations and five f64-to-usize mismatches)
+runs: WSL compilation attempt before 1/2/4 execution; native not applicable
+open: none; prescribed fallback retained f22da3a on wip/sparse-search-cache and returned delivery branch to da5354b
+command: cargo test --test distributed_sparse_search_cache
+```
+
+- state: ctf-rs = B0 closed
+- note: ctf-rs = rejected sparse cache WIP retained on its branch; expression rows reconciled; D1 next
