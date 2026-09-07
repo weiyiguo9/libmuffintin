@@ -201,7 +201,20 @@ are named options: `--box`, `--orbital-g`, `--field-g`, `--product-g`,
 
 ### A0 smoke
 
-The A0 result and its Stop That Digit stamp are recorded here after execution.
+The sole A0 run used orbital cutoff 4, field cutoff 12, product cutoff 4,
+product $l_{max}=2$, and overlap tolerance $10^{-4}$. The 515-plane-wave
+basis has spinor dimension 1030. The process was killed with exit status 137
+after more than 4400 s, before the first outer iteration completed; the log is
+[`results/hf-a0.log`](results/hf-a0.log). The plan classifies this as a resource
+kill and requires an immediate handoff rather than a diagnostic run.
+
+```text
+DIGIT / HANDOFF
+Q: exchange/eigenvalue/total identity residuals (Ha); class: A; ref: 0
+bound: 1e-8; Delta: unavailable because no outer iteration completed
+checks: process killed with exit 137 at spinor dimension 1030; runs: 1
+unresolved: can A0 complete within the local 24 GB resource boundary?
+```
 
 ### A1 identity-floor study
 
@@ -211,19 +224,19 @@ finite-body kernel. Each row changes one base setting.
 
 | Row | Change | $E$ (Ha) | HOMO (Ha) | $E_H$ (Ha) | $E_x$ (Ha) | Exchange id. (Ha) | Eigenvalue id. (Ha) | Total id. (Ha) | $\lvert E_x+E_H/2\rvert$ (Ha) | Fock iter. | Wall (s) | Log |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| 1 | base | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 2 | product $G=4$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 3 | product $G=8$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 4 | product $G=10$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 5 | product $l_{max}=2$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 6 | product $l_{max}=6$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 7 | overlap tolerance $10^{-5}$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 8 | overlap tolerance $10^{-6}$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 9 | `lexp=18` | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 10 | field cutoff 18 | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 1 | base | not run | – | – | – | – | – | – | – | – | – | – |
+| 2 | product $G=4$ | not run | – | – | – | – | – | – | – | – | – | – |
+| 3 | product $G=8$ | not run | – | – | – | – | – | – | – | – | – | – |
+| 4 | product $G=10$ | not run | – | – | – | – | – | – | – | – | – | – |
+| 5 | product $l_{max}=2$ | not run | – | – | – | – | – | – | – | – | – | – |
+| 6 | product $l_{max}=6$ | not run | – | – | – | – | – | – | – | – | – | – |
+| 7 | overlap tolerance $10^{-5}$ | not run | – | – | – | – | – | – | – | – | – | – |
+| 8 | overlap tolerance $10^{-6}$ | not run | – | – | – | – | – | – | – | – | – | – |
+| 9 | `lexp=18` | not run | – | – | – | – | – | – | – | – | – | – |
+| 10 | field cutoff 18 | not run | – | – | – | – | – | – | – | – | – | – |
 
-The A1 study summary, A1v identity-verdict stamp, and A2 same-box external
-stamp are recorded here after execution.
+The closed A1 row list was not run because the ordered predecessor A0 handed
+off. Consequently A1v and A2 have no numerical evidence or stamps.
 
 ### B kernel study
 
@@ -231,14 +244,14 @@ The B rows use the accepted A1v settings with orbital cutoff 5.
 
 | Row | Kernel | Box | Fock Fourier $G$ | Omega | $E$ (Ha) | HOMO (Ha) | $E_H$ (Ha) | $E_x$ (Ha) | Exchange id. (Ha) | Eigenvalue id. (Ha) | Total id. (Ha) | $\lvert E_x+E_H/2\rvert$ (Ha) | Fock iter. | Wall (s) | Log |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| 1 | sharp Spencer–Alavi | 8 | product $G$ | – | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 2 | sharp Spencer–Alavi | 8 | $2\times$ product $G$ | – | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 3 | sharp Spencer–Alavi | 10 | product $G$ | – | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 4 | sharp Spencer–Alavi | 12 | product $G$ | – | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 5 | smoothed Spencer–Alavi | 8 | product $G$ | 0.8 | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 6 | smoothed Spencer–Alavi | 8 | product $G$ | 1.6 | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 7 | smoothed Spencer–Alavi | 8 | product $G$ | 3.2 | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 8 | smoothed Spencer–Alavi | 12 | product $G$ | 0.8 | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 1 | sharp Spencer–Alavi | 8 | product $G$ | – | not run | – | – | – | – | – | – | – | – | – | – |
+| 2 | sharp Spencer–Alavi | 8 | $2\times$ product $G$ | – | not run | – | – | – | – | – | – | – | – | – | – |
+| 3 | sharp Spencer–Alavi | 10 | product $G$ | – | not run | – | – | – | – | – | – | – | – | – | – |
+| 4 | sharp Spencer–Alavi | 12 | product $G$ | – | not run | – | – | – | – | – | – | – | – | – | – |
+| 5 | smoothed Spencer–Alavi | 8 | product $G$ | 0.8 | not run | – | – | – | – | – | – | – | – | – | – |
+| 6 | smoothed Spencer–Alavi | 8 | product $G$ | 1.6 | not run | – | – | – | – | – | – | – | – | – | – |
+| 7 | smoothed Spencer–Alavi | 8 | product $G$ | 3.2 | not run | – | – | – | – | – | – | – | – | – | – |
+| 8 | smoothed Spencer–Alavi | 12 | product $G$ | 0.8 | not run | – | – | – | – | – | – | – | – | – | – |
 
-The B study summary and Bv kernel-verdict stamp are recorded here after
-execution. All corresponding logs use the `results/hf-*.log` prefix.
+The closed B row list and Bv verdict were not run after the A0 handoff. No Bv
+stamp exists because no box-12 sharp-kernel value was produced.
