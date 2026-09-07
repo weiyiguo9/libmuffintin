@@ -5,13 +5,11 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `69dafb8ea207a43d5aea39bda9e81a4e18a74385` (2026-09-08)
-- Last ledger entry: evd-1002 (2026-09-08)
-- Code baseline: `main` at `3ef6bca28abeeb726c6c00431e8b82e8556498b5` (2026-09-08)
-- Last ledger entry: evt-0011 (2026-09-08)
+- Last ledger entry: evd-1003 (2026-09-08)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
-| `ctf-rs` | D1 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | dense scaling, virtual traversal, strip/restore and packed indexed scaling closed; D2 next |
+| `ctf-rs` | D2 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | DGTOG ROR, block/global reshuffle, transpose, slice and packed padding closed; D3 next |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
 | `h2-hf` | active: deliverables 1 to 4, then A0 to Bv in order | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | plan.v1 accepted 2026-09-08; Codex on the Mac executes; logs in examples/h2_dft/results/hf-*.log |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |

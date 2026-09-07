@@ -168,3 +168,19 @@ and G-HFI-2 are class R. It starts after `h2-hf` closes or hands off;
 
 - state: hf-input = proposed
 - note: hf-input = ADR-0005; starts after h2-hf is closed or handoff; no physics gates
+
+## 2026-09-08 · evd-1003 · ctf-rs D2 optimized redistribution close · ctf-rs e2e60f96f7442e85ddc71aca0f62686503b8e68d
+
+```text
+DIGIT / PASS
+milestone: D2; commit: e2e60f96f7442e85ddc71aca0f62686503b8e68d
+validation.md section: D2 optimized dense redistribution close (2026-09-08)
+Q: readwrite_test; readall_test; repack; permute_multiworld NS; reduce_bcast; subworld_gemm; class: R; ref: pinned f69cbb46
+bound: upstream per driver; observed: all within
+runs: WSL world/parity at 1/2/4 once; bench_redistribution 0.000077 s and bench_nosym_transp 0.000656 s once at four ranks; native compile/link
+open: none
+command: MPI runner cargo test for the six D2 drivers; mpirun -n 4 each release benchmark once
+```
+
+- state: ctf-rs = D2 closed
+- note: ctf-rs = DGTOG ROR, block/global reshuffle, transpose, slice and packed padding closed; D3 next
