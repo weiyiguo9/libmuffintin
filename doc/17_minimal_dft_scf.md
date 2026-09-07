@@ -380,7 +380,18 @@ are errors. Omitting it retains the density-derived integration grid.
 
 `FreeAtomScfSpec` makes the exponential radial mesh, potential mixing, potential tolerance, tail tolerance, and maximum iteration count explicit. Public `run_free_atom_lda` starts from the bare nuclear potential and resolves the neutral FLEUR occupation catalogue into every occupied signed $\kappa$ channel. Each radial iteration solves those bound Dirac orbitals, forms the physical $P^2+Q^2$ density, evaluates the isolated spherical Hartree potential and unpolarized LDA/PW92 potential, and mixes the resulting effective potential. Success requires the potential residual, integrated-charge error, and outer logarithmic-shell charge to satisfy the caller's tolerances. Bound-state, quadrature, XC, convergence, and tail failures remain typed rather than producing a partial atomic state.
 
-`build_atomic_superposition_density` places the converged neutral atoms on the supplied crystal and sums every periodic image whose verified radial tail intersects a target muffin-tin sphere. It evaluates the overlapped density on the target radial/angular grid and projects all requested nonspherical muffin-tin channels instead of retaining only a spherical on-site term. Its interstitial Fourier coefficients are neutral-atom form factors on the caller's exact `RegionalFieldLayout`; the atomic path does not infer that layout from a k mesh, plane-wave orbital basis, or `CompiledBasis`. `RegionalFieldLayout::new` accepts an ordered reciprocal-index list, while `from_g_cutoff` enumerates the reciprocal sphere from an explicit `InverseBohr`. After muffin-tin projection and finite Fourier truncation, only the represented $G=0$ coefficient is corrected so the regional integral equals the requested charge; finite $G$ coefficients and the nonspherical muffin-tin density are unchanged. Interpolation beyond the verified atomic tail is a typed error.
+`build_atomic_superposition_density` places the converged neutral atoms on the supplied crystal and sums every periodic image whose verified radial tail intersects a target muffin-tin sphere. It evaluates the overlapped density on the target radial/angular grid and projects all requested nonspherical muffin-tin channels instead of retaining only a spherical on-site term. The interstitial initial guess is constructed from band-limited square-root amplitudes of the smooth atomic extensions, rather than truncating the density itself:
+
+```math
+n^{\mathrm I}(\mathbf r)=\sum_a |A_a(\mathbf r)|^2,
+\qquad
+n^{\mathrm I}_{\mathbf G}=\sum_a\sum_{\mathbf g-\mathbf h=\mathbf G}
+A_{a\mathbf g} A^*_{a\mathbf h}.
+```
+
+The amplitudes are initial-guess devices, not occupied molecular orbitals; there are no cross-atom amplitude products. Their reciprocal support is chosen within half the density cutoff, and the caller's exact `RegionalFieldLayout` must contain all pair differences. This gives a nonnegative finite Fourier representation instead of relying on clipping a negative Gibbs oscillation. The atomic path does not infer the density layout from a k mesh, orbital basis, or `CompiledBasis`. `RegionalFieldLayout::new` accepts an ordered reciprocal-index list, while `from_g_cutoff` enumerates the reciprocal sphere from an explicit `InverseBohr`.
+
+After construction, the complete regional density is multiplied by the positive ratio of requested to represented charge. Muffin-tin and Fourier coefficients use the same factor, preserving signs instead of introducing a uniform negative vacuum offset through an additive $G=0$ correction. This is an atomic-initial-guess normalization, not a change to physical core-shell occupations. Interpolation beyond the verified atomic tail remains a typed error.
 
 The path is deliberately nonmagnetic and neutral-only. `electron_count` must satisfy
 

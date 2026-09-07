@@ -270,10 +270,7 @@ impl AtomicStart {
             "uncorrected_electron_count",
             closure.uncorrected_electron_count,
         )?;
-        dict.set_item(
-            "zero_mode_coefficient_correction",
-            closure.zero_mode_coefficient_correction,
-        )?;
+        dict.set_item("normalization_scale", closure.normalization_scale)?;
         dict.set_item(
             "represented_electron_count",
             closure.represented_electron_count,

@@ -483,7 +483,9 @@ constructor accepts a k mesh, `ScfConfig`, or `CompiledBasis`.
 
 `AtomicStart.charge_closure` contains exactly `interstitial_fraction`,
 `response_volume`, `target_electron_count`, `uncorrected_electron_count`,
-`zero_mode_coefficient_correction`, and `represented_electron_count`.
+`normalization_scale`, and `represented_electron_count`. Atomic-start charge
+closure scales all muffin-tin and Fourier density coefficients together; it
+does not add a uniform interstitial offset that can make vacuum density negative.
 `AtomicStart.checkpoint` returns the ordinary shared `Checkpoint` handle, whose
 `write(path)` method emits canonical Checkpoint V2 TOML. The fixed binding
 metadata is source-neutral and contains no material name.

@@ -7,17 +7,16 @@ use std::f64::consts::PI;
 use muffintin_core::{AngularGrid, Cell};
 use muffintin_core::{
     Bohr, ExponentialMesh, FourierFieldError, FourierLayout, HermitianFourierField,
-    InterstitialGeometry, LatticeError, MeshError, ReciprocalLattice, Sphere, StepFunctionError,
-    lm_count, lm_from_index, real_spherical_harmonics, spherical_bessel_j,
+    InterstitialGeometry, InverseBohr, LatticeError, MeshError, ReciprocalLattice, Sphere,
+    StepFunctionError, lm_count, lm_from_index, real_spherical_harmonics, spherical_bessel_j,
 };
 use muffintin_sphere::{SphereField, SphereFieldError};
+#[cfg(feature = "fft-fftw")]
+use muffintin_tensor::fft::{FftError, FftGrid, FftPlan};
 use num_complex::Complex64;
 use thiserror::Error;
 
 use crate::atomic_configuration::AtomicNumber;
-use crate::core_density::{
-    CoreDensityError, FiniteLayoutClosureComponent, close_finite_layout_zero_mode,
-};
 use crate::density::{DensityError, scalar_field_integral};
 use crate::free_atom::{FreeAtomScfError, FreeAtomScfSpec, FreeAtomState, run_free_atom_lda};
 use crate::regional::{
@@ -46,14 +45,14 @@ pub struct AtomicSuperpositionSpec {
     pub free_atom_scf: FreeAtomScfSpec,
 }
 
-/// Constant-mode charge correction on the caller's finite Fourier layout.
+/// Positive normalization of the complete finite-layout regional density.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AtomicSuperpositionChargeClosure {
     pub interstitial_fraction: f64,
     pub response_volume: f64,
     pub target_electron_count: f64,
     pub uncorrected_electron_count: f64,
-    pub zero_mode_coefficient_correction: f64,
+    pub normalization_scale: f64,
     pub represented_electron_count: f64,
 }
 
@@ -115,6 +114,18 @@ pub enum AtomicSuperpositionError {
     PseudoDensityOverflow { site: usize, radius: f64 },
     #[error("Fourier layout has no opposite vector for {0:?}")]
     MissingOpposite([i32; 3]),
+    #[error("atomic amplitude basis requires the Fourier zero mode")]
+    MissingAmplitudeZeroMode,
+    #[error("atomic amplitude pair difference overflows i32: {left:?} - {right:?}")]
+    AmplitudePairDifferenceOverflow { left: [i32; 3], right: [i32; 3] },
+    #[error(
+        "atomic amplitude pair {left:?} - {right:?} requires missing density Fourier vector {difference:?}"
+    )]
+    MissingAmplitudePairDifference {
+        left: [i32; 3],
+        right: [i32; 3],
+        difference: [i32; 3],
+    },
     #[error(
         "closed atomic superposition represents {represented} electrons, requested {requested} within {tolerance}"
     )]
@@ -123,6 +134,8 @@ pub enum AtomicSuperpositionError {
         represented: f64,
         tolerance: f64,
     },
+    #[error("uncorrected atomic superposition has invalid electron count {0}")]
+    InvalidUncorrectedElectronCount(f64),
     #[error(transparent)]
     Lattice(#[from] LatticeError),
     #[error(transparent)]
@@ -137,8 +150,9 @@ pub enum AtomicSuperpositionError {
     Density(#[from] DensityError),
     #[error(transparent)]
     StepFunction(#[from] StepFunctionError),
+    #[cfg(feature = "fft-fftw")]
     #[error(transparent)]
-    FiniteLayoutClosure(#[from] CoreDensityError),
+    Fft(#[from] FftError),
 }
 
 /// Build a periodic, nonmagnetic superposition of converged neutral atoms.
@@ -185,33 +199,24 @@ pub fn build_atomic_superposition_density(
     let mut fourier = build_fourier_coefficients(spec, &atoms)?;
     enforce_fourier_reality(&spec.fourier_layout, &mut fourier)?;
 
-    let zero_muffin_tins = muffin_tins
-        .iter()
-        .map(MuffinTinField::zero_like)
-        .collect::<Vec<_>>();
-    let mut zero_fourier = vec![Complex64::new(0.0, 0.0); spec.fourier_layout.len()];
-    let closure = close_finite_layout_zero_mode(
-        &geometry,
-        &spec.fourier_layout,
-        FiniteLayoutClosureComponent {
-            muffin_tins: &muffin_tins,
-            requested_integral: spec.target_electron_count,
-            fourier: &mut fourier,
-        },
-        FiniteLayoutClosureComponent {
-            muffin_tins: &zero_muffin_tins,
-            requested_integral: 0.0,
-            fourier: &mut zero_fourier,
-        },
-    )?;
     let charge = RegionalScalarField::new(
-        geometry,
+        geometry.clone(),
         muffin_tins,
         InterstitialField::from_fourier_field(HermitianFourierField::new(
             spec.fourier_layout.clone(),
             fourier,
         )?),
     )?;
+    let uncorrected_electron_count = scalar_field_integral(&charge)?;
+    if !uncorrected_electron_count.is_finite() || uncorrected_electron_count <= 0.0 {
+        return Err(AtomicSuperpositionError::InvalidUncorrectedElectronCount(
+            uncorrected_electron_count,
+        ));
+    }
+    let normalization_scale = spec.target_electron_count / uncorrected_electron_count;
+    let mut normalized_charge = charge.zero_like();
+    normalized_charge.add_scaled(normalization_scale, &charge)?;
+    let charge = normalized_charge;
     let zero = charge.zero_like();
     let density = RegionalDensity::new(charge, [zero.clone(), zero.clone(), zero])?;
     let represented_electron_count = scalar_field_integral(density.charge())?;
@@ -223,15 +228,17 @@ pub fn build_atomic_superposition_density(
             tolerance,
         });
     }
+    let interstitial_fraction = geometry.coefficient([InverseBohr(0.0); 3])?.re;
+    let response_volume = geometry.cell_volume().get() * interstitial_fraction;
 
     Ok(AtomicSuperpositionDensity {
         density,
         charge_closure: AtomicSuperpositionChargeClosure {
-            interstitial_fraction: closure.interstitial_fraction,
-            response_volume: closure.response_volume,
+            interstitial_fraction,
+            response_volume,
             target_electron_count: spec.target_electron_count,
-            uncorrected_electron_count: closure.uncorrected_charge,
-            zero_mode_coefficient_correction: closure.charge_coefficient_correction,
+            uncorrected_electron_count,
+            normalization_scale,
             represented_electron_count,
         },
     })
@@ -330,6 +337,9 @@ fn build_fourier_coefficients(
     spec: &AtomicSuperpositionSpec,
     atoms: &BTreeMap<AtomicNumber, FreeAtomState>,
 ) -> Result<Vec<Complex64>, AtomicSuperpositionError> {
+    if spec.fourier_layout.index([0; 3]).is_none() {
+        return Err(AtomicSuperpositionError::MissingAmplitudeZeroMode);
+    }
     let volume = spec.direct_lattice.volume().get();
     let mut extensions = BTreeMap::new();
     for (site_index, site) in spec.sites.iter().enumerate() {
@@ -342,26 +352,49 @@ fn build_fourier_coefficients(
             )?);
         }
     }
-    // The radial transform depends on the extension and |G|, not direction.
-    // Use the exact floating-point norm so reuse does not merge nearby shells.
-    let mut transforms = BTreeMap::new();
-    spec.fourier_layout
+    let maximum_density_norm = spec
+        .fourier_layout
         .vectors()
         .iter()
-        .map(|vector| {
-            let mut coefficient = Complex64::new(0.0, 0.0);
-            for site in &spec.sites {
-                let key = AtomicExtensionKey::new(site);
+        .map(|vector| vector.norm.get())
+        .fold(0.0, f64::max);
+    let amplitude_cutoff = 0.5 * maximum_density_norm;
+    let cutoff_tolerance = 64.0 * f64::EPSILON * maximum_density_norm.max(1.0);
+    let amplitude_vectors = spec
+        .fourier_layout
+        .vectors()
+        .iter()
+        .filter(|vector| vector.norm.get() <= amplitude_cutoff + cutoff_tolerance)
+        .collect::<Vec<_>>();
+
+    // Each atom contributes one independent squared amplitude. The radial
+    // transform depends on the extension and |g|, not direction; use the
+    // exact floating-point norm so reuse does not merge nearby shells.
+    let mut transforms = BTreeMap::new();
+    let mut coefficients = vec![Complex64::new(0.0, 0.0); spec.fourier_layout.len()];
+    #[cfg(feature = "fft-fftw")]
+    let mut amplitude_fft = AtomicAmplitudeFft::new(
+        &amplitude_vectors
+            .iter()
+            .map(|vector| vector.index)
+            .collect::<Vec<_>>(),
+        &spec.fourier_layout,
+    )?;
+    for site in &spec.sites {
+        let key = AtomicExtensionKey::new(site);
+        let atom = &atoms[&site.atomic_number];
+        let amplitudes = amplitude_vectors
+            .iter()
+            .map(|vector| {
                 let transform_key = (key, vector.norm.get().to_bits());
                 let transform = if let Some(&transform) = transforms.get(&transform_key) {
                     transform
                 } else {
-                    let atom = &atoms[&site.atomic_number];
                     let integrand = extensions[&key]
                         .iter()
                         .zip(atom.mesh.radii())
                         .map(|(&density, radius)| {
-                            density
+                            density.sqrt()
                                 * radius.get().powi(2)
                                 * spherical_bessel_j(0, vector.norm.get() * radius.get())
                         })
@@ -376,11 +409,186 @@ fn build_fourier_coefficients(
                     .zip(site.position)
                     .map(|(g, r)| g.get() * r.get())
                     .sum::<f64>();
-                coefficient += Complex64::from_polar(transform, phase);
+                Ok((vector.index, Complex64::from_polar(transform, phase)))
+            })
+            .collect::<Result<Vec<_>, AtomicSuperpositionError>>()?;
+        #[cfg(feature = "fft-fftw")]
+        amplitude_fft.accumulate(&amplitudes, &spec.fourier_layout, &mut coefficients)?;
+        #[cfg(not(feature = "fft-fftw"))]
+        for &(left_index, left) in &amplitudes {
+            for &(right_index, right) in &amplitudes {
+                let difference_component = |axis: usize| {
+                    left_index[axis].checked_sub(right_index[axis]).ok_or(
+                        AtomicSuperpositionError::AmplitudePairDifferenceOverflow {
+                            left: left_index,
+                            right: right_index,
+                        },
+                    )
+                };
+                let difference = [
+                    difference_component(0)?,
+                    difference_component(1)?,
+                    difference_component(2)?,
+                ];
+                let position = spec.fourier_layout.index(difference).ok_or(
+                    AtomicSuperpositionError::MissingAmplitudePairDifference {
+                        left: left_index,
+                        right: right_index,
+                        difference,
+                    },
+                )?;
+                coefficients[position] += left * right.conj();
             }
-            Ok(coefficient)
-        })
-        .collect()
+        }
+    }
+    Ok(coefficients)
+}
+
+#[cfg(feature = "fft-fftw")]
+#[derive(Debug)]
+struct AtomicAmplitudeFft {
+    grid: FftGrid,
+    plan: FftPlan,
+    pair_support: [i32; 3],
+    pair_present: Vec<bool>,
+}
+
+#[cfg(feature = "fft-fftw")]
+impl AtomicAmplitudeFft {
+    fn new(
+        amplitude_indices: &[[i32; 3]],
+        density_layout: &FourierLayout,
+    ) -> Result<Self, AtomicSuperpositionError> {
+        let first = amplitude_indices[0];
+        let mut minimum = first;
+        let mut maximum = first;
+        for index in &amplitude_indices[1..] {
+            for axis in 0..3 {
+                minimum[axis] = minimum[axis].min(index[axis]);
+                maximum[axis] = maximum[axis].max(index[axis]);
+            }
+        }
+        let mut pair_support = [0; 3];
+        let mut dimensions = [0; 3];
+        for axis in 0..3 {
+            pair_support[axis] = maximum[axis].checked_sub(minimum[axis]).ok_or(
+                AtomicSuperpositionError::AmplitudePairDifferenceOverflow {
+                    left: maximum,
+                    right: minimum,
+                },
+            )?;
+            dimensions[axis] =
+                usize::try_from(2 * i64::from(pair_support[axis]) + 1).map_err(|_| {
+                    AtomicSuperpositionError::AmplitudePairDifferenceOverflow {
+                        left: maximum,
+                        right: minimum,
+                    }
+                })?;
+        }
+        let grid = FftGrid::new(dimensions)?;
+        let plan = FftPlan::new(grid)?;
+        let mut workspace = Self {
+            grid,
+            plan,
+            pair_support,
+            pair_present: vec![false; grid.len()],
+        };
+        workspace.pair_present =
+            workspace.require_complete_layout(amplitude_indices, density_layout)?;
+        Ok(workspace)
+    }
+
+    fn require_complete_layout(
+        &mut self,
+        amplitude_indices: &[[i32; 3]],
+        density_layout: &FourierLayout,
+    ) -> Result<Vec<bool>, AtomicSuperpositionError> {
+        let amplitudes = amplitude_indices
+            .iter()
+            .map(|&index| (index, Complex64::new(1.0, 0.0)))
+            .collect::<Vec<_>>();
+        let pair_counts = self.correlate(&amplitudes)?;
+        let mut pair_present = vec![false; self.grid.len()];
+        for first in -self.pair_support[0]..=self.pair_support[0] {
+            for second in -self.pair_support[1]..=self.pair_support[1] {
+                for third in -self.pair_support[2]..=self.pair_support[2] {
+                    let difference = [first, second, third];
+                    let grid_position = self.grid.index(difference);
+                    if pair_counts[grid_position].re <= 0.5 {
+                        continue;
+                    }
+                    pair_present[grid_position] = true;
+                    if density_layout.index(difference).is_none() {
+                        let (left, right) = representative_pair(amplitude_indices, difference)
+                            .expect("FFT pair count guarantees a representative pair");
+                        return Err(AtomicSuperpositionError::MissingAmplitudePairDifference {
+                            left,
+                            right,
+                            difference,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(pair_present)
+    }
+
+    fn accumulate(
+        &mut self,
+        amplitudes: &[([i32; 3], Complex64)],
+        density_layout: &FourierLayout,
+        coefficients: &mut [Complex64],
+    ) -> Result<(), AtomicSuperpositionError> {
+        let correlation = self.correlate(amplitudes)?;
+        for (position, vector) in density_layout.vectors().iter().enumerate() {
+            if vector
+                .index
+                .iter()
+                .zip(self.pair_support)
+                .all(|(&component, support)| i64::from(component).abs() <= i64::from(support))
+                && self.pair_present[self.grid.index(vector.index)]
+            {
+                coefficients[position] += correlation[self.grid.index(vector.index)];
+            }
+        }
+        Ok(())
+    }
+
+    fn correlate(
+        &mut self,
+        amplitudes: &[([i32; 3], Complex64)],
+    ) -> Result<Vec<Complex64>, FftError> {
+        let mut reciprocal = vec![Complex64::default(); self.grid.len()];
+        for &(index, value) in amplitudes {
+            reciprocal[self.grid.index(index)] = value;
+        }
+        let samples = self.plan.inverse(&reciprocal)?;
+        let squared = samples
+            .iter()
+            .map(|value| Complex64::new(value.norm_sqr(), 0.0))
+            .collect::<Vec<_>>();
+        let mut correlation = self.plan.forward(&squared)?;
+        let normalization = self.grid.len() as f64;
+        for coefficient in &mut correlation {
+            *coefficient *= normalization;
+        }
+        Ok(correlation)
+    }
+}
+
+#[cfg(feature = "fft-fftw")]
+fn representative_pair(
+    amplitude_indices: &[[i32; 3]],
+    difference: [i32; 3],
+) -> Option<([i32; 3], [i32; 3])> {
+    amplitude_indices.iter().find_map(|&right| {
+        let left = [
+            right[0].checked_add(difference[0])?,
+            right[1].checked_add(difference[1])?,
+            right[2].checked_add(difference[2])?,
+        ];
+        amplitude_indices.contains(&left).then_some((left, right))
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -627,8 +835,76 @@ fn norm(vector: [f64; 3]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use muffintin_core::AngularPoint;
-    use muffintin_core::InverseBohr;
+    use muffintin_core::{AngularPoint, Grid, InterstitialGrid, InverseBohr, UniformGrid};
+
+    #[cfg(feature = "fft-fftw")]
+    #[test]
+    fn fft_amplitude_autocorrelation_matches_direct_pair_sum() {
+        let side = 2.0 * PI;
+        let direct = [
+            [Bohr(side), Bohr(0.0), Bohr(0.0)],
+            [Bohr(0.0), Bohr(side), Bohr(0.0)],
+            [Bohr(0.0), Bohr(0.0), Bohr(side)],
+        ];
+        let reciprocal = ReciprocalLattice::from_direct(direct).unwrap();
+        let layout =
+            FourierLayout::new(reciprocal, reciprocal.enumerate(InverseBohr(2.0)).unwrap())
+                .unwrap();
+        let amplitudes = vec![
+            ([0, 0, 0], Complex64::new(0.7, -0.2)),
+            ([1, 0, 0], Complex64::new(-0.1, 0.4)),
+            ([-1, 0, 0], Complex64::new(0.3, 0.6)),
+            ([0, 1, 0], Complex64::new(-0.5, -0.2)),
+        ];
+        let indices = amplitudes
+            .iter()
+            .map(|&(index, _)| index)
+            .collect::<Vec<_>>();
+        let mut actual = vec![Complex64::default(); layout.len()];
+        AtomicAmplitudeFft::new(&indices, &layout)
+            .unwrap()
+            .accumulate(&amplitudes, &layout, &mut actual)
+            .unwrap();
+        let mut expected = vec![Complex64::default(); layout.len()];
+        for &(left_index, left) in &amplitudes {
+            for &(right_index, right) in &amplitudes {
+                let difference = std::array::from_fn(|axis| left_index[axis] - right_index[axis]);
+                expected[layout.index(difference).unwrap()] += left * right.conj();
+            }
+        }
+        let scale = expected.iter().map(|value| value.norm()).sum::<f64>();
+        assert!(
+            actual
+                .iter()
+                .zip(expected)
+                .all(|(actual, expected)| (*actual - expected).norm()
+                    <= 256.0 * f64::EPSILON * scale)
+        );
+    }
+
+    #[cfg(feature = "fft-fftw")]
+    #[test]
+    fn fft_amplitude_autocorrelation_rejects_missing_pair_difference() {
+        let side = 2.0 * PI;
+        let direct = [
+            [Bohr(side), Bohr(0.0), Bohr(0.0)],
+            [Bohr(0.0), Bohr(side), Bohr(0.0)],
+            [Bohr(0.0), Bohr(0.0), Bohr(side)],
+        ];
+        let reciprocal = ReciprocalLattice::from_direct(direct).unwrap();
+        let layout =
+            FourierLayout::new(reciprocal, reciprocal.enumerate(InverseBohr(1.0)).unwrap())
+                .unwrap();
+        let error = AtomicAmplitudeFft::new(&[[-1, 0, 0], [1, 0, 0]], &layout).unwrap_err();
+        assert!(matches!(
+            error,
+            AtomicSuperpositionError::MissingAmplitudePairDifference {
+                left: [-1, 0, 0],
+                right: [1, 0, 0],
+                difference: [-2, 0, 0],
+            }
+        ));
+    }
 
     #[test]
     fn two_site_superposition_closes_charge_and_retains_neighbor_anisotropy() {
@@ -641,7 +917,7 @@ mod tests {
         let cell = Cell::new(direct).unwrap();
         let reciprocal = ReciprocalLattice::from_direct(direct).unwrap();
         let layout =
-            FourierLayout::new(reciprocal, reciprocal.enumerate(InverseBohr(1.0)).unwrap())
+            FourierLayout::new(reciprocal, reciprocal.enumerate(InverseBohr(2.0)).unwrap())
                 .unwrap();
         let muffin_tin_mesh = ExponentialMesh::new(Bohr(1.0e-4), 0.1, 92).unwrap();
         let angular_grid = AngularGrid::new(
@@ -691,6 +967,15 @@ mod tests {
 
         let built = build_atomic_superposition_density(&spec).unwrap();
         assert!((built.charge_closure.represented_electron_count - 2.0).abs() < 1.0e-11);
+        assert!(built.charge_closure.normalization_scale.is_finite());
+        assert!(built.charge_closure.normalization_scale > 0.0);
+        assert!(
+            (built.charge_closure.normalization_scale
+                * built.charge_closure.uncorrected_electron_count
+                - built.charge_closure.target_electron_count)
+                .abs()
+                < 1.0e-13
+        );
         assert!(
             built
                 .density
@@ -699,6 +984,33 @@ mod tests {
                 .coefficients()
                 .any(|(g, coefficient)| g != [0, 0, 0] && coefficient.norm() > 1.0e-12)
         );
+        let uniform = UniformGrid::new(cell, [12; 3]).unwrap();
+        let interstitial =
+            InterstitialGrid::new(&uniform, built.density.geometry().spheres()).unwrap();
+        let field = built.density.charge().interstitial().field();
+        let reconstruction_tolerance = 4096.0
+            * f64::EPSILON
+            * field
+                .coefficients()
+                .iter()
+                .map(|coefficient| coefficient.norm())
+                .sum::<f64>();
+        for point in interstitial.points() {
+            let value = field
+                .iter()
+                .map(|(vector, coefficient)| {
+                    let phase = vector
+                        .cartesian
+                        .iter()
+                        .zip(point.position)
+                        .map(|(g, r)| g.get() * r.get())
+                        .sum::<f64>();
+                    *coefficient * Complex64::from_polar(1.0, phase)
+                })
+                .sum::<Complex64>();
+            assert!(value.im.abs() <= reconstruction_tolerance);
+            assert!(value.re >= -reconstruction_tolerance);
+        }
         let neighbor_channel = built.density.charge().muffin_tins()[0]
             .field()
             .channel(1, 1)
