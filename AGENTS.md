@@ -149,3 +149,18 @@ Rules:
   implementation (concrete crate/type/function bindings, gate values,
   fixture pointers — where tables and code identifiers belong).
   [18](doc/18_lapw_mpb_thc_integration.md) is the reference layout.
+
+## Plans, tracker, and ledger
+
+- Plans, the workstream tracker, the append-only ledger, the acceptance gate
+  registry, and decisions live on the orphan `harness` branch (worktree
+  `../libmuffintin-harness`), never under `doc/` or `scratch/`. `scratch/`
+  is git-excluded and holds bulky external material only.
+- When a task starts, closes, or changes the state of a workstream, append
+  an event to the harness ledger. When a gate is run, append an evidence
+  entry with the `main` revision, the exact command, and the log path; keep
+  logs next to the example that produced them.
+- Numerical acceptance follows Stop That Digit
+  (`~/.codex/skills/stop-that-digit/SKILL.md`): fix quantity, reference,
+  and bound before the first run; a pass is closed; do not sweep, tighten,
+  or add checks after a pass.

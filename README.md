@@ -11,6 +11,23 @@ The API remains subject to breaking changes, and the DFT workflow is an
 implementation candidate rather than a production-validated materials code. The
 name follows libraries such as libxc, libpaw, and libcint.
 
+## Branch roles
+
+- `main` is the code branch: crates, tests, fixtures, the numbered
+  derivations under [`doc/`](doc/), example READMEs, and the result logs
+  next to the examples that produce them.
+- `harness` is an orphan branch with no shared history. It holds the
+  workstream tracker (`STATUS.md`), the append-only ledger, the acceptance
+  gate registry, versioned plans, decisions, and scratch evidence that has
+  no home on `main`.
+
+Do not merge `harness` into `main`. Use an adjacent worktree when both are
+needed:
+
+```sh
+git worktree add ../libmuffintin-harness harness
+```
+
 ## Workspace
 
 New functionality belongs in the closest existing crate. A second real

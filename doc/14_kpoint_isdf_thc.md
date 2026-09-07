@@ -117,14 +117,15 @@ The finite deterministic toy bases, the cubic toy k-mesh, toy Bloch
 orbitals with `evaluate_pair_block`, the structured-sketch selector,
 the Coulomb-pool rerank, and the `run_thc` / `compare_strategies`
 sweep harness live in `crates/mt-prodbasis/tests/toy_kit`, included by
-path from prodbasis and coulomb tests. Two scratch fixtures are
-ported, not tracked:
+path from prodbasis and coulomb tests. Two Python fixtures are
+ported; their originals are tracked on the `harness` branch under
+`evidence/2026-08-20-thc-scratch-fixtures/`:
 
 - MT-like localized orbitals, $a=6$, $2\times2\times2$ mesh, adaptive
   and uniform grids, seeds 7/19/43, random shift 29
-  (`scratch/thc_mt_kpoint_test.py`).
+  (`thc_mt_kpoint_test.py`).
 - Synthetic two-region LAPW, $a=5$, $2\times2\times1$ mesh
-  (`scratch/thc_lapw_end_to_end_test.py`).
+  (`thc_lapw_end_to_end_test.py`).
 
 Python structured sketches used NumPy PCG64. The Rust sketch and
 action vectors use SplitMix64 with the same integer seeds; they are
@@ -152,4 +153,5 @@ cargo test --release -p libmuffintin-prodbasis --test end_to_end_smoke source_eq
 ## 7. Exclusions
 
 No Weinert assembler, no real-material LAPW/SCF/GW API, no MPI/CTF,
-and no `scratch/` tracking.
+and no `scratch/` tracking on `main`; the Python fixtures live on the
+`harness` branch.
