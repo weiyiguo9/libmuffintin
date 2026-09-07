@@ -184,3 +184,19 @@ command: MPI runner cargo test for the six D2 drivers; mpirun -n 4 each release 
 
 - state: ctf-rs = D2 closed
 - note: ctf-rs = DGTOG ROR, block/global reshuffle, transpose, slice and packed padding closed; D3 next
+
+## 2026-09-08 · evd-1004 · ctf-rs D3 dense contraction close · ctf-rs 00a4d12
+
+```text
+DIGIT / PASS
+milestone: D3; commit: 00a4d12
+validation.md section: D3 dense contraction close (2026-09-08)
+Q: gemm_4D all branches; weigh_4D; sy_times_ns; ccsdt_t3_to_t2; ccsdt_map_test; multi_tsr_sym; seven studies/fast_* drivers; class: R; ref: pinned f69cbb46
+bound: upstream per driver; observed: all within
+runs: WSL world/parity at 1/2/4 once; native compile/link
+open: none
+command: MPI runner cargo test for the thirteen D3 drivers; acceptance-native.ps1 -BuildOnly
+```
+
+- state: ctf-rs = D3 closed
+- note: ctf-rs = replication, four-type folded panels, automatic compressed contraction/sum planning and seven fast studies closed; D4 next
