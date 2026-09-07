@@ -1,0 +1,13 @@
+{
+  "pyscf_version": "2.14.0",
+  "system": "H2",
+  "bond_bohr": 1.4,
+  "boundary": "isolated molecule",
+  "hamiltonian": "nonrelativistic all-electron point nuclei",
+  "xc": "LDA_X,LDA_C_PW_MOD",
+  "basis": "aug-cc-pv5z",
+  "grid_level": 7,
+  "energy_hartree": -1.1373018421841654,
+  "electron_count": 2,
+  "converged": true
+}

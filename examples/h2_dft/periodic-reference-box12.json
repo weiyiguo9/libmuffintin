@@ -1,0 +1,15 @@
+{
+  "pyscf_version": "2.14.0",
+  "system": "H2",
+  "bond_bohr": 1.4,
+  "boundary": "3D periodic cubic cell, Gamma only",
+  "box_bohr": 12.0,
+  "hamiltonian": "nonrelativistic all-electron point nuclei",
+  "xc": "LDA_X,LDA_C_PW_MOD",
+  "basis": "aug-cc-pv5z",
+  "auxbasis": "aug-cc-pv5z-jkfit",
+  "grid_level": 7,
+  "energy_hartree": -1.1375728843514892,
+  "electron_count": 2,
+  "converged": true
+}

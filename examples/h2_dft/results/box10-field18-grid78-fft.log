@@ -1,0 +1,43 @@
+   Compiling hdf5-metno-sys v0.11.4
+   Compiling libmuffintin-dft v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-dft)
+   Compiling hdf5-metno-types v0.11.0
+   Compiling hdf5-metno v0.12.3
+   Compiling libmuffintin-io v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-io)
+   Compiling libmuffintin-runtime v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-runtime)
+    Finished `release` profile [optimized] target(s) in 17.14s
+     Running `target/release/examples/h2_dft /tmp/libmuffintin-h2-dft/run-13-box10-field18-fft 10 6 18 137035.9895 78`
+speed_of_light_au=137035.9895000000
+system=H2 bond_bohr=1.400000 electron_count=2.0
+route=scalar-koelling-harmon exchange_correlation=lda-pw92 cores=none box_bohr=10.000000 rmt_bohr=0.650000 orbital_g_bohr_inverse=6.000000 orbital_l_max=8 field_g_bohr_inverse=18.000000 field_l_max=8
+atomic_start_checkpoint=/tmp/libmuffintin-h2-dft/run-13-box10-field18-fft/h2.atomic-start.toml charge_target=2.0000000000000000e0 charge_represented=2.0000000000001958e0 charge_error=1.958e-13 normalization_scale=9.5505776098592943e-1
+input=/tmp/libmuffintin-h2-dft/run-13-box10-field18-fft/h2.input.toml
+scf_iteration=1 total_energy_ha=-1.1728780503240541e0 energy_change_ha=none density_rms=4.3117771203172311e-3
+scf_iteration=2 total_energy_ha=-1.1459450580261445e0 energy_change_ha=2.6932992297909575e-2 density_rms=2.0185296960472687e-3
+scf_iteration=3 total_energy_ha=-1.1379389946967029e0 energy_change_ha=8.0060633294416483e-3 density_rms=1.0983536206637201e-4
+scf_iteration=4 total_energy_ha=-1.1379597148680931e0 energy_change_ha=2.0720171390209430e-5 density_rms=8.6784835346491457e-5
+scf_iteration=5 total_energy_ha=-1.1379437709347622e0 energy_change_ha=1.5943933330930804e-5 density_rms=2.3707420074608139e-6
+scf_iteration=6 total_energy_ha=-1.1379437458393598e0 energy_change_ha=2.5095402422792290e-8 density_rms=3.3164262494422672e-6
+scf_iteration=7 total_energy_ha=-1.1379437512584261e0 energy_change_ha=5.4190663067998912e-9 density_rms=3.6581220971075317e-8
+final_electron_count=2.0000000000004325e0
+scf_final iterations=7 total_energy_ha=-1.1379437512584261e0 energy_change_ha=Some(5.419066306799891e-9) density_rms=3.6581220971075317e-8 restart_checkpoint=/tmp/libmuffintin-h2-dft/run-13-box10-field18-fft/h2.restart.toml
+energy_terms_ha band=-7.4494291607525764e-1 core_eigenvalues=0.0000000000000000e0 madelung=-2.1700325814248052e0 coulomb=-9.8747956332072673e-1 exchange_correlation=-6.4763333785620336e-1 exchange_correlation_potential=-8.4590901172507416e-1 occupation_correction=-2.8567645153420795e-33 total=-1.1379437512584261e0
+real 408.56
+user 1938.36
+sys 92.62
+          5063245824  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            10140880  page reclaims
+                  92  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  89  voluntary context switches
+             9739542  involuntary context switches
+      14692759737360  instructions retired
+       4670975423055  cycles elapsed
+          8168741824  peak memory footprint

@@ -1,0 +1,75 @@
+format = "libmuffintin-input"
+version = 3
+speed-of-light = 137035.9895
+
+[molecule]
+boundary = "periodic"
+cell-shape = "cubic"
+length-unit = "bohr"
+vacuum = 5.3
+muffin-tin-radius = 0.65
+radial-first = 1e-6
+radial-points = 401
+field-g-cutoff = 12.0
+field-l-max = 8
+angular-points = 302
+
+[[molecule.atoms]]
+id = "H-1"
+atomic-number = 1
+position = [-0.7, 0.0, 0.0]
+
+[[molecule.atoms]]
+id = "H-2"
+atomic-number = 1
+position = [0.7, 0.0, 0.0]
+
+[molecule.free-atom]
+first = 1e-8
+log-increment = 0.01
+points = 2143
+mixing = 0.3
+potential-tolerance = 2e-5
+tail-tolerance = 1e-7
+max-iterations = 120
+
+[workflow]
+tasks = ["scf"]
+
+[task.scf]
+kind = "dft-scf"
+electron-count = 2.0
+
+[task.scf.k-mesh]
+mesh = [1, 1, 1]
+shift = [0.0, 0.0, 0.0]
+
+[task.scf.basis]
+l-max = 8
+
+[task.scf.basis.envelope]
+kind = "plane-wave"
+g-cutoff = 6.0
+
+[task.scf.basis.channels.H]
+valence = ["1s@-0.4", "2p@-0.4", "3d@-0.4", "4f@-0.4", "5g@-0.4", "6h@-0.4", "7i@-0.4", "8k@-0.4", "9l@-0.4"]
+
+[task.scf.occupations]
+kind = "fermi-dirac"
+temperature = 0.001
+
+[task.scf.xc]
+kind = "lda-pw92"
+interstitial-grid = [96, 96, 96]
+
+[task.scf.mixing]
+kind = "linear"
+beta = 0.4
+
+[task.scf.relativity]
+kind = "scalar"
+
+[task.scf.convergence]
+energy-tolerance = 1e-8
+density-tolerance = 1e-7
+max-iterations = 80

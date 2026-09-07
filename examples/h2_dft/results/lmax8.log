@@ -1,0 +1,14 @@
+speed_of_light_au=137035.9895000000
+system=H2 bond_bohr=1.400000 electron_count=2.0
+route=scalar-koelling-harmon exchange_correlation=lda-pw92 cores=none box_bohr=10.000000 rmt_bohr=0.650000 orbital_g_bohr_inverse=6.000000 orbital_l_max=8 field_g_bohr_inverse=12.000000 field_l_max=8
+atomic_start_checkpoint=/tmp/libmuffintin-h2-dft/run-03-l8/h2.atomic-start.toml charge_target=2.0000000000000000e0 charge_represented=1.9999999999999960e0 charge_error=-3.997e-15 zero_mode_correction=-1.5697740703957299e-7
+input=/tmp/libmuffintin-h2-dft/run-03-l8/h2.input.toml
+scf_iteration=1 total_energy_ha=-1.1686196929692771e0 energy_change_ha=none density_rms=3.9878890894973814e-3
+scf_iteration=2 total_energy_ha=-1.1475727572024403e0 energy_change_ha=2.1046935766836805e-2 density_rms=1.8808643985123608e-3
+scf_iteration=3 total_energy_ha=-1.1413210580182924e0 energy_change_ha=6.2516991841479186e-3 density_rms=9.1010300632661450e-5
+scf_iteration=4 total_energy_ha=-1.1413315075360573e0 energy_change_ha=1.0449517764854477e-5 density_rms=8.7309813535992845e-5
+scf_iteration=5 total_energy_ha=-1.1413172787689765e0 energy_change_ha=1.4228767080792792e-5 density_rms=2.7993973972057748e-6
+scf_iteration=6 total_energy_ha=-1.1413172332446289e0 energy_change_ha=4.5524347624947836e-8 density_rms=1.9437094076059407e-6
+scf_iteration=7 total_energy_ha=-1.1413172420194437e0 energy_change_ha=8.7748148747124333e-9 density_rms=7.0739445702836489e-9
+final_electron_count=1.9999999999999969e0
+scf_final iterations=7 total_energy_ha=-1.1413172420194437e0 energy_change_ha=Some(8.774814874712433e-9) density_rms=7.0739445702836489e-9 restart_checkpoint=/tmp/libmuffintin-h2-dft/run-03-l8/h2.restart.toml

@@ -383,7 +383,8 @@ must keep the muffin-tin spheres nonoverlapping and inside the cell.
 The optional `interstitial-grid = [nx, ny, nz]` in `[task.scf.xc]` controls
 nonlinear XC quadrature independently of orbital and density Fourier cutoffs.
 It must resolve the stored density Fourier support; undersampled or zero grids
-are errors. Omitting it retains the density-derived integration grid.
+are errors. Omitting it retains the density-derived integration grid. The
+complete runnable example is [H2 molecule input](../examples/h2_dft/molecule.toml).
 
 ### 9.2 Atomic density construction
 

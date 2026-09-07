@@ -1,0 +1,30 @@
+   Compiling libmuffintin-dft v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-dft)
+   Compiling libmuffintin-runtime v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-runtime)
+    Finished `release` profile [optimized] target(s) in 12.09s
+     Running `target/release/examples/h2_dft /tmp/libmuffintin-h2-dft/run-14-box12-field18-fft 12 6 18 137035.9895 94`
+speed_of_light_au=137035.9895000000
+system=H2 bond_bohr=1.400000 electron_count=2.0
+route=scalar-koelling-harmon exchange_correlation=lda-pw92 cores=none box_bohr=12.000000 rmt_bohr=0.650000 orbital_g_bohr_inverse=6.000000 orbital_l_max=8 field_g_bohr_inverse=18.000000 field_l_max=8
+atomic_start_checkpoint=/tmp/libmuffintin-h2-dft/run-14-box12-field18-fft/h2.atomic-start.toml charge_target=2.0000000000000000e0 charge_represented=2.0000000000000040e0 charge_error=3.997e-15 normalization_scale=9.8784604017667554e-1
+input=/tmp/libmuffintin-h2-dft/run-14-box12-field18-fft/h2.input.toml
+Error: Scf(Kernel { operation: "Hartree+XC potential", source: PotentialBuild(Xc(Xc(NegativeDensity { spin: 0, value: -3.4428003367361174e-11 }))) })
+real 1410.25
+user 7725.86
+sys 267.81
+          8430862336  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            22963092  page reclaims
+                 407  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+               70439  voluntary context switches
+            27323159  involuntary context switches
+      51528070830036  instructions retired
+      16560869759311  cycles elapsed
+         17559598544  peak memory footprint
