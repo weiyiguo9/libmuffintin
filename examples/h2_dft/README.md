@@ -140,7 +140,9 @@ LAPW minus PySCF in mHa; "rest" is $E-E_{xc}$.
   an independent sphere effect.
 - Orbital cutoff 6 → 7 (RKmax 3.9 → 4.55) lowers the energy by 0.74 mHa and
   leaves 0.07 mHa in the total, 0.05 mHa in the HOMO and 0.19 mHa in
-  $E_{xc}$. The variational basis was the offset.
+  $E_{xc}$. The variational basis was the offset. Cutoff 8 (about 8600
+  plane waves) exceeded the memory of the 10-thread development machine and
+  was not completed.
 
 The reference side was checked independently: Gaussian density fitting with
 the same auxiliary basis changes the isolated energy by 0.001 mHa; the

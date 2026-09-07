@@ -1,5 +1,0 @@
-speed_of_light_au=137035.9895000000
-system=H2 bond_bohr=1.400000 electron_count=2.0
-route=scalar-koelling-harmon exchange_correlation=lda-pw92 cores=none box_bohr=10.000000 rmt_bohr=0.650000 orbital_g_bohr_inverse=8.000000 orbital_l_max=8 field_g_bohr_inverse=18.000000 field_l_max=8
-atomic_start_checkpoint=/private/tmp/claude-501/-Users-zerozaki07-tmp-libmuffintin/2869657f-a6cb-4121-80c4-3807aa7ee834/scratchpad/h2-runs/box10-orb8-field18-grid78-step/h2.atomic-start.toml charge_target=2.0000000000000000e0 charge_represented=2.0000000000001958e0 charge_error=1.958e-13 normalization_scale=9.5505776098592943e-1
-input=/private/tmp/claude-501/-Users-zerozaki07-tmp-libmuffintin/2869657f-a6cb-4121-80c4-3807aa7ee834/scratchpad/h2-runs/box10-orb8-field18-grid78-step/h2.input.toml
