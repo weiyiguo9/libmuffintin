@@ -425,6 +425,7 @@ pub(crate) fn build_regional_potential(
         ScfExchangeCorrelation {
             functional,
             noncollinear_route,
+            interstitial_grid: None,
         },
     )
     .map_err(py_error)?;

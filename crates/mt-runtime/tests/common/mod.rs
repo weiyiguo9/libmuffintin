@@ -64,6 +64,7 @@ pub fn sample_input() -> Input {
                     occupations: Occupations::FermiDirac { temperature: 0.01 },
                     xc: ExchangeCorrelation::LdaPw92 {
                         noncollinear_route: Default::default(),
+                        interstitial_grid: None,
                     },
                     mixing: Mixing::PulayAnderson {
                         beta: 0.4,
@@ -221,6 +222,7 @@ pub fn supported_input() -> Input {
                 occupations: Occupations::FermiDirac { temperature: 0.02 },
                 xc: ExchangeCorrelation::LdaPw92 {
                     noncollinear_route: Default::default(),
+                    interstitial_grid: None,
                 },
                 mixing: Mixing::Linear { beta: 1.0 },
                 relativity: Relativity::Scalar {},

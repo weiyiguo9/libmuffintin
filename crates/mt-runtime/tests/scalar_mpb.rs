@@ -150,6 +150,7 @@ fn scalar_config(divisions: [usize; 3], cutoff: f64) -> ScfConfig {
         exchange_correlation: ScfExchangeCorrelation {
             functional: XcFunctional::LdaPw92,
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+            interstitial_grid: None,
         },
         mixing: ScfMixing::Linear { alpha: 1.0 },
         relativity: ScfRelativity::Scalar,

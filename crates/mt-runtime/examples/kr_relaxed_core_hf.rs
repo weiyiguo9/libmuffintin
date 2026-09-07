@@ -1076,6 +1076,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         exchange_correlation: ScfExchangeCorrelation {
             functional: XcFunctional::LdaPw92,
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+            interstitial_grid: None,
         },
         mixing: cli
             .outer_mixing

@@ -208,6 +208,7 @@ mod tests {
             exchange_correlation: ScfExchangeCorrelation {
                 functional: XcFunctional::LdaPw92,
                 noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+                interstitial_grid: None,
             },
             mixing: ScfMixing::Linear { alpha: 1.0 },
             relativity,

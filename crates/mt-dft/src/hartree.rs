@@ -749,11 +749,14 @@ pub fn build_scf_potential(
         .flat_map(|field| field.field().channels().map(|(channel, _)| channel.l))
         .max()
         .unwrap_or(0);
-    let xc_field_spec = crate::xc_spec_for_density(
+    let mut xc_field_spec = crate::xc_spec_for_density(
         density,
         output_l_max,
         exchange_correlation.noncollinear_route,
     );
+    if let Some(interstitial_grid) = exchange_correlation.interstitial_grid {
+        xc_field_spec.interstitial_divisions = interstitial_grid;
+    }
     let exchange_correlation_result =
         crate::evaluate_regional_xc(exchange_correlation.functional, density, xc_field_spec)?;
     let mut scalar = electrostatic.potential.clone();

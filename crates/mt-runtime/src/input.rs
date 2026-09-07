@@ -393,11 +393,23 @@ pub enum ExchangeCorrelation {
     LdaPw92 {
         #[serde(default, rename = "noncollinear-route")]
         noncollinear_route: NoncollinearXcRoute,
+        #[serde(
+            default,
+            rename = "interstitial-grid",
+            skip_serializing_if = "Option::is_none"
+        )]
+        interstitial_grid: Option<[usize; 3]>,
     },
     #[serde(rename = "pbe")]
     Pbe {
         #[serde(default, rename = "noncollinear-route")]
         noncollinear_route: NoncollinearXcRoute,
+        #[serde(
+            default,
+            rename = "interstitial-grid",
+            skip_serializing_if = "Option::is_none"
+        )]
+        interstitial_grid: Option<[usize; 3]>,
     },
 }
 

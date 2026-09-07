@@ -78,6 +78,7 @@ impl ScfPhysics for WorkflowKernel {
             ScfExchangeCorrelation {
                 functional: XcFunctional::LdaPw92,
                 noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+                interstitial_grid: None,
             }
         );
         self.events.push(format!("potential:{iteration}"));

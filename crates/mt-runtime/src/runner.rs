@@ -403,13 +403,21 @@ pub(crate) fn scf_config(
             },
         },
         exchange_correlation: match xc {
-            ExchangeCorrelation::LdaPw92 { noncollinear_route } => ScfExchangeCorrelation {
+            ExchangeCorrelation::LdaPw92 {
+                noncollinear_route,
+                interstitial_grid,
+            } => ScfExchangeCorrelation {
                 functional: XcFunctional::LdaPw92,
                 noncollinear_route: map_noncollinear_xc_route(*noncollinear_route),
+                interstitial_grid: *interstitial_grid,
             },
-            ExchangeCorrelation::Pbe { noncollinear_route } => ScfExchangeCorrelation {
+            ExchangeCorrelation::Pbe {
+                noncollinear_route,
+                interstitial_grid,
+            } => ScfExchangeCorrelation {
                 functional: XcFunctional::Pbe,
                 noncollinear_route: map_noncollinear_xc_route(*noncollinear_route),
+                interstitial_grid: *interstitial_grid,
             },
         },
         mixing: match mixing {

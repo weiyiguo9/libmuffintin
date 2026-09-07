@@ -133,6 +133,9 @@ pub enum ScfOccupations {
 pub struct ScfExchangeCorrelation {
     pub functional: XcFunctional,
     pub noncollinear_route: NoncollinearXcRoute,
+    /// Optional explicit interstitial sampling divisions for the nonlinear XC transform.
+    /// `None` preserves the density-derived default.
+    pub interstitial_grid: Option<[usize; 3]>,
 }
 
 /// Density mixer and its persistent-history controls.
@@ -2055,6 +2058,7 @@ mod tests {
             exchange_correlation: ScfExchangeCorrelation {
                 functional: XcFunctional::LdaPw92,
                 noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+                interstitial_grid: None,
             },
             mixing,
             relativity: ScfRelativity::SocSecondVariation {
@@ -2293,6 +2297,7 @@ mod tests {
                 );
                 config.relativity = relativity;
                 config.exchange_correlation.noncollinear_route = noncollinear_route;
+                config.exchange_correlation.interstitial_grid = Some([7, 9, 11]);
                 let state = run_scf(&mut physics, &config, None).unwrap();
                 assert!(
                     state
@@ -2304,6 +2309,7 @@ mod tests {
                 assert!(physics.exchange_correlations.iter().all(|selection| {
                     selection.functional == XcFunctional::LdaPw92
                         && selection.noncollinear_route == noncollinear_route
+                        && selection.interstitial_grid == Some([7, 9, 11])
                 }));
             }
         }

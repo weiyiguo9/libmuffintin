@@ -5,10 +5,12 @@ use std::path::PathBuf;
 
 use muffintin::{
     ChannelEnergyGenerator, ChannelIdentity, ChannelProvenance, ChannelRecipeArtifact,
-    ChannelRecipeRecord, ChannelScope, ChannelTreatment, InputError, SingleDftScfConfigError, Task,
+    ChannelRecipeRecord, ChannelScope, ChannelTreatment, ExchangeCorrelation, InputError,
+    NoncollinearXcRoute, SingleDftScfConfigError, Task, input_to_toml, parse_input_toml,
     prepare_input, prepare_input_with_recipes, single_dft_scf_config,
 };
 use muffintin_core::Hartree;
+use muffintin_dft::{NoncollinearXcRoute as DftNoncollinearXcRoute, XcFunctional};
 use muffintin_io::CheckpointFile;
 
 use common::{supported_checkpoint, supported_input};
@@ -39,6 +41,32 @@ fn single_dft_scf_config_maps_one_scf_task() {
     let config = single_dft_scf_config(&prepared).unwrap();
     assert_eq!(config.electron_count, 1.0);
     assert_eq!(config.k_mesh.divisions, [1, 1, 1]);
+}
+
+#[test]
+fn single_dft_scf_config_maps_explicit_xc_interstitial_grid() {
+    let mut input = supported_input();
+    let Task::DftScf { xc, .. } = input.task.get_mut("scf").unwrap() else {
+        panic!("scf task changed kind");
+    };
+    *xc = ExchangeCorrelation::Pbe {
+        noncollinear_route: NoncollinearXcRoute::MagnetizationField,
+        interstitial_grid: Some([7, 9, 11]),
+    };
+    let encoded = input_to_toml(&input).unwrap();
+    assert!(encoded.contains("interstitial-grid ="));
+    let decoded = parse_input_toml(&encoded).unwrap();
+    let prepared = prepare_input(&decoded, CheckpointFile::V1(supported_checkpoint())).unwrap();
+
+    let config = single_dft_scf_config(&prepared).unwrap();
+    assert_eq!(
+        config.exchange_correlation,
+        muffintin_dft::ScfExchangeCorrelation {
+            functional: XcFunctional::Pbe,
+            noncollinear_route: DftNoncollinearXcRoute::MagnetizationField,
+            interstitial_grid: Some([7, 9, 11]),
+        }
+    );
 }
 
 #[test]

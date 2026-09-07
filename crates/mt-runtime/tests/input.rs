@@ -40,6 +40,7 @@ fn xc_noncollinear_route_defaults_to_local_spin_frame() {
         *xc,
         ExchangeCorrelation::LdaPw92 {
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+            interstitial_grid: None,
         }
     );
 }

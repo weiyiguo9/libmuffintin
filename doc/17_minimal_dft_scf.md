@@ -370,6 +370,11 @@ checkpoint. Radial, atomic/core, spinor and SOC computations receive it
 explicitly; no process-global mutable constant is used. Increasing it provides
 the nonrelativistic limit of the same relativistic implementation.
 
+The optional `interstitial-grid = [nx, ny, nz]` in `[task.scf.xc]` controls
+nonlinear XC quadrature independently of orbital and density Fourier cutoffs.
+It must resolve the stored density Fourier support; undersampled or zero grids
+are errors. Omitting it retains the density-derived integration grid.
+
 ### 9.2 Atomic density construction
 
 `FreeAtomScfSpec` makes the exponential radial mesh, potential mixing, potential tolerance, tail tolerance, and maximum iteration count explicit. Public `run_free_atom_lda` starts from the bare nuclear potential and resolves the neutral FLEUR occupation catalogue into every occupied signed $\kappa$ channel. Each radial iteration solves those bound Dirac orbitals, forms the physical $P^2+Q^2$ density, evaluates the isolated spherical Hartree potential and unpolarized LDA/PW92 potential, and mixes the resulting effective potential. Success requires the potential residual, integrated-charge error, and outer logarithmic-shell charge to satisfy the caller's tolerances. Bound-state, quadrature, XC, convergence, and tail failures remain typed rather than producing a partial atomic state.
