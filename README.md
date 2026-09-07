@@ -176,8 +176,8 @@ RUSTFLAGS="-L native=$(brew --prefix fftw)/lib" \
 
 This is a binding to FFTW, not a pure Rust port. Hartree masking keeps the
 analytic step-function Fourier coefficients and pads the convolution to avoid
-wraparound in the retained modes. XC keeps its midpoint grid, sphere exclusion,
-quadrature weights, and derivative conventions. The dense transform contract
+wraparound in the retained modes. XC keeps its midpoint grid, truncated
+step-function weights, and derivative conventions. The dense transform contract
 uses last-axis-fastest storage, an unnormalized negative-exponent forward
 transform, and a positive-exponent inverse divided by the grid size.
 

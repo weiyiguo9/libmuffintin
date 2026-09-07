@@ -4,15 +4,18 @@ use crate::{
     DensityJet2, InterstitialField, MuffinTinField, RegionalDensity, RegionalError,
     RegionalPotential, RegionalScalarField, XcError, XcFunctional, evaluate_xc_point,
 };
-use muffintin_core::{AngularGrid, Cell, Grid, GridError, InterstitialGrid, UniformGrid};
+#[cfg(test)]
+use muffintin_core::Cell;
+use muffintin_core::{AngularGrid, GridError};
 use muffintin_core::{
-    Bohr, FourierFieldError, FourierLayout, Hartree, Lm, MeshError, complex_spherical_harmonics,
-    lm_count, real_spherical_harmonics,
+    Bohr, FourierFieldError, FourierLayout, Hartree, InterstitialGeometry, Lm, MeshError,
+    StepFunctionError, complex_spherical_harmonics, lm_count, real_spherical_harmonics,
 };
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
 use muffintin_tensor::fft::{FftGrid, FftPlan};
 use num_complex::Complex64;
 use std::collections::BTreeMap;
+#[cfg(test)]
 use std::f64::consts::TAU;
 use thiserror::Error;
 
@@ -37,7 +40,11 @@ pub enum NoncollinearXcRoute {
 /// Deterministic transform controls for regional exchange-correlation fields.
 ///
 /// The interstitial midpoint grid is a convergence parameter for the nonlinear
-/// direct/inverse Fourier transform. The seedless Fibonacci rule controls the
+/// direct/inverse Fourier transform. The kernel is evaluated at every grid
+/// point, including the smooth plane-wave continuation inside the spheres, and
+/// the interstitial region enters through the analytic step function truncated
+/// to the density layout, so the region itself does not depend on the grid.
+/// The seedless Fibonacci rule controls the
 /// angular projection. Muffin-tin Cartesian derivatives use fourth-order
 /// symmetric differences with a step equal to one quarter of the local radial
 /// spacing, capped at one fifth of the shell radius; five neighboring
@@ -196,28 +203,10 @@ fn transform_interstitial(
     route: NoncollinearXcRoute,
 ) -> Result<InterstitialTransform, RegionalXcError> {
     let layout = density.charge().interstitial().layout();
-    let cell = direct_cell(layout)?;
-    let uniform = UniformGrid::new(cell, divisions)?;
-    let interstitial_grid = InterstitialGrid::new(&uniform, density.geometry().spheres())?;
     let fft_grid = FftGrid::new(divisions)?;
     let mut fft = FftPlan::new(fft_grid)?;
-    let mut interstitial_points = interstitial_grid.points().iter().peekable();
-    let point_indices = uniform
-        .points()
-        .iter()
-        .enumerate()
-        .filter_map(|(index, point)| {
-            if interstitial_points
-                .peek()
-                .is_some_and(|next| next.position == point.position)
-            {
-                interstitial_points.next();
-                Some(index)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
+    let step = truncated_step_samples(density.geometry(), layout, fft_grid, divisions, &mut fft)?;
+    let point_indices = (0..fft_grid.len()).collect::<Vec<_>>();
     let density_fields = [
         density.charge().interstitial(),
         density.magnetization()[0].interstitial(),
@@ -253,11 +242,15 @@ fn transform_interstitial(
         .try_into()
         .expect("four density fields produce four FFT sample sets");
 
-    let mut potential_samples: [Vec<f64>; 4] =
-        std::array::from_fn(|_| vec![0.0; point_indices.len()]);
+    // Every grid point carries the truncated step weight, so the energy
+    // contractions and the potential product below derive from one discrete
+    // functional: the potential coefficients are its exact derivative.
+    let point_weight = density.geometry().cell_volume().get() / fft_grid.len() as f64;
+    let mut potential_samples: [Vec<Complex64>; 4] =
+        std::array::from_fn(|_| vec![Complex64::default(); fft_grid.len()]);
     let mut exchange_correlation_energy = 0.0;
     let mut density_potential_integral = 0.0;
-    for (sample_index, point) in interstitial_grid.points().iter().enumerate() {
+    for (sample_index, &theta) in step.iter().enumerate() {
         let [charge, mx, my, mz] = std::array::from_fn(|component| {
             density_samples[component]
                 .as_ref()
@@ -266,31 +259,27 @@ fn transform_interstitial(
                 })
         });
         let xc = evaluate_noncollinear_xc_point(functional, route, charge, [mx, my, mz])?;
-        exchange_correlation_energy += point.weight.get() * xc.energy_density;
-        density_potential_integral += point.weight.get() * xc.density_potential;
+        let weight = point_weight * theta;
+        exchange_correlation_energy += weight * xc.energy_density;
+        density_potential_integral += weight * xc.density_potential;
         for (target, value) in potential_samples.iter_mut().zip(xc.potential) {
-            target[sample_index] = value;
+            target[sample_index] = Complex64::new(theta * value, 0.0);
         }
     }
     drop(density_samples);
 
-    let normalized_weight =
-        uniform.points()[0].weight.get() / density.geometry().cell_volume().get();
-    let mut spectrum = vec![Complex64::default(); fft_grid.len()];
+    let normalization = 1.0 / fft_grid.len() as f64;
     let coefficients: [Vec<Complex64>; 4] = potential_samples
         .into_iter()
         .map(|samples| {
-            for (&index, value) in point_indices.iter().zip(samples) {
-                spectrum[index] = Complex64::new(value, 0.0);
-            }
-            let transformed = fft.forward(&spectrum)?;
+            let transformed = fft.forward(&samples)?;
             let mut coefficients = layout
                 .vectors()
                 .iter()
                 .map(|vector| {
                     transformed[fft_grid.index(vector.index)]
                         * midpoint_phase(vector.index, divisions, -1.0)
-                        * normalized_weight
+                        * normalization
                 })
                 .collect::<Vec<_>>();
             enforce_fourier_reality(layout, &mut coefficients)?;
@@ -311,6 +300,35 @@ fn transform_interstitial(
         exchange_correlation_energy,
         density_potential_integral,
     })
+}
+
+/// Interstitial step function truncated to the density layout, synthesized on
+/// the midpoint grid from the analytic sphere form factors.
+///
+/// The truncation keeps the represented region independent of the grid: a
+/// finer grid only sharpens the sampling of the nonlinear kernel, and the
+/// surviving `G = 0` coefficient makes the grid sum reproduce the exact
+/// interstitial volume.
+fn truncated_step_samples(
+    geometry: &InterstitialGeometry,
+    layout: &FourierLayout,
+    grid: FftGrid,
+    divisions: [usize; 3],
+    fft: &mut FftPlan,
+) -> Result<Vec<f64>, RegionalXcError> {
+    let transform_scale = grid.len() as f64;
+    let mut spectrum = vec![Complex64::default(); grid.len()];
+    let mut scale = 0.0;
+    for vector in layout.vectors() {
+        let coefficient = geometry.coefficient(vector.cartesian)?;
+        scale += coefficient.norm();
+        spectrum[grid.index(vector.index)] +=
+            coefficient * midpoint_phase(vector.index, divisions, 1.0) * transform_scale;
+    }
+    fft.inverse(&spectrum)?
+        .into_iter()
+        .map(|value| checked_real(value, scale, "interstitial step function"))
+        .collect()
 }
 
 #[derive(Debug)]
@@ -1032,6 +1050,7 @@ fn enforce_fourier_reality(
     Ok(())
 }
 
+#[cfg(test)]
 fn direct_cell(layout: &FourierLayout) -> Result<Cell, RegionalXcError> {
     let reciprocal = layout.reciprocal().basis();
     let b = reciprocal.map(|vector| vector.map(|component| component.get()));
@@ -1078,6 +1097,7 @@ fn dot_raw(left: [f64; 3], right: [f64; 3]) -> f64 {
     left.into_iter().zip(right).map(|(x, y)| x * y).sum()
 }
 
+#[cfg(test)]
 fn cross(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
     [
         left[1] * right[2] - left[2] * right[1],
@@ -1086,6 +1106,7 @@ fn cross(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
     ]
 }
 
+#[cfg(test)]
 fn scale(vector: [f64; 3], factor: f64) -> [f64; 3] {
     vector.map(|component| factor * component)
 }
@@ -1126,6 +1147,8 @@ pub enum RegionalXcError {
     #[error(transparent)]
     Sphere(#[from] SphereFieldError),
     #[error(transparent)]
+    StepFunction(#[from] StepFunctionError),
+    #[error(transparent)]
     Mesh(#[from] MeshError),
     #[error(transparent)]
     Grid(#[from] GridError),
@@ -1164,7 +1187,7 @@ pub fn xc_spec_for_density(
 mod tests {
     use super::*;
     use muffintin_core::{
-        GVector, InterstitialGeometry, InverseBohr, ReciprocalLattice, Sphere, VolumeBohr3,
+        GVector, Grid, InverseBohr, ReciprocalLattice, Sphere, UniformGrid, VolumeBohr3,
     };
     use std::f64::consts::PI;
 
@@ -1360,6 +1383,108 @@ mod tests {
         );
         assert_eq!(polarized.energy_density, reference.energy_density);
         assert_eq!(polarized.density_potential, 0.2 * up);
+    }
+
+    #[test]
+    fn sphere_geometry_integrates_with_the_truncated_analytic_step_function() {
+        let indices = [
+            [0; 3],
+            [1, 0, 0],
+            [-1, 0, 0],
+            [0, 2, 0],
+            [0, -2, 0],
+            [1, 0, -1],
+            [-1, 0, 1],
+        ];
+        let layout = layout(&indices);
+        let geometry = InterstitialGeometry::new(
+            VolumeBohr3(TAU.powi(3)),
+            vec![Sphere {
+                center: [Bohr(1.3), Bohr(2.1), Bohr(0.7)],
+                radius: Bohr(0.9),
+            }],
+        )
+        .unwrap();
+        let mesh = muffintin_core::ExponentialMesh::new(Bohr(0.05), 0.3, 11).unwrap();
+        let zero_muffin_tin = MuffinTinField::new(
+            mesh.clone(),
+            SphereField::new(
+                HarmonicConvention::Real,
+                [((0, 0), vec![Complex64::default(); mesh.len()])],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let (up, down) = (0.3, 0.1);
+        let field = |value: f64| {
+            RegionalScalarField::new(
+                geometry.clone(),
+                vec![zero_muffin_tin.clone()],
+                interstitial_field(
+                    layout.clone(),
+                    indices.into_iter().map(|index| {
+                        let coefficient = if index == [0; 3] { value } else { 0.0 };
+                        (index, Complex64::new(coefficient, 0.0))
+                    }),
+                ),
+            )
+            .unwrap()
+        };
+        let charge = field(up + down);
+        let zero = charge.zero_like();
+        let density = RegionalDensity::new(charge, [zero.clone(), zero, field(up - down)]).unwrap();
+        let spec = XcFieldSpec {
+            interstitial_divisions: [8; 3],
+            angular_point_count: 50,
+            output_l_max: 0,
+            noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
+        };
+        let result = evaluate_regional_xc(XcFunctional::LdaPw92, &density, spec).unwrap();
+        let point = evaluate_xc_point(
+            XcFunctional::LdaPw92,
+            DensityJet2 {
+                rho: [up, down],
+                gradient: [[0.0; 3]; 2],
+                hessian: [[0.0; 6]; 2],
+            },
+        )
+        .unwrap();
+
+        // The surviving G = 0 step coefficient is the exact interstitial fraction.
+        let interstitial_volume =
+            TAU.powi(3) * geometry.coefficient([InverseBohr(0.0); 3]).unwrap().re;
+        assert!(interstitial_volume < TAU.powi(3));
+        let expected_energy = interstitial_volume * point.energy_density;
+        let expected_density_potential =
+            interstitial_volume * (up * point.potential[0].get() + down * point.potential[1].get());
+        assert!(
+            (result.exchange_correlation_energy.get() - expected_energy).abs()
+                < 1.0e-13 * expected_energy.abs()
+        );
+        assert!(
+            (result.density_potential_integral.get() - expected_density_potential).abs()
+                < 1.0e-13 * expected_density_potential.abs()
+        );
+
+        // A uniform potential times the truncated step reproduces the analytic
+        // step coefficients exactly on every layout vector.
+        let scalar = 0.5 * (point.potential[0].get() + point.potential[1].get());
+        let bz = 0.5 * (point.potential[0].get() - point.potential[1].get());
+        for vector in layout.vectors() {
+            let theta = geometry.coefficient(vector.cartesian).unwrap();
+            let actual_scalar = result
+                .potential
+                .scalar()
+                .interstitial()
+                .coefficient(vector.index)
+                .unwrap();
+            let actual_bz = result.potential.magnetic()[2]
+                .interstitial()
+                .coefficient(vector.index)
+                .unwrap();
+            assert!((actual_scalar - scalar * theta).norm() < 1.0e-13);
+            assert!((actual_bz - bz * theta).norm() < 1.0e-13);
+        }
     }
 
     #[test]
@@ -1819,20 +1944,26 @@ mod tests {
         .unwrap();
 
         let uniform = UniformGrid::new(cell, divisions).unwrap();
-        let interstitial = InterstitialGrid::new(&uniform, geometry.spheres()).unwrap();
-        assert_eq!(interstitial.len() + 1, uniform.len());
-        assert!(
-            !interstitial
-                .points()
-                .iter()
-                .any(|point| point.position == excluded_midpoint)
-        );
-
         let mut direct_coefficients: [Vec<Complex64>; 4] =
             std::array::from_fn(|_| vec![Complex64::default(); layout.len()]);
         let mut direct_energy = 0.0;
         let mut direct_density_potential = 0.0;
-        for point in interstitial.points() {
+        for point in uniform.points() {
+            // Truncated step function by direct summation over the layout.
+            let theta = layout
+                .vectors()
+                .iter()
+                .map(|vector| {
+                    let phase = dot_raw(
+                        vector.cartesian.map(InverseBohr::get),
+                        point.position.map(Bohr::get),
+                    );
+                    geometry.coefficient(vector.cartesian).unwrap()
+                        * Complex64::from_polar(1.0, phase)
+                })
+                .sum::<Complex64>();
+            assert!(theta.im.abs() < 1.0e-12);
+            let weight = point.weight.get() * theta.re;
             let (charge, magnetization) =
                 interstitial_pauli_jets(&density, point.position).unwrap();
             let xc = evaluate_noncollinear_xc_point(
@@ -1842,9 +1973,9 @@ mod tests {
                 magnetization,
             )
             .unwrap();
-            direct_energy += point.weight.get() * xc.energy_density;
-            direct_density_potential += point.weight.get() * xc.density_potential;
-            let normalized_weight = point.weight.get() / geometry.cell_volume().get();
+            direct_energy += weight * xc.energy_density;
+            direct_density_potential += weight * xc.density_potential;
+            let normalized_weight = weight / geometry.cell_volume().get();
             for (position, vector) in layout.vectors().iter().enumerate() {
                 let phase = -dot_raw(
                     vector.cartesian.map(InverseBohr::get),
