@@ -167,3 +167,78 @@ spherical averaging is skipped for the all-explicit, no-core H2 route. The XC
 grid is not the cost driver: the 12 Bohr basis (about 6300 plane waves at
 cutoff 6) dominates, and each 12 Bohr iteration at field cutoff 18 takes well
 over 1000 s.
+
+## Hartree–Fock
+
+The H₂ Hartree–Fock acceptance uses the Gamma-only spinor-first valence driver,
+with no core states and the same neutral atomic-superposition start as the DFT
+example. The Dirac radial tag is retained on this path while
+`speed-of-light = 137035.9895` suppresses the relativistic correction. The
+periodic finite-body kernel is compared only with the same-box PySCF
+`exxdiv=None` reference; the sharp and smoothed Spencer–Alavi kernels are
+compared with the isolated reference.
+
+| Reference | $E$ (Ha) | HOMO (Ha) | $E_H$ (Ha) | $E_x$ (Ha) | $E_x/E_H$ |
+|---|---:|---:|---:|---:|---:|
+| isolated | −1.1336107 | −0.5946525 | 1.3171828 | −0.6585914 | −0.5000000 |
+| box 8, `exxdiv=None` | −0.8124204 | −0.2640980 | 0.5951402 | −0.2975701 | −0.5000000 |
+| box 10, `exxdiv=None` | −0.8624143 | −0.3183767 | 0.7534239 | −0.3767120 | −0.5000000 |
+
+Build the parameterized example with the FFTW backend:
+
+```sh
+RUSTFLAGS="-L native=$(brew --prefix fftw)/lib" \
+  HDF5_DIR="$(brew --prefix hdf5)" TBLIS_DIR="$(brew --prefix tblis)" \
+  cargo build --release -p libmuffintin-runtime --features fft-fftw \
+  --example h2_hf
+```
+
+The first positional argument is the output directory. The remaining controls
+are named options: `--box`, `--orbital-g`, `--field-g`, `--product-g`,
+`--product-lmax`, `--overlap-tolerance`, `--exchange-coulomb`,
+`--fock-fourier-g`, `--fock-smoothing-omega`, `--lexp`, `--speed-of-light`,
+`--rmt`, and the A0 diagnostic control `--fock-max-iterations`.
+
+### A0 smoke
+
+The A0 result and its Stop That Digit stamp are recorded here after execution.
+
+### A1 identity-floor study
+
+Base settings are orbital cutoff 5, field cutoff 12, product cutoff 6,
+product $l_{max}=4$, overlap tolerance $10^{-4}$, box 8, and the periodic
+finite-body kernel. Each row changes one base setting.
+
+| Row | Change | $E$ (Ha) | HOMO (Ha) | $E_H$ (Ha) | $E_x$ (Ha) | Exchange id. (Ha) | Eigenvalue id. (Ha) | Total id. (Ha) | $\lvert E_x+E_H/2\rvert$ (Ha) | Fock iter. | Wall (s) | Log |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 1 | base | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 2 | product $G=4$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 3 | product $G=8$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 4 | product $G=10$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 5 | product $l_{max}=2$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 6 | product $l_{max}=6$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 7 | overlap tolerance $10^{-5}$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 8 | overlap tolerance $10^{-6}$ | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 9 | `lexp=18` | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 10 | field cutoff 18 | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+
+The A1 study summary, A1v identity-verdict stamp, and A2 same-box external
+stamp are recorded here after execution.
+
+### B kernel study
+
+The B rows use the accepted A1v settings with orbital cutoff 5.
+
+| Row | Kernel | Box | Fock Fourier $G$ | Omega | $E$ (Ha) | HOMO (Ha) | $E_H$ (Ha) | $E_x$ (Ha) | Exchange id. (Ha) | Eigenvalue id. (Ha) | Total id. (Ha) | $\lvert E_x+E_H/2\rvert$ (Ha) | Fock iter. | Wall (s) | Log |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 1 | sharp Spencer–Alavi | 8 | product $G$ | – | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 2 | sharp Spencer–Alavi | 8 | $2\times$ product $G$ | – | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 3 | sharp Spencer–Alavi | 10 | product $G$ | – | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 4 | sharp Spencer–Alavi | 12 | product $G$ | – | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 5 | smoothed Spencer–Alavi | 8 | product $G$ | 0.8 | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 6 | smoothed Spencer–Alavi | 8 | product $G$ | 1.6 | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 7 | smoothed Spencer–Alavi | 8 | product $G$ | 3.2 | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 8 | smoothed Spencer–Alavi | 12 | product $G$ | 0.8 | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+
+The B study summary and Bv kernel-verdict stamp are recorded here after
+execution. All corresponding logs use the `results/hf-*.log` prefix.
