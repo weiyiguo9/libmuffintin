@@ -226,20 +226,77 @@ cap was reached at 600 s, so the first MPB rebuild still did not complete.
 The muffin-tin time is spent in the already band-batched dense site contraction
 `einsum("il,aij,jr->alr")`; the same batching fix does not apply there.
 
+### Occupied left bands
+
+The batching above could not help because the pair count, not the per pair
+cost, was the problem: the Gamma valence rebuild selected every
+`(left_band, right_band)` pair of the 1030 band spinor window. The exchange
+assembly reads a column only when its weight $w_{k-q} f_{k-q,l}$ is nonzero,
+so the left band is now restricted to bands the assembly can weight. The
+assembly has no separate occupation threshold, and the k weights are
+validated positive, so its criterion is exactly `occupation != 0.0`, the
+same one the relaxed core frame already applied. Because
+`build_spinor_mpb_exchange` requires every square layout column, the call now
+goes through the crate internal VV consumer the relaxed core frame uses, over
+an auxiliary basis that does not depend on the selection list.
+
+```text
+DIGIT / PASS
+Q: exchange/eigenvalue/total identity residuals (Ha); class: R; ref: fixture
+bound: 1e-8; Delta: every residual passed the unchanged fixture assertions
+checks: default and fft-fftw focused tests passed; runs: 2; numerical verification closed
+
+DIGIT / PASS
+Q: fixture total_energy and exchange_energy (Ha); class: R; ref: before the change
+bound: 1e-10; Delta: 0; d: 0
+checks: total -5.32924235801359503e-1 and exchange -1.71511931745922745e-5, identical in both builds before and after; runs: 2 before and 3 after, one after run repeated to confirm the incremental rebuild; numerical verification closed
+
+STUDY / REPORT
+Q: first rebuild selection count and vv.interstitial seconds at the A0 settings; class: P; ref: 1 060 900 selections and > 420 s
+bound: none; observed: 39 140 selections (38 occupied left bands of 1030) and vv.interstitial 27.281 s
+context: vv.mt_contraction fell from 35.201 s to 0.613 s; the whole first vv.mpb_rebuild took 28.658 s, and the committed A0 example returned in 251 s instead of exceeding 1800 s
+```
+
+The timing log is
+`evidence/2026-09-08-h2-hf-a0-probe/timing-occupied.log` on the `harness`
+branch. The scratch example and the temporary selection count print were
+never committed.
+
 ### A0 smoke
 
-The authorized rerun used the exact evd-0002 command with orbital cutoff 4,
-field cutoff 12, product cutoff 4, product $l_{max}=2$, and overlap tolerance
-$10^{-4}$. It was terminated at the new 1800 s wall-time limit before the
-first outer iteration completed; the log is
+The rerun used the exact same command with orbital cutoff 4, field cutoff 12,
+product cutoff 4, product $l_{max}=2$, and overlap tolerance $10^{-4}$. It now
+returns in 251 s, well inside the 1800 s limit, and fails its class A gate:
+the valence eigenvalue identity residual is $3.4089473164444770\times10^{-4}$
+against a driver tolerance of $2\times10^{-8}$. The driver returns the gate
+error before the example prints `hf_energy_terms_ha`, so this row has no $E$,
+HOMO, $E_H$, or $E_x$. The log is
 [`results/hf-a0.log`](results/hf-a0.log).
+
+The three diagnostics the plan allows, in order:
+
+| # | Diagnostic | Question | Answer | Log |
+|---:|---|---|---|---|
+| 1 | `--fock-max-iterations 256` | convergence limit or defect? | identical residual $3.4089473164444770\times10^{-4}$; the Fock loop already exits before the limit, so this is not a limit | [`results/hf-a0-diag1-fock256.log`](results/hf-a0-diag1-fock256.log) |
+| 2 | orbital 3 / product 3 | dimension dependent defect or setup error? | the same identity fails, at $1.4380668996653856\times10^{-4}$; it does not change which identity fails | [`results/hf-a0-diag2-orb3prod3.log`](results/hf-a0-diag2-orb3prod3.log) |
+| 3 | `gamma_valence_hf` fixture at `product_g_max` 4 | does the driver hold its identities at this product cutoff? | yes, every identity stays $\le 10^{-8}$ on the one atom fixture | [`results/hf-a0-diag3-fixture-productg4.log`](results/hf-a0-diag3-fixture-productg4.log) |
+
+The failing identity compares band eigenvalues solved with the previous
+mixed CDIIS feedback against the freshly rebuilt exchange, so its floor is
+the Fock exit tolerance. This example exits at `fock_density_tolerance`
+$10^{-5}$ and `fock_feedback_tolerance` $10^{-5}$ Ha, while the fixture that
+passes at $10^{-8}$ exits at $10^{-7}$ and $10^{-8}$ Ha. Diagnostic 3 does not
+separate a two site setup error from a driver defect under fractional
+occupation tails: the fixture carries one fully occupied band, while A0 spreads
+$38$ fractionally occupied bands over the 1 mHa tail. Nothing in the plan
+authorizes moving the example tolerance, so A0 hands off.
 
 ```text
 DIGIT / HANDOFF
-Q: exchange/eigenvalue/total identity residuals (Ha); class: A; ref: 0
-bound: 1e-8; Delta: unavailable because no outer iteration completed
-checks: exact A0 rerun reached its 1800 s wall limit; runs: 1
-unresolved: what performance change beyond per-left-band projection batching is needed for A0 to return within 30 minutes?
+Q: valence eigenvalue identity residual (Ha); class: A; ref: 0
+bound: 1e-8; Delta: 3.4089473164444770e-4; d: 3.4e4
+checks: exchange and total identity gates were never reached; runs: 1 + 3 diagnostics
+unresolved: is the 3.4e-4 residual only the example's own 1e-5 Fock exit tolerance showing through the 2e-8 identity gate, or a defect of the two site setup under fractional occupation tails?
 ```
 
 ### A1 identity-floor study
@@ -262,7 +319,8 @@ finite-body kernel. Each row changes one base setting.
 | 10 | field cutoff 18 | not run | – | – | – | – | – | – | – | – | – | – |
 
 The closed A1 row list was not run because the ordered predecessor A0 handed
-off. Consequently A1v and A2 have no numerical evidence or stamps.
+off, now on its class A identity gate rather than on wall time. Consequently
+A1v and A2 have no numerical evidence or stamps.
 
 ### B kernel study
 
@@ -280,4 +338,4 @@ The B rows use the accepted A1v settings with orbital cutoff 5.
 | 8 | smoothed Spencer–Alavi | 12 | product $G$ | 0.8 | not run | – | – | – | – | – | – | – | – | – | – |
 
 The closed B row list and Bv verdict were not run after the A0 handoff. No Bv
-stamp exists because no box-12 sharp-kernel value was produced.
+stamp exists because no box 12 sharp kernel value was produced.
