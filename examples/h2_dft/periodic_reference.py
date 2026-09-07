@@ -19,7 +19,7 @@ cell.basis = "aug-cc-pv5z"
 cell.spin = 0
 cell.charge = 0
 cell.precision = 1e-9
-cell.verbose = 4
+cell.verbose = 5
 cell.max_memory = 4000
 cell.build()
 mf = dft.RKS(cell).density_fit(auxbasis="aug-cc-pv5z-jkfit")
@@ -31,6 +31,7 @@ mf.max_cycle = 100
 energy = mf.kernel()
 if not mf.converged:
     raise RuntimeError("Periodic H2 reference SCF did not converge")
+occupied = int(round(cell.nelectron / 2))
 result = {
     "pyscf_version": pyscf.__version__,
     "system": "H2",
@@ -43,6 +44,10 @@ result = {
     "auxbasis": mf.with_df.auxbasis,
     "grid_level": mf.grids.level,
     "energy_hartree": energy,
+    "homo_hartree": float(mf.mo_energy[occupied - 1]),
+    "lumo_hartree": float(mf.mo_energy[occupied]),
+    # PySCF decomposition: E = e1 (kinetic + nuclear attraction) + coul + exc + nuc.
+    "components_hartree": {key: float(value) for key, value in mf.scf_summary.items()},
     "electron_count": cell.nelectron,
     "converged": mf.converged,
 }

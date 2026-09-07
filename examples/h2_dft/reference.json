@@ -8,6 +8,16 @@
   "basis": "aug-cc-pv5z",
   "grid_level": 7,
   "energy_hartree": -1.1373018421841654,
+  "homo_hartree": -0.37729294127752433,
+  "lumo_hartree": 0.010204481412245725,
+  "components_hartree": {
+    "nuc": 0.7142857142857143,
+    "e1": -2.4956074896576452,
+    "e2": 0.6440199331877653,
+    "coul": 1.296912847753563,
+    "exc": -0.6528929145657977,
+    "gap": 10.544341950566439
+  },
   "electron_count": 2,
   "converged": true
 }

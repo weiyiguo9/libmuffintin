@@ -10,6 +10,16 @@
   "auxbasis": "aug-cc-pv5z-jkfit",
   "grid_level": 7,
   "energy_hartree": -1.1391304636363049,
+  "homo_hartree": -0.37280328811889424,
+  "lumo_hartree": -0.01386745362076619,
+  "components_hartree": {
+    "nuc": 0.15105111852561476,
+    "e1": -1.3846665532295066,
+    "e2": 0.09448497106758702,
+    "coul": 0.7431860886368958,
+    "exc": -0.6487011175693088,
+    "gap": 9.767141548939396
+  },
   "electron_count": 2,
   "converged": true
 }

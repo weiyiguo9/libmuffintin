@@ -13,7 +13,7 @@ mol = gto.M(
     basis="aug-cc-pv5z",
     charge=0,
     spin=0,
-    verbose=4,
+    verbose=5,
 )
 mf = dft.RKS(mol)
 # Match mt-dft's PW92 coefficient A=0.0310907 (Libxc PW_MOD).
@@ -25,6 +25,7 @@ mf.max_cycle = 100
 energy = mf.kernel()
 if not mf.converged:
     raise RuntimeError("H2 reference SCF did not converge")
+occupied = int(round(mol.nelectron / 2))
 result = {
     "pyscf_version": pyscf.__version__,
     "system": "H2",
@@ -35,6 +36,10 @@ result = {
     "basis": mol.basis,
     "grid_level": mf.grids.level,
     "energy_hartree": energy,
+    "homo_hartree": float(mf.mo_energy[occupied - 1]),
+    "lumo_hartree": float(mf.mo_energy[occupied]),
+    # PySCF decomposition: E = e1 (kinetic + nuclear attraction) + coul + exc + nuc.
+    "components_hartree": {key: float(value) for key, value in mf.scf_summary.items()},
     "electron_count": mol.nelectron,
     "converged": mf.converged,
 }

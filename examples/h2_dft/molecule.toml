@@ -63,8 +63,9 @@ kind = "lda-pw92"
 interstitial-grid = [78, 78, 78]
 
 [task.scf.mixing]
-kind = "linear"
+kind = "pulay-anderson"
 beta = 0.4
+history = 6
 
 [task.scf.relativity]
 kind = "scalar"

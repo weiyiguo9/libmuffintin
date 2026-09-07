@@ -38,6 +38,7 @@ const SCF_ORBITAL_L_MAX: u32 = 8;
 const ELECTRON_COUNT: f64 = 2.0;
 const FERMI_TEMPERATURE_HARTREE: f64 = 0.001;
 const MIXING_BETA: f64 = 0.4;
+const MIXING_HISTORY: usize = 6;
 const SCF_ENERGY_TOLERANCE_HARTREE: f64 = 1.0e-8;
 const SCF_DENSITY_TOLERANCE: f64 = 1.0e-7;
 const SCF_MAX_ITERATIONS: usize = 80;
@@ -346,7 +347,10 @@ fn scf_input(orbital_g_cutoff: f64, xc_grid: Option<[usize; 3]>) -> Input {
                 noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
                 interstitial_grid: xc_grid,
             },
-            mixing: Mixing::Linear { beta: MIXING_BETA },
+            mixing: Mixing::PulayAnderson {
+                beta: MIXING_BETA,
+                history: MIXING_HISTORY,
+            },
             relativity: Relativity::Scalar {},
             convergence: Convergence {
                 energy_tolerance: SCF_ENERGY_TOLERANCE_HARTREE,
