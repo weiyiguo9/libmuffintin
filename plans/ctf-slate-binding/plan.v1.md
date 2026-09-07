@@ -2,7 +2,7 @@
 
 - Workstream ID: `ctf-slate-binding`
 - Plan version: 1
-- Approval: superseded 2026-09-08 by the standalone `ctf-rs` port (`~/tmp/ctf-rs`, cc4s CTF pinned at f69cbb46); this plan is retained as history only
+- Approval: frozen 2026-09-08 (superseded by `plans/ctf-rs/plan.v1.md`); history only, no further edits
 - Supersedes: none
 - Imported: 2026-09-08 from `scratch/ctf_slate_rust_binding_brief_plan.md` (last modified 2026-08-21), body unchanged
 - Status source: false; state lives in `STATUS.md` and `ledger.md`

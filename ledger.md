@@ -60,3 +60,16 @@ The CTF/SLATE binding plan is retired. Its role is taken by the standalone
 `f69cbb46e23bc2f39cda5722ce096f56301dab4f`) with its own coverage inventory
 and validation record; nothing from it is tracked on this branch. The plan
 file stays as history with a superseded header.
+
+## 2026-09-08 · evt-0006 · ctf-rs plan.v1 proposed; ctf-slate-binding frozen · actor: user
+
+The user asked for the dense-first order to live here as a plan rather than
+as an edit of ctf-rs `docs/coverage.md`. `plans/ctf-rs/plan.v1.md` (B0, D1 to
+D6, S1; class R contracts against the pinned upstream) awaits acceptance.
+`plans/ctf-slate-binding/plan.v1.md` is frozen: superseded, no further edits.
+This restates evt-0005 with the new plan path.
+
+- state: ctf-rs = proposed
+- note: ctf-rs = plan.v1 dense-first; per-run evidence stays in ctf-rs docs/validation.md
+- state: ctf-slate-binding = frozen
+- note: ctf-slate-binding = superseded by plans/ctf-rs/plan.v1.md

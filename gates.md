@@ -16,6 +16,8 @@ the crates on `main` are not gates and are not listed here.
 | G-H2-HF-4 | `h2-hf` | HOMO, box 8 | same | 1e-3 Ha | same | proposed |
 | G-H2-HF-5 | `h2-hf` | $E_x$, sharp Spencer–Alavi kernel, box 12 | isolated PySCF RHF, −0.6585914 Ha | 1e-3 Ha | same | proposed |
 | G-KR-HF | `kr-hf` | frozen-SRA total energy | GTO 4c-DC-HF, −2788.884 Ha | none set | `examples/relativistic_hf/` | open; 1.2 Ha gap as reported 2026-09-05 |
+| G-CTF-D1 to D6 | `ctf-rs` | each upstream driver's own metric, class R | pinned cc4s/ctf `f69cbb46` | upstream tolerance, unchanged | ctf-rs `docs/validation.md`, WSL 1/2/4; native runtime at D6 | proposed |
+| G-CTF-S1 | `ctf-rs` | sparse drivers listed in `plans/ctf-rs/plan.v1.md` | same | same | same | proposed, after D6 |
 
 ## Discipline
 
