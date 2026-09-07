@@ -18,9 +18,7 @@ use muffintin_prodbasis::{
 use muffintin_tensor::{Axis, ComplexTensor, TensorError, einsum};
 use num_complex::Complex64;
 use rayon::prelude::*;
-#[cfg(not(feature = "fft-fftw"))]
-use std::collections::BTreeMap;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use thiserror::Error;
 
 #[cfg(feature = "fft-fftw")]
@@ -873,52 +871,64 @@ fn contract_interstitial_selections(
             &raw_indices,
             mapped.umklapp.index,
         )?;
-        let pairs = spec
-            .selections
-            .iter()
-            .filter(|selection| selection.k == k)
-            .map(|selection| (selection.left_band, selection.right_band))
-            .collect::<BTreeSet<_>>();
-        for (left_band, right_band) in pairs {
-            let mut amplitudes = vec![Complex64::default(); n_raw];
-            for spin in 0..2 {
-                let left = (0..left_indices.len())
-                    .map(|g| {
-                        let row = left_basis
-                            .layout
-                            .plane_wave_index(spin, g)
-                            .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
-                        Ok(input.orbitals.eigenvectors[mapped.kq_index].at(row, left_band))
-                    })
-                    .collect::<Result<Vec<_>, SpinorMpbError>>()?;
-                let right = (0..right_indices.len())
-                    .map(|g| {
-                        let row = right_basis
-                            .layout
-                            .plane_wave_index(spin, g)
-                            .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
-                        Ok(input.orbitals.eigenvectors[mapped.k_index].at(row, right_band))
-                    })
-                    .collect::<Result<Vec<_>, SpinorMpbError>>()?;
-                let spin_amplitudes = fft.correlate(
-                    &left_indices,
-                    &left,
-                    &right_indices,
-                    &right,
-                    &raw_indices,
-                    mapped.umklapp.index,
+        let mut pairs_by_left = BTreeMap::<usize, BTreeSet<usize>>::new();
+        for selection in spec.selections.iter().filter(|selection| selection.k == k) {
+            pairs_by_left
+                .entry(selection.left_band)
+                .or_default()
+                .insert(selection.right_band);
+        }
+        for (left_band, right_bands) in pairs_by_left {
+            let right_bands = right_bands.into_iter().collect::<Vec<_>>();
+            for right_bands in right_bands.chunks(64) {
+                let mut chunk_amplitudes = Vec::with_capacity(right_bands.len() * n_raw);
+                for &right_band in right_bands {
+                    let mut amplitudes = vec![Complex64::default(); n_raw];
+                    for spin in 0..2 {
+                        let left = (0..left_indices.len())
+                            .map(|g| {
+                                let row = left_basis
+                                    .layout
+                                    .plane_wave_index(spin, g)
+                                    .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
+                                Ok(input.orbitals.eigenvectors[mapped.kq_index].at(row, left_band))
+                            })
+                            .collect::<Result<Vec<_>, SpinorMpbError>>()?;
+                        let right = (0..right_indices.len())
+                            .map(|g| {
+                                let row = right_basis
+                                    .layout
+                                    .plane_wave_index(spin, g)
+                                    .ok_or(SpinorMpbError::IncompatiblePairLayout)?;
+                                Ok(input.orbitals.eigenvectors[mapped.k_index].at(row, right_band))
+                            })
+                            .collect::<Result<Vec<_>, SpinorMpbError>>()?;
+                        let spin_amplitudes = fft.correlate(
+                            &left_indices,
+                            &left,
+                            &right_indices,
+                            &right,
+                            &raw_indices,
+                            mapped.umklapp.index,
+                        )?;
+                        for (amplitude, spin_amplitude) in
+                            amplitudes.iter_mut().zip(spin_amplitudes)
+                        {
+                            *amplitude += spin_amplitude / volume;
+                        }
+                    }
+                    chunk_amplitudes.extend(amplitudes);
+                }
+                let raw = ComplexTensor::from_host_row_major(
+                    &[right_bands.len(), n_raw],
+                    &[Axis::PairColumn, Axis::Auxiliary],
+                    chunk_amplitudes,
                 )?;
-                for (amplitude, spin_amplitude) in amplitudes.iter_mut().zip(spin_amplitudes) {
-                    *amplitude += spin_amplitude / volume;
+                let projected = einsum("pr,ra->pa", &[&raw, theta])?.to_host_row_major();
+                for (&right_band, vertex) in right_bands.iter().zip(projected.chunks_exact(n_pw)) {
+                    by_selection.insert((k, left_band, right_band), vertex.to_vec());
                 }
             }
-            let raw = ComplexTensor::from_host_row_major(
-                &[1, n_raw],
-                &[Axis::PairColumn, Axis::Auxiliary],
-                amplitudes,
-            )?;
-            let projected = einsum("pr,ra->pa", &[&raw, theta])?.to_host_row_major();
-            by_selection.insert((k, left_band, right_band), projected);
         }
     }
     spec.selections
