@@ -155,6 +155,30 @@ command: cargo test --test scaling; MPI runner cargo test --test upstream_scalar
 
 - state: ctf-rs = D1 closed
 - note: ctf-rs = dense scaling, virtual traversal, strip/restore and packed indexed scaling closed; D2 next
+## 2026-09-08 · evd-0002 · h2-hf G-H2-HF-0 · main f65c193b03bfa941573b4c689605185b922ee219
+
+```text
+DIGIT / HANDOFF
+Q: exchange/eigenvalue/total identity residuals (Ha); class: A; ref: 0
+bound: 1e-8; Delta: unavailable because no outer iteration completed
+checks: process killed with exit 137 at 515 plane waves, spinor dimension 1030; runs: 1
+unresolved: can A0 complete within the local 24 GB resource boundary?
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a0 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 2>&1 | tee examples/h2_dft/results/hf-a0.log
+log: examples/h2_dft/results/hf-a0.log (main)
+scope: A0 stopped under the immutable plan's resource-kill rule. A1, A1v, A2,
+B, and Bv were not run; no downstream evidence entry is claimed.
+```
+
+## 2026-09-08 · evt-0011 · h2-hf handed off at A0 · actor: codex
+
+All four deliverables were committed on `main`, but A0 was killed before its
+first completed outer iteration. Per plan.v1, the spinor dimension is recorded
+and numerical execution stops without spending a diagnostic row or starting a
+downstream study.
+
+- state: h2-hf = handoff: can A0 complete within the local 24 GB resource boundary?
+- note: h2-hf = evd-0002; deliverables complete on main; A1 through Bv not run
+
 ## 2026-09-08 · evt-0011 · hf-input proposed; ADR-0005 recorded · actor: user
 
 The user decided that Hartree–Fock enters through the same input file and
@@ -200,3 +224,12 @@ command: MPI runner cargo test for the thirteen D3 drivers; acceptance-native.ps
 
 - state: ctf-rs = D3 closed
 - note: ctf-rs = replication, four-type folded panels, automatic compressed contraction/sum planning and seven fast studies closed; D4 next
+## 2026-09-08 · evt-0012 · h2-hf handoff ID collision superseded · actor: codex
+
+The h2-hf handoff entry above reused `evt-0011` after that ID had been assigned
+concurrently to the hf-input proposal. This append-only correction supersedes
+the h2-hf entry's heading ID as `evt-0012`; its evidence, state, and unresolved
+question remain unchanged.
+
+- state: h2-hf = handoff: can A0 complete within the local 24 GB resource boundary?
+- note: h2-hf = evd-0002; deliverables complete on main; A1 through Bv not run
