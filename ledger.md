@@ -162,3 +162,13 @@ and G-HFI-2 are class R. It starts after `h2-hf` closes or hands off;
 
 - state: hf-input = proposed
 - note: hf-input = ADR-0005; starts after h2-hf is closed or handoff; no physics gates
+
+## 2026-09-08 · evt-0012 · h2-hf handoff ID collision superseded · actor: codex
+
+The h2-hf handoff entry above reused `evt-0011` after that ID had been assigned
+concurrently to the hf-input proposal. This append-only correction supersedes
+the h2-hf entry's heading ID as `evt-0012`; its evidence, state, and unresolved
+question remain unchanged.
+
+- state: h2-hf = handoff: can A0 complete within the local 24 GB resource boundary?
+- note: h2-hf = evd-0002; deliverables complete on main; A1 through Bv not run
