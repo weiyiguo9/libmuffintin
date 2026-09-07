@@ -1,0 +1,25 @@
+{
+  "pyscf_version": "2.14.0",
+  "system": "H2",
+  "bond_bohr": 1.4,
+  "boundary": "isolated molecule",
+  "hamiltonian": "nonrelativistic all-electron point nuclei",
+  "method": "RHF",
+  "basis": "aug-cc-pv5z",
+  "energy_hartree": -1.1336106549139453,
+  "homo_hartree": -0.5946524763837548,
+  "lumo_hartree": 0.038629031328769714,
+  "e_hartree": 1.3171827921790904,
+  "e_exchange": -0.6585913960895455,
+  "exchange_ratio": -0.5000000000000002,
+  "components_hartree": {
+    "nuc": 0.7142857142857143,
+    "e1": -2.5064877652892044,
+    "e2": 0.6585913960895449,
+    "coul": 1.3171827921790904,
+    "exc": -0.6585913960895455,
+    "gap": 17.232467565693113
+  },
+  "electron_count": 2,
+  "converged": true
+}

@@ -1,0 +1,28 @@
+{
+  "pyscf_version": "2.14.0",
+  "system": "H2",
+  "bond_bohr": 1.4,
+  "boundary": "3D periodic cubic cell, Gamma only",
+  "box_bohr": 10.0,
+  "auxbasis": "aug-cc-pv5z-jkfit",
+  "exxdiv": null,
+  "hamiltonian": "nonrelativistic all-electron point nuclei",
+  "method": "RHF",
+  "basis": "aug-cc-pv5z",
+  "energy_hartree": -0.8624143429919173,
+  "homo_hartree": -0.3183767471603808,
+  "lumo_hartree": 0.03633478105386179,
+  "e_hartree": 0.7534239324231433,
+  "e_exchange": -0.37671196621157166,
+  "exchange_ratio": -0.5,
+  "components_hartree": {
+    "nuc": 0.15105111852561476,
+    "e1": -1.3901774277291032,
+    "e2": 0.37671196621157127,
+    "coul": 0.7534239324231433,
+    "exc": -0.37671196621157205,
+    "gap": 9.652192319981875
+  },
+  "electron_count": 2,
+  "converged": true
+}
