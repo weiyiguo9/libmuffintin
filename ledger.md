@@ -390,3 +390,78 @@ evd-0005+ and evt-0018+.
 
 - state: h2-hf = active: perf fix (occupied left bands) by claude-worker, then A0 to Bv as in plan.v1
 - note: h2-hf = evt-0016 diagnosis; claude-worker executes; evd-0005+ / evt-0018+
+
+## 2026-09-08 · evd-0005 · h2-hf occupied left bands · main 78b84917cb961d2265009582ff39df2d8c6070a8
+
+```text
+DIGIT / PASS
+Q: exchange/eigenvalue/total identity residuals (Ha); class: R; ref: gamma_valence_hf fixture
+bound: 1e-8 unchanged; Delta: every residual passed the existing assertions
+checks: focused test once without and once with fft-fftw; runs: 2; numerical verification closed
+
+DIGIT / PASS
+Q: fixture total_energy and exchange_energy (Ha); class: R; ref: the same fixture at a5bd71d
+bound: 1e-10; Delta: 0; d: 0
+checks: total -5.32924235801359503e-1 and exchange -1.71511931745922745e-5 before and after, in both builds; runs: 2 before and 3 after, one after run repeated to confirm the incremental rebuild; numerical verification closed
+
+STUDY / REPORT
+Q: first-rebuild selection count and vv.interstitial seconds at the A0 settings; class: P; ref: 1 060 900 and >420 s
+bound: none; observed: 39 140 selections (38 occupied left bands of 1030) and vv.interstitial 27.281 s
+context: vv.mt_contraction fell from 35.201 s to 0.613 s and the whole first vv.mpb_rebuild took 28.658 s
+commands: cargo test -p libmuffintin-runtime --test gamma_valence_hf; cargo test -p libmuffintin-runtime --features fft-fftw --test gamma_valence_hf; the A0 command against a scratch timing copy of the example
+log: evidence/2026-09-08-h2-hf-a0-probe/timing-occupied.log
+scope: `build_spinor_mpb_exchange` requires every square-layout column, so the
+call moved to `contract_selected_spinor_mpb_exchange_with_operators`, the
+crate-internal VV consumer the relaxed-core frame already uses, with
+`assemble_coulomb` in the caller. Both routes end in the same
+`contract_rectangular_exchange` over an auxiliary basis independent of the
+selection list, which is why the fixture energies are bit identical. The A0
+gate value under a5bd71d is unavailable because that build never returned.
+The temporary fixture print, the scratch example, and the selection-count
+print were never committed.
+```
+
+## 2026-09-08 · evt-0018 · h2-hf perf fix committed, A0 rerun · actor: claude
+
+The evt-0016 restriction is on `main` at 78b8491 and passed both class-R
+checks with zero change in the fixture energies. The first MPB rebuild at
+the A0 settings dropped from an unfinished 1 060 900-vertex build to 39 140
+vertices in 28.7 s, and the committed A0 example now returns in 251 s.
+
+- state: h2-hf = active: A0 rerun after the occupied-left-band perf fix
+- note: h2-hf = evd-0005 class-R checks passed; A0 verify next
+
+## 2026-09-08 · evd-0006 · h2-hf G-H2-HF-0 A0 identity handoff · main 78b84917cb961d2265009582ff39df2d8c6070a8, recorded through 05b6d520f7c04c7855abf655a3731b90f141771b
+
+```text
+DIGIT / HANDOFF
+Q: valence eigenvalue identity residual (Ha); class: A; ref: 0
+bound: 1e-8; Delta: 3.4089473164444770e-4; d: 3.4e4
+checks: the exchange and total identity gates are never reached, the driver returns on the first one that fails; runs: 1 + the 3 diagnostics plan.v1 lists for A0
+diagnostic 1: --fock-max-iterations 256 gives the identical residual, so the Fock iteration limit is not the cause
+diagnostic 2: orbital 3 / product 3 fails the same identity at 1.4380668996653856e-4, so it does not change which identity fails
+diagnostic 3: the gamma_valence_hf fixture at product_g_max 4 holds every identity at 1e-8, so the driver itself is sound at that product cutoff
+unresolved: is the 3.4e-4 residual only the example's own 1e-5 Fock exit tolerance showing through the 2e-8 identity gate, or a defect of the two-site setup under fractional occupation tails?
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a0 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 2>&1 | tee examples/h2_dft/results/hf-a0.log
+supervisor: /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 1800s
+log: examples/h2_dft/results/hf-a0.log and hf-a0-diag1-fock256.log, hf-a0-diag2-orb3prod3.log, hf-a0-diag3-fixture-productg4.log (main)
+scope: A0 returned in 251 s and failed its gate; the driver errors before the
+example prints hf_energy_terms_ha, so the row has no E, HOMO, E_H, or E_x.
+Diagnostic 3 does not separate a two-site setup error from a driver defect
+under fractional occupation tails: the fixture carries one fully occupied
+band while A0 spreads 38 fractionally occupied bands over the 1 mHa tail. The
+example exits its Fock loop at fock_density_tolerance 1e-5 and
+fock_feedback_tolerance 1e-5 Ha; the fixture that passes at 1e-8 exits at
+1e-7 and 1e-8 Ha. A1, A1v, A2, B, and Bv were not run and claim no evidence.
+Nothing in plan.v1 authorizes moving the tolerance, so the plan stops here.
+```
+
+## 2026-09-08 · evt-0019 · h2-hf handed off on the A0 identity gate · actor: claude
+
+The perf fix answered the evt-0016 wall-time question and A0 is now a
+numerical result rather than a timeout. It fails plan.v1's class-A digit,
+its three listed diagnostics are recorded in evd-0006, and the plan stops
+before A1 without any tolerance being changed.
+
+- state: h2-hf = handoff: A0 fails the valence eigenvalue identity at 3.4e-4 against 1e-8; is that the example's 1e-5 Fock exit tolerance or a two-site defect?
+- note: h2-hf = evd-0005 perf checks passed; evd-0006 A0 handoff; A1 through Bv not run

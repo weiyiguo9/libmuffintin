@@ -47,3 +47,23 @@ A0.
 - Thread count is not the lever: with all thread counts forced to 1 the
   first `vv.interstitial` was still running at a 420 s cap; with ten
   threads at a 300 s cap (`vv.mt_contraction` 48.4 s and 37.1 s).
+
+## After the occupied-left-band commit (main 78b8491)
+
+`timing-occupied.log`: a scratch copy of the example with
+`set_hf_verbosity(HfVerbosity::Timings)` and a temporary print of the
+selection count, ten threads, 600 s cap. Neither the copy nor the print was
+committed.
+
+```text
+[probe] selections=39140 occupied_bands=38 n_orb=1030
+[hf timing] end vv.mt_contraction elapsed_s=0.613234
+[hf timing] end vv.interstitial elapsed_s=27.281043
+[hf timing] end vv.mpb_rebuild elapsed_s=28.657877
+```
+
+The 1 030 band window carries 38 bands with nonzero occupation at the 1 mHa
+tail, so the first rebuild builds 39 140 vertices instead of 1 060 900. Five
+rebuilds completed and the run stopped on the driver's valence eigenvalue
+identity gate, not on the cap. The committed A0 example then returned the
+same gate error in 251 s.
