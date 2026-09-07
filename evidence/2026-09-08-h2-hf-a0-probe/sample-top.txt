@@ -1,0 +1,45 @@
+Call graph:
+    11438 Thread_116512671   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 11438 start  (in dyld) + 6076  [0x184406b98]
+    +   11438 main  (in h2_hf) + 52  [0x1027c3710]
+    +     11438 _RNvNtCs106jutQF6X5_3std2rt19lang_start_internal  (in h2_hf) + 952  [0x102bde794]
+    +       11438 _RNCINvNtCs106jutQF6X5_3std2rt10lang_startINtNtCsaTNopw4qKPP_4core6result6ResultuINtNtCs3XW7gbOxCtj_5alloc5boxed3BoxDNtNtBI_5error5ErrorEL_EEE0CsgB2oiYTxxPK_5h2_hf  (in h2_hf) + 16  
+    +         11438 _RINvNtNtCs106jutQF6X5_3std3sys9backtrace28___rust_begin_short_backtraceFEINtNtCsaTNopw4qKPP_4core6result6ResultuINtNtCs3XW7gbOxCtj_5alloc5boxed3BoxDNtNtB1e_5error5ErrorEL_EEB19_EC
+    +           11438 _RNvCsgB2oiYTxxPK_5h2_hf4main  (in h2_hf) + 9744  [0x1027bec84]
+    +             11438 _RNvNtCs4uxcmsAD3eL_9muffintin6hf_scf14run_valence_hf  (in h2_hf) + 3404  [0x102814774]
+    +               11438 _RNvNtCs4uxcmsAD3eL_9muffintin6hf_scf16rebuild_exchange  (in h2_hf) + 288  [0x1028192c0]
+    +                 11438 _RINvNtNtCsaTNopw4qKPP_4core4iter8adapters11try_processINtNtB2_3map3MapINtNtNtB6_5slice4iter4IterNtNtCs4uxcmsAD3eL_9muffintin14spinor_product18SpinorProductInputENCNvNtB1A_
+    +                   11438 _RNvXNtNtCs3XW7gbOxCtj_5alloc3vec14spec_from_iterINtB4_3VecNtNtCs4uxcmsAD3eL_9muffintin10spinor_mpb15SpinorMpbResultEINtB2_12SpecFromIterBU_INtNtNtCsaTNopw4qKPP_4core4ite
+    +                     11438 _RINvXs0_NtNtNtCsaTNopw4qKPP_4core4iter8adapters3mapINtB6_3MapINtNtNtBc_5slice4iter4IterNtNtCs4uxcmsAD3eL_9muffintin14spinor_product18SpinorProductInputENCNvNtB1r_6hf_s
+    +                       11438 _RNvNtCs4uxcmsAD3eL_9muffintin10spinor_mpb27build_spinor_mpb_from_basis  (in h2_hf) + 1760  [0x102839d60]
+    +                         8817 _RNvNtCs4uxcmsAD3eL_9muffintin10spinor_mpb32contract_interstitial_selections  (in h2_hf) + 2940  [0x10283ca5c]
+    +                         ! 8808 _RNvXNtCsjQp7JsCcK3a_16muffintin_tensor11rstsr_tblisNtB2_17RstsrTblisBackendNtNtB4_7backend13EinsumBackend6einsum  (in h2_hf) + 204  [0x102aaeee4]
+    +                         ! : 8800 _RINvNtCs7Y6D19LGaqV_11rstsr_tblis11einsum_impl8einsum_fINtCsdPX9ucwQGV8_11num_complex7ComplexdENtNtNtCs3ClOJrkCTPu_10rstsr_core11device_faer6device10DeviceFaerA
+    +                         ! : | 8749 _RINvNtCs3pfjI4Lm0qT_5tblis11einsum_impl14tblis_einsum_fINtCsdPX9ucwQGV8_11num_complex7ComplexdEbINtNtCsaTNopw4qKPP_4core6option6OptiondEECsjQp7JsCcK3a_16muffi
+    +                         ! : | + 8739 _RINvNtCs3pfjI4Lm0qT_5tblis10tensor_ops19tblis_tensor_mult_fINtCsdPX9ucwQGV8_11num_complex7ComplexdEECsjQp7JsCcK3a_16muffintin_tensor  (in h2_hf) + 2144  [0x
+    +                         ! : | + ! 8733 tblis_tensor_mult  (in libtblis.dylib) + 1688  [0x103809fe4]
+    +                         ! : | + ! : 8263 tci_parallelize  (in libtblis.dylib) + 324  [0x10380de24]
+    +                         ! : | + ! : | 7614 tci::parallelize<void tblis::parallelize_if<tblis_tensor_mult::$_0>(tblis_tensor_mult::$_0 const&, tci_comm const*)::'lambda'(tci::communicator const&)
+    +                         ! : | + ! : | + 7614 tblis_tensor_mult::$_0::operator()(tci::communicator const&) const  (in libtblis.dylib) + 376  [0x10380ae1c]
+    +                         ! : | + ! : | +   5992 tblis::internal::mult(int, tci::communicator const&, cntx_s const*, MArray::release::short_vector<long, 8ul> const&, MArray::release::short_vector<
+    +                         ! : | + ! : | +   ! 5992 tblis::internal::mult_blis(int, tci::communicator const&, cntx_s const*, MArray::release::short_vector<long, 8ul> const&, MArray::release::short_
+    +                         ! : | + ! : | +   !   4452 tci::communicator::distribute_over_gangs<tblis::internal::mult_blis(int, tci::communicator const&, cntx_s const*, MArray::release::short_vector
+    +                         ! : | + ! : | +   !   : 4452 tci::communicator::barrier() const  (in libtblis.dylib) + 16  [0x1037a40e8]
+    +                         ! : | + ! : | +   !   :   4452 tci_barrier_wait  (in libtblis.dylib) + 52  [0x10380d2e8]
+    +                         ! : | + ! : | +   !   :     4452 tci_barrier_node_wait  (in libtblis.dylib) + 88,80,...  [0x10380d120,0x10380d118,...]
+    +                         ! : | + ! : | +   !   1539 tci::communicator::distribute_over_gangs<tblis::internal::mult_blis(int, tci::communicator const&, cntx_s const*, MArray::release::short_vector
+    +                         ! : | + ! : | +   !   : 1522 tci::communicator::distribute_over_threads<tblis::internal::gemv_blis(int, tci::communicator const&, cntx_s const*, long, long, tblis::tblis_
+    +                         ! : | + ! : | +   !   : | 1522 bli_zaxpyf_firestorm_ref  (in libblis.4.0.0.dylib) + 608,588,...  [0x10388b898,0x10388b884,...]
+    +                         ! : | + ! : | +   !   : 17 tci::communicator::distribute_over_threads<tblis::internal::gemv_blis(int, tci::communicator const&, cntx_s const*, long, long, tblis::tblis_sc
+    +                         ! : | + ! : | +   !   1 tci::communicator::distribute_over_gangs<tblis::internal::mult_blis(int, tci::communicator const&, cntx_s const*, MArray::release::short_vector<lo
+    +                         ! : | + ! : | +   !     1 MArray::release::index_iterator<-1, 3>::position<MArray::release::short_vector<long, 8ul>, char const*, char const*, char*, void>(MArray::releas
+    +                         ! : | + ! : | +   !       1 <deduplicated_symbol>  (in libtblis.dylib) + 96  [0x1037a4f84]
+    +                         ! : | + ! : | +   1622 tblis::internal::mult(int, tci::communicator const&, cntx_s const*, MArray::release::short_vector<long, 8ul> const&, MArray::release::short_vector<
+    +                         ! : | + ! : | +     1622 tci::communicator::barrier() const  (in libtblis.dylib) + 16  [0x1037a40e8]
+    +                         ! : | + ! : | +       1622 tci_barrier_wait  (in libtblis.dylib) + 52  [0x10380d2e8]
+    +                         ! : | + ! : | +         1622 tci_barrier_node_wait  (in libtblis.dylib) + 88,80,...  [0x10380d120,0x10380d118,...]
+    +                         ! : | + ! : | 649 tci::communicator::barrier() const  (in libtblis.dylib) + 16  [0x1037a40e8]
+    +                         ! : | + ! : |   649 tci_barrier_wait  (in libtblis.dylib) + 52  [0x10380d2e8]
+    +                         ! : | + ! : |     649 tci_barrier_node_wait  (in libtblis.dylib) + 88,80  [0x10380d120,0x10380d118]
+    +                         ! : | + ! : 239 tci_parallelize  (in libtblis.dylib) + 340  [0x10380de34]
+    +                         ! : | + ! : | 192 _pthread_join  (in libsystem_pthread.dylib) + 752  [0x1847aa0fc]

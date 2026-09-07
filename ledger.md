@@ -249,3 +249,20 @@ question remain unchanged.
 
 - state: h2-hf = handoff: can A0 complete within the local 24 GB resource boundary?
 - note: h2-hf = evd-0002; deliverables complete on main; A1 through Bv not run
+
+## 2026-09-08 · evt-0013 · h2-hf handoff question answered: time, not memory · actor: claude
+
+Two probes of the A0 command (`evidence/2026-09-08-h2-hf-a0-probe/`)
+replace the unresolved question of evd-0002/evt-0012. Peak RSS was 2.06 GB
+on the 24 GB machine; the process ran one core inside
+`spinor_mpb::contract_interstitial_selections` (`fft-fftw` variant, one
+TBLIS einsum per band pair, threads waiting at barriers). With timings on,
+the first MPB rebuild spent 49.7 s in `vv.mt_contraction` and was still in
+`vv.interstitial` after 300 s; the Fock loop may rebuild 40 times per outer
+iteration, and `h2_hf.rs` prints nothing until the driver returns, so the
+4400 s silence was expected behavior of a slow path, not a hang or a kill
+for memory. A0 resumes unchanged once the rebuild is fast enough to finish
+the run; no bound, row, or setting of plan.v1 changes.
+
+- state: h2-hf = handoff: A0 blocked by the fft-fftw interstitial MPB contraction (>300 s per rebuild, one core); memory peak 2.1 GB
+- note: h2-hf = evd-0002 handoff re-read by evt-0013; perf fix on main needed before A0 can complete

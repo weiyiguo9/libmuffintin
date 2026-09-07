@@ -5,13 +5,13 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `f65c193b03bfa941573b4c689605185b922ee219` (2026-09-08)
-- Last ledger entries: evd-1005 (MSI), evd-0002 (Mac), evt-0012 (Mac)
+- Last ledger entries: evd-1005 (MSI), evd-0002 (Mac), evt-0013 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
 | `ctf-rs` | D4 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | process memory budgets, low-memory path, timers, util, four-type SYR and flop snapshots closed; D5 next |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
-| `h2-hf` | handoff: can A0 complete within the local 24 GB resource boundary? | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evd-0002; deliverables complete on main; A1 through Bv not run |
+| `h2-hf` | handoff: A0 blocked by the fft-fftw interstitial MPB contraction (>300 s per rebuild, one core); memory peak 2.1 GB | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evd-0002 handoff re-read by evt-0013; perf fix on main needed before A0 can complete |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |
