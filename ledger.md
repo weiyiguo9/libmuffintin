@@ -179,6 +179,22 @@ downstream study.
 - state: h2-hf = handoff: can A0 complete within the local 24 GB resource boundary?
 - note: h2-hf = evd-0002; deliverables complete on main; A1 through Bv not run
 
+## 2026-09-08 · evd-1005 · ctf-rs D4 shared infrastructure close · ctf-rs 3acda59
+
+```text
+DIGIT / PASS
+milestone: D4; commit: 3acda59
+validation.md section: D4 shared infrastructure close (2026-09-08)
+Q: exact memcontrol, timer, util, four-type SYR and flop-counter checks; class: R; ref: pinned f69cbb46
+bound: exact integer/index/layout/BLAS/flop checks and timer invariants; observed: all within
+runs: WSL world/parity at 1/2/4 once; mpi_low_memory_bench 0.002395 s once at four ranks; native compile/link
+open: none
+command: MPI runner cargo test for three D4 drivers; mpirun -n 4 release mpi_low_memory_bench; acceptance-native.ps1 -BuildOnly
+```
+
+- state: ctf-rs = D4 closed
+- note: ctf-rs = process memory budgets, low-memory path, timers, util, four-type SYR and flop snapshots closed; D5 next
+
 ## 2026-09-08 · evt-0011 · hf-input proposed; ADR-0005 recorded · actor: user
 
 The user decided that Hartree–Fock enters through the same input file and
