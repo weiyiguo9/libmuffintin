@@ -19,6 +19,7 @@ fn checkpoint() -> CheckpointV1 {
     let increment = 0.2;
     CheckpointV1::new(
         CheckpointMeta {
+            speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             title: "minimal silicon checkpoint".to_owned(),
             producer: "mt-io test".to_owned(),
             producer_version: Some("1.2.3".to_owned()),
@@ -121,6 +122,7 @@ fn checkpoint_file_dispatch_preserves_v1() {
 #[test]
 fn v2_transverse_restart_round_trips_through_version_dispatch() {
     let mut checkpoint = checkpoint().normalize_v2().unwrap();
+    checkpoint.meta.speed_of_light = 1000.0 * muffintin_core::SPEX_SPEED_OF_LIGHT;
     let mut potential = match &checkpoint.initial {
         InitialV2::FrozenPotential { potential } => potential.clone(),
         InitialV2::Restart { .. } => unreachable!(),

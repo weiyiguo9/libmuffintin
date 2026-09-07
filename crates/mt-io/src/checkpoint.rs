@@ -69,6 +69,9 @@ pub struct CheckpointMeta {
     pub title: String,
     pub producer: String,
     pub producer_version: Option<String>,
+    /// Calculation-owned speed of light in Hartree atomic units.
+    #[serde(default = "default_speed_of_light")]
+    pub speed_of_light: f64,
     /// Human-readable definition of the common energy reference.
     pub energy_zero: String,
     pub potential_convention: PotentialConventionV1,
@@ -82,6 +85,7 @@ impl CheckpointMeta {
         nonempty("meta.title", &self.title)?;
         nonempty("meta.producer", &self.producer)?;
         nonempty("meta.energy_zero", &self.energy_zero)?;
+        positive("meta.speed_of_light", self.speed_of_light)?;
         if let Some(version) = &self.producer_version {
             nonempty("meta.producer_version", version)?;
         }
@@ -90,6 +94,10 @@ impl CheckpointMeta {
         }
         Ok(())
     }
+}
+
+fn default_speed_of_light() -> f64 {
+    muffintin_core::SPEX_SPEED_OF_LIGHT
 }
 
 /// Angular and radial conventions for all muffin-tin potential channels.

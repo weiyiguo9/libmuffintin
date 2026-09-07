@@ -83,6 +83,7 @@ pub struct MaterialKernel {
     pub(super) frozen_potential: RegionalPotential,
     pub(super) restart_density: Option<RegionalDensity>,
     pub(super) nuclear_charges: Vec<f64>,
+    speed_of_light: f64,
     crystal_cell: CrystalCell,
     prepared_symmetry: Option<PreparedSymmetrySampling>,
     core_potentials: BTreeMap<usize, ScfPotentialBuild>,
@@ -595,6 +596,7 @@ pub struct CheckpointSecondVariationResult {
 /// Fixed scalar-band frame for repeated SOC second-variation Fock solves.
 #[derive(Clone, Debug)]
 pub struct CheckpointSecondVariationFrame {
+    speed_of_light: f64,
     scalar: CheckpointBandSolution,
     reference_potential: RegionalPotential,
     first_variations: Vec<FirstVariationSubspace>,
@@ -669,7 +671,8 @@ impl CheckpointSecondVariationFrame {
                 let bands = projected.dimension();
                 let n = 2 * bands;
                 let mut soc_change = vec![Complex64::default(); n * n];
-                let updated_soc = second_variation_blocks_from_potential(basis, potential)?;
+                let updated_soc =
+                    second_variation_blocks_from_potential(basis, potential, self.speed_of_light)?;
                 for (site, block) in updated_soc.iter().enumerate() {
                     let projection = CompiledSiteProjection::scalar(&basis.compiled, site)?;
                     let coefficients = projection.project_eigenvectors(&first.eigenvectors)?;
@@ -795,7 +798,11 @@ impl MaterialKernel {
         restart_density: Option<RegionalDensity>,
         nuclear_charges: Vec<f64>,
         crystal_cell: CrystalCell,
+        speed_of_light: f64,
     ) -> Result<Self, MaterialKernelError> {
+        if !speed_of_light.is_finite() || speed_of_light <= 0.0 {
+            return Err(MaterialKernelError::InvalidSpeedOfLight(speed_of_light));
+        }
         let kernel = Self {
             reciprocal,
             geometry,
@@ -803,6 +810,7 @@ impl MaterialKernel {
             frozen_potential,
             restart_density,
             nuclear_charges,
+            speed_of_light,
             crystal_cell,
             prepared_symmetry: None,
             core_potentials: BTreeMap::new(),
@@ -815,6 +823,10 @@ impl MaterialKernel {
             kernel.require_density_site_count(density)?;
         }
         Ok(kernel)
+    }
+
+    pub const fn speed_of_light(&self) -> f64 {
+        self.speed_of_light
     }
 
     pub fn bind_spex_spinor(
@@ -1096,6 +1108,7 @@ impl MaterialKernel {
                 &self.nuclear_charges,
                 &request,
                 &extended[site_index].potential,
+                self.speed_of_light,
             )?;
             density.add_scaled(1.0, &solved.contribution.contribution.density)?;
             eigenvalue_sum += solved.contribution.contribution.eigenvalue_sum;
@@ -1313,7 +1326,8 @@ impl MaterialKernel {
                 &solutions.up.eigenvalues,
                 &solutions.up.eigenvectors,
             )?;
-            let blocks = second_variation_blocks_from_potential(&bases.up, potential)?;
+            let blocks =
+                second_variation_blocks_from_potential(&bases.up, potential, self.speed_of_light)?;
             let core_blocks = build_static_core_exchange_site_blocks(
                 &bases.up,
                 core_sidecars,
@@ -1336,6 +1350,7 @@ impl MaterialKernel {
             resolved_core_feedback.push(projected_core);
         }
         Ok(CheckpointSecondVariationFrame {
+            speed_of_light: self.speed_of_light,
             scalar: scalar.clone(),
             reference_potential: potential.clone(),
             first_variations,
@@ -1739,6 +1754,7 @@ impl MaterialKernel {
                         radius: site.radius,
                         mesh: template.mesh.clone(),
                         spherical_potential,
+                        speed_of_light: self.speed_of_light,
                         potential: field.field().clone(),
                         linearization_energies,
                         local_orbitals,
@@ -1853,6 +1869,7 @@ impl MaterialKernel {
                     radius: site.radius,
                     mesh: site.up.mesh.clone(),
                     spherical_potential,
+                    speed_of_light: self.speed_of_light,
                     potential: LocalPauliPotential::new(scalar, magnetic)?,
                     l_max: basis.l_max,
                     linearization_energies,
@@ -2438,6 +2455,7 @@ impl MaterialKernel {
                 &self.nuclear_charges,
                 &request,
                 &extended[site_index].potential,
+                self.speed_of_light,
             )?;
             density.add_scaled(1.0, &contribution.contribution.contribution.density)?;
             eigenvalue_sum += contribution.contribution.contribution.eigenvalue_sum;
@@ -2577,6 +2595,7 @@ impl ScfPhysics for MaterialKernel {
             &self.nuclear_charges,
             &request,
             &continued[site_index].potential,
+            self.speed_of_light,
         )?
         .contribution
         .contribution)
@@ -2824,7 +2843,11 @@ fn second_variation_blocks(
         .zip(&basis.recipe_sites)
         .zip(inputs)
         .map(|((radials, recipe), input)| {
-            let potential = SpexSpinOrbitPotential::new(&input.mesh, &input.spherical_potential)?;
+            let potential = SpexSpinOrbitPotential::new(
+                &input.mesh,
+                &input.spherical_potential,
+                input.speed_of_light,
+            )?;
             let shells = radials
                 .linearized
                 .iter()
@@ -2848,6 +2871,7 @@ fn second_variation_blocks(
 fn second_variation_blocks_from_potential(
     basis: &ScalarIterationBasis,
     potential: &RegionalPotential,
+    speed_of_light: f64,
 ) -> Result<Vec<SiteSpinOrbitBlock>, MaterialKernelError> {
     if basis.radial_sites.len() != potential.scalar().muffin_tins().len() {
         return Err(MaterialKernelError::TopologySiteCount {
@@ -2871,7 +2895,8 @@ fn second_variation_blocks_from_potential(
                 .iter()
                 .map(|value| value.re / (4.0 * PI).sqrt())
                 .collect::<Vec<_>>();
-            let spin_orbit = SpexSpinOrbitPotential::new(&density.mesh, &spherical)?;
+            let spin_orbit =
+                SpexSpinOrbitPotential::new(&density.mesh, &spherical, speed_of_light)?;
             let shells = radials
                 .linearized
                 .iter()
@@ -3313,6 +3338,8 @@ fn equivalent_channel_recipe(source: &ScfChannelRecipe, target: &ScfChannelRecip
 /// Checkpoint conversion or concrete DFT-kernel failure.
 #[derive(Debug, Error)]
 pub enum MaterialKernelError {
+    #[error("speed of light must be finite and positive, got {0}")]
+    InvalidSpeedOfLight(f64),
     #[error(transparent)]
     ChannelKappa(#[from] ChannelKappaError),
     #[error(transparent)]

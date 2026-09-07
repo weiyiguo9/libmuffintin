@@ -122,6 +122,7 @@ pub fn sample_checkpoint() -> CheckpointV1 {
     let increment = 0.2;
     CheckpointV1::new(
         CheckpointMeta {
+            speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             title: "runtime fixture".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,
@@ -243,6 +244,7 @@ pub fn supported_checkpoint() -> CheckpointV1 {
         .collect::<Vec<_>>();
     CheckpointV1::new(
         CheckpointMeta {
+            speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             title: "supported runtime hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,

@@ -38,6 +38,7 @@ fn hydrogen_spinor_checkpoint() -> CheckpointV2 {
         .collect::<Vec<_>>();
     CheckpointV1::new(
         CheckpointMeta {
+            speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             title: "spinor product-input hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,
@@ -443,7 +444,7 @@ fn physical_pq_matches_independent_dirac_materialization() {
     let base = solve_valence_dirac(
         mesh,
         &spherical,
-        ValenceDiracSpec::new(kappa, Hartree(-0.15)).unwrap(),
+        ValenceDiracSpec::new(kappa, Hartree(-0.15), SPEX_SPEED_OF_LIGHT).unwrap(),
     )
     .unwrap();
     let emitted_p = find_radial(&input, 1, SPINOR_RADIAL_P);

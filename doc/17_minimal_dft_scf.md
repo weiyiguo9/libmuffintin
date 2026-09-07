@@ -360,6 +360,18 @@ Checkpoint V2 stores shared geometry and radial-basis metadata plus either a fro
 
 ## 9. Neutral atomic-start Checkpoint V2
 
+### 9.1 Calculation constants and molecule input
+
+Runtime input accepts an optional top-level `speed-of-light` in Hartree atomic
+units. An omitted value inherits the checkpoint's typed `meta.speed_of_light`;
+a new molecule defaults to the physical SPEX value 137.0359895. An explicit
+input value selects that calculation's constant and is retained in its
+checkpoint. Radial, atomic/core, spinor and SOC computations receive it
+explicitly; no process-global mutable constant is used. Increasing it provides
+the nonrelativistic limit of the same relativistic implementation.
+
+### 9.2 Atomic density construction
+
 `FreeAtomScfSpec` makes the exponential radial mesh, potential mixing, potential tolerance, tail tolerance, and maximum iteration count explicit. Public `run_free_atom_lda` starts from the bare nuclear potential and resolves the neutral FLEUR occupation catalogue into every occupied signed $\kappa$ channel. Each radial iteration solves those bound Dirac orbitals, forms the physical $P^2+Q^2$ density, evaluates the isolated spherical Hartree potential and unpolarized LDA/PW92 potential, and mixes the resulting effective potential. Success requires the potential residual, integrated-charge error, and outer logarithmic-shell charge to satisfy the caller's tolerances. Bound-state, quadrature, XC, convergence, and tail failures remain typed rather than producing a partial atomic state.
 
 `build_atomic_superposition_density` places the converged neutral atoms on the supplied crystal and sums every periodic image whose verified radial tail intersects a target muffin-tin sphere. It evaluates the overlapped density on the target radial/angular grid and projects all requested nonspherical muffin-tin channels instead of retaining only a spherical on-site term. Its interstitial Fourier coefficients are neutral-atom form factors on the caller's exact `RegionalFieldLayout`; the atomic path does not infer that layout from a k mesh, plane-wave orbital basis, or `CompiledBasis`. `RegionalFieldLayout::new` accepts an ordered reciprocal-index list, while `from_g_cutoff` enumerates the reciprocal sphere from an explicit `InverseBohr`. After muffin-tin projection and finite Fourier truncation, only the represented $G=0$ coefficient is corrected so the regional integral equals the requested charge; finite $G$ coefficients and the nonspherical muffin-tin density are unchanged. Interpolation beyond the verified atomic tail is a typed error.

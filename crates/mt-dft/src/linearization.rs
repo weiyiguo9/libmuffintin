@@ -65,6 +65,8 @@ pub struct AtomicEnergyRequest {
     pub state: CoreState,
     pub nuclear_charge: f64,
     pub muffin_tin_radius: Bohr,
+    /// Speed of light in Hartree atomic units.
+    pub speed_of_light: f64,
     pub intervals: usize,
     /// Energy of this state under a nearby potential, if one is known.
     ///
@@ -77,11 +79,17 @@ pub struct AtomicEnergyRequest {
 }
 
 impl AtomicEnergyRequest {
-    pub const fn new(state: CoreState, nuclear_charge: f64, muffin_tin_radius: Bohr) -> Self {
+    pub const fn new(
+        state: CoreState,
+        nuclear_charge: f64,
+        muffin_tin_radius: Bohr,
+        speed_of_light: f64,
+    ) -> Self {
         Self {
             state,
             nuclear_charge,
             muffin_tin_radius,
+            speed_of_light,
             intervals: 512,
             seed: None,
         }
@@ -212,6 +220,7 @@ pub(crate) fn solve_atomic_bound_state(
                     request.nuclear_charge,
                     request.muffin_tin_radius,
                     window,
+                    request.speed_of_light,
                 )
                 .with_intervals(SEEDED_WINDOW_INTERVALS),
             )
@@ -227,6 +236,7 @@ pub(crate) fn solve_atomic_bound_state(
                 request.nuclear_charge,
                 request.muffin_tin_radius,
                 energy_window,
+                request.speed_of_light,
             )
             .with_intervals(request.intervals),
         )
@@ -248,8 +258,9 @@ pub fn generate_band_center_energy(
     equation: RadialEquation,
     angular_momentum: u32,
     seed: Hartree,
+    speed_of_light: f64,
 ) -> Result<GeneratedLinearizationEnergy, LinearizationEnergyError> {
-    let result = RadialSolver::new(mesh, potential, equation)
+    let result = RadialSolver::new(mesh, potential, equation, speed_of_light)
         .and_then(|solver| solver.band_center(angular_momentum, seed))
         .map_err(|source| LinearizationEnergyError::BandCenter {
             angular_momentum,
@@ -277,8 +288,9 @@ pub fn generate_log_derivative_energy(
     angular_momentum: u32,
     seed: Hartree,
     target: InverseBohr,
+    speed_of_light: f64,
 ) -> Result<GeneratedLinearizationEnergy, LinearizationEnergyError> {
-    let result = RadialSolver::new(mesh, potential, equation)
+    let result = RadialSolver::new(mesh, potential, equation, speed_of_light)
         .and_then(|solver| {
             solver.energy_at_log_derivative(
                 principal_quantum_number,
@@ -581,6 +593,7 @@ mod tests {
             RadialEquation::Schroedinger,
             0,
             Hartree(-0.2),
+            muffintin_sphere::SPEX_SPEED_OF_LIGHT,
         )
         .unwrap();
         assert_eq!(center.generator, LinearizationEnergyGenerator::BandCenter);
@@ -598,12 +611,18 @@ mod tests {
             0,
             Hartree(-0.2),
             InverseBohr(-1.0),
+            muffintin_sphere::SPEX_SPEED_OF_LIGHT,
         )
         .unwrap();
-        let solution = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger)
-            .unwrap()
-            .solve(0, logarithmic.energy)
-            .unwrap();
+        let solution = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::Schroedinger,
+            muffintin_sphere::SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap()
+        .solve(0, logarithmic.energy)
+        .unwrap();
         assert!((solution.boundary.log_derivative.unwrap().get() + 1.0).abs() < 2.0e-8);
         assert!(matches!(
             logarithmic.diagnostic,
@@ -632,7 +651,13 @@ mod tests {
         let generated = generate_atomic_energy(
             &mesh,
             &potential,
-            AtomicEnergyRequest::new(state, 1.0, muffin_tin_radius).with_intervals(48),
+            AtomicEnergyRequest::new(
+                state,
+                1.0,
+                muffin_tin_radius,
+                muffintin_sphere::SPEX_SPEED_OF_LIGHT,
+            )
+            .with_intervals(48),
         )
         .unwrap();
         assert_eq!(generated.generator, LinearizationEnergyGenerator::Atomic);

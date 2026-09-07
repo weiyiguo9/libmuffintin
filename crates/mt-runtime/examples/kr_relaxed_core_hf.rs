@@ -1039,6 +1039,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }],
     };
     let meta = CheckpointMeta {
+        speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
         title: format!("Kr point-nucleus Gamma {} HF", cli.relativity.as_str()),
         producer: "libmuffintin-runtime kr_relativistic_hf example".to_owned(),
         producer_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
@@ -1112,6 +1113,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         field_layout,
         exchange_correlation: config.exchange_correlation,
         free_atom_scf: muffintin_dft::FreeAtomScfSpec {
+            speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             mesh: free_atom_mesh,
             mixing: 0.3,
             potential_tolerance: 2.0e-5,

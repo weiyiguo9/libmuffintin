@@ -681,6 +681,7 @@ mod tests {
             target_electron_count: 2.0,
             free_atom_scf: FreeAtomScfSpec {
                 mesh: ExponentialMesh::new(Bohr(1.0e-6), 0.01, 1683).unwrap(),
+                speed_of_light: muffintin_sphere::SPEX_SPEED_OF_LIGHT,
                 mixing: 0.3,
                 potential_tolerance: 2.0e-5,
                 tail_tolerance: 1.0e-7,

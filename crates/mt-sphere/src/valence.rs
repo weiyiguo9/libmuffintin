@@ -1,11 +1,9 @@
+pub use muffintin_core::SPEX_SPEED_OF_LIGHT;
 use muffintin_core::{ExponentialMesh, Hartree, InverseBohr};
 use thiserror::Error;
 
 use crate::core_dirac::EnergyBracket;
 
-/// Speed of light used by SPEX (`src/global.f`) in Hartree atomic units.
-pub const SPEX_SPEED_OF_LIGHT: f64 = 137.035_989_5;
-const C_INV_SQUARED: f64 = 1.0 / (SPEX_SPEED_OF_LIGHT * SPEX_SPEED_OF_LIGHT);
 const BAND_CENTER_INITIAL_STEP: f64 = 1.0e-3;
 const ENERGY_GENERATOR_TOLERANCE: f64 = 1.0e-12;
 const ENERGY_GENERATOR_MAXIMUM_SEED_DISTANCE: f64 = 2.5;
@@ -22,10 +20,10 @@ pub enum RadialEquation {
 }
 
 impl RadialEquation {
-    fn c_inverse_squared(self) -> f64 {
+    fn c_inverse_squared(self, speed_of_light: f64) -> f64 {
         match self {
             Self::Schroedinger => 0.0,
-            Self::ScalarKoellingHarmon => C_INV_SQUARED,
+            Self::ScalarKoellingHarmon => 1.0 / (speed_of_light * speed_of_light),
         }
     }
 }
@@ -305,6 +303,8 @@ pub enum RadialError {
     NonFinitePotential { index: usize, value: f64 },
     #[error("energy is not finite: {0}")]
     NonFiniteEnergy(f64),
+    #[error("speed of light must be finite and positive, got {0}")]
+    InvalidSpeedOfLight(f64),
     #[error("regular-origin exponent is non-real (radicand {radicand})")]
     SupercriticalOrigin { radicand: f64 },
     #[error("Koelling--Harmon mass factor at index {index} is non-positive or non-finite: {mass}")]
@@ -390,6 +390,7 @@ pub struct RadialSolver<'a> {
     mesh: &'a ExponentialMesh,
     potential: &'a [f64],
     equation: RadialEquation,
+    speed_of_light: f64,
 }
 
 impl<'a> RadialSolver<'a> {
@@ -402,12 +403,17 @@ impl<'a> RadialSolver<'a> {
         mesh: &'a ExponentialMesh,
         potential: &'a [f64],
         equation: RadialEquation,
+        speed_of_light: f64,
     ) -> Result<Self, RadialError> {
         validate_potential(mesh, potential)?;
+        if !speed_of_light.is_finite() || speed_of_light <= 0.0 {
+            return Err(RadialError::InvalidSpeedOfLight(speed_of_light));
+        }
         Ok(Self {
             mesh,
             potential,
             equation,
+            speed_of_light,
         })
     }
 
@@ -445,7 +451,7 @@ impl<'a> RadialSolver<'a> {
         self.normalize(
             InternalSolution {
                 p: p.to_vec(),
-                q_tilde: q.iter().map(|q| q * SPEX_SPEED_OF_LIGHT).collect(),
+                q_tilde: q.iter().map(|q| q * self.speed_of_light).collect(),
             },
             0,
             energy,
@@ -895,7 +901,7 @@ impl<'a> RadialSolver<'a> {
         let r0 = self.mesh.first().get();
         let l = f64::from(angular_momentum);
         let ll = l * (l + 1.0);
-        let cci = self.equation.c_inverse_squared();
+        let cci = self.equation.c_inverse_squared(self.speed_of_light);
         if cci != 0.0 {
             for (index, &potential) in self.potential.iter().enumerate() {
                 let mass = 2.0 + (e - potential) * cci;
@@ -969,7 +975,7 @@ impl<'a> RadialSolver<'a> {
         angular_momentum: u32,
         energy: Hartree,
     ) -> Result<RadialSolution, RadialError> {
-        let cci = self.equation.c_inverse_squared();
+        let cci = self.equation.c_inverse_squared(self.speed_of_light);
         let density: Vec<f64> = raw
             .p
             .iter()
@@ -984,7 +990,7 @@ impl<'a> RadialSolver<'a> {
         let p: Vec<f64> = raw.p.into_iter().map(|x| x * scale).collect();
         let q_tilde: Vec<f64> = raw.q_tilde.into_iter().map(|x| x * scale).collect();
         let physical_q = (self.equation == RadialEquation::ScalarKoellingHarmon)
-            .then(|| q_tilde.iter().map(|q| q / SPEX_SPEED_OF_LIGHT).collect());
+            .then(|| q_tilde.iter().map(|q| q / self.speed_of_light).collect());
         let boundary = self.boundary_from_internal(
             angular_momentum,
             energy.get(),
@@ -1008,7 +1014,7 @@ impl<'a> RadialSolver<'a> {
     ) -> Result<(EnergyDerivative, SecondEnergyDerivative), RadialError> {
         let n = self.mesh.len();
         ensure_mesh_length(self.mesh, solution.p.len())?;
-        let cci = self.equation.c_inverse_squared();
+        let cci = self.equation.c_inverse_squared(self.speed_of_light);
         let q_base = solution.auxiliary_q.clone();
         let mut pdot = vec![0.0; n];
         let mut qdot = vec![0.0; n];
@@ -1138,14 +1144,14 @@ impl<'a> RadialSolver<'a> {
         );
         let physical_q = (self.equation == RadialEquation::ScalarKoellingHarmon).then(|| {
             qdot.iter()
-                .map(|q| q / SPEX_SPEED_OF_LIGHT)
+                .map(|q| q / self.speed_of_light)
                 .collect::<Vec<_>>()
         });
         let physical_q_second =
             (self.equation == RadialEquation::ScalarKoellingHarmon).then(|| {
                 qsecond
                     .iter()
-                    .map(|q| q / SPEX_SPEED_OF_LIGHT)
+                    .map(|q| q / self.speed_of_light)
                     .collect::<Vec<_>>()
             });
         let first_norm = component_norm_squared(self.mesh, &pdot, physical_q.as_deref())?;
@@ -1185,7 +1191,7 @@ impl<'a> RadialSolver<'a> {
             q_tilde,
             ll,
             energy,
-            self.equation.c_inverse_squared(),
+            self.equation.c_inverse_squared(self.speed_of_light),
         );
         let value = p / r;
         BoundaryData::new(value, (pprime - p / r) / r, r)
@@ -1401,7 +1407,13 @@ mod tests {
         let mesh = mesh(1.0e-7, 3.0, 0.0015);
         let well_bottom = -0.35;
         let potential = vec![well_bottom; mesh.len()];
-        let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();
+        let solver = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::Schroedinger,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap();
         let energy = Hartree(0.73);
         let solution = solver.solve(0, energy).unwrap();
         let radius = mesh.last().get();
@@ -1414,7 +1426,13 @@ mod tests {
     fn hard_wall_free_sphere_energy_meets_milestone_tolerance() {
         let mesh = mesh(1.0e-7, 5.0, 0.001);
         let potential = vec![0.0; mesh.len()];
-        let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();
+        let solver = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::Schroedinger,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap();
         let radius = mesh.last().get();
         let exact = std::f64::consts::PI.powi(2) / (2.0 * radius * radius);
         let energy = solver
@@ -1433,7 +1451,13 @@ mod tests {
         let mesh = mesh(1.0e-7, 5.0, 0.001);
         let well_bottom = -0.35;
         let potential = vec![well_bottom; mesh.len()];
-        let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();
+        let solver = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::Schroedinger,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap();
         let radius = mesh.last().get();
         let result = solver.band_center(0, Hartree(-0.2)).unwrap();
         let expected_bottom = well_bottom + std::f64::consts::PI.powi(2) / (8.0 * radius * radius);
@@ -1451,7 +1475,13 @@ mod tests {
     fn band_center_failure_identifies_the_channel_and_last_search_point() {
         let mesh = mesh(1.0e-7, 5.0, 0.002);
         let potential = vec![0.0; mesh.len()];
-        let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();
+        let solver = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::Schroedinger,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap();
         let error = solver.band_center(2, Hartree(-3.0)).unwrap_err();
         match error {
             RadialError::BandEdgeNotFound {
@@ -1476,7 +1506,13 @@ mod tests {
     fn positive_band_center_seed_can_reach_a_top_beyond_negative_seed_window() {
         let mesh = mesh(1.0e-7, 1.0, 0.001);
         let potential = vec![0.0; mesh.len()];
-        let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();
+        let solver = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::Schroedinger,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap();
         let radius = mesh.last().get();
         let result = solver.band_center(0, Hartree(0.15)).unwrap();
         let expected_bottom = std::f64::consts::PI.powi(2) / (8.0 * radius * radius);
@@ -1494,7 +1530,13 @@ mod tests {
         // smaller than the radial energy tolerance.
         let mesh = mesh(1.0e-12, 40.0, 0.001);
         let potential: Vec<f64> = mesh.radii().iter().map(|r| -1.0 / r.get()).collect();
-        let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();
+        let solver = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::Schroedinger,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap();
         let energy = solver
             .hard_wall_eigenenergy(
                 0,
@@ -1510,7 +1552,13 @@ mod tests {
     fn energy_derivative_matches_finite_difference_and_is_orthogonal() {
         let mesh = mesh(1.0e-7, 4.0, 0.0015);
         let potential: Vec<f64> = mesh.radii().iter().map(|r| -1.0 / r.get()).collect();
-        let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();
+        let solver = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::Schroedinger,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap();
         let energy = Hartree(-0.37);
         let pair = solver.solve_with_energy_derivative(0, energy).unwrap();
         let step = 2.0e-5;
@@ -1542,7 +1590,13 @@ mod tests {
     fn local_orbital_is_normalized_and_matched() {
         let mesh = mesh(1.0e-7, 3.5, 0.0015);
         let potential: Vec<f64> = mesh.radii().iter().map(|r| -1.0 / r.get()).collect();
-        let solver = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger).unwrap();
+        let solver = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::Schroedinger,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap();
         let pair = solver
             .solve_with_energy_derivative(1, Hartree(-0.18))
             .unwrap();
@@ -1559,14 +1613,24 @@ mod tests {
     fn koelling_harmon_approaches_schroedinger_for_light_smooth_problem() {
         let mesh = mesh(1.0e-6, 2.5, 0.0015);
         let potential = vec![-0.2; mesh.len()];
-        let sch = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger)
-            .unwrap()
-            .solve(1, Hartree(0.5))
-            .unwrap();
-        let kh = RadialSolver::new(&mesh, &potential, RadialEquation::ScalarKoellingHarmon)
-            .unwrap()
-            .solve(1, Hartree(0.5))
-            .unwrap();
+        let sch = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::Schroedinger,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap()
+        .solve(1, Hartree(0.5))
+        .unwrap();
+        let kh = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::ScalarKoellingHarmon,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap()
+        .solve(1, Hartree(0.5))
+        .unwrap();
         let difference: Vec<f64> = sch
             .p
             .iter()
@@ -1581,8 +1645,13 @@ mod tests {
     fn koelling_harmon_energy_derivative_is_exact_and_orthogonal() {
         let mesh = mesh(1.0e-6, 3.0, 0.0015);
         let potential: Vec<f64> = mesh.radii().iter().map(|r| -0.4 / r.get()).collect();
-        let solver =
-            RadialSolver::new(&mesh, &potential, RadialEquation::ScalarKoellingHarmon).unwrap();
+        let solver = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::ScalarKoellingHarmon,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap();
         let energy = Hartree(-0.11);
         let pair = solver.solve_with_energy_derivative(1, energy).unwrap();
         let step = 2.0e-5;
@@ -1639,7 +1708,8 @@ mod tests {
                 .iter()
                 .map(|r| -0.4 / (r.get() + 0.03))
                 .collect();
-            let solver = RadialSolver::new(&mesh, &potential, equation).unwrap();
+            let solver =
+                RadialSolver::new(&mesh, &potential, equation, SPEX_SPEED_OF_LIGHT).unwrap();
             let energy = Hartree(-0.11);
             let center = solver.solve_with_energy_derivative(1, energy).unwrap();
             let step = 2.0e-4;

@@ -88,9 +88,12 @@ pub fn prepare_input_with_recipes(
     recipe_artifacts: &BTreeMap<PathBuf, ChannelRecipeArtifact>,
 ) -> Result<PreparedWorkflow, InputError> {
     input.validate()?;
-    let checkpoint = checkpoint
+    let mut checkpoint = checkpoint
         .into_v2_prevalidated()
         .map_err(InputError::InvalidCheckpoint)?;
+    if let Some(speed_of_light) = input.speed_of_light {
+        checkpoint.meta.speed_of_light = speed_of_light;
+    }
 
     let mut tasks = Vec::with_capacity(input.workflow.tasks.len());
     for id in &input.workflow.tasks {

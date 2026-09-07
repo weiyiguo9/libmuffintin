@@ -27,6 +27,7 @@ fn checkpoint_v1() -> muffintin_io::CheckpointV1 {
         .collect::<Vec<_>>();
     CheckpointV1::new(
         CheckpointMeta {
+            speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             title: "checkpoint kernel hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,
@@ -222,6 +223,7 @@ fn material_kernel_rejects_truncated_nuclear_topology_at_construction() {
         physics.kernel.restart_density().cloned(),
         Vec::new(),
         physics.kernel.crystal_cell().clone(),
+        physics.kernel.speed_of_light(),
     )
     .unwrap_err();
     assert!(matches!(

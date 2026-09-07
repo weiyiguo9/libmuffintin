@@ -57,6 +57,7 @@ fn neutral_atomic_start_uses_the_requested_regional_layout_and_restart_path() {
         }],
     };
     let meta = CheckpointMeta {
+        speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
         title: "neutral atomic checkpoint production test".to_owned(),
         producer: "libmuffintin-runtime".to_owned(),
         producer_version: None,
@@ -118,6 +119,7 @@ fn neutral_atomic_start_uses_the_requested_regional_layout_and_restart_path() {
         field_layout,
         exchange_correlation: config.exchange_correlation,
         free_atom_scf: FreeAtomScfSpec {
+            speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             mesh: free_atom_mesh,
             mixing: 0.3,
             potential_tolerance: 2.0e-5,

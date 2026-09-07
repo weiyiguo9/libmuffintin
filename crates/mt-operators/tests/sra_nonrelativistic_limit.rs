@@ -193,10 +193,7 @@ fn large_c_sra_reduces_to_two_frozen_scalar_blocks() {
         let solution = solve_valence_dirac(
             &mesh,
             &radial_potential,
-            ValenceDiracSpec::new(kappa, energy)
-                .unwrap()
-                .with_speed_of_light(LARGE_C)
-                .unwrap(),
+            ValenceDiracSpec::new(kappa, energy, LARGE_C).unwrap(),
         )
         .unwrap();
         (

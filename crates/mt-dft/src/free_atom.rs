@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 
 use muffintin_core::{ExponentialMesh, Hartree, Kappa, MeshError};
 use muffintin_coulomb::{CoulombError, radial_primitive};
-use muffintin_sphere::{CoreDiracSolution, CoreState, SPEX_SPEED_OF_LIGHT};
+use muffintin_sphere::{CoreDiracSolution, CoreState};
 use thiserror::Error;
 
 use crate::atomic_configuration::{AtomicNumber, fleur_default_atomic_configuration};
@@ -17,6 +17,8 @@ use crate::xc::{DensityJet2, XcError, XcFunctional, evaluate_xc_point};
 #[derive(Clone, Debug, PartialEq)]
 pub struct FreeAtomScfSpec {
     pub mesh: ExponentialMesh,
+    /// Speed of light in Hartree atomic units.
+    pub speed_of_light: f64,
     /// Linear fraction of the newly constructed effective potential.
     pub mixing: f64,
     /// Maximum absolute effective-potential residual in Hartree.
@@ -57,6 +59,8 @@ pub enum FreeAtomScfError {
     InvalidTailTolerance(f64),
     #[error("free-atom SCF requires at least one iteration")]
     InvalidMaxIterations,
+    #[error("speed of light must be finite and positive, got {0}")]
+    InvalidSpeedOfLight(f64),
     #[error("free-atom bound-state solve failed at iteration {iteration} for n={}, kappa={}", state.n, state.kappa.get())]
     BoundState {
         iteration: usize,
@@ -112,7 +116,7 @@ pub fn run_free_atom_lda(
         .map(|occupation| {
             let n = f64::from(occupation.orbital.principal_quantum_number());
             let kappa = f64::from(occupation.orbital.kappa());
-            let z_over_c = nuclear_charge / SPEX_SPEED_OF_LIGHT;
+            let z_over_c = nuclear_charge / spec.speed_of_light;
             let nu = n - kappa.abs() + (kappa * kappa - z_over_c * z_over_c).sqrt();
             let root = (1.0 + (z_over_c / nu).powi(2)).sqrt();
             // Rationalize c^2 * (1/root - 1) to avoid cancellation.
@@ -131,8 +135,13 @@ pub fn run_free_atom_lda(
                     .expect("the embedded atomic configuration has nonzero kappa"),
             )
             .expect("the embedded atomic configuration is physically admissible");
-            let mut request = AtomicEnergyRequest::new(state, nuclear_charge, muffin_tin_radius)
-                .with_intervals(2048);
+            let mut request = AtomicEnergyRequest::new(
+                state,
+                nuclear_charge,
+                muffin_tin_radius,
+                spec.speed_of_light,
+            )
+            .with_intervals(2048);
             request.seed = seeds[index];
             let solved = solve_atomic_bound_state(mesh, &potential, request).map_err(|source| {
                 FreeAtomScfError::BoundState {
@@ -193,6 +202,9 @@ pub fn run_free_atom_lda(
 }
 
 fn validate_spec(spec: &FreeAtomScfSpec) -> Result<(), FreeAtomScfError> {
+    if !spec.speed_of_light.is_finite() || spec.speed_of_light <= 0.0 {
+        return Err(FreeAtomScfError::InvalidSpeedOfLight(spec.speed_of_light));
+    }
     if !spec.mixing.is_finite() || !(0.0 < spec.mixing && spec.mixing <= 1.0) {
         return Err(FreeAtomScfError::InvalidMixing(spec.mixing));
     }
@@ -271,6 +283,7 @@ mod tests {
         let number = ((last / first).ln() / increment).ceil() as usize + 1;
         let spec = FreeAtomScfSpec {
             mesh: ExponentialMesh::new(Bohr(first), increment, number).unwrap(),
+            speed_of_light: muffintin_sphere::SPEX_SPEED_OF_LIGHT,
             mixing: 0.3,
             potential_tolerance: 2.0e-5,
             tail_tolerance: 1.0e-7,

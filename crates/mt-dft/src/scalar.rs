@@ -61,6 +61,8 @@ pub struct ScalarSiteInput {
     pub mesh: ExponentialMesh,
     /// Physical spherical average `V(r)` in Hartree.
     pub spherical_potential: Vec<f64>,
+    /// Speed of light in Hartree atomic units.
+    pub speed_of_light: f64,
     /// Full physical potential in normalized spherical harmonics.
     pub potential: SphereField,
     /// `linearization_energies[l]`.
@@ -278,6 +280,7 @@ fn build_site(site: usize, input: &ScalarSiteInput) -> Result<BuiltSite, ScalarB
         &input.mesh,
         &input.spherical_potential,
         RadialEquation::ScalarKoellingHarmon,
+        input.speed_of_light,
     )?;
     let linearized = input
         .linearization_energies
@@ -836,6 +839,7 @@ mod tests {
             radius: mesh.last(),
             mesh: mesh.clone(),
             spherical_potential,
+            speed_of_light: muffintin_sphere::SPEX_SPEED_OF_LIGHT,
             potential: SphereField::new(HarmonicConvention::Complex, channels).unwrap(),
             linearization_energies: (0..=l_max)
                 .map(|l| Hartree(0.2 + 0.08 * f64::from(l)))

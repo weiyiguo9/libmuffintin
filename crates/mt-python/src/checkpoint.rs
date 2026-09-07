@@ -11,6 +11,7 @@ use muffintin_io::{
     PotentialRadialQuantityV1, RadialBasisSpinV2, RadialEquationTag, SiteRadialBasisV2, SiteV2,
     SphericalChannelConvention, checkpoint_file_from_toml, checkpoint_file_to_toml,
 };
+use muffintin_sphere::SPEX_SPEED_OF_LIGHT;
 use numpy::ndarray::Array2;
 use numpy::{PyArray1, PyArray2};
 use pyo3::exceptions::{PyOSError, PyValueError};
@@ -214,7 +215,8 @@ impl FreeAtomControls {
         potential_tolerance,
         tail_tolerance,
         max_iterations,
-        angular_points
+        angular_points,
+        speed_of_light=None
     ))]
     // The argument list is the Python-facing keyword signature.
     #[allow(clippy::too_many_arguments)]
@@ -227,14 +229,17 @@ impl FreeAtomControls {
         tail_tolerance: f64,
         max_iterations: usize,
         angular_points: usize,
+        speed_of_light: Option<f64>,
     ) -> PyResult<Self> {
         let mesh = ExponentialMesh::new(Bohr(mesh_first), mesh_log_increment, mesh_point_count)
             .map_err(|error| PyValueError::new_err(error.to_string()))?;
         AngularGrid::fibonacci(angular_points)
             .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        let speed_of_light = speed_of_light.unwrap_or(SPEX_SPEED_OF_LIGHT);
         Ok(Self {
             free_atom_scf: FreeAtomScfSpec {
                 mesh,
+                speed_of_light,
                 mixing,
                 potential_tolerance,
                 tail_tolerance,
@@ -301,6 +306,7 @@ pub(crate) fn materialize_atomic_start(
             title: "neutral atomic-superposition start".to_owned(),
             producer: "libmuffintin-python".to_owned(),
             producer_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            speed_of_light: free_atom_controls.free_atom_scf.speed_of_light,
             energy_zero: "periodic crystal electrostatic reference".to_owned(),
             potential_convention: PotentialConventionV1 {
                 angular_basis: AngularBasis::ComplexCondonShortley,

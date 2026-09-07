@@ -11,9 +11,7 @@ use muffintin_core::{Bohr, DiracAngularContract, ExponentialMesh, Hartree, Kappa
 use rayon::prelude::*;
 use thiserror::Error;
 
-use crate::valence::{BoundaryData, LocalOrbitalCoefficients, SPEX_SPEED_OF_LIGHT};
-
-const C_SQUARED: f64 = SPEX_SPEED_OF_LIGHT * SPEX_SPEED_OF_LIGHT;
+use crate::valence::{BoundaryData, LocalOrbitalCoefficients};
 const CORE_NORM_PARTITION_TOLERANCE: f64 = 1.0e-8;
 
 /// The role of a relativistic radial solution.
@@ -99,6 +97,8 @@ pub struct CoreDiracSpec {
     pub bracket: EnergyBracket,
     /// Muffin-tin cutoff; the supplied mesh must continue beyond it.
     pub muffin_tin_radius: Bohr,
+    /// Speed of light in Hartree atomic units.
+    pub speed_of_light: f64,
     /// Absolute energy tolerance in Hartree.
     pub energy_tolerance: f64,
     /// Tolerance for the scale-free two-component matching residual.
@@ -158,25 +158,18 @@ pub struct ValenceDiracSpec {
 }
 
 impl ValenceDiracSpec {
-    pub fn new(kappa: Kappa, energy: Hartree) -> Result<Self, DiracError> {
-        if energy.get().is_finite() {
-            Ok(Self {
-                kappa,
-                energy,
-                speed_of_light: SPEX_SPEED_OF_LIGHT,
-            })
-        } else {
-            Err(DiracError::NonFiniteEnergy(energy.get()))
+    pub fn new(kappa: Kappa, energy: Hartree, speed_of_light: f64) -> Result<Self, DiracError> {
+        if !energy.get().is_finite() {
+            return Err(DiracError::NonFiniteEnergy(energy.get()));
         }
-    }
-
-    /// Override the default SPEX speed of light.
-    pub fn with_speed_of_light(mut self, speed_of_light: f64) -> Result<Self, DiracError> {
         if !speed_of_light.is_finite() || speed_of_light <= 0.0 {
             return Err(DiracError::InvalidSpeedOfLight(speed_of_light));
         }
-        self.speed_of_light = speed_of_light;
-        Ok(self)
+        Ok(Self {
+            kappa,
+            energy,
+            speed_of_light,
+        })
     }
 }
 
@@ -187,12 +180,14 @@ impl CoreDiracSpec {
         nuclear_charge: f64,
         bracket: EnergyBracket,
         muffin_tin_radius: Bohr,
+        speed_of_light: f64,
     ) -> Self {
         Self {
             state,
             nuclear_charge,
             bracket,
             muffin_tin_radius,
+            speed_of_light,
             energy_tolerance: 1.0e-11,
             matching_tolerance: 1.0e-10,
             max_iterations: 160,
@@ -219,6 +214,8 @@ pub struct CoreBracketSearch {
     /// Positive finite nuclear charge used by every scanned outward branch.
     pub nuclear_charge: f64,
     pub muffin_tin_radius: Bohr,
+    /// Speed of light in Hartree atomic units.
+    pub speed_of_light: f64,
     pub energy_window: EnergyBracket,
     /// Number of equal adjacent intervals in `energy_window`.
     pub intervals: usize,
@@ -230,12 +227,14 @@ impl CoreBracketSearch {
         nuclear_charge: f64,
         muffin_tin_radius: Bohr,
         energy_window: EnergyBracket,
+        speed_of_light: f64,
     ) -> Self {
         Self {
             state,
             nuclear_charge,
             muffin_tin_radius,
             energy_window,
+            speed_of_light,
             intervals: 256,
         }
     }
@@ -656,7 +655,13 @@ pub fn dirac_local_hamiltonian_expectation(
     kappa: Kappa,
     p: &[f64],
     q: &[f64],
+    speed_of_light: f64,
 ) -> Result<Hartree, DiracLocalHamiltonianError> {
+    if !speed_of_light.is_finite() || speed_of_light <= 0.0 {
+        return Err(DiracLocalHamiltonianError::InvalidSpeedOfLight(
+            speed_of_light,
+        ));
+    }
     for (component, values) in [("potential", potential), ("P", p), ("Q", q)] {
         if values.len() != mesh.len() {
             return Err(DiracLocalHamiltonianError::SampleCount {
@@ -678,6 +683,7 @@ pub fn dirac_local_hamiltonian_expectation(
     let p_derivative = logarithmic_mesh_derivative(mesh, p);
     let q_derivative = logarithmic_mesh_derivative(mesh, q);
     let kappa = f64::from(kappa.get());
+    let c_squared = speed_of_light * speed_of_light;
     let integrand = mesh
         .radii()
         .iter()
@@ -687,10 +693,10 @@ pub fn dirac_local_hamiltonian_expectation(
         .map(
             |(((radius, &potential), (&p, &q)), (&p_derivative, &q_derivative))| {
                 let inverse_radius = radius.get().recip();
-                let h_p = potential * p
-                    + SPEX_SPEED_OF_LIGHT * (-q_derivative + kappa * inverse_radius * q);
-                let h_q = SPEX_SPEED_OF_LIGHT * (p_derivative + kappa * inverse_radius * p)
-                    + (potential - 2.0 * C_SQUARED) * q;
+                let h_p =
+                    potential * p + speed_of_light * (-q_derivative + kappa * inverse_radius * q);
+                let h_q = speed_of_light * (p_derivative + kappa * inverse_radius * p)
+                    + (potential - 2.0 * c_squared) * q;
                 p * h_p + q * h_q
             },
         )
@@ -729,6 +735,8 @@ fn logarithmic_mesh_derivative(mesh: &ExponentialMesh, values: &[f64]) -> Vec<f6
 /// Invalid physical radial input or quadrature failure for a local Dirac trace.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum DiracLocalHamiltonianError {
+    #[error("speed of light must be finite and positive, got {0}")]
+    InvalidSpeedOfLight(f64),
     #[error("local Dirac Hamiltonian {component} has {actual} samples, expected {expected}")]
     SampleCount {
         component: &'static str,
@@ -914,6 +922,7 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
         spec.nuclear_charge,
         spec.state.kappa,
         lower,
+        spec.speed_of_light,
         false,
     )?;
     let upper_shot = shoot(
@@ -922,6 +931,7 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
         spec.nuclear_charge,
         spec.state.kappa,
         upper,
+        spec.speed_of_light,
         false,
     )?;
     if lower_shot.residual == 0.0 {
@@ -961,6 +971,7 @@ pub fn solve_core_dirac<S: Borrow<CoreDiracSpec>>(
             spec.nuclear_charge,
             spec.state.kappa,
             energy,
+            spec.speed_of_light,
             false,
         )?;
         if shot.residual.abs() <= spec.matching_tolerance
@@ -1069,6 +1080,7 @@ pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSourcedSpec>>(
                 spec.nuclear_charge,
                 spec.state.kappa,
                 lower,
+                spec.speed_of_light,
                 action,
             )?);
         }
@@ -1079,6 +1091,7 @@ pub fn solve_core_dirac_with_action<S: Borrow<CoreDiracSourcedSpec>>(
                 spec.nuclear_charge,
                 spec.state.kappa,
                 upper,
+                spec.speed_of_light,
                 action,
             )?);
         }
@@ -1171,6 +1184,7 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
             search.nuclear_charge,
             search.energy_window,
             search.muffin_tin_radius,
+            search.speed_of_light,
         ),
     )?;
 
@@ -1193,6 +1207,7 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
                 search.nuclear_charge,
                 search.state.kappa,
                 energy,
+                search.speed_of_light,
                 false,
             )
         })
@@ -1216,6 +1231,7 @@ pub fn isolate_core_dirac_bracket<S: Borrow<CoreBracketSearch>>(
                 search.nuclear_charge,
                 bracket,
                 search.muffin_tin_radius,
+                search.speed_of_light,
             );
             match solve_core_dirac(mesh, potential, spec) {
                 Ok(solution) => candidates.push(IsolatedCoreDiracState { bracket, solution }),
@@ -1587,6 +1603,9 @@ fn validate_inputs(
     if !spec.nuclear_charge.is_finite() || spec.nuclear_charge <= 0.0 {
         return Err(DiracError::InvalidNuclearCharge(spec.nuclear_charge));
     }
+    if !spec.speed_of_light.is_finite() || spec.speed_of_light <= 0.0 {
+        return Err(DiracError::InvalidSpeedOfLight(spec.speed_of_light));
+    }
     if potential.len() != mesh.len() {
         return Err(DiracError::PotentialLength {
             expected: mesh.len(),
@@ -1687,6 +1706,7 @@ fn shoot(
     nuclear_charge: f64,
     kappa: Kappa,
     energy: f64,
+    speed_of_light: f64,
     keep_arrays: bool,
 ) -> Result<Shot, DiracError> {
     let match_index = select_match_index(mesh, potential, energy);
@@ -1697,6 +1717,7 @@ fn shoot(
         nuclear_charge,
         kappa,
         energy,
+        speed_of_light,
         match_index,
         keep_arrays,
     )?;
@@ -1705,6 +1726,7 @@ fn shoot(
         potential,
         kappa,
         energy,
+        speed_of_light,
         match_index,
         outer_index,
         keep_arrays,
@@ -1733,6 +1755,7 @@ fn shoot_with_action(
     nuclear_charge: f64,
     kappa: Kappa,
     energy: f64,
+    speed_of_light: f64,
     action: CoreDiracExchangeAction<'_>,
 ) -> Result<DrivenShot, DiracError> {
     let match_index = select_match_index(mesh, potential, energy);
@@ -1743,6 +1766,7 @@ fn shoot_with_action(
         nuclear_charge,
         kappa,
         energy,
+        speed_of_light,
         match_index,
         true,
     )?;
@@ -1751,6 +1775,7 @@ fn shoot_with_action(
         potential,
         kappa,
         energy,
+        speed_of_light,
         match_index,
         outer_index,
         true,
@@ -1765,6 +1790,7 @@ fn shoot_with_action(
         potential,
         kappa,
         energy,
+        speed_of_light,
         match_index,
         action,
         (0.0, 0.0),
@@ -1774,6 +1800,7 @@ fn shoot_with_action(
         potential,
         kappa,
         energy,
+        speed_of_light,
         match_index,
         outer_index,
         action,
@@ -1828,7 +1855,9 @@ fn shoot_with_action(
     let density = p
         .iter()
         .zip(&q_hat)
-        .map(|(&large, &small_scaled)| large * large + small_scaled * small_scaled / C_SQUARED)
+        .map(|(&large, &small_scaled)| {
+            large * large + small_scaled * small_scaled / speed_of_light.powi(2)
+        })
         .collect::<Vec<_>>();
     let norm_squared = mesh
         .integrate(&density)
@@ -1880,6 +1909,7 @@ fn solve_driven_bracket(
             spec.nuclear_charge,
             spec.state.kappa,
             energy,
+            spec.speed_of_light,
             action,
         )?;
         if shot.root_residual == 0.0 {
@@ -1933,6 +1963,7 @@ fn integrate_outward(
     nuclear_charge: f64,
     kappa: Kappa,
     energy: f64,
+    speed_of_light: f64,
     stop: usize,
     keep_arrays: bool,
 ) -> Result<Branch, DiracError> {
@@ -1948,7 +1979,7 @@ fn integrate_outward(
         Vec::new()
     };
     let k = f64::from(kappa.get());
-    let radicand = k * k - (nuclear_charge / SPEX_SPEED_OF_LIGHT).powi(2);
+    let radicand = k * k - (nuclear_charge / speed_of_light).powi(2);
     if !radicand.is_finite() || radicand <= 0.0 {
         return Err(DiracError::SupercriticalOrigin { radicand });
     }
@@ -1957,7 +1988,7 @@ fn integrate_outward(
     // The finite-grid first-equation relation supplies the regular Coulomb
     // eigenvector without dropping the nonsingular terms at r_0.
     let mut current_p = 1.0;
-    let mass_factor_origin = 2.0 + (energy - potential[0]) / C_SQUARED;
+    let mass_factor_origin = 2.0 + (energy - potential[0]) / (speed_of_light * speed_of_light);
     let mut current_q = (gamma + k) / (mass_factor_origin * mesh.first().get());
     if keep_arrays {
         p[0] = current_p;
@@ -1973,6 +2004,7 @@ fn integrate_outward(
             current_q,
             k,
             energy,
+            speed_of_light,
         );
         ensure_finite_state(current_p, current_q, i + 1)?;
         if !keep_arrays {
@@ -2000,6 +2032,7 @@ fn integrate_inward(
     potential: &[f64],
     kappa: Kappa,
     energy: f64,
+    speed_of_light: f64,
     stop: usize,
     outer_index: usize,
     keep_arrays: bool,
@@ -2016,7 +2049,7 @@ fn integrate_inward(
         Vec::new()
     };
     let delta = potential[outer_index] - energy;
-    let mass_factor = 2.0 - delta / C_SQUARED;
+    let mass_factor = 2.0 - delta / (speed_of_light * speed_of_light);
     let decay_squared = mass_factor * delta;
     if !decay_squared.is_finite() || decay_squared <= 0.0 {
         return Err(DiracError::NonDecayingOuterBoundary { delta });
@@ -2039,6 +2072,7 @@ fn integrate_inward(
             current_q,
             k,
             energy,
+            speed_of_light,
         );
         ensure_finite_state(current_p, current_q, i - 1)?;
         if !keep_arrays {
@@ -2064,6 +2098,7 @@ fn integrate_outward_with_action(
     potential: &[f64],
     kappa: Kappa,
     energy: f64,
+    speed_of_light: f64,
     stop: usize,
     action: CoreDiracExchangeAction<'_>,
     initial: (f64, f64),
@@ -2092,6 +2127,7 @@ fn integrate_outward_with_action(
             current_q,
             kappa,
             energy,
+            speed_of_light,
         );
         ensure_finite_state(current_p, current_q, index + 1)?;
         p[index + 1] = current_p;
@@ -2110,6 +2146,7 @@ fn integrate_inward_with_action(
     potential: &[f64],
     kappa: Kappa,
     energy: f64,
+    speed_of_light: f64,
     stop: usize,
     outer_index: usize,
     action: CoreDiracExchangeAction<'_>,
@@ -2141,6 +2178,7 @@ fn integrate_inward_with_action(
             current_q,
             kappa,
             energy,
+            speed_of_light,
         );
         ensure_finite_state(current_p, current_q, index - 1)?;
         p[index - 1] = current_p;
@@ -2176,12 +2214,14 @@ fn rk4_interval(
     q_hat: f64,
     kappa: f64,
     energy: f64,
+    speed_of_light: f64,
 ) -> (f64, f64) {
     let rb = 0.5 * (ra + rc);
     let dr = rc - ra;
     // Interpolating rV is exact for a Coulomb singularity.
     let vb = (ra * va + rc * vc) / (ra + rc);
-    let (k1, l1) = dirac_rhs(ra, va, p, q_hat, kappa, energy, C_SQUARED);
+    let c_squared = speed_of_light * speed_of_light;
+    let (k1, l1) = dirac_rhs(ra, va, p, q_hat, kappa, energy, c_squared);
     let (k2, l2) = dirac_rhs(
         rb,
         vb,
@@ -2189,7 +2229,7 @@ fn rk4_interval(
         q_hat + 0.5 * dr * l1,
         kappa,
         energy,
-        C_SQUARED,
+        c_squared,
     );
     let (k3, l3) = dirac_rhs(
         rb,
@@ -2198,7 +2238,7 @@ fn rk4_interval(
         q_hat + 0.5 * dr * l2,
         kappa,
         energy,
-        C_SQUARED,
+        c_squared,
     );
     let (k4, l4) = dirac_rhs(
         rc,
@@ -2207,7 +2247,7 @@ fn rk4_interval(
         q_hat + dr * l3,
         kappa,
         energy,
-        C_SQUARED,
+        c_squared,
     );
     (
         p + dr * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0,
@@ -2231,13 +2271,15 @@ fn rk4_interval_with_action(
     q_hat: f64,
     kappa: f64,
     energy: f64,
+    speed_of_light: f64,
 ) -> (f64, f64) {
     let rb = 0.5 * (ra + rc);
     let dr = rc - ra;
     let vb = (ra * va + rc * vc) / (ra + rc);
+    let c_squared = speed_of_light * speed_of_light;
     let rhs = |radius, potential, action_p, action_q, p, q_hat| {
         dirac_rhs_with_action(
-            radius, potential, action_p, action_q, p, q_hat, kappa, energy, C_SQUARED,
+            radius, potential, action_p, action_q, p, q_hat, kappa, energy, c_squared,
         )
     };
     let (k1, l1) = rhs(ra, va, action_pa, action_qa, p, q_hat);
@@ -2443,6 +2485,7 @@ fn assemble_solution(
         spec.nuclear_charge,
         spec.state.kappa,
         energy,
+        spec.speed_of_light,
         match_index,
         true,
     )?;
@@ -2451,6 +2494,7 @@ fn assemble_solution(
         potential,
         spec.state.kappa,
         energy,
+        spec.speed_of_light,
         match_index,
         outer_index,
         true,
@@ -2512,7 +2556,9 @@ fn finalize_core_solution(
     let density: Vec<f64> = p
         .iter()
         .zip(&q_hat)
-        .map(|(&large, &small_scaled)| large * large + small_scaled * small_scaled / C_SQUARED)
+        .map(|(&large, &small_scaled)| {
+            large * large + small_scaled * small_scaled / spec.speed_of_light.powi(2)
+        })
         .collect();
     let norm_squared = mesh
         .integrate(&density)
@@ -2525,7 +2571,7 @@ fn finalize_core_solution(
     q_hat.iter_mut().for_each(|value| *value *= scale);
     let q: Vec<f64> = q_hat
         .iter()
-        .map(|value| value / SPEX_SPEED_OF_LIGHT)
+        .map(|value| value / spec.speed_of_light)
         .collect();
     let normalized_density: Vec<f64> = p
         .iter()
@@ -2604,6 +2650,9 @@ fn count_nodes(values: &[f64]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SPEX_SPEED_OF_LIGHT;
+
+    const C_SQUARED: f64 = SPEX_SPEED_OF_LIGHT * SPEX_SPEED_OF_LIGHT;
 
     fn extended_mesh(first: f64, last: f64, increment: f64) -> ExponentialMesh {
         let count = ((last / first).ln() / increment).ceil() as usize + 1;
@@ -2648,6 +2697,7 @@ mod tests {
             1.0,
             EnergyBracket::from_values(-0.6, -0.4).unwrap(),
             mt_radius,
+            SPEX_SPEED_OF_LIGHT,
         );
         let solution = solve_core_dirac(&mesh, &potential, spec).unwrap();
         let exact = C_SQUARED * ((1.0 - 1.0 / C_SQUARED).sqrt() - 1.0);
@@ -2682,6 +2732,7 @@ mod tests {
             z,
             EnergyBracket::from_values(exact - 20.0, exact + 20.0).unwrap(),
             mt_radius,
+            SPEX_SPEED_OF_LIGHT,
         );
 
         let solution = solve_core_dirac(&mesh, &potential, spec).unwrap();
@@ -2728,6 +2779,7 @@ mod tests {
             1.0,
             mt_radius,
             EnergyBracket::from_values(-0.8, -0.2).unwrap(),
+            SPEX_SPEED_OF_LIGHT,
         )
         .with_intervals(48);
         let isolated = isolate_core_dirac_bracket(&mesh, &potential, search).unwrap();
@@ -2742,6 +2794,7 @@ mod tests {
             1.0,
             mt_radius,
             EnergyBracket::from_values(-0.2, -0.05).unwrap(),
+            SPEX_SPEED_OF_LIGHT,
         )
         .with_intervals(24);
         assert!(matches!(
@@ -2768,7 +2821,8 @@ mod tests {
         let isolated = isolate_core_dirac_bracket(
             &mesh,
             &potential,
-            CoreBracketSearch::new(state, 1.0, mt_radius, window).with_intervals(48),
+            CoreBracketSearch::new(state, 1.0, mt_radius, window, SPEX_SPEED_OF_LIGHT)
+                .with_intervals(48),
         )
         .unwrap();
         let bracket = isolated.bracket;
@@ -2785,7 +2839,8 @@ mod tests {
         let shifted_isolated = isolate_core_dirac_bracket(
             &mesh,
             &shifted_potential,
-            CoreBracketSearch::new(state, 1.0, mt_radius, shifted_window).with_intervals(48),
+            CoreBracketSearch::new(state, 1.0, mt_radius, shifted_window, SPEX_SPEED_OF_LIGHT)
+                .with_intervals(48),
         )
         .unwrap();
         let shifted_bracket = shifted_isolated.bracket;
@@ -2831,6 +2886,7 @@ mod tests {
             1.0,
             EnergyBracket::from_values(-0.14, -0.11).unwrap(),
             mt_radius,
+            SPEX_SPEED_OF_LIGHT,
         );
         let solution = solve_core_dirac(&mesh, &potential, spec).unwrap();
         let gamma = (1.0 - 1.0 / C_SQUARED).sqrt();
@@ -2865,6 +2921,7 @@ mod tests {
             1.0,
             EnergyBracket::from_values(-0.14, -0.11).unwrap(),
             mt_radius,
+            SPEX_SPEED_OF_LIGHT,
         );
         let solution = solve_core_dirac(&mesh, &potential, spec).unwrap();
         let gamma = (1.0 - 1.0 / C_SQUARED).sqrt();

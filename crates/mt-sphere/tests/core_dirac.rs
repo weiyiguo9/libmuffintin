@@ -24,26 +24,27 @@ fn hydrogenic_coulomb_1s_has_the_shifted_dirac_energy_and_physical_norm() {
         .iter()
         .min_by(|a, b| (a.get() - 6.0).abs().total_cmp(&(b.get() - 6.0).abs()))
         .unwrap();
-    let spec = CoreDiracSpec::new(
-        state,
-        1.0,
-        EnergyBracket::from_values(-0.6, -0.4).unwrap(),
-        muffin_tin_radius,
-    );
-    let solution = solve_core_dirac(&mesh, &potential, spec).unwrap();
-
-    let c = SPEX_SPEED_OF_LIGHT;
-    let exact = c * c * ((1.0 - 1.0 / (c * c)).sqrt() - 1.0);
-    assert!((solution.energy.get() - exact).abs() < 2.0e-7);
-    assert!((solution.norm_total - 1.0).abs() < 2.0e-13);
-    assert!((solution.norm_mt + solution.norm_outside - 1.0).abs() < 2.0e-13);
-    assert_eq!(solution.spill, solution.norm_outside);
-    assert!(solution.norm_outside > 0.0);
-    assert!(solution.norm_outside < 1.0e-3);
-    assert_eq!(solution.nodes, 0);
-    assert!(solution.matching_residual.abs() < 2.0e-9);
-    assert_eq!(solution.p.len(), mesh.len());
-    assert_eq!(solution.q.len(), mesh.len());
+    for c in [SPEX_SPEED_OF_LIGHT, 1000.0 * SPEX_SPEED_OF_LIGHT] {
+        let spec = CoreDiracSpec::new(
+            state,
+            1.0,
+            EnergyBracket::from_values(-0.6, -0.4).unwrap(),
+            muffin_tin_radius,
+            c,
+        );
+        let solution = solve_core_dirac(&mesh, &potential, spec).unwrap();
+        let exact = -1.0 / (1.0 + (1.0 - 1.0 / (c * c)).sqrt());
+        assert!((solution.energy.get() - exact).abs() < 2.0e-7);
+        assert!((solution.norm_total - 1.0).abs() < 2.0e-13);
+        assert!((solution.norm_mt + solution.norm_outside - 1.0).abs() < 2.0e-13);
+        assert_eq!(solution.spill, solution.norm_outside);
+        assert!(solution.norm_outside > 0.0);
+        assert!(solution.norm_outside < 1.0e-3);
+        assert_eq!(solution.nodes, 0);
+        assert!(solution.matching_residual.abs() < 2.0e-9);
+        assert_eq!(solution.p.len(), mesh.len());
+        assert_eq!(solution.q.len(), mesh.len());
+    }
 }
 
 #[test]
@@ -65,6 +66,7 @@ fn zero_exchange_action_is_identical_to_homogeneous_core_solve() {
         1.0,
         EnergyBracket::from_values(-0.6, -0.4).unwrap(),
         muffin_tin_radius,
+        SPEX_SPEED_OF_LIGHT,
     );
     let homogeneous = solve_core_dirac(&mesh, &potential, spec).unwrap();
     let zeros = vec![0.0; mesh.len()];
@@ -102,6 +104,7 @@ fn manufactured_exchange_action_closes_source_equations_and_norm_root() {
         1.0,
         EnergyBracket::from_values(-0.6, -0.4).unwrap(),
         muffin_tin_radius,
+        SPEX_SPEED_OF_LIGHT,
     );
     let homogeneous = solve_core_dirac(&mesh, &potential, homogeneous_spec).unwrap();
 
@@ -126,6 +129,7 @@ fn manufactured_exchange_action_closes_source_equations_and_norm_root() {
         1.0,
         EnergyBracket::from_values(-0.56, -0.44).unwrap(),
         muffin_tin_radius,
+        SPEX_SPEED_OF_LIGHT,
     )
     .with_tolerances(1.0e-10, 1.0e-8, 160);
     let driven = solve_core_dirac_with_action(
@@ -211,6 +215,7 @@ fn explicit_charge_initializes_core_on_a_shallow_fleur_like_mesh() {
         1.0,
         EnergyBracket::from_values(regular - 0.6, regular - 0.4).unwrap(),
         muffin_tin_radius,
+        SPEX_SPEED_OF_LIGHT,
     );
     let solution = solve_core_dirac(&mesh, &potential, spec).unwrap();
     let exact = regular
@@ -235,6 +240,7 @@ fn core_dirac_rejects_invalid_explicit_nuclear_charge() {
             nuclear_charge,
             EnergyBracket::from_values(-0.6, -0.4).unwrap(),
             muffin_tin_radius,
+            SPEX_SPEED_OF_LIGHT,
         );
         assert!(matches!(
             solve_core_dirac(&mesh, &potential, spec),
@@ -268,7 +274,7 @@ fn valence_fixture_for_kappa(
         .iter()
         .map(|radius| -1.0 / radius.get())
         .collect();
-    let spec = ValenceDiracSpec::new(kappa, Hartree(energy)).unwrap();
+    let spec = ValenceDiracSpec::new(kappa, Hartree(energy), SPEX_SPEED_OF_LIGHT).unwrap();
     let solution = solve_valence_dirac(&mesh, &potential, spec).unwrap();
     (mesh, potential, solution)
 }
@@ -645,7 +651,7 @@ fn valence_dirac_rejects_a_nonpositive_mass_away_from_the_origin() {
     let mut potential = vec![-1.0; mesh.len()];
     let bad_index = mesh.len() / 2;
     potential[bad_index] = energy.get() + 2.0 * SPEX_SPEED_OF_LIGHT.powi(2);
-    let spec = ValenceDiracSpec::new(Kappa::new(-1).unwrap(), energy).unwrap();
+    let spec = ValenceDiracSpec::new(Kappa::new(-1).unwrap(), energy, SPEX_SPEED_OF_LIGHT).unwrap();
     match solve_valence_dirac(&mesh, &potential, spec) {
         Err(DiracError::InvalidRelativisticMass { index, mass }) => {
             assert_eq!(index, bad_index);
@@ -664,10 +670,7 @@ fn valence_speed_of_light_override_controls_physical_small_components() {
         .map(|radius| -1.0 / radius.get())
         .collect();
     let c = 40.0;
-    let spec = ValenceDiracSpec::new(Kappa::new(-1).unwrap(), Hartree(-0.3))
-        .unwrap()
-        .with_speed_of_light(c)
-        .unwrap();
+    let spec = ValenceDiracSpec::new(Kappa::new(-1).unwrap(), Hartree(-0.3), c).unwrap();
     let solution = solve_valence_dirac(&mesh, &potential, spec).unwrap();
     assert_eq!(solution.speed_of_light, c);
     let i = mesh.len() / 2;
@@ -691,9 +694,7 @@ fn valence_dirac_rejects_invalid_speed_of_light_and_uses_it_for_mass_validation(
     let energy = Hartree(-0.3);
     for invalid in [0.0, -1.0, f64::INFINITY, f64::NAN] {
         assert!(matches!(
-            ValenceDiracSpec::new(kappa, energy)
-                .unwrap()
-                .with_speed_of_light(invalid),
+            ValenceDiracSpec::new(kappa, energy, invalid),
             Err(DiracError::InvalidSpeedOfLight(value))
                 if value.to_bits() == invalid.to_bits()
         ));
@@ -704,10 +705,7 @@ fn valence_dirac_rejects_invalid_speed_of_light_and_uses_it_for_mass_validation(
     let mut potential = vec![-1.0; mesh.len()];
     let bad_index = mesh.len() / 2;
     potential[bad_index] = energy.get() + 2.0 * c * c;
-    let spec = ValenceDiracSpec::new(kappa, energy)
-        .unwrap()
-        .with_speed_of_light(c)
-        .unwrap();
+    let spec = ValenceDiracSpec::new(kappa, energy, c).unwrap();
     assert!(matches!(
         solve_valence_dirac(&mesh, &potential, spec),
         Err(DiracError::InvalidRelativisticMass { index, mass })

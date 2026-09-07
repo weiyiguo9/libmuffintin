@@ -10,17 +10,14 @@ use thiserror::Error;
 
 use crate::{
     EnergyDerivative, LinearizedRadialSolution, LocalOrbital, RadialEquation, RadialSolution,
-    SPEX_SPEED_OF_LIGHT,
 };
-
-const TWO_C_SQUARED: f64 = 2.0 * SPEX_SPEED_OF_LIGHT * SPEX_SPEED_OF_LIGHT;
-const FOUR_C_SQUARED: f64 = 2.0 * TWO_C_SQUARED;
 
 /// Spherical potential and the SPEX SOC factor sampled on one radial mesh.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpexSpinOrbitPotential {
     potential: Vec<f64>,
     derivative: Vec<f64>,
+    speed_of_light: f64,
     /// `dV/dr / (4 c^2 r)`, before the Koelling--Harmon mass factors.
     xi_half: Vec<f64>,
 }
@@ -33,17 +30,26 @@ impl SpexSpinOrbitPotential {
     /// artificial value at `r = 0` is introduced; the regular-origin
     /// contribution remains controlled by the radial functions and SPEX
     /// quadrature.
-    pub fn new(mesh: &ExponentialMesh, potential: &[f64]) -> Result<Self, SpinOrbitRadialError> {
+    pub fn new(
+        mesh: &ExponentialMesh,
+        potential: &[f64],
+        speed_of_light: f64,
+    ) -> Result<Self, SpinOrbitRadialError> {
         validate_samples(mesh, potential, "potential")?;
+        if !speed_of_light.is_finite() || speed_of_light <= 0.0 {
+            return Err(SpinOrbitRadialError::InvalidSpeedOfLight(speed_of_light));
+        }
         let derivative = spex_derivative(mesh, potential);
+        let four_c_squared = 4.0 * speed_of_light * speed_of_light;
         let xi_half = derivative
             .iter()
             .zip(mesh.radii())
-            .map(|(&dv, radius)| dv / (FOUR_C_SQUARED * radius.get()))
+            .map(|(&dv, radius)| dv / (four_c_squared * radius.get()))
             .collect();
         Ok(Self {
             potential: potential.to_vec(),
             derivative,
+            speed_of_light,
             xi_half,
         })
     }
@@ -210,6 +216,7 @@ fn primitive_soc_integral(
     left: usize,
     right: usize,
 ) -> Result<f64, SpinOrbitRadialError> {
+    let two_c_squared = 2.0 * soc.speed_of_light * soc.speed_of_light;
     let left_mass = reciprocal_mass_powers(soc, energies[left], left)?;
     let right_mass = reciprocal_mass_powers(soc, energies[right], right)?;
     let mut integrand = Vec::with_capacity(mesh.len());
@@ -220,19 +227,19 @@ fn primitive_soc_integral(
         if left == 1 {
             value -=
                 soc.xi_half[index] * left_mass[index].1 * radials[0][index] * radials[right][index]
-                    / TWO_C_SQUARED;
+                    / two_c_squared;
         }
         if right == 1 {
             value -=
                 soc.xi_half[index] * right_mass[index].1 * radials[left][index] * radials[0][index]
-                    / TWO_C_SQUARED;
+                    / two_c_squared;
         }
         if left == 1 && right == 1 {
             value -= soc.xi_half[index]
                 * (left_mass[index].1 + right_mass[index].1)
                 * radials[0][index]
                 * radials[0][index]
-                / TWO_C_SQUARED;
+                / two_c_squared;
         }
         integrand.push(value);
     }
@@ -249,7 +256,8 @@ fn reciprocal_mass_powers(
         .iter()
         .enumerate()
         .map(|(mesh_index, &value)| {
-            let mass = 1.0 + (energy.get() - value) / TWO_C_SQUARED;
+            let mass =
+                1.0 + (energy.get() - value) / (2.0 * soc.speed_of_light * soc.speed_of_light);
             if !mass.is_finite() || mass <= 0.0 {
                 return Err(SpinOrbitRadialError::InvalidRelativisticMass {
                     radial_index,
@@ -337,6 +345,8 @@ fn spex_derivative(mesh: &ExponentialMesh, values: &[f64]) -> Vec<f64> {
 /// Invalid input to the scalar-relativistic SOC radial construction.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum SpinOrbitRadialError {
+    #[error("speed of light must be finite and positive, got {0}")]
+    InvalidSpeedOfLight(f64),
     #[error("{array} has {actual} samples, expected {expected}")]
     ArrayLength {
         array: &'static str,
@@ -370,7 +380,7 @@ pub enum SpinOrbitRadialError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::RadialSolver;
+    use crate::{RadialSolver, SPEX_SPEED_OF_LIGHT};
     use muffintin_core::Bohr;
 
     #[test]
@@ -381,14 +391,14 @@ mod tests {
             .iter()
             .map(|radius| 0.4 * radius.get().powi(2) - 0.7)
             .collect::<Vec<_>>();
-        let soc = SpexSpinOrbitPotential::new(&mesh, &quadratic).unwrap();
+        let soc = SpexSpinOrbitPotential::new(&mesh, &quadratic, SPEX_SPEED_OF_LIGHT).unwrap();
         for (index, radius) in mesh.radii().iter().enumerate().skip(2).take(297) {
             let expected = 0.8 * radius.get();
             assert!((soc.derivative()[index] - expected).abs() < 2.0e-8 * expected.abs().max(1.0));
         }
 
         let constant = vec![-0.3; mesh.len()];
-        let zero = SpexSpinOrbitPotential::new(&mesh, &constant).unwrap();
+        let zero = SpexSpinOrbitPotential::new(&mesh, &constant, SPEX_SPEED_OF_LIGHT).unwrap();
         assert!(zero.xi_half().iter().all(|value| *value == 0.0));
     }
 
@@ -400,20 +410,30 @@ mod tests {
             .iter()
             .map(|radius| -0.8 / (radius.get() + 0.2))
             .collect::<Vec<_>>();
-        let soc = SpexSpinOrbitPotential::new(&mesh, &potential).unwrap();
-        let kh = RadialSolver::new(&mesh, &potential, RadialEquation::ScalarKoellingHarmon)
-            .unwrap()
-            .solve_with_energy_derivative(1, Hartree(-0.2))
-            .unwrap();
+        let soc = SpexSpinOrbitPotential::new(&mesh, &potential, SPEX_SPEED_OF_LIGHT).unwrap();
+        let kh = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::ScalarKoellingHarmon,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap()
+        .solve_with_energy_derivative(1, Hartree(-0.2))
+        .unwrap();
         let shell = spex_spin_orbit_radial_shell(&mesh, &soc, &kh, &[]).unwrap();
         assert_eq!(shell.dimension(), 2);
         assert_eq!(shell.at(0, 1), shell.at(1, 0));
         assert!(shell.as_row_major().iter().all(|value| value.is_finite()));
 
-        let nonrel = RadialSolver::new(&mesh, &potential, RadialEquation::Schroedinger)
-            .unwrap()
-            .solve_with_energy_derivative(1, Hartree(-0.2))
-            .unwrap();
+        let nonrel = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::Schroedinger,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap()
+        .solve_with_energy_derivative(1, Hartree(-0.2))
+        .unwrap();
         assert_eq!(
             spex_spin_orbit_radial_shell(&mesh, &soc, &nonrel, &[]).unwrap_err(),
             SpinOrbitRadialError::RequiresScalarKoellingHarmon

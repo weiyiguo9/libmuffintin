@@ -329,6 +329,7 @@ mod tests {
                 radius: mesh.last(),
                 mesh: mesh.clone(),
                 spherical_potential: potential.clone(),
+                speed_of_light: muffintin_sphere::SPEX_SPEED_OF_LIGHT,
                 potential: SphereField::new(
                     HarmonicConvention::Complex,
                     [(

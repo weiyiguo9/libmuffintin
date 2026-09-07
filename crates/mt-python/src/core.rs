@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use muffintin_core::Kappa;
 use muffintin_dft::{CoreSiteRequest, CoreSpinPartition, CoreStateRequest, RegionalCoreResult};
-use muffintin_sphere::CoreState as SphereCoreState;
+use muffintin_sphere::{CoreState as SphereCoreState, SPEX_SPEED_OF_LIGHT};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -28,6 +28,7 @@ pub(crate) struct CoreSite {
 #[derive(Clone, Debug)]
 pub(crate) struct CoreStation {
     sites: Vec<CoreSiteRequest>,
+    speed_of_light: f64,
 }
 
 #[pyclass(name = "CoreResult", module = "libmuffintin._native", frozen)]
@@ -89,12 +90,14 @@ impl CoreSite {
 #[pymethods]
 impl CoreStation {
     #[new]
-    fn new(py: Python<'_>, sites: Vec<Py<CoreSite>>) -> Self {
+    #[pyo3(signature = (sites, speed_of_light=None))]
+    fn new(py: Python<'_>, sites: Vec<Py<CoreSite>>, speed_of_light: Option<f64>) -> Self {
         Self {
             sites: sites
                 .iter()
                 .map(|site| site.borrow(py).request.clone())
                 .collect(),
+            speed_of_light: speed_of_light.unwrap_or(SPEX_SPEED_OF_LIGHT),
         }
     }
 
@@ -110,8 +113,12 @@ impl CoreStation {
                 )));
             }
         }
-        let inner = muffintin_dft::solve_regional_core(potential.inner.as_ref(), &self.sites)
-            .map_err(py_error)?;
+        let inner = muffintin_dft::solve_regional_core(
+            potential.inner.as_ref(),
+            &self.sites,
+            self.speed_of_light,
+        )
+        .map_err(py_error)?;
         Ok(CoreResult {
             inner: Arc::new(inner),
             structure: Arc::clone(&potential.structure),

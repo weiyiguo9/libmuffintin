@@ -85,6 +85,7 @@ fn sample_fields() -> SpexFrozenFieldsV1 {
         format: CHECKPOINT_FORMAT.to_owned(),
         version: CHECKPOINT_VERSION_V2,
         meta: CheckpointMeta {
+            speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             title: "spex checkpoint hdf fixture".to_owned(),
             producer: "spex-test".to_owned(),
             producer_version: Some("06.00pre38".to_owned()),

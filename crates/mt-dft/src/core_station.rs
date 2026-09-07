@@ -183,6 +183,7 @@ struct SolvedBoundCoreState {
 pub fn solve_regional_core(
     potential: &ScfPotentialBuild,
     sites: &[CoreSiteRequest],
+    speed_of_light: f64,
 ) -> Result<RegionalCoreResult, CoreStationError> {
     let density = potential.source_density();
     let site_count = density.geometry().spheres().len();
@@ -254,6 +255,7 @@ pub fn solve_regional_core(
             nuclear_charges,
             site,
             &extended[site.site_index].potential,
+            speed_of_light,
         )?;
         result_density.add_scaled(1.0, &solved.contribution.contribution.density)?;
         eigenvalue_sum += solved.contribution.contribution.eigenvalue_sum;
@@ -330,12 +332,19 @@ pub fn core_local_one_body_trace(
             actual: potential.len(),
         });
     }
+    if sidecar.provenance.solve_specs.len() != sidecar.shells.len() {
+        return Err(CoreLocalOneBodyError::SolveSpecCount {
+            expected: sidecar.shells.len(),
+            actual: sidecar.provenance.solve_specs.len(),
+        });
+    }
     let mut total = Hartree(0.0);
     let shells = sidecar
         .shells
         .iter()
+        .zip(&sidecar.provenance.solve_specs)
         .enumerate()
-        .map(|(shell_index, shell)| {
+        .map(|(shell_index, (shell, solve_spec))| {
             let occupation = sidecar_shell_occupation(shell_index, shell)?;
             let expectation = dirac_local_hamiltonian_expectation(
                 &sidecar.extended_mesh,
@@ -343,6 +352,7 @@ pub fn core_local_one_body_trace(
                 shell.state.kappa,
                 &shell.p,
                 &shell.q,
+                solve_spec.speed_of_light,
             )?;
             let contribution = expectation * occupation;
             total += contribution;
@@ -818,6 +828,7 @@ pub(crate) fn solve_regional_core_site(
     nuclear_charges: &[f64],
     request: &CoreSiteRequest,
     extended: &ExtendedCorePotential,
+    speed_of_light: f64,
 ) -> Result<SolvedRegionalCoreSite, CoreStationError> {
     let site_count = density.geometry().spheres().len();
     let sphere = density.geometry().spheres().get(request.site_index).ok_or(
@@ -851,7 +862,15 @@ pub(crate) fn solve_regional_core_site(
     let solved = request
         .states
         .iter()
-        .map(|requested| solve_bound_core_state(requested.state, extended, charge, sphere.radius))
+        .map(|requested| {
+            solve_bound_core_state(
+                requested.state,
+                extended,
+                charge,
+                sphere.radius,
+                speed_of_light,
+            )
+        })
         .collect::<Result<Vec<_>, _>>()?;
     build_regional_core_site(
         density,
@@ -950,6 +969,7 @@ fn solve_bound_core_state(
     extended: &ExtendedCorePotential,
     nuclear_charge: f64,
     muffin_tin_radius: Bohr,
+    speed_of_light: f64,
 ) -> Result<SolvedBoundCoreState, CoreStationError> {
     let continuum = *extended
         .values
@@ -964,11 +984,23 @@ fn solve_bound_core_state(
     let bracket = isolate_core_dirac_bracket(
         &extended.mesh,
         &extended.values,
-        CoreBracketSearch::new(state, nuclear_charge, muffin_tin_radius, window)
-            .with_intervals(search_intervals),
+        CoreBracketSearch::new(
+            state,
+            nuclear_charge,
+            muffin_tin_radius,
+            window,
+            speed_of_light,
+        )
+        .with_intervals(search_intervals),
     )?
     .bracket;
-    let spec = CoreDiracSpec::new(state, nuclear_charge, bracket, muffin_tin_radius);
+    let spec = CoreDiracSpec::new(
+        state,
+        nuclear_charge,
+        bracket,
+        muffin_tin_radius,
+        speed_of_light,
+    );
     let solution = solve_core_dirac(&extended.mesh, &extended.values, spec)?;
     Ok(SolvedBoundCoreState {
         solution,
@@ -1027,6 +1059,8 @@ pub enum CoreStationError {
 pub enum CoreLocalOneBodyError {
     #[error("core sidecar potential has {actual} samples, expected {expected}")]
     PotentialLength { expected: usize, actual: usize },
+    #[error("core sidecar has {actual} solve specs, expected {expected}")]
+    SolveSpecCount { expected: usize, actual: usize },
     #[error("core shell {shell} occupation {occupation} is outside [0,{capacity}]")]
     Occupation {
         shell: usize,
@@ -1203,6 +1237,7 @@ mod tests {
             1.0,
             EnergyBracket::from_values(-0.6, -0.4).unwrap(),
             muffin_tin_mesh.last(),
+            muffintin_sphere::SPEX_SPEED_OF_LIGHT,
         );
         let solution = solve_core_dirac(&mesh, &potential, spec).unwrap();
         let solver_oracle = solution.clone();
@@ -1405,6 +1440,7 @@ mod tests {
             1.0,
             EnergyBracket::from_values(-0.6, -0.4).unwrap(),
             mesh.radii()[muffin_tin_index],
+            muffintin_sphere::SPEX_SPEED_OF_LIGHT,
         );
         let solution = solve_core_dirac(&mesh, &potential, solve_spec).unwrap();
         let muffin_tin_mesh =

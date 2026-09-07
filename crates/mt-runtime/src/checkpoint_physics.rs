@@ -110,6 +110,7 @@ impl CheckpointPhysics {
                 restart_density,
                 converted.nuclear_charges,
                 crystal_cell,
+                checkpoint.meta.speed_of_light,
             )?,
         })
     }
@@ -285,6 +286,7 @@ impl CheckpointPhysics {
             equation,
             angular_momentum,
             energies,
+            self.kernel.speed_of_light(),
         )?)
     }
 

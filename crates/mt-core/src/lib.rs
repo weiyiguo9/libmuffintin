@@ -50,3 +50,6 @@ pub use units::{Bohr, Hartree, InverseBohr, VolumeBohr3};
 
 /// Internal energy convention: Hartree atomic units, so `T = -1/2 * laplacian`.
 pub const KINETIC_ENERGY_FACTOR: f64 = 0.5;
+
+/// Default speed of light in Hartree atomic units (SPEX convention).
+pub const SPEX_SPEED_OF_LIGHT: f64 = 137.035_989_5;

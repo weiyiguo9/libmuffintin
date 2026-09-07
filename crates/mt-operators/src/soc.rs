@@ -432,7 +432,8 @@ mod tests {
     use super::*;
     use muffintin_core::{Bohr, ExponentialMesh};
     use muffintin_sphere::{
-        RadialEquation, RadialSolver, SpexSpinOrbitPotential, spex_spin_orbit_radial_shell,
+        RadialEquation, RadialSolver, SPEX_SPEED_OF_LIGHT, SpexSpinOrbitPotential,
+        spex_spin_orbit_radial_shell,
     };
 
     fn radial_shells() -> Vec<SpinOrbitRadialShell> {
@@ -442,9 +443,14 @@ mod tests {
             .iter()
             .map(|radius| -0.8 / (radius.get() + 0.2))
             .collect::<Vec<_>>();
-        let soc = SpexSpinOrbitPotential::new(&mesh, &potential).unwrap();
-        let solver =
-            RadialSolver::new(&mesh, &potential, RadialEquation::ScalarKoellingHarmon).unwrap();
+        let soc = SpexSpinOrbitPotential::new(&mesh, &potential, SPEX_SPEED_OF_LIGHT).unwrap();
+        let solver = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::ScalarKoellingHarmon,
+            SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap();
         (0..=1)
             .map(|l| {
                 let linearized = solver

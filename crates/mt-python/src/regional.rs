@@ -5,7 +5,7 @@ use muffintin_dft::{
     InterstitialField, MuffinTinField, NoncollinearXcRoute, RadialEquation, RegionalScalarField,
     ScfExchangeCorrelation, ScfPotentialBuild, XcFunctional,
 };
-use muffintin_sphere::{HarmonicConvention, SphereField};
+use muffintin_sphere::{HarmonicConvention, SPEX_SPEED_OF_LIGHT, SphereField};
 use num_complex::Complex64;
 use numpy::ndarray::Array2;
 use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
@@ -259,6 +259,7 @@ impl RegionalPotential {
         export_regional(py, muffintin::potential_fourier(&self.inner.potential))
     }
 
+    #[pyo3(signature = (site_index, radial_equation, l, energies, speed_of_light=None))]
     fn sample_scalar_radials(
         &self,
         py: Python<'_>,
@@ -266,6 +267,7 @@ impl RegionalPotential {
         radial_equation: &str,
         l: u32,
         energies: Vec<f64>,
+        speed_of_light: Option<f64>,
     ) -> PyResult<Py<PyDict>> {
         let equation = match radial_equation {
             "schroedinger" => RadialEquation::Schroedinger,
@@ -277,12 +279,14 @@ impl RegionalPotential {
             }
         };
         let energies = energies.into_iter().map(Hartree).collect::<Vec<_>>();
+        let speed_of_light = speed_of_light.unwrap_or(SPEX_SPEED_OF_LIGHT);
         let samples = muffintin_dft::sample_scalar_radials(
             &self.inner.potential,
             site_index,
             equation,
             l,
             &energies,
+            speed_of_light,
         )
         .map_err(py_error)?;
         let site_id = &self.structure.geometry().sites[samples.site_index].id;

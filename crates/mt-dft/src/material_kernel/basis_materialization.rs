@@ -374,6 +374,7 @@ impl MaterialKernel {
                         state,
                         self.nuclear_charges[site_index],
                         site.radius,
+                        self.speed_of_light,
                     );
                     let request = match seed {
                         Some(seed) => request.with_seed(seed),
@@ -419,6 +420,7 @@ impl MaterialKernel {
                         RadialEquation::ScalarKoellingHarmon,
                         l,
                         seed,
+                        self.speed_of_light,
                     )
                 } else {
                     generate_log_derivative_energy(
@@ -429,6 +431,7 @@ impl MaterialKernel {
                         l,
                         seed,
                         InverseBohr(-(f64::from(l) + 1.0) / site.radius.get()),
+                        self.speed_of_light,
                     )
                 }
             }

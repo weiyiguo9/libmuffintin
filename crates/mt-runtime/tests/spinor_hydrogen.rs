@@ -44,6 +44,7 @@ pub fn hydrogen_spinor_checkpoint() -> CheckpointV2 {
         .collect::<Vec<_>>();
     CheckpointV1::new(
         CheckpointMeta {
+            speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             title: "spinor hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,

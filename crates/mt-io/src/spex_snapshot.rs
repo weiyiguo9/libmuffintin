@@ -365,6 +365,7 @@ fn read_meta(group: &Group) -> Result<(CheckpointMeta, String, String), IoError>
     Ok((
         CheckpointMeta {
             title,
+            speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             producer,
             producer_version: Some(producer_version),
             energy_zero,

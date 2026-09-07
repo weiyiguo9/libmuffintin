@@ -68,6 +68,8 @@ pub struct SpinorSiteInput {
     pub mesh: ExponentialMesh,
     /// Central scalar potential used only to generate the Dirac radial set.
     pub spherical_potential: Vec<f64>,
+    /// Speed of light in Hartree atomic units.
+    pub speed_of_light: f64,
     /// Full local `V0 I + B . sigma` potential used by first variation.
     pub potential: LocalPauliPotential,
     /// Largest orbital angular momentum represented by the base radial set.
@@ -290,7 +292,7 @@ fn build_site(site: usize, input: &SpinorSiteInput) -> Result<BuiltSite, SpinorB
             solve_valence_dirac(
                 &input.mesh,
                 &input.spherical_potential,
-                ValenceDiracSpec::new(parameter.kappa, parameter.energy)?,
+                ValenceDiracSpec::new(parameter.kappa, parameter.energy, input.speed_of_light)?,
             )
         })
         .collect::<Result<Vec<_>, DiracError>>()?;
@@ -318,7 +320,7 @@ fn build_site(site: usize, input: &SpinorSiteInput) -> Result<BuiltSite, SpinorB
                 let raw = solve_valence_dirac(
                     &input.mesh,
                     &input.spherical_potential,
-                    ValenceDiracSpec::new(kappa, *energy)?,
+                    ValenceDiracSpec::new(kappa, *energy, input.speed_of_light)?,
                 )?;
                 BuiltSpinorLocalOrbital {
                     request: request.clone(),
@@ -800,6 +802,7 @@ mod tests {
             radius: mesh.last(),
             mesh: mesh.clone(),
             spherical_potential: vec![-0.2; mesh.len()],
+            speed_of_light: muffintin_sphere::SPEX_SPEED_OF_LIGHT,
             potential: LocalPauliPotential::new(
                 field(mesh, -0.2),
                 [field(mesh, 0.0), field(mesh, 0.0), field(mesh, 0.0)],

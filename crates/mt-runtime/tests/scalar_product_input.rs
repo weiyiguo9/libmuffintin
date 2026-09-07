@@ -29,6 +29,7 @@ fn hydrogen_checkpoint() -> CheckpointV2 {
         .collect::<Vec<_>>();
     CheckpointV1::new(
         CheckpointMeta {
+            speed_of_light: muffintin_core::SPEX_SPEED_OF_LIGHT,
             title: "scalar product-input hydrogen smoke".to_owned(),
             producer: "mt-runtime test".to_owned(),
             producer_version: None,

@@ -57,14 +57,16 @@ pub fn sample_scalar_radials(
     equation: RadialEquation,
     angular_momentum: u32,
     energies: &[Hartree],
+    speed_of_light: f64,
 ) -> Result<ScalarRadialSamples, ScalarRadialSamplingError> {
     let muffin_tins = potential.scalar().muffin_tins();
-    let muffin_tin = muffin_tins.get(site_index).ok_or(
-        ScalarRadialSamplingError::SiteIndexOutOfBounds {
-            site_index,
-            site_count: muffin_tins.len(),
-        },
-    )?;
+    let muffin_tin =
+        muffin_tins
+            .get(site_index)
+            .ok_or(ScalarRadialSamplingError::SiteIndexOutOfBounds {
+                site_index,
+                site_count: muffin_tins.len(),
+            })?;
     let v00 = muffin_tin
         .field()
         .channel(0, 0)
@@ -74,7 +76,7 @@ pub fn sample_scalar_radials(
         .map(|coefficient| coefficient.re / (4.0 * PI).sqrt())
         .collect::<Vec<_>>();
     let mesh = muffin_tin.mesh();
-    let solver = RadialSolver::new(mesh, &spherical_potential, equation)?;
+    let solver = RadialSolver::new(mesh, &spherical_potential, equation, speed_of_light)?;
 
     let mut radial_samples = Vec::with_capacity(energies.len() * mesh.len());
     let mut small_radial_samples = Vec::with_capacity(energies.len() * mesh.len());

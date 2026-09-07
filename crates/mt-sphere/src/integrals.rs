@@ -260,8 +260,13 @@ mod tests {
     #[test]
     fn integral_is_symmetric_for_all_kernel_kinds() {
         let (mesh, potential) = problem();
-        let solver =
-            RadialSolver::new(&mesh, &potential, RadialEquation::ScalarKoellingHarmon).unwrap();
+        let solver = RadialSolver::new(
+            &mesh,
+            &potential,
+            RadialEquation::ScalarKoellingHarmon,
+            crate::SPEX_SPEED_OF_LIGHT,
+        )
+        .unwrap();
         let a = solver.solve(0, Hartree(-0.2)).unwrap();
         let b = solver.solve(1, Hartree(0.3)).unwrap();
         let weights: Vec<f64> = mesh.radii().iter().map(|r| (-r.get()).exp()).collect();

@@ -23,6 +23,9 @@ pub struct Input {
     /// The pre-rename `snapshot` key is still accepted on read.
     #[serde(alias = "snapshot")]
     pub checkpoint: PathBuf,
+    /// Optional calculation-wide speed-of-light override in atomic units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed_of_light: Option<f64>,
     pub workflow: Workflow,
     pub task: BTreeMap<String, Task>,
 }
@@ -33,6 +36,7 @@ impl Input {
             format: INPUT_FORMAT.to_owned(),
             version: INPUT_VERSION,
             checkpoint,
+            speed_of_light: None,
             workflow,
             task,
         }
@@ -60,6 +64,9 @@ impl Input {
             });
         }
         validate_checkpoint_path(&self.checkpoint)?;
+        if let Some(speed_of_light) = self.speed_of_light {
+            positive("speed-of-light", speed_of_light)?;
+        }
         validate_task_sets(self)?;
 
         let positions: BTreeMap<&str, usize> = self

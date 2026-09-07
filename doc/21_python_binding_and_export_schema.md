@@ -464,10 +464,16 @@ controls = mt.FreeAtomControls(
     tail_tolerance=1.0e-7,
     max_iterations=120,
     angular_points=50,
+    speed_of_light=137.0359895,
 )
 start = mt.materialize_atomic_start(structure, layout, "lda-pw92", controls)
 start.checkpoint.write("atomic-start.toml")
 ```
+
+`FreeAtomControls`, `CoreStation`, and scalar radial sampling accept an optional
+`speed_of_light` in atomic units. Omission selects the physical default at the
+Python boundary; native solvers receive an explicit value. Atomic-start
+checkpoints retain the chosen value in typed metadata.
 
 Each `radial_meshes` row defines both the exact site muffin-tin radius and the
 serialized radial-mesh `last` value; no second radius can disagree with it.

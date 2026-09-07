@@ -46,6 +46,10 @@ fn main() -> ExitCode {
 }
 
 fn print_summary(workflow: &PreparedWorkflow, result: &WorkflowResult) {
+    println!(
+        "speed_of_light_au={:.10} energy_zero={}",
+        workflow.checkpoint.meta.speed_of_light, workflow.checkpoint.meta.energy_zero,
+    );
     for (task, output) in workflow.tasks.iter().zip(&result.tasks) {
         match output {
             TaskResult::Scf(state) => println!(
