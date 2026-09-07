@@ -6,12 +6,14 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 
 - Code baseline: `main` at `69dafb8ea207a43d5aea39bda9e81a4e18a74385` (2026-09-08)
 - Last ledger entry: evt-0012 (2026-09-08)
+- Code baseline: `main` at `f65c193b03bfa941573b4c689605185b922ee219` (2026-09-08)
+- Last ledger entries: evd-1005 (MSI), evd-0002 (Mac), evt-0014 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
-| `ctf-rs` | D3 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | replication, four-type folded panels, automatic compressed contraction/sum planning and seven fast studies closed; D4 next |
+| `ctf-rs` | D4 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | process memory budgets, low-memory path, timers, util, four-type SYR and flop snapshots closed; D5 next |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
-| `h2-hf` | handoff: can A0 complete within the local 24 GB resource boundary? | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evd-0002; deliverables complete on main; A1 through Bv not run |
+| `h2-hf` | active: perf fix on the fft-fftw interstitial contraction, then A0 to Bv as in plan.v1 | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evt-0013 diagnosis; Codex on the Mac executes; evd-0003+ / evt-0015+ |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |

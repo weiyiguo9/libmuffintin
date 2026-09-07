@@ -1,0 +1,32 @@
+[hf timing] begin atomic_start.total
+[hf timing] begin atomic_start.superposition_density
+[hf timing] end atomic_start.superposition_density elapsed_s=1.790560
+[hf timing] begin atomic_start.density_conversion
+[hf timing] end atomic_start.density_conversion elapsed_s=0.008903
+[hf timing] begin atomic_start.potential
+[hf timing] end atomic_start.potential elapsed_s=0.446578
+[hf timing] begin atomic_start.checkpoint
+[hf timing] end atomic_start.checkpoint elapsed_s=0.093507
+[hf timing] end atomic_start.total elapsed_s=2.343328
+[hf timing] begin exchange.cache.vv_basis.validate
+[hf timing] end exchange.cache.vv_basis.validate elapsed_s=0.000530
+[hf timing] begin exchange.cache.vv_basis.raw_dirac_space
+[hf timing] end exchange.cache.vv_basis.raw_dirac_space elapsed_s=0.200181
+[hf timing] begin exchange.cache.vv_basis.overlap_cutoff
+[hf timing] end exchange.cache.vv_basis.overlap_cutoff elapsed_s=0.007038
+[hf timing] begin exchange.cache.vv_basis.vertex_context
+[hf timing] end exchange.cache.vv_basis.vertex_context elapsed_s=0.001772
+[hf timing] begin exchange.cache.vv_basis.interstitial_table
+[hf timing] end exchange.cache.vv_basis.interstitial_table elapsed_s=0.124000
+[hf timing] begin exchange.cache.vv_basis.interstitial_theta
+[hf timing] end exchange.cache.vv_basis.interstitial_theta elapsed_s=0.039268
+[hf timing] begin exchange.cache.vv_basis.mt_coordinate_tensors
+[hf timing] end exchange.cache.vv_basis.mt_coordinate_tensors elapsed_s=1.943076
+[hf timing] begin vv.mpb_rebuild
+[hf timing] begin vv.validate_frozen_inputs
+[hf timing] end vv.validate_frozen_inputs elapsed_s=0.004567
+[hf timing] begin vv.site_projection
+[hf timing] end vv.site_projection elapsed_s=0.269695
+[hf timing] begin vv.mt_contraction
+[hf timing] end vv.mt_contraction elapsed_s=49.667629
+[hf timing] begin vv.interstitial
