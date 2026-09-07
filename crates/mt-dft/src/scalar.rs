@@ -157,12 +157,16 @@ pub fn build_scalar_iteration_basis(
     })
 }
 
-/// Build two genuinely independent scalar/KH bases for collinear potentials.
+/// Build scalar/KH bases for both collinear channels, reusing exactly identical inputs.
 pub fn build_collinear_scalar_iteration_bases(
     envelope: &PlaneWaveEnvelope,
     geometry: &InterstitialGeometry,
     sites: Collinear<&[ScalarSiteInput]>,
 ) -> Result<Collinear<ScalarIterationBasis>, ScalarBuilderError> {
+    if sites.up == sites.down {
+        let basis = build_scalar_iteration_basis(envelope, geometry, sites.up)?;
+        return Ok(Collinear::new(basis.clone(), basis));
+    }
     Ok(Collinear::new(
         build_scalar_iteration_basis(envelope, geometry, sites.up)?,
         build_scalar_iteration_basis(envelope, geometry, sites.down)?,
@@ -201,13 +205,22 @@ pub fn solve_scalar_k_point(
     })
 }
 
-/// Solve both independently generated collinear scalar channels.
+/// Solve both collinear scalar channels, reusing exactly identical basis and potential inputs.
 pub fn solve_collinear_scalar_k_point(
     bases: Collinear<&ScalarIterationBasis>,
     geometry: &InterstitialGeometry,
     potentials: Collinear<&InterstitialPotential>,
     relative_overlap_threshold: f64,
 ) -> Result<Collinear<SolvedScalarKPoint>, ScalarBuilderError> {
+    if bases.up == bases.down && potentials.up == potentials.down {
+        let solved = solve_scalar_k_point(
+            bases.up,
+            geometry,
+            potentials.up,
+            relative_overlap_threshold,
+        )?;
+        return Ok(Collinear::new(solved.clone(), solved));
+    }
     Ok(Collinear::new(
         solve_scalar_k_point(
             bases.up,
@@ -1003,5 +1016,40 @@ mod tests {
             bases.up.radial_sites[0].linearized[0].solution.p,
             bases.down.radial_sites[0].linearized[0].solution.p
         );
+        let potential = InterstitialPotential::default();
+        let solved = solve_collinear_scalar_k_point(
+            Collinear::new(&bases.up, &bases.down),
+            &geometry(&mesh),
+            Collinear::new(&potential, &potential),
+            1.0e-10,
+        )
+        .unwrap();
+        assert_ne!(
+            solved.up.solution.eigenvalues,
+            solved.down.solution.eigenvalues
+        );
+    }
+
+    #[test]
+    fn collinear_identical_channels_preserve_symmetric_solution() {
+        let mesh = mesh();
+        let input = site_input(&mesh, 0, false, Vec::new());
+        let bases = build_collinear_scalar_iteration_bases(
+            &envelope(),
+            &geometry(&mesh),
+            Collinear::new(std::slice::from_ref(&input), std::slice::from_ref(&input)),
+        )
+        .unwrap();
+        assert_eq!(bases.up, bases.down);
+
+        let potential = InterstitialPotential::default();
+        let solved = solve_collinear_scalar_k_point(
+            Collinear::new(&bases.up, &bases.down),
+            &geometry(&mesh),
+            Collinear::new(&potential, &potential),
+            1.0e-10,
+        )
+        .unwrap();
+        assert_eq!(solved.up, solved.down);
     }
 }

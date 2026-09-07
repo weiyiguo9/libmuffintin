@@ -1518,6 +1518,10 @@ impl MaterialKernel {
             Some(self.scalar_site_inputs(&self.frozen_potential, basis)?)
         };
         let interstitial = collinear_interstitial_potential(potential)?;
+        let identical_core_basis_inputs = site_inputs.up == site_inputs.down
+            && radial_reference
+                .as_ref()
+                .is_none_or(|reference| reference.up == reference.down);
         let mut solved_points = Vec::with_capacity(points.len());
         let mut states = Vec::new();
 
@@ -1529,6 +1533,15 @@ impl MaterialKernel {
                     &self.geometry,
                     Collinear::new(&site_inputs.up, &site_inputs.down),
                 )?
+            } else if identical_core_basis_inputs {
+                let built = crate::build_core_orthogonal_scalar_iteration_basis(
+                    &envelope,
+                    &self.geometry,
+                    &radial_reference.as_ref().unwrap().up,
+                    &site_inputs.up,
+                    core_orthogonal,
+                )?;
+                Collinear::new(built.clone(), built)
             } else {
                 Collinear::new(
                     crate::build_core_orthogonal_scalar_iteration_basis(
@@ -2277,6 +2290,43 @@ impl MaterialKernel {
         };
         match &bands.points[0].solution {
             CheckpointKPointSolution::Collinear { bases, .. } => {
+                let shared_spin_basis = bands.points.iter().all(|point| match &point.solution {
+                    CheckpointKPointSolution::Collinear { bases, .. } => bases.up == bases.down,
+                    CheckpointKPointSolution::Spinor { .. } => false,
+                });
+                if shared_spin_basis {
+                    let points = bands
+                        .points
+                        .iter()
+                        .map(|point| match &point.solution {
+                            CheckpointKPointSolution::Collinear {
+                                bases,
+                                solutions,
+                                up_occupations,
+                                down_occupations,
+                                ..
+                            } => Ok(CollinearKPoint {
+                                weight: point.weight,
+                                compiled: &bases.up.compiled,
+                                solutions: Collinear::new(&solutions.up, &solutions.down),
+                                occupations: Collinear::new(
+                                    &occupations[up_occupations.clone()],
+                                    &occupations[down_occupations.clone()],
+                                ),
+                            }),
+                            CheckpointKPointSolution::Spinor { .. } => {
+                                Err(MaterialKernelError::InconsistentRelativityRoute)
+                            }
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let density = synthesize_collinear_valence_density(
+                        self.geometry.clone(),
+                        density_layout,
+                        &bases.up.density_sites,
+                        &points,
+                    )?;
+                    return self.project_density_muffin_tin_layout(&density);
+                }
                 let up_points = bands
                     .points
                     .iter()

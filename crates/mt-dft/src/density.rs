@@ -401,6 +401,9 @@ pub fn synthesize_collinear_valence_density(
         vec![Complex64::new(0.0, 0.0); layout.len()],
     );
     let inverse_volume = 1.0 / geometry.cell_volume().get();
+    let identical_channels = k_points.iter().all(|point| {
+        point.solutions.up == point.solutions.down && point.occupations.up == point.occupations.down
+    });
 
     for k_point in k_points {
         accumulate_spin(
@@ -416,19 +419,25 @@ pub fn synthesize_collinear_valence_density(
                 inverse_volume,
             },
         )?;
-        accumulate_spin(
-            k_point,
-            k_point.solutions.down,
-            k_point.occupations.down,
-            SpinDensityAccumulator {
-                sites,
-                contractions: &contractions,
-                muffin_tins: &mut muffin_tins.down,
-                layout: &layout,
-                interstitial: &mut interstitial.down,
-                inverse_volume,
-            },
-        )?;
+        if !identical_channels {
+            accumulate_spin(
+                k_point,
+                k_point.solutions.down,
+                k_point.occupations.down,
+                SpinDensityAccumulator {
+                    sites,
+                    contractions: &contractions,
+                    muffin_tins: &mut muffin_tins.down,
+                    layout: &layout,
+                    interstitial: &mut interstitial.down,
+                    inverse_volume,
+                },
+            )?;
+        }
+    }
+    if identical_channels {
+        muffin_tins.down = muffin_tins.up.clone();
+        interstitial.down = interstitial.up.clone();
     }
 
     let muffin_tins = Collinear::new(
