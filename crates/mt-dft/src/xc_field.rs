@@ -257,6 +257,12 @@ fn transform_interstitial(
         std::array::from_fn(|_| vec![0.0; point_indices.len()]);
     let mut exchange_correlation_energy = 0.0;
     let mut density_potential_integral = 0.0;
+    let spin_density_roundoff_tolerance = 0.5
+        * density_samples
+            .iter()
+            .flatten()
+            .map(|samples| samples.value_roundoff_tolerance)
+            .sum::<f64>();
     for (sample_index, point) in interstitial_grid.points().iter().enumerate() {
         let [charge, mx, my, mz] = std::array::from_fn(|component| {
             density_samples[component]
@@ -265,7 +271,13 @@ fn transform_interstitial(
                     samples.field_jet(sample_index)
                 })
         });
-        let xc = evaluate_noncollinear_xc_point(functional, route, charge, [mx, my, mz])?;
+        let xc = evaluate_noncollinear_xc_point_with_roundoff(
+            functional,
+            route,
+            charge,
+            [mx, my, mz],
+            spin_density_roundoff_tolerance,
+        )?;
         exchange_correlation_energy += point.weight.get() * xc.energy_density;
         density_potential_integral += point.weight.get() * xc.density_potential;
         for (target, value) in potential_samples.iter_mut().zip(xc.potential) {
@@ -316,6 +328,7 @@ fn transform_interstitial(
 #[derive(Debug)]
 struct InterstitialFftSamples {
     value: Vec<f64>,
+    value_roundoff_tolerance: f64,
     gradient: Option<[Vec<f64>; 3]>,
     hessian: Option<[Vec<f64>; 6]>,
 }
@@ -343,6 +356,17 @@ fn interstitial_field_fft_samples(
     point_indices: &[usize],
 ) -> Result<InterstitialFftSamples, RegionalXcError> {
     let transform_scale = grid.len() as f64;
+    // A density produced by the FFT synthesis path has traversed an orbital
+    // inverse, a density forward, and this reconstruction inverse. Scale the
+    // coefficient-sum roundoff allowance by those three transform depths and
+    // the normalization or rescaling operation attached to each leg.
+    let density_fft_roundoff_depth = 3.0
+        * (1.0
+            + grid
+                .dimensions()
+                .into_iter()
+                .map(|dimension| (dimension as f64).log2().ceil())
+                .sum::<f64>());
     let mut modes = Vec::with_capacity(field.field().coefficients().len());
     let mut reality_scale = 0.0;
     for (vector, &coefficient) in field.field().iter() {
@@ -403,6 +427,9 @@ fn interstitial_field_fft_samples(
         .then(|| std::array::from_fn(|_| samples.next().expect("six Hessian transforms")));
     Ok(InterstitialFftSamples {
         value,
+        value_roundoff_tolerance: REAL_TOLERANCE
+            * density_fft_roundoff_depth
+            * reality_scale.max(1.0),
         gradient,
         hessian,
     })
@@ -491,6 +518,16 @@ fn evaluate_noncollinear_xc_point(
     charge: FieldJet,
     magnetization: [FieldJet; 3],
 ) -> Result<NoncollinearXcPoint, RegionalXcError> {
+    evaluate_noncollinear_xc_point_with_roundoff(functional, route, charge, magnetization, 0.0)
+}
+
+fn evaluate_noncollinear_xc_point_with_roundoff(
+    functional: XcFunctional,
+    route: NoncollinearXcRoute,
+    charge: FieldJet,
+    magnetization: [FieldJet; 3],
+    spin_density_roundoff_tolerance: f64,
+) -> Result<NoncollinearXcPoint, RegionalXcError> {
     let magnitude = magnetization
         .iter()
         .fold(0.0_f64, |norm, component| norm.hypot(component.value));
@@ -511,7 +548,12 @@ fn evaluate_noncollinear_xc_point(
     } else {
         project_magnetization_jet(magnetization, direction)
     };
-    let jet = split_local_spin_jet(charge, projected);
+    let mut jet = split_local_spin_jet(charge, projected);
+    for spin_density in &mut jet.rho {
+        if *spin_density < 0.0 && *spin_density >= -spin_density_roundoff_tolerance {
+            *spin_density = 0.0;
+        }
+    }
     let xc = evaluate_xc_point(functional, jet)?;
     let scalar = 0.5 * (xc.potential[0].get() + xc.potential[1].get());
     let splitting = 0.5 * (xc.potential[0].get() - xc.potential[1].get());
@@ -1313,6 +1355,38 @@ mod tests {
             &result.potential.magnetic()[2],
         ]
         .map(|field| field.interstitial().coefficient(index).unwrap())
+    }
+
+    #[test]
+    fn interstitial_spin_density_projects_only_coefficient_scale_roundoff() {
+        let tolerance = 1.0e-10;
+        let zero = FieldJet::value(0.0);
+        let projected = evaluate_noncollinear_xc_point_with_roundoff(
+            XcFunctional::LdaPw92,
+            NoncollinearXcRoute::LocalSpinFrame,
+            FieldJet::value(-2.0 * tolerance),
+            [zero; 3],
+            tolerance,
+        )
+        .unwrap();
+        assert_eq!(projected.potential, [0.0; 4]);
+        assert_eq!(projected.energy_density, 0.0);
+        assert_eq!(projected.density_potential, 0.0);
+
+        assert_eq!(
+            evaluate_noncollinear_xc_point_with_roundoff(
+                XcFunctional::LdaPw92,
+                NoncollinearXcRoute::LocalSpinFrame,
+                FieldJet::value(-4.0 * tolerance),
+                [zero; 3],
+                tolerance,
+            )
+            .map(|_| ()),
+            Err(RegionalXcError::Xc(XcError::NegativeDensity {
+                spin: 0,
+                value: -2.0 * tolerance,
+            }))
+        );
     }
 
     #[test]
