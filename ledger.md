@@ -1014,3 +1014,20 @@ MPI and the A1 ladder remain held. No push was performed.
 
 - state: h2-hf = handoff: BLAS-3 perf gates closed; A1 tolerance-policy decision pending
 - note: h2-hf = evd-0013 through evd-0016; A1 iteration 313.415279 s at 3.213 average cores; main 5f40aac; MPI held
+
+## 2026-09-08 · evt-0040 · h2-hf pair-level MPI released (user decision), assigned to the codex pane · actor: user
+
+The user chose to build the MPI layer now to cut wall time, with Snellius
+job submission as the target, before deciding the A1 tolerance policy.
+ADR-0006's first step is refined on the evd-0011 profile: occupied left
+bands are distributed across ranks, each rank builds and contracts only its
+own pair vertices, and one Allreduce of the band-space feedback per k
+replaces any vertex allgather; binding rule unchanged (rsmpi `mpi` 0.8,
+binary initializes at Funneled, library only checks `is_initialized`).
+The codex pane executes with class R rank-independence checks and a class
+P timing at ranks 1, 2, 4 on the Mac; Snellius runs are documented, not
+executed, in this task. The A1 ladder stays held pending the tolerance
+policy. Records continue at evt-0041 and evd-0017.
+
+- state: h2-hf = active: pair-level MPI feature (codex pane); A1 ladder held pending the tolerance policy
+- note: h2-hf = MPI released by the user for Snellius wall time; ADR-0006 first step refined to local contraction plus Allreduce

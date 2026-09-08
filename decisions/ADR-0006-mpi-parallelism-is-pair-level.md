@@ -55,3 +55,18 @@ Rule for every crate in this stack:
   outward, `FromRaw::from_raw` inward. ctf-rs needs a constructor that
   adopts an existing `MPI_Comm` without initializing or finalizing; that is
   a small ctf-rs change recorded under its own workstream.
+
+## First step, refined (2026-09-08, after the evd-0011 profile)
+
+The A1 Fock iteration is 57 percent exchange contraction and 31 percent
+vertex build, both sums over occupied left bands. So the first step
+distributes occupied left bands across ranks and keeps everything local:
+each rank builds the pair vertices of its own occupied bands, contracts
+them against the redundant Coulomb operator into a partial band-space
+feedback, and one `Allreduce` (sum) of that small `[n_target, n_target]`
+block per k gives every rank the full feedback. No vertex allgather. The
+Coulomb assembly, MPB basis compile, spinor solve, and density work stay
+redundant per rank and bound the speedup. The library reads the
+communicator from a process-wide setter the binary fills (like
+`set_hf_verbosity`), so no public spec type depends on rsmpi when the
+feature is off.
