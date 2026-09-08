@@ -821,3 +821,35 @@ the budget does not authorize a diagnostic or extension.
 
 - state: h2-hf = active: profile complete; cache skipped; A1 base retry under 1800 s cap
 - note: h2-hf = evd-0011 compile plus Coulomb 3.351% below 30%; MPI held
+
+## 2026-09-08 · evd-0012 · h2-hf A1 base profiled retry handoff · main 79623b8b4765b76ce6341be30716f9052a4b339d, recorded through 10f6b3925ed32fb4c84564c50dae3a84d47b50d1
+
+```text
+DIGIT / HANDOFF
+Q: A1 base hartree_exchange (Ha); class: P; ref: 0
+bound: none (study); Delta: unavailable
+checks: supervisor exit 124 at 1800.76 s; three completed Fock iterations and no completed outer iteration; required finite converged energies, three identities within 1e-8 Ha, and final electron count 2 within 1e-8 not established
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 1800s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a1-row1 --box 8 --orbital-g 5 --field-g 12 --product-g 6 --product-lmax 4 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 1 2>&1 | tee examples/h2_dft/results/hf-a1-row1.log
+log: examples/h2_dft/results/hf-a1-row1.log (main); prior evd-0010 log preserved as hf-a1-row1-cap1800.log
+scope: one Task D run, no diagnostics. Last density residual 6.3664758060341759e-5; feedback residual 7.9480430635287458e-5 Ha. No convergence-floor claim.
+unresolved: A1 base still cannot finish within its authorized 1800 s cap.
+```
+
+The controlling profile (evd-0011) measured basis compilation 7.589190 s
+plus Coulomb assembly 8.563591 s = 16.152781 s of 482.082668 s, or 3.351%,
+below the fixed 30% cache threshold. Contraction was 290.551110 s (60.270%).
+Task C was skipped; there are no new fixture or A0 rerun results, and no
+after-cache A0 wall time. The earlier A0 pass remains closed.
+
+## 2026-09-08 · evt-0033 · h2-hf profile handed off after repeated A1 base cap · actor: codex
+
+Task A timer-only change is main `79623b8`; main `10f6b39` records the profile
+and retry and preserves the prior cap log. Task B completed its two capped
+class-P profiles. Task C was skipped by its fixed condition. Task D stopped
+on the repeated base-row cap, as explicitly required. A1 rows 2–10, A1v,
+A2, B, and Bv were not run. MPI remains held; no MPI work was started.
+Three numerical executions total, no diagnostics or repeated acceptance
+checks, and no pushes.
+
+- state: h2-hf = handoff: A1 base still exceeds 1800 s; Gamma cache condition not met
+- note: h2-hf = evd-0011/0012; compile plus Coulomb 3.351%, contraction 60.270%; main 10f6b39; MPI held

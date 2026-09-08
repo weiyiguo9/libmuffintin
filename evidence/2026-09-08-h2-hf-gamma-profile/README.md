@@ -107,3 +107,28 @@ Class P: report `hartree_exchange` against zero, no study bound. Required
 validity remains convergence, finite energies, electron count 2 within 1e-8,
 and three driver identities within 1e-8 Ha. Task D explicitly stops if the
 base row reaches its cap again; no diagnostic or threshold change is allowed.
+
+### Task D outcome
+
+Main computation `79623b8`, records committed on main `10f6b39`. The retry
+exited 124 at 1800.76 s after three completed Fock iterations and no completed
+outer iteration. Last printed density residual: 6.3664758060341759e-5;
+feedback residual: 7.9480430635287458e-5 Ha. No converged energy, HOMO,
+Hartree/exchange energy, three-identity row, final electron count, or
+`hartree_exchange` was produced. Log: `examples/h2_dft/results/hf-a1-row1.log`
+on main; previous log: `hf-a1-row1-cap1800.log`.
+
+```text
+DIGIT / HANDOFF
+Q: A1 base hartree_exchange (Ha); class: P; ref: 0
+bound: none (study); Delta: unavailable
+checks: required converged finite result, three identities within 1e-8 Ha, and electron count 2 within 1e-8 not established; cap exit 124
+profile: compile + Coulomb 16.152781 / 482.082668 s = 3.351%; contraction 290.551110 s = 60.270%
+runs: 1 Task D retry; no diagnostics
+unresolved: A1 base still cannot finish within its authorized 1800 s cap
+```
+
+H2-HF-PROFILE used three numerical executions: two class-P profiles and the
+Task D retry. Task C was skipped, so its four fixture runs and A0 rerun were
+not performed. A1 rows 2–10, A1v, A2, B, and Bv remain unrun under Task D's
+explicit repeated-base-cap stopping rule. MPI remains held. No pushes.
