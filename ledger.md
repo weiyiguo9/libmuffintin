@@ -498,3 +498,39 @@ Microsoft MPI launcher became available; no acceptance bound or fixture changed.
 
 - state: ctf-rs = D6 closed
 - note: ctf-rs = D6 WSL and native 1/2/4 passed; dense-first objective complete; S1 not started
+
+## 2026-09-08 · evd-0007 · h2-hf G-H2-HF-0 A0 identity handoff after the Fock exit tolerance fix · main 30cc770931069be0527ff2f31424efb09001d1f7, recorded through 815fe4c028e97e197ea73dd301069f29da42ade3
+
+```text
+DIGIT / HANDOFF
+Q: valence eigenvalue identity residual (Ha); class: A; ref: 0
+bound: 1e-8; Delta: 1.6477445782814293e-7; d: 16.5
+checks: the gates run in the order electron count, exchange identity, valence eigenvalue identity, total identity, so the exchange identity passed the driver 2e-8 check without printing its value and the total identity was never reached; runs: 1
+budget: the single diagnostic the rerun contract allowed was conditional on the run stopping at the Fock iteration limit; the driver reaches its identity gate only after the Fock loop has converged, so no diagnostic was authorized and none was spent
+unresolved: the residual is no longer the example's Fock exit tolerance showing through the gate, so the eigenvalue identity of the two site Gamma valence path does not close at 1e-8 for reasons inside the driver
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a0 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 2>&1 | tee examples/h2_dft/results/hf-a0.log
+supervisor: /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 1800s
+log: examples/h2_dft/results/hf-a0.log (main); the evd-0006 run is preserved as examples/h2_dft/results/hf-a0-fock1e-5.log
+scope: 30cc770 adopts the gamma_valence_hf fixture's fock_density_tolerance
+1e-7 and fock_feedback_tolerance 1e-8 Ha in crates/mt-runtime/examples/h2_hf.rs
+and changes nothing else; FOCK_MAX_ITERATIONS stays 128 and every plan.v1 bound
+stays as written. The rerun moved the residual by a factor of 2069 and still
+fails, so the evt-0019 question is answered in the negative: the 1e-5 exit
+tolerance was most of the 3.4e-4, but 1.6e-7 survives it. The driver returns
+before the example prints hf_energy_terms_ha, so this row has no E, HOMO, E_H,
+E_x, and no printed Fock iteration count; the wall time is 282 s measured from
+the output directory to the log, not from an hf_final line. A1, A1v, A2, B, and
+Bv were not run and claim no evidence.
+```
+
+## 2026-09-08 · evt-0021 · h2-hf handed off again on the A0 identity gate · actor: claude
+
+The evt-0020 authorization is spent. The fix landed as one fix(examples)
+commit, the A0 rerun used the unchanged evd-0002 command, and A0 still fails
+its class A digit at 1.6477445782814293e-7 against 1e-8. The residual is
+16.5 times the bound and 16.5 times the 1e-8 Ha feedback tolerance the Fock
+loop exited on, so it is not a residue of the exit setting that was changed.
+Per evt-0020 this is a driver defect and was not investigated further.
+
+- state: h2-hf = handoff: A0 still fails the valence eigenvalue identity, now at 1.6e-7 against 1e-8, with the example's Fock exit tolerances at the fixture's values
+- note: h2-hf = evd-0007 supersedes the evd-0006 reading; main 30cc770 fix and 815fe4c docs; A1 through Bv not run
