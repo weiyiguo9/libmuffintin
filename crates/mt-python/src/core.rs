@@ -27,15 +27,15 @@ pub(crate) struct CoreSite {
 #[pyclass(name = "CoreStation", module = "libmuffintin._native", frozen)]
 #[derive(Clone, Debug)]
 pub(crate) struct CoreStation {
-    sites: Vec<CoreSiteRequest>,
-    speed_of_light: f64,
+    pub(crate) sites: Vec<CoreSiteRequest>,
+    pub(crate) speed_of_light: f64,
 }
 
 #[pyclass(name = "CoreResult", module = "libmuffintin._native", frozen)]
 #[derive(Clone, Debug)]
 pub(crate) struct CoreResult {
-    inner: Arc<RegionalCoreResult>,
-    structure: Arc<muffintin::Structure>,
+    pub(crate) inner: Arc<RegionalCoreResult>,
+    pub(crate) structure: Arc<muffintin::Structure>,
 }
 
 #[pymethods]

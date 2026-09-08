@@ -301,6 +301,37 @@ impl RegionalPotential {
             .flat_map(|boundary| *boundary)
             .collect::<Vec<_>>();
         let energy_count = samples.energies.len();
+        let c_inverse_squared = match equation {
+            RadialEquation::Schroedinger => 0.0,
+            RadialEquation::ScalarKoellingHarmon => 1.0 / (speed_of_light * speed_of_light),
+        };
+        let spherical_potential = self.inner.potential.scalar().muffin_tins()[site_index]
+            .field()
+            .channel(0, 0)
+            .expect("scalar radial sampling validated the monopole channel")
+            .iter()
+            .map(|coefficient| coefficient.re / (4.0 * std::f64::consts::PI).sqrt())
+            .collect::<Vec<_>>();
+        let inverse_mass = energies
+            .iter()
+            .flat_map(|energy| {
+                spherical_potential.iter().map(move |potential| {
+                    (2.0 + (energy.get() - potential) * c_inverse_squared).recip()
+                })
+            })
+            .collect::<Vec<_>>();
+        let energy_inverse_mass = inverse_mass
+            .iter()
+            .map(|mass_inverse| -c_inverse_squared * mass_inverse * mass_inverse)
+            .collect::<Vec<_>>();
+        let boundary_inverse_mass = inverse_mass
+            .chunks_exact(samples.mesh_count)
+            .map(|row| row[samples.mesh_count - 1])
+            .collect::<Vec<_>>();
+        let boundary_energy_inverse_mass = boundary_inverse_mass
+            .iter()
+            .map(|mass_inverse| -c_inverse_squared * mass_inverse * mass_inverse)
+            .collect::<Vec<_>>();
         let dict = export_dict(py)?;
         dict.set_item("site_index", samples.site_index)?;
         dict.set_item("site_id", site_id)?;
@@ -315,6 +346,37 @@ impl RegionalPotential {
         dict.set_item("mesh_first", samples.mesh_first.get())?;
         dict.set_item("mesh_increment", samples.mesh_increment)?;
         dict.set_item("mesh_count", samples.mesh_count)?;
+        dict.set_item(
+            "inverse_speed_of_light",
+            match equation {
+                RadialEquation::Schroedinger => 0.0,
+                RadialEquation::ScalarKoellingHarmon => speed_of_light.recip(),
+            },
+        )?;
+        dict.set_item(
+            "inverse_mass",
+            PyArray2::from_owned_array(
+                py,
+                Array2::from_shape_vec((energy_count, samples.mesh_count), inverse_mass)
+                    .expect("one inverse-mass row is exported for every requested energy"),
+            ),
+        )?;
+        dict.set_item(
+            "energy_inverse_mass",
+            PyArray2::from_owned_array(
+                py,
+                Array2::from_shape_vec((energy_count, samples.mesh_count), energy_inverse_mass)
+                    .expect("one inverse-mass energy derivative row is exported for every energy"),
+            ),
+        )?;
+        dict.set_item(
+            "boundary_inverse_mass",
+            PyArray1::from_vec(py, boundary_inverse_mass),
+        )?;
+        dict.set_item(
+            "boundary_energy_inverse_mass",
+            PyArray1::from_vec(py, boundary_energy_inverse_mass),
+        )?;
         dict.set_item(
             "mesh_radii",
             PyArray1::from_vec(

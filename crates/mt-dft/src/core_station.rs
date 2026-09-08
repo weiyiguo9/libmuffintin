@@ -10,17 +10,18 @@ use muffintin_coulomb::{
     core_core_fock_actions, radial_valence_core_actions,
 };
 use muffintin_sphere::{
-    CoreBracketSearch, CoreDiracExchangeAction, CoreDiracSolution, CoreDiracSourcedSpec,
-    CoreDiracSpec, CoreState, DiracError, DiracLocalHamiltonianError, EnergyBracket,
-    ExtendedCorePotential, dirac_local_hamiltonian_expectation, isolate_core_dirac_bracket,
-    solve_core_dirac, solve_core_dirac_with_action,
+    CoreBracketSearch, CoreDiracExchangeAction, CoreDiracSourcedSpec, CoreDiracSpec, CoreState,
+    DiracError, DiracLocalHamiltonianError, EnergyBracket, ExtendedCorePotential,
+    dirac_local_hamiltonian_expectation, isolate_core_dirac_bracket, solve_core_dirac,
+    solve_core_dirac_with_action,
 };
 use thiserror::Error;
 
 use crate::{
-    BuiltRegionalCoreContribution, CoreDensityError, CorePotentialBuildError, CoreSpinPartition,
-    RegionalCoreShellInput, RegionalDensity, RegionalError, ScfPotentialBuild,
-    build_extended_core_potentials, build_regional_core_contribution,
+    BuiltExtendedCorePotential, BuiltRegionalCoreContribution, CoreDensityError,
+    CorePotentialBuildError, CoreSpinPartition, RegionalCoreShellInput, RegionalDensity,
+    RegionalError, ScfPotentialBuild, build_extended_core_potentials,
+    build_regional_core_contribution,
 };
 
 /// One occupied spherical bound-core channel.
@@ -168,15 +169,32 @@ pub struct FixedSiteValenceDensity<'a> {
     pub valence: PreweightedSiteValenceDensity<'a>,
 }
 
-pub(crate) struct SolvedRegionalCoreSite {
+/// One site's assembled core density contribution and retained radial sidecar.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SolvedRegionalCoreSite {
     pub contribution: BuiltRegionalCoreContribution,
     pub orbitals: CoreShellOrbitals,
 }
 
-struct SolvedBoundCoreState {
-    solution: CoreDiracSolution,
-    spec: CoreDiracSpec,
-    sourced_search: CoreSourcedSearchProvenance,
+/// Core effective potentials prepared once at one immutable SCF potential.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreparedRegionalCorePotentials {
+    pub nuclear_charges: Vec<f64>,
+    pub sites: Vec<BuiltExtendedCorePotential>,
+}
+
+/// One independently solved core-state radial block.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SolvedCoreState {
+    pub state: CoreState,
+    pub energy: Hartree,
+    pub p: Vec<f64>,
+    pub q: Vec<f64>,
+    pub norm_total: f64,
+    pub norm_mt: f64,
+    pub spill: f64,
+    pub spec: CoreDiracSpec,
+    pub sourced_search: CoreSourcedSearchProvenance,
 }
 
 /// Solve all requested sites from one complete regional potential build.
@@ -185,6 +203,47 @@ pub fn solve_regional_core(
     sites: &[CoreSiteRequest],
     speed_of_light: f64,
 ) -> Result<RegionalCoreResult, CoreStationError> {
+    let density = potential.source_density();
+    let prepared = prepare_regional_core_potentials(potential, sites)?;
+    if sites.is_empty() {
+        return Ok(RegionalCoreResult {
+            density: density.zero_like(),
+            eigenvalue_sum: Hartree(0.0),
+            sites: Vec::new(),
+            orbitals: Vec::new(),
+        });
+    }
+
+    let mut result_density = density.zero_like();
+    let mut eigenvalue_sum = Hartree(0.0);
+    let mut built_sites = Vec::with_capacity(sites.len());
+    let mut orbitals = Vec::with_capacity(sites.len());
+    for site in sites {
+        let solved = solve_regional_core_site(
+            density,
+            &prepared.nuclear_charges,
+            site,
+            &prepared.sites[site.site_index].potential,
+            speed_of_light,
+        )?;
+        result_density.add_scaled(1.0, &solved.contribution.contribution.density)?;
+        eigenvalue_sum += solved.contribution.contribution.eigenvalue_sum;
+        built_sites.push(solved.contribution);
+        orbitals.push(solved.orbitals);
+    }
+    Ok(RegionalCoreResult {
+        density: result_density,
+        eigenvalue_sum,
+        sites: built_sites,
+        orbitals,
+    })
+}
+
+/// Prepare every requested site's extended effective core potential exactly once.
+pub fn prepare_regional_core_potentials(
+    potential: &ScfPotentialBuild,
+    sites: &[CoreSiteRequest],
+) -> Result<PreparedRegionalCorePotentials, CoreStationError> {
     let density = potential.source_density();
     let site_count = density.geometry().spheres().len();
     let mut site_indices = BTreeSet::new();
@@ -204,11 +263,9 @@ pub fn solve_regional_core(
         }
     }
     if sites.is_empty() {
-        return Ok(RegionalCoreResult {
-            density: density.zero_like(),
-            eigenvalue_sum: Hartree(0.0),
+        return Ok(PreparedRegionalCorePotentials {
+            nuclear_charges: Vec::new(),
             sites: Vec::new(),
-            orbitals: Vec::new(),
         });
     }
 
@@ -244,36 +301,16 @@ pub fn solve_regional_core(
         &extended_meshes,
         potential.core_spec,
     )?;
-
-    let mut result_density = density.zero_like();
-    let mut eigenvalue_sum = Hartree(0.0);
-    let mut built_sites = Vec::with_capacity(sites.len());
-    let mut orbitals = Vec::with_capacity(sites.len());
-    for site in sites {
-        let solved = solve_regional_core_site(
-            density,
-            nuclear_charges,
-            site,
-            &extended[site.site_index].potential,
-            speed_of_light,
-        )?;
-        result_density.add_scaled(1.0, &solved.contribution.contribution.density)?;
-        eigenvalue_sum += solved.contribution.contribution.eigenvalue_sum;
-        built_sites.push(solved.contribution);
-        orbitals.push(solved.orbitals);
-    }
-    Ok(RegionalCoreResult {
-        density: result_density,
-        eigenvalue_sum,
-        sites: built_sites,
-        orbitals,
+    Ok(PreparedRegionalCorePotentials {
+        nuclear_charges: nuclear_charges.to_vec(),
+        sites: extended,
     })
 }
 
 /// Synthesize a fresh regional contribution directly from retained core radials.
 ///
 /// The sidecar's physical `P/Q`, norms, spill, energies, and occupations are
-/// borrowed without reconstructing a [`CoreDiracSolution`].
+/// borrowed without reconstructing a [`muffintin_sphere::CoreDiracSolution`].
 pub fn build_regional_core_contribution_from_sidecar(
     sidecar: &CoreShellOrbitals,
     zero_like_template: &RegionalDensity,
@@ -863,9 +900,10 @@ pub(crate) fn solve_regional_core_site(
         .states
         .iter()
         .map(|requested| {
-            solve_bound_core_state(
+            solve_core_state_block(
+                &extended.mesh,
+                &extended.values,
                 requested.state,
-                extended,
                 charge,
                 sphere.radius,
                 speed_of_light,
@@ -882,12 +920,43 @@ pub(crate) fn solve_regional_core_site(
     )
 }
 
+/// Assemble one site's exact core contribution from independently solved states.
+pub fn assemble_regional_core_site(
+    density: &RegionalDensity,
+    request: &CoreSiteRequest,
+    extended: &ExtendedCorePotential,
+    solved: Vec<SolvedCoreState>,
+) -> Result<SolvedRegionalCoreSite, CoreStationError> {
+    let muffin_tin_mesh = density
+        .charge()
+        .muffin_tins()
+        .get(request.site_index)
+        .ok_or(CoreStationError::SiteIndex {
+            site: request.site_index,
+            site_count: density.charge().muffin_tins().len(),
+        })?
+        .mesh();
+    let occupations = request
+        .states
+        .iter()
+        .map(retain_shell_occupations)
+        .collect();
+    build_regional_core_site(
+        density,
+        request,
+        extended,
+        muffin_tin_mesh,
+        solved,
+        occupations,
+    )
+}
+
 fn build_regional_core_site(
     density: &RegionalDensity,
     request: &CoreSiteRequest,
     extended: &ExtendedCorePotential,
     muffin_tin_mesh: &ExponentialMesh,
-    solved: Vec<SolvedBoundCoreState>,
+    solved: Vec<SolvedCoreState>,
     occupations: Vec<CoreShellOccupations>,
 ) -> Result<SolvedRegionalCoreSite, CoreStationError> {
     let shells = solved
@@ -895,12 +964,12 @@ fn build_regional_core_site(
         .zip(&request.states)
         .map(|(solved, requested)| RegionalCoreShellInput {
             mesh: &extended.mesh,
-            state: solved.solution.state,
-            energy: solved.solution.energy,
-            p: &solved.solution.p,
-            q: &solved.solution.q,
-            norm_mt: solved.solution.norm_mt,
-            spill: solved.solution.spill,
+            state: solved.state,
+            energy: solved.energy,
+            p: &solved.p,
+            q: &solved.q,
+            norm_mt: solved.norm_mt,
+            spill: solved.spill,
             occupation: requested.occupation,
             spin: requested.spin,
         })
@@ -919,13 +988,13 @@ fn build_regional_core_site(
         .into_iter()
         .zip(occupations)
         .map(|(solved, occupations)| CoreShellOrbital {
-            state: solved.solution.state,
-            energy: solved.solution.energy,
-            p: solved.solution.p,
-            q: solved.solution.q,
-            norm_total: solved.solution.norm_total,
-            norm_mt: solved.solution.norm_mt,
-            spill: solved.solution.spill,
+            state: solved.state,
+            energy: solved.energy,
+            p: solved.p,
+            q: solved.q,
+            norm_total: solved.norm_total,
+            norm_mt: solved.norm_mt,
+            spill: solved.spill,
             occupations,
         })
         .collect();
@@ -964,26 +1033,21 @@ fn retain_shell_occupations(requested: &CoreStateRequest) -> CoreShellOccupation
     }
 }
 
-fn solve_bound_core_state(
+/// Isolate and solve one core eigenstate from immutable mesh/potential arrays.
+pub fn solve_core_state_block(
+    mesh: &ExponentialMesh,
+    potential: &[f64],
     state: CoreState,
-    extended: &ExtendedCorePotential,
     nuclear_charge: f64,
     muffin_tin_radius: Bohr,
     speed_of_light: f64,
-) -> Result<SolvedBoundCoreState, CoreStationError> {
-    let continuum = *extended
-        .values
-        .last()
-        .expect("extended core potential follows a nonempty mesh");
-    let atomic_scale = (nuclear_charge * nuclear_charge / f64::from(state.n).powi(2)).max(1.0);
-    let window = EnergyBracket::from_values(
-        continuum - 2.0 * nuclear_charge * nuclear_charge,
-        continuum - 1.0e-8 * atomic_scale,
-    )?;
-    let search_intervals = 512;
+) -> Result<SolvedCoreState, CoreStationError> {
+    let sourced_search = core_state_search_provenance(potential, state, nuclear_charge)?;
+    let window = sourced_search.energy_window;
+    let search_intervals = sourced_search.intervals;
     let bracket = isolate_core_dirac_bracket(
-        &extended.mesh,
-        &extended.values,
+        mesh,
+        potential,
         CoreBracketSearch::new(
             state,
             nuclear_charge,
@@ -1001,14 +1065,38 @@ fn solve_bound_core_state(
         muffin_tin_radius,
         speed_of_light,
     );
-    let solution = solve_core_dirac(&extended.mesh, &extended.values, spec)?;
-    Ok(SolvedBoundCoreState {
-        solution,
+    let solution = solve_core_dirac(mesh, potential, spec)?;
+    Ok(SolvedCoreState {
+        state: solution.state,
+        energy: solution.energy,
+        p: solution.p,
+        q: solution.q,
+        norm_total: solution.norm_total,
+        norm_mt: solution.norm_mt,
+        spill: solution.spill,
         spec,
-        sourced_search: CoreSourcedSearchProvenance {
-            energy_window: window,
-            intervals: search_intervals,
-        },
+        sourced_search,
+    })
+}
+
+/// Deterministic broad search window retained with one solved core state.
+pub fn core_state_search_provenance(
+    potential: &[f64],
+    state: CoreState,
+    nuclear_charge: f64,
+) -> Result<CoreSourcedSearchProvenance, CoreStationError> {
+    let continuum = *potential
+        .last()
+        .expect("extended core potential follows a nonempty mesh");
+    let atomic_scale = (nuclear_charge * nuclear_charge / f64::from(state.n).powi(2)).max(1.0);
+    let window = EnergyBracket::from_values(
+        continuum - 2.0 * nuclear_charge * nuclear_charge,
+        continuum - 1.0e-8 * atomic_scale,
+    )?;
+    let search_intervals = 512;
+    Ok(CoreSourcedSearchProvenance {
+        energy_window: window,
+        intervals: search_intervals,
     })
 }
 

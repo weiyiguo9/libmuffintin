@@ -759,6 +759,29 @@ pub fn build_scf_potential(
     }
     let exchange_correlation_result =
         crate::evaluate_regional_xc(exchange_correlation.functional, density, xc_field_spec)?;
+    assemble_scf_potential_from_parts(
+        density,
+        electrostatic,
+        exchange_correlation_result,
+        exchange_correlation.functional,
+        xc_field_spec,
+    )
+}
+
+/// Assemble one complete SCF potential from an already evaluated
+/// electrostatic field and exchange-correlation field.
+///
+/// This is the root-side join used by blocked XC evaluation.  Keeping the
+/// electrostatic result intact preserves the raw, unmasked periodic fields
+/// required by [`crate::CoreStation`] and the exact density from which every
+/// energy contraction was evaluated.
+pub fn assemble_scf_potential_from_parts(
+    density: &crate::RegionalDensity,
+    electrostatic: RegionalElectrostaticResult,
+    exchange_correlation_result: crate::RegionalXcResult,
+    functional: crate::XcFunctional,
+    xc_field_spec: crate::XcFieldSpec,
+) -> Result<ScfPotentialBuild, ScfPotentialBuildError> {
     let mut scalar = electrostatic.potential.clone();
     scalar.add_scaled(1.0, exchange_correlation_result.potential.scalar())?;
     let potential = crate::RegionalPotential::new(
@@ -770,8 +793,8 @@ pub fn build_scf_potential(
         potential,
         core_spec: crate::CorePotentialBuildSpec {
             continuation: muffintin_sphere::CorePotentialContinuationSpec::default(),
-            xc_functional: exchange_correlation.functional,
-            xc_noncollinear_route: exchange_correlation.noncollinear_route,
+            xc_functional: functional,
+            xc_noncollinear_route: xc_field_spec.noncollinear_route,
             xc_angular_point_count: xc_field_spec.angular_point_count,
         },
         energy_terms: crate::ScfEnergyTerms {

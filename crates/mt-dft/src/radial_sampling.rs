@@ -2,7 +2,7 @@
 
 use std::f64::consts::PI;
 
-use muffintin_core::{Bohr, Hartree, InverseBohr};
+use muffintin_core::{Bohr, ExponentialMesh, Hartree, InverseBohr};
 use muffintin_sphere::{RadialEquation, RadialError, RadialSolver};
 use thiserror::Error;
 
@@ -32,6 +32,14 @@ pub struct ScalarRadialSamples {
     pub energy_derivative_boundary_radial: Vec<[f64; 2]>,
 }
 
+/// One site's spherical scalar potential prepared for independent radial solves.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreparedScalarRadialPotential {
+    pub site_index: usize,
+    pub mesh: ExponentialMesh,
+    pub values: Vec<f64>,
+}
+
 /// Failure while sampling scalar radial solutions from a regional potential.
 #[derive(Debug, Error)]
 pub enum ScalarRadialSamplingError {
@@ -59,6 +67,23 @@ pub fn sample_scalar_radials(
     energies: &[Hartree],
     speed_of_light: f64,
 ) -> Result<ScalarRadialSamples, ScalarRadialSamplingError> {
+    let prepared = prepare_scalar_radial_potential(potential, site_index)?;
+    sample_scalar_radials_on_potential(
+        prepared.site_index,
+        &prepared.mesh,
+        &prepared.values,
+        equation,
+        angular_momentum,
+        energies,
+        speed_of_light,
+    )
+}
+
+/// Extract one site's physical spherical average from a regional potential.
+pub fn prepare_scalar_radial_potential(
+    potential: &RegionalPotential,
+    site_index: usize,
+) -> Result<PreparedScalarRadialPotential, ScalarRadialSamplingError> {
     let muffin_tins = potential.scalar().muffin_tins();
     let muffin_tin =
         muffin_tins
@@ -71,12 +96,29 @@ pub fn sample_scalar_radials(
         .field()
         .channel(0, 0)
         .ok_or(ScalarRadialSamplingError::MissingScalarMonopole { site_index })?;
-    let spherical_potential = v00
+    let values = v00
         .iter()
         .map(|coefficient| coefficient.re / (4.0 * PI).sqrt())
         .collect::<Vec<_>>();
-    let mesh = muffin_tin.mesh();
-    let solver = RadialSolver::new(mesh, &spherical_potential, equation, speed_of_light)?;
+    Ok(PreparedScalarRadialPotential {
+        site_index,
+        mesh: muffin_tin.mesh().clone(),
+        values,
+    })
+}
+
+/// Solve radial rows directly from a borrowed spherical-potential array.
+#[allow(clippy::too_many_arguments)]
+pub fn sample_scalar_radials_on_potential(
+    site_index: usize,
+    mesh: &ExponentialMesh,
+    spherical_potential: &[f64],
+    equation: RadialEquation,
+    angular_momentum: u32,
+    energies: &[Hartree],
+    speed_of_light: f64,
+) -> Result<ScalarRadialSamples, ScalarRadialSamplingError> {
+    let solver = RadialSolver::new(mesh, spherical_potential, equation, speed_of_light)?;
 
     let mut radial_samples = Vec::with_capacity(energies.len() * mesh.len());
     let mut small_radial_samples = Vec::with_capacity(energies.len() * mesh.len());

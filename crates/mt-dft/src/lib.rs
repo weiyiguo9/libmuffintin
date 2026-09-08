@@ -52,9 +52,11 @@ pub use core_station::{
     CoreFixedPotentialSpec, CoreLocalOneBodyError, CoreLocalOneBodyShellTrace,
     CoreLocalOneBodyTrace, CoreRelaxationError, CoreShellOccupations, CoreShellOrbital,
     CoreShellOrbitals, CoreShellOrbitalsProvenance, CoreSiteRequest, CoreSourcedSearchProvenance,
-    CoreStateRequest, CoreStationError, FixedSiteValenceDensity, RegionalCoreResult,
+    CoreStateRequest, CoreStationError, FixedSiteValenceDensity, PreparedRegionalCorePotentials,
+    RegionalCoreResult, SolvedCoreState, SolvedRegionalCoreSite, assemble_regional_core_site,
     build_regional_core_contribution_from_sidecar, core_local_one_body_trace,
-    relax_core_at_fixed_potential, solve_regional_core,
+    core_state_search_provenance, prepare_regional_core_potentials, relax_core_at_fixed_potential,
+    solve_core_state_block, solve_regional_core,
 };
 pub use density::{
     CollinearKPoint, DensityError, FullSpinorDensitySiteBasis, FullSpinorKPoint, ScalarSiteBasis,
@@ -71,7 +73,8 @@ pub use free_atom::{
 };
 pub use hartree::{
     ElectrostaticSpec, RegionalElectrostaticError, RegionalElectrostaticResult, ScfPotentialBuild,
-    ScfPotentialBuildError, build_scf_potential, evaluate_regional_electrostatics,
+    ScfPotentialBuildError, assemble_scf_potential_from_parts, build_scf_potential,
+    evaluate_regional_electrostatics,
 };
 pub use linearization::{
     AtomicEnergyRequest, GeneratedLinearizationEnergy, LinearizationEnergyDiagnostic,
@@ -93,7 +96,10 @@ pub use occupations::{
     BandState, FermiDiracResult, GaussianResult, OccupationError, fermi_dirac, gaussian_occupation,
     gaussian_width_matching_fermi_dirac_temperature, solve_fermi_dirac, solve_gaussian,
 };
-pub use radial_sampling::{ScalarRadialSamples, ScalarRadialSamplingError, sample_scalar_radials};
+pub use radial_sampling::{
+    PreparedScalarRadialPotential, ScalarRadialSamples, ScalarRadialSamplingError,
+    prepare_scalar_radial_potential, sample_scalar_radials, sample_scalar_radials_on_potential,
+};
 pub use regional::{
     InterstitialField, MuffinTinField, RegionalDensity, RegionalDensityResidualRms, RegionalError,
     RegionalPotential, RegionalScalarField,
@@ -148,6 +154,7 @@ pub use tetrahedron::{
 };
 pub use xc::{DensityJet2, XcError, XcFunctional, XcPoint, evaluate_xc_point};
 pub use xc_field::{
-    NoncollinearXcRoute, RegionalXcError, RegionalXcResult, XcFieldSpec, evaluate_regional_xc,
-    xc_spec_for_density,
+    NoncollinearXcRoute, PreparedScalarRegionalXc, RegionalXcError, RegionalXcResult, XcFieldSpec,
+    assemble_scalar_regional_xc, evaluate_regional_xc, evaluate_scalar_interstitial_xc_point_block,
+    evaluate_scalar_muffin_tin_xc_shell_block, prepare_scalar_regional_xc, xc_spec_for_density,
 };

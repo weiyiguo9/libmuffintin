@@ -8,8 +8,8 @@ use crate::{
 use muffintin_core::Cell;
 use muffintin_core::{AngularGrid, GridError};
 use muffintin_core::{
-    Bohr, FourierFieldError, FourierLayout, Hartree, InterstitialGeometry, Lm, MeshError,
-    StepFunctionError, complex_spherical_harmonics, lm_count, real_spherical_harmonics,
+    Bohr, ExponentialMesh, FourierFieldError, FourierLayout, Hartree, InterstitialGeometry, Lm,
+    MeshError, StepFunctionError, complex_spherical_harmonics, lm_count, real_spherical_harmonics,
 };
 use muffintin_sphere::{HarmonicConvention, SphereField, SphereFieldError};
 use muffintin_tensor::fft::{FftGrid, FftPlan};
@@ -17,6 +17,7 @@ use num_complex::Complex64;
 use std::collections::BTreeMap;
 #[cfg(test)]
 use std::f64::consts::TAU;
+use std::time::Instant;
 use thiserror::Error;
 
 const REAL_TOLERANCE: f64 = 4096.0 * f64::EPSILON;
@@ -111,6 +112,524 @@ pub struct RegionalXcResult {
     pub exchange_correlation_energy: Hartree,
     /// Integral of `n Vxc + m . Bxc` in the Pauli convention below.
     pub density_potential_integral: Hartree,
+}
+
+#[derive(Debug)]
+struct PreparedScalarMuffinTinSite {
+    mesh: ExponentialMesh,
+    radii: Vec<f64>,
+    convention: HarmonicConvention,
+    input_l_max: u32,
+    charge_channels: Vec<Complex64>,
+}
+
+/// Root-owned scalar XC data prepared for borrowed-array block evaluation.
+///
+/// Muffin-tin charge samples are dense and channel-major, with channel index
+/// `l*l + l + m`. Interstitial derivatives are field-major in the order
+/// `[n, dx, dy, dz, dxx, dyy, dzz, dxy, dxz, dyz]` for PBE and contain only
+/// `n` for LDA. The same FFT plan used to synthesize these samples is retained
+/// for final potential assembly.
+#[derive(Debug)]
+pub struct PreparedScalarRegionalXc {
+    functional: XcFunctional,
+    spec: XcFieldSpec,
+    geometry: InterstitialGeometry,
+    layout: FourierLayout,
+    fft_grid: FftGrid,
+    fft: FftPlan,
+    fft_plan_seconds: f64,
+    fft_transform_seconds: f64,
+    step: Vec<f64>,
+    interstitial_density_derivatives: Vec<f64>,
+    muffin_tin_sites: Vec<PreparedScalarMuffinTinSite>,
+}
+
+impl PreparedScalarRegionalXc {
+    pub const fn functional(&self) -> XcFunctional {
+        self.functional
+    }
+
+    pub const fn spec(&self) -> XcFieldSpec {
+        self.spec
+    }
+
+    pub fn muffin_tin_site_count(&self) -> usize {
+        self.muffin_tin_sites.len()
+    }
+
+    pub fn muffin_tin_radii(&self, site: usize) -> &[f64] {
+        &self.muffin_tin_sites[site].radii
+    }
+
+    pub fn muffin_tin_convention(&self, site: usize) -> HarmonicConvention {
+        self.muffin_tin_sites[site].convention
+    }
+
+    pub fn muffin_tin_input_l_max(&self, site: usize) -> u32 {
+        self.muffin_tin_sites[site].input_l_max
+    }
+
+    pub fn muffin_tin_charge_channels(&self, site: usize) -> &[Complex64] {
+        &self.muffin_tin_sites[site].charge_channels
+    }
+
+    pub fn interstitial_point_count(&self) -> usize {
+        self.fft_grid.len()
+    }
+
+    pub fn interstitial_density_derivatives(&self) -> &[f64] {
+        &self.interstitial_density_derivatives
+    }
+
+    pub fn interstitial_step(&self) -> &[f64] {
+        &self.step
+    }
+
+    pub fn interstitial_point_weight(&self) -> f64 {
+        self.geometry.cell_volume().get() / self.fft_grid.len() as f64
+    }
+
+    pub const fn fft_plan_seconds(&self) -> f64 {
+        self.fft_plan_seconds
+    }
+
+    /// Cumulative root-side FFT preparation and final-transform time.
+    pub const fn fft_transform_seconds(&self) -> f64 {
+        self.fft_transform_seconds
+    }
+}
+
+/// Prepare one nonmagnetic regional density for scalar LDA/PBE block work.
+///
+/// This is a root-side operation: it validates the scalar route, synthesizes
+/// the interstitial density jets and analytic step samples, and retains the
+/// FFT plan for [`assemble_scalar_regional_xc`]. Worker processes consume only
+/// the borrowed numeric slices exposed by [`PreparedScalarRegionalXc`].
+pub fn prepare_scalar_regional_xc(
+    functional: XcFunctional,
+    density: &RegionalDensity,
+    spec: XcFieldSpec,
+) -> Result<PreparedScalarRegionalXc, RegionalXcError> {
+    spec.validate(density.charge().interstitial().layout())?;
+    if density
+        .magnetization()
+        .iter()
+        .any(|component| !regional_scalar_field_is_zero(component))
+    {
+        return Err(RegionalXcError::ScalarRouteHasMagnetization);
+    }
+
+    let layout = density.charge().interstitial().layout().clone();
+    let fft_grid = FftGrid::new(spec.interstitial_divisions)?;
+    let fft_plan_start = Instant::now();
+    let mut fft = FftPlan::new(fft_grid)?;
+    let fft_plan_seconds = fft_plan_start.elapsed().as_secs_f64();
+    let mut fft_transform_seconds = 0.0;
+    let step = truncated_step_samples_timed(
+        density.geometry(),
+        &layout,
+        fft_grid,
+        spec.interstitial_divisions,
+        &mut fft,
+        &mut fft_transform_seconds,
+    )?;
+    let point_indices = (0..fft_grid.len()).collect::<Vec<_>>();
+    let samples = interstitial_field_fft_samples_timed(
+        density.charge().interstitial(),
+        functional == XcFunctional::Pbe,
+        fft_grid,
+        spec.interstitial_divisions,
+        &mut fft,
+        &point_indices,
+        &mut fft_transform_seconds,
+    )?;
+    let mut interstitial_density_derivatives = samples.value;
+    if let Some(gradient) = samples.gradient {
+        for component in gradient {
+            interstitial_density_derivatives.extend(component);
+        }
+    }
+    if let Some(hessian) = samples.hessian {
+        for component in hessian {
+            interstitial_density_derivatives.extend(component);
+        }
+    }
+    let muffin_tin_sites = density
+        .charge()
+        .muffin_tins()
+        .iter()
+        .map(|field| {
+            let input_l_max = field
+                .field()
+                .channels()
+                .map(|(channel, _)| channel.l)
+                .max()
+                .unwrap_or(0);
+            let mut charge_channels =
+                vec![Complex64::default(); lm_count(input_l_max) * field.mesh().len()];
+            for (channel, samples) in field.field().channels() {
+                let start = channel.index() * field.mesh().len();
+                charge_channels[start..start + field.mesh().len()].copy_from_slice(samples);
+            }
+            PreparedScalarMuffinTinSite {
+                mesh: field.mesh().clone(),
+                radii: field
+                    .mesh()
+                    .radii()
+                    .iter()
+                    .map(|radius| radius.get())
+                    .collect(),
+                convention: field.field().convention(),
+                input_l_max,
+                charge_channels,
+            }
+        })
+        .collect();
+
+    Ok(PreparedScalarRegionalXc {
+        functional,
+        spec,
+        geometry: density.geometry().clone(),
+        layout,
+        fft_grid,
+        fft,
+        fft_plan_seconds,
+        fft_transform_seconds,
+        step,
+        interstitial_density_derivatives,
+        muffin_tin_sites,
+    })
+}
+
+fn regional_scalar_field_is_zero(field: &RegionalScalarField) -> bool {
+    field
+        .interstitial()
+        .field()
+        .coefficients()
+        .iter()
+        .all(|&value| value == Complex64::default())
+        && field.muffin_tins().iter().all(|muffin_tin| {
+            muffin_tin
+                .field()
+                .channels()
+                .all(|(_, values)| values.iter().all(|&value| value == Complex64::default()))
+        })
+}
+
+/// Evaluate a contiguous block of scalar muffin-tin radial shells.
+///
+/// `charge_channels` is channel-major with shape `(input_lm, radial_count)`.
+/// `potential_out` has C-order shape `(block_count, 4, output_lm)` and
+/// `integrand_out` has shape `(block_count, 2)`. The latter columns are the
+/// radial integrands for XC energy and `n Vxc`, including the `r^2` Jacobian.
+pub fn evaluate_scalar_muffin_tin_xc_shell_block(
+    functional: XcFunctional,
+    convention: HarmonicConvention,
+    radii: &[f64],
+    charge_channels: &[Complex64],
+    input_l_max: u32,
+    output_l_max: u32,
+    angular_point_count: usize,
+    radial_start: usize,
+    potential_out: &mut [Complex64],
+    integrand_out: &mut [f64],
+) -> Result<(), RegionalXcError> {
+    let input_channel_count = lm_count(input_l_max);
+    let output_channel_count = lm_count(output_l_max);
+    if radii.len() < 5
+        || output_l_max < input_l_max
+        || charge_channels.len() != input_channel_count * radii.len()
+        || potential_out.len() % (4 * output_channel_count) != 0
+    {
+        return Err(RegionalXcError::InvalidScalarMuffinTinBlock);
+    }
+    let block_count = potential_out.len() / (4 * output_channel_count);
+    if integrand_out.len() != 2 * block_count
+        || radial_start
+            .checked_add(block_count)
+            .is_none_or(|end| end > radii.len())
+    {
+        return Err(RegionalXcError::InvalidScalarMuffinTinBlock);
+    }
+    if angular_point_count < output_channel_count {
+        return Err(RegionalXcError::UndersampledAngularGrid {
+            points: angular_point_count,
+            channels: output_channel_count,
+        });
+    }
+
+    potential_out.fill(Complex64::default());
+    let angular = AngularGrid::fibonacci(angular_point_count)?;
+    let angular_harmonics = angular
+        .points()
+        .iter()
+        .map(|point| match convention {
+            HarmonicConvention::Complex => {
+                complex_spherical_harmonics(output_l_max, point.direction)
+            }
+            HarmonicConvention::Real => real_spherical_harmonics(output_l_max, point.direction)
+                .into_iter()
+                .map(|value| Complex64::new(value, 0.0))
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+
+    for local_radial in 0..block_count {
+        let radial_index = radial_start + local_radial;
+        let radius = radii[radial_index];
+        let derivative_step = derivative_step_raw(radii, radial_index);
+        let mut radial_energy = 0.0;
+        let mut radial_density_potential = 0.0;
+        for (point, harmonics) in angular.points().iter().zip(&angular_harmonics) {
+            let position = point.direction.map(|component| component * radius);
+            let charge = if functional == XcFunctional::LdaPw92 {
+                FieldJet::value(evaluate_scalar_muffin_tin_shell(
+                    convention,
+                    charge_channels,
+                    radii.len(),
+                    radial_index,
+                    harmonics,
+                    input_channel_count,
+                )?)
+            } else {
+                scalar_muffin_tin_field_jet(
+                    convention,
+                    radii,
+                    charge_channels,
+                    input_l_max,
+                    radial_index,
+                    position,
+                    derivative_step,
+                )?
+            };
+            let xc = evaluate_noncollinear_xc_point(
+                functional,
+                NoncollinearXcRoute::LocalSpinFrame,
+                charge,
+                [FieldJet::value(0.0); 3],
+            )?;
+            radial_energy += point.weight * xc.energy_density;
+            radial_density_potential += point.weight * xc.density_potential;
+            let scalar_offset = local_radial * 4 * output_channel_count;
+            project_angular_value_flat(
+                convention,
+                harmonics,
+                point.weight,
+                xc.potential[0],
+                &mut potential_out[scalar_offset..scalar_offset + output_channel_count],
+            );
+        }
+        integrand_out[2 * local_radial] = radius * radius * radial_energy;
+        integrand_out[2 * local_radial + 1] = radius * radius * radial_density_potential;
+    }
+    Ok(())
+}
+
+/// Evaluate a contiguous block of scalar interstitial grid points.
+///
+/// `density_derivatives` is field-major over `total_points`, with one field
+/// for LDA and ten fields for PBE in the order documented on
+/// [`PreparedScalarRegionalXc`]. Outputs have C-order shapes
+/// `(block_count, 4)` and `(block_count, 2)`.
+pub fn evaluate_scalar_interstitial_xc_point_block(
+    functional: XcFunctional,
+    density_derivatives: &[f64],
+    total_points: usize,
+    theta: &[f64],
+    point_weight: f64,
+    point_start: usize,
+    potential_out: &mut [f64],
+    integrand_out: &mut [f64],
+) -> Result<(), RegionalXcError> {
+    let field_count = if functional == XcFunctional::Pbe {
+        10
+    } else {
+        1
+    };
+    if theta.len() != total_points
+        || density_derivatives.len() != field_count * total_points
+        || potential_out.len() % 4 != 0
+    {
+        return Err(RegionalXcError::InvalidScalarInterstitialBlock);
+    }
+    let block_count = potential_out.len() / 4;
+    if integrand_out.len() != 2 * block_count
+        || point_start
+            .checked_add(block_count)
+            .is_none_or(|end| end > total_points)
+    {
+        return Err(RegionalXcError::InvalidScalarInterstitialBlock);
+    }
+
+    potential_out.fill(0.0);
+    for local_point in 0..block_count {
+        let point = point_start + local_point;
+        let component = |field: usize| density_derivatives[field * total_points + point];
+        let charge = if functional == XcFunctional::Pbe {
+            FieldJet {
+                value: component(0),
+                gradient: [component(1), component(2), component(3)],
+                hessian: [
+                    component(4),
+                    component(5),
+                    component(6),
+                    component(7),
+                    component(8),
+                    component(9),
+                ],
+            }
+        } else {
+            FieldJet::value(component(0))
+        };
+        let xc = evaluate_noncollinear_xc_point(
+            functional,
+            NoncollinearXcRoute::LocalSpinFrame,
+            charge,
+            [FieldJet::value(0.0); 3],
+        )?;
+        let step = theta[point];
+        potential_out[4 * local_point] = step * xc.potential[0];
+        integrand_out[2 * local_point] = point_weight * step * xc.energy_density;
+        integrand_out[2 * local_point + 1] = point_weight * step * xc.density_potential;
+    }
+    Ok(())
+}
+
+/// Assemble root-owned scalar block outputs into the ordinary regional XC result.
+///
+/// Muffin-tin arrays concatenate sites in geometry order and have shapes
+/// `(sum_nr, 4, output_lm)` and `(sum_nr, 2)`. Interstitial arrays have shapes
+/// `(point_count, 4)` and `(point_count, 2)`. Energy contractions are reduced
+/// in those fixed global orders, independent of worker count.
+pub fn assemble_scalar_regional_xc(
+    prepared: &mut PreparedScalarRegionalXc,
+    muffin_tin_potential: &[Complex64],
+    muffin_tin_integrands: &[f64],
+    interstitial_potential: &[f64],
+    interstitial_integrands: &[f64],
+) -> Result<RegionalXcResult, RegionalXcError> {
+    let output_channel_count = lm_count(prepared.spec.output_l_max);
+    let total_radial_count = prepared
+        .muffin_tin_sites
+        .iter()
+        .map(|site| site.mesh.len())
+        .sum::<usize>();
+    let point_count = prepared.fft_grid.len();
+    if muffin_tin_potential.len() != total_radial_count * 4 * output_channel_count
+        || muffin_tin_integrands.len() != total_radial_count * 2
+        || interstitial_potential.len() != point_count * 4
+        || interstitial_integrands.len() != point_count * 2
+    {
+        return Err(RegionalXcError::InvalidScalarRegionalAssembly);
+    }
+
+    let mut muffin_tin_fields: [Vec<MuffinTinField>; 4] =
+        std::array::from_fn(|_| Vec::with_capacity(prepared.muffin_tin_sites.len()));
+    let mut muffin_tin_exchange_correlation_energy = 0.0;
+    let mut muffin_tin_density_potential_integral = 0.0;
+    let mut radial_offset = 0;
+    for site in &prepared.muffin_tin_sites {
+        let radial_count = site.mesh.len();
+        let mut projected: [Vec<Vec<Complex64>>; 4] = std::array::from_fn(|_| {
+            vec![vec![Complex64::default(); radial_count]; output_channel_count]
+        });
+        for radial in 0..radial_count {
+            for (component, component_channels) in projected.iter_mut().enumerate() {
+                for (channel, samples) in component_channels.iter_mut().enumerate() {
+                    let source =
+                        ((radial_offset + radial) * 4 + component) * output_channel_count + channel;
+                    samples[radial] = muffin_tin_potential[source];
+                }
+            }
+        }
+        for (target, component) in muffin_tin_fields.iter_mut().zip(projected) {
+            target.push(MuffinTinField::new(
+                site.mesh.clone(),
+                finish_sphere_projection(site.convention, prepared.spec.output_l_max, component)?,
+            )?);
+        }
+        let radial_energy = (0..radial_count)
+            .map(|radial| muffin_tin_integrands[(radial_offset + radial) * 2])
+            .collect::<Vec<_>>();
+        let radial_density_potential = (0..radial_count)
+            .map(|radial| muffin_tin_integrands[(radial_offset + radial) * 2 + 1])
+            .collect::<Vec<_>>();
+        muffin_tin_exchange_correlation_energy += site.mesh.integrate(&radial_energy)?;
+        muffin_tin_density_potential_integral += site.mesh.integrate(&radial_density_potential)?;
+        radial_offset += radial_count;
+    }
+
+    let normalization = 1.0 / point_count as f64;
+    let coefficients: [Vec<Complex64>; 4] = (0..4)
+        .map(|component| {
+            let samples = (0..point_count)
+                .map(|point| Complex64::new(interstitial_potential[point * 4 + component], 0.0))
+                .collect::<Vec<_>>();
+            let transform_start = Instant::now();
+            let transformed = prepared.fft.forward(&samples)?;
+            prepared.fft_transform_seconds += transform_start.elapsed().as_secs_f64();
+            let mut coefficients = prepared
+                .layout
+                .vectors()
+                .iter()
+                .map(|vector| {
+                    transformed[prepared.fft_grid.index(vector.index)]
+                        * midpoint_phase(vector.index, prepared.spec.interstitial_divisions, -1.0)
+                        * normalization
+                })
+                .collect::<Vec<_>>();
+            enforce_fourier_reality(&prepared.layout, &mut coefficients)?;
+            Ok(coefficients)
+        })
+        .collect::<Result<Vec<_>, RegionalXcError>>()?
+        .try_into()
+        .expect("four scalar-route components remain four components");
+    let [
+        scalar_interstitial,
+        bx_interstitial,
+        by_interstitial,
+        bz_interstitial,
+    ] = coefficients
+        .map(|values| interstitial_from_ordered(prepared.layout.clone(), values))
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?
+        .try_into()
+        .expect("four coefficient sets produce four interstitial fields");
+
+    let [
+        scalar_muffin_tins,
+        bx_muffin_tins,
+        by_muffin_tins,
+        bz_muffin_tins,
+    ] = muffin_tin_fields;
+    let scalar = RegionalScalarField::new(
+        prepared.geometry.clone(),
+        scalar_muffin_tins,
+        scalar_interstitial,
+    )?;
+    let magnetic = [
+        RegionalScalarField::new(prepared.geometry.clone(), bx_muffin_tins, bx_interstitial)?,
+        RegionalScalarField::new(prepared.geometry.clone(), by_muffin_tins, by_interstitial)?,
+        RegionalScalarField::new(prepared.geometry.clone(), bz_muffin_tins, bz_interstitial)?,
+    ];
+    let potential = RegionalPotential::new(scalar, magnetic)?;
+
+    let mut interstitial_exchange_correlation_energy = 0.0;
+    let mut interstitial_density_potential_integral = 0.0;
+    for point in 0..point_count {
+        interstitial_exchange_correlation_energy += interstitial_integrands[point * 2];
+        interstitial_density_potential_integral += interstitial_integrands[point * 2 + 1];
+    }
+    Ok(RegionalXcResult {
+        potential,
+        exchange_correlation_energy: Hartree(
+            muffin_tin_exchange_correlation_energy + interstitial_exchange_correlation_energy,
+        ),
+        density_potential_integral: Hartree(
+            muffin_tin_density_potential_integral + interstitial_density_potential_integral,
+        ),
+    })
 }
 
 /// Evaluate LDA/PW92 or PBE with the selected noncollinear derivative route.
@@ -316,6 +835,18 @@ fn truncated_step_samples(
     divisions: [usize; 3],
     fft: &mut FftPlan,
 ) -> Result<Vec<f64>, RegionalXcError> {
+    let mut ignored_seconds = 0.0;
+    truncated_step_samples_timed(geometry, layout, grid, divisions, fft, &mut ignored_seconds)
+}
+
+fn truncated_step_samples_timed(
+    geometry: &InterstitialGeometry,
+    layout: &FourierLayout,
+    grid: FftGrid,
+    divisions: [usize; 3],
+    fft: &mut FftPlan,
+    fft_transform_seconds: &mut f64,
+) -> Result<Vec<f64>, RegionalXcError> {
     let transform_scale = grid.len() as f64;
     let mut spectrum = vec![Complex64::default(); grid.len()];
     let mut scale = 0.0;
@@ -325,7 +856,10 @@ fn truncated_step_samples(
         spectrum[grid.index(vector.index)] +=
             coefficient * midpoint_phase(vector.index, divisions, 1.0) * transform_scale;
     }
-    fft.inverse(&spectrum)?
+    let transform_start = Instant::now();
+    let transformed = fft.inverse(&spectrum)?;
+    *fft_transform_seconds += transform_start.elapsed().as_secs_f64();
+    transformed
         .into_iter()
         .map(|value| checked_real(value, scale, "interstitial step function"))
         .collect()
@@ -359,6 +893,27 @@ fn interstitial_field_fft_samples(
     divisions: [usize; 3],
     fft: &mut FftPlan,
     point_indices: &[usize],
+) -> Result<InterstitialFftSamples, RegionalXcError> {
+    let mut ignored_seconds = 0.0;
+    interstitial_field_fft_samples_timed(
+        field,
+        derivatives,
+        grid,
+        divisions,
+        fft,
+        point_indices,
+        &mut ignored_seconds,
+    )
+}
+
+fn interstitial_field_fft_samples_timed(
+    field: &InterstitialField,
+    derivatives: bool,
+    grid: FftGrid,
+    divisions: [usize; 3],
+    fft: &mut FftPlan,
+    point_indices: &[usize],
+    fft_transform_seconds: &mut f64,
 ) -> Result<InterstitialFftSamples, RegionalXcError> {
     let transform_scale = grid.len() as f64;
     let mut modes = Vec::with_capacity(field.field().coefficients().len());
@@ -400,7 +955,9 @@ fn interstitial_field_fft_samples(
                 _ => -products[component - 4] * term,
             };
         }
+        let transform_start = Instant::now();
         let transformed = fft.inverse(&spectrum)?;
+        *fft_transform_seconds += transform_start.elapsed().as_secs_f64();
         let quantity = match component {
             0 => "interstitial field",
             1..=3 => "interstitial gradient",
@@ -919,6 +1476,190 @@ fn derivative_step(radii: &[Bohr], index: usize) -> f64 {
         .min(DERIVATIVE_RADIUS_FRACTION * radii[index].get())
 }
 
+fn derivative_step_raw(radii: &[f64], index: usize) -> f64 {
+    let radial_spacing = if index == 0 {
+        radii[1] - radii[0]
+    } else if index + 1 == radii.len() {
+        radii[index] - radii[index - 1]
+    } else {
+        (radii[index + 1] - radii[index - 1]) / 2.0
+    };
+    (DERIVATIVE_SPACING_FRACTION * radial_spacing.abs())
+        .min(DERIVATIVE_RADIUS_FRACTION * radii[index])
+}
+
+fn evaluate_scalar_muffin_tin_shell(
+    convention: HarmonicConvention,
+    charge_channels: &[Complex64],
+    radial_count: usize,
+    radial_index: usize,
+    harmonics: &[Complex64],
+    channel_count: usize,
+) -> Result<f64, RegionalXcError> {
+    let mut value = Complex64::default();
+    for channel in 0..channel_count {
+        let sample = charge_channels[channel * radial_count + radial_index];
+        value += match convention {
+            HarmonicConvention::Complex => sample * harmonics[channel],
+            HarmonicConvention::Real => sample * harmonics[channel].re,
+        };
+    }
+    checked_real(value, value.norm(), "muffin-tin density")
+}
+
+fn scalar_muffin_tin_field_jet(
+    convention: HarmonicConvention,
+    radii: &[f64],
+    charge_channels: &[Complex64],
+    input_l_max: u32,
+    radial_index: usize,
+    position: [f64; 3],
+    step: f64,
+) -> Result<FieldJet, RegionalXcError> {
+    const OFFSETS: [i32; 4] = [-2, -1, 1, 2];
+    const FIRST_WEIGHTS: [f64; 4] = [1.0, -8.0, 8.0, -1.0];
+    let center = evaluate_scalar_muffin_tin_field(
+        convention,
+        radii,
+        charge_channels,
+        input_l_max,
+        radial_index,
+        position,
+    )?;
+    let mut axial = [[0.0; 4]; 3];
+    for axis in 0..3 {
+        for (slot, offset) in OFFSETS.into_iter().enumerate() {
+            let mut displaced = position;
+            displaced[axis] += f64::from(offset) * step;
+            axial[axis][slot] = evaluate_scalar_muffin_tin_field(
+                convention,
+                radii,
+                charge_channels,
+                input_l_max,
+                radial_index,
+                displaced,
+            )?;
+        }
+    }
+    let mut gradient = [0.0; 3];
+    let mut hessian = [0.0; 6];
+    for axis in 0..3 {
+        gradient[axis] = axial[axis]
+            .iter()
+            .zip(FIRST_WEIGHTS)
+            .map(|(&value, weight)| value * weight)
+            .sum::<f64>()
+            / (12.0 * step);
+        hessian[axis] = (-axial[axis][3] + 16.0 * axial[axis][2] - 30.0 * center
+            + 16.0 * axial[axis][1]
+            - axial[axis][0])
+            / (12.0 * step * step);
+    }
+    for (entry, (first_axis, second_axis)) in [(3, (0, 1)), (4, (0, 2)), (5, (1, 2))] {
+        let mut derivative = 0.0;
+        for (first_slot, first_offset) in OFFSETS.into_iter().enumerate() {
+            for (second_slot, second_offset) in OFFSETS.into_iter().enumerate() {
+                let mut displaced = position;
+                displaced[first_axis] += f64::from(first_offset) * step;
+                displaced[second_axis] += f64::from(second_offset) * step;
+                derivative += FIRST_WEIGHTS[first_slot]
+                    * FIRST_WEIGHTS[second_slot]
+                    * evaluate_scalar_muffin_tin_field(
+                        convention,
+                        radii,
+                        charge_channels,
+                        input_l_max,
+                        radial_index,
+                        displaced,
+                    )?;
+            }
+        }
+        hessian[entry] = derivative / (144.0 * step * step);
+    }
+    Ok(FieldJet {
+        value: center,
+        gradient,
+        hessian,
+    })
+}
+
+fn evaluate_scalar_muffin_tin_field(
+    convention: HarmonicConvention,
+    radii: &[f64],
+    charge_channels: &[Complex64],
+    input_l_max: u32,
+    radial_index: usize,
+    position: [f64; 3],
+) -> Result<f64, RegionalXcError> {
+    let radius = dot_raw(position, position).sqrt();
+    let harmonics = match convention {
+        HarmonicConvention::Complex => complex_spherical_harmonics(input_l_max, position),
+        HarmonicConvention::Real => real_spherical_harmonics(input_l_max, position)
+            .into_iter()
+            .map(|value| Complex64::new(value, 0.0))
+            .collect(),
+    };
+    let radial_count = radii.len();
+    let mut value = Complex64::default();
+    for (channel, harmonic) in harmonics.into_iter().enumerate() {
+        let start = channel * radial_count;
+        let sample = interpolate_radial_raw(
+            radii,
+            &charge_channels[start..start + radial_count],
+            radial_index,
+            radius,
+        );
+        value += match convention {
+            HarmonicConvention::Complex => sample * harmonic,
+            HarmonicConvention::Real => sample * harmonic.re,
+        };
+    }
+    checked_real(value, value.norm(), "muffin-tin density")
+}
+
+fn interpolate_radial_raw(
+    radii: &[f64],
+    samples: &[Complex64],
+    center: usize,
+    radius: f64,
+) -> Complex64 {
+    let start = center.saturating_sub(2).min(radii.len() - 5);
+    let mut value = Complex64::default();
+    for local in 0..5 {
+        let point = start + local;
+        let mut basis = 1.0;
+        for other_local in 0..5 {
+            if local != other_local {
+                let other = start + other_local;
+                basis *= (radius - radii[other]) / (radii[point] - radii[other]);
+            }
+        }
+        value += basis * samples[point];
+    }
+    value
+}
+
+fn project_angular_value_flat(
+    convention: HarmonicConvention,
+    harmonics: &[Complex64],
+    weight: f64,
+    value: f64,
+    projected: &mut [Complex64],
+) {
+    match convention {
+        HarmonicConvention::Complex => {
+            for (target, &harmonic) in projected.iter_mut().zip(harmonics) {
+                *target += weight * value * harmonic.conj();
+            }
+        }
+        HarmonicConvention::Real => {
+            for (target, harmonic) in projected.iter_mut().zip(harmonics) {
+                *target += weight * value * harmonic.re;
+            }
+        }
+    }
+}
+
 fn project_angular_value(
     convention: HarmonicConvention,
     harmonics: &[Complex64],
@@ -1114,6 +1855,14 @@ fn scale(vector: [f64; 3], factor: f64) -> [f64; 3] {
 /// Invalid transform controls, representation, or regional XC evaluation.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum RegionalXcError {
+    #[error("scalar XC block preparation requires identically zero magnetization")]
+    ScalarRouteHasMagnetization,
+    #[error("invalid scalar muffin-tin XC block shapes or radial range")]
+    InvalidScalarMuffinTinBlock,
+    #[error("invalid scalar interstitial XC block shapes or point range")]
+    InvalidScalarInterstitialBlock,
+    #[error("invalid scalar regional XC assembly array shapes")]
+    InvalidScalarRegionalAssembly,
     #[error("interstitial grid divisions must be nonzero, got {0:?}")]
     ZeroInterstitialDivision([usize; 3]),
     #[error("angular point count must be nonzero")]

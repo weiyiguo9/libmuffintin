@@ -7,7 +7,9 @@ mod energy;
 mod export;
 mod mixing;
 mod mldump_v2;
+mod potential_blocks;
 mod products;
+mod radial_blocks;
 mod regional;
 mod scf;
 mod spinor;
@@ -53,6 +55,8 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     spinor::register(module)?;
     writers::register(module)?;
     regional::register(module)?;
+    potential_blocks::register(module)?;
+    radial_blocks::register(module)?;
     scf::register(module)?;
     Ok(())
 }

@@ -12,3 +12,4 @@ dependencies = ["numpy"]
 manifest-path = "../crates/mt-python/Cargo.toml"
 python-source = "."
 module-name = "libmuffintin._native"
+features = ["fft-fftw"]
