@@ -536,19 +536,38 @@ bound: 1e-8; Delta: every unchanged assertion passed
 checks: default single process, fft-fftw+mpi single process, and the MPI-enabled test binary under mpirun -n 2; genuine Funneled initialization in the fixture
 runs: 3; closed
 
+DIGIT / PASS
+Q: sorted first-rebuild feedback eigenvalues at rank 2 versus rank 1; class: R; ref: rank 1
+bound: 1e-12 absolute; Delta: maximum 9.85322934354826430e-16
+checks: existing finalized dumps; the entrywise difference is band gauge inside degenerate subspaces, per evt-0046
+runs: no rerun; spectrum contract closed
+
+DIGIT / PASS
+Q: sorted first-rebuild feedback eigenvalues at rank 4 versus rank 1; class: R; ref: rank 1
+bound: 1e-12 absolute; Delta: maximum 5.62050406216485499e-16
+checks: rank 4 finalized normally, exited 0, and all 1,060,900 finite entries contributed to the spectrum check
+runs: 1; spectrum contract closed
+
 DIGIT / HANDOFF
-Q: first-rebuild band-space feedback at rank 2 versus rank 1; class: R; ref: rank 1
-bound: 1e-12 absolute; Delta: maximum 2.91207674214817233e-2 at (k=0,row=0,column=3)
-checks: the corrected scratch hook returned normally on both ranks and mpirun exited 0; all 1,060,900 finite entries were compared
-runs: 1 re-authorized feedback probe; rank 4, A0, and all A1 timings not run; no diagnostics authorized
-unresolved: rank-two feedback is not rank-independent within the fixed bound
+Q: A0 E/HOMO/E_H/E_x and three identities (Ha); class: R; ref: evd-0010
+bound: 1e-10 for energies and 1e-8 for identities; Delta: unavailable
+checks: mpirun -n 2 reached the 1800 s cap and exited 124 before convergence or the final rank-agreement check; 40 exchange rebuilds completed and supervisor wall was 1800.12 s
+runs: 1; no diagnostic or repeat
+unresolved: the MPI A0 acceptance quantities were not produced within the fixed cap
 ```
 
-The scratch hook was corrected to return through the example so each retained
-MPI Universe finalized normally. The rank-two probe then completed with exit
-code 0, but its feedback comparison failed the fixed numerical bound. Per the
-fixed stop rule, the rank-four dump, rank-two A0 run, and all three report-only
-A1 timings were not run. The A1 ladder was not restarted. Evidence is under
+The spectrum contract replaces the ill-posed entrywise comparison because
+degenerate band subspaces permit unitary gauge rotations. The MPI A0 log is
+[`results/hf-a0-mpi-n2.log`](results/hf-a0-mpi-n2.log). Its execution failure
+triggered the fixed stop rule before `compare_a0.py` or any A1 timing run.
+
+| A1 first-iteration timing | Ranks | Rayon threads/rank | Result |
+|---|---:|---:|---:|
+| `gamma.rebuild.mpb`, `gamma.rebuild.contraction`, `gamma.fock.iteration` | 1 | 10 | not run |
+| same phases | 2 | 5 | not run |
+| same phases | 4 | 2 | not run |
+
+The A1 ladder was not restarted. Evidence is under
 `evidence/2026-09-08-h2-hf-mpi/` on `harness`.
 
 ### B kernel study
