@@ -1142,3 +1142,33 @@ not a plan v2 on tolerances.
 
 - state: h2-hf = active: MPI rank-independence, A0 n=2, and A1 timings re-authorized (codex pane); A1 ladder held
 - note: h2-hf = evd-0018 answered: scratch-hook exit only; six runs re-authorized; warm-start reading supersedes evt-0034 feasibility
+
+## 2026-09-08 · evd-0019 · h2-hf rank-two first-feedback mismatch · main a0218d3577798187dc34c174162df77d57226db8, recorded through c46223c
+
+```text
+DIGIT / HANDOFF
+Q: every first-rebuild band-space feedback entry at n=2 versus n=1; class: R; ref: evidence/2026-09-08-h2-hf-mpi/feedback-n1.bin accepted by evt-0044
+bound: 1e-12 absolute; Delta: maximum 2.91207674214817233e-2 at (k=0,row=0,column=3)
+command: RAYON_NUM_THREADS=5 H2_MPI_FEEDBACK_DUMP=/Users/zerozaki07/tmp/libmuffintin-harness/evidence/2026-09-08-h2-hf-mpi/feedback-n2.bin /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 900s /opt/homebrew/bin/mpirun -n 2 /tmp/h2-hf-mpi-probe-target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/mpi-feedback-n2 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 2
+command: /opt/homebrew/bin/python3 compare_feedback.py feedback-n1.bin feedback-n2.bin | tee compare-feedback-n2.log
+log: evidence/2026-09-08-h2-hf-mpi/feedback-n2.log, feedback-n2.bin, and compare-feedback-n2.log
+checks: the scratch-only hook returned through main on both ranks, both retained Universes finalized, mpirun exited 0, and all 1,060,900 entries were finite and compared
+runs: one of six re-authorized numerical runs; no diagnostic
+unresolved: rank-two feedback is not rank-independent within the fixed bound. Per the stop rule, n=4 feedback, n=2 A0, and n=1/n=2/n=4 A1 timings are unrun; the A1 ladder remains held.
+```
+
+## 2026-09-08 · evt-0045 · h2-hf MPI continuation handed off on rank-two feedback · actor: codex
+
+Evt-0044 authorized the scratch-only finalization fix and six remaining runs.
+The hook now returns an error after dumping on every rank, and the scratch
+example maps that probe error to a normal return so its retained Universe is
+dropped. The first authorized run, n=2 with five Rayon threads per rank,
+finalized normally and exited 0. Its first-rebuild feedback differs from the
+accepted rank-one reference by `2.91207674214817233e-02` at
+`(k=0,row=0,column=3)`, exceeding the fixed absolute `1e-12` bound. The
+contract authorizes no diagnostics, so n=4 feedback, n=2 A0, and all three A1
+timings were not run. The A1 ladder remains held. Main documentation is
+`c46223c`; no push.
+
+- state: h2-hf = handoff: rank-two first-rebuild feedback fails the fixed rank-independence bound; A1 ladder held
+- note: h2-hf = evd-0019; one of six re-authorized runs used; n=4/A0/A1 unrun; no diagnostics; main c46223c

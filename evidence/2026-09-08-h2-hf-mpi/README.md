@@ -65,47 +65,66 @@ checks: default n=1; fft-fftw,mpi n=1; initialized MPI test binary under mpirun 
 runs: 3; numerical verification closed
 ```
 
-## First-feedback probe handoff
+## First-feedback probe continuation
 
-`/tmp/h2-hf-mpi-probe` is an untracked `git archive 88b212d` scratch copy,
-with `.local-deps` symlinked from main. Its only instrumentation writes the
-first post-Allreduce `exchange_feedback` block on rank zero, calls a barrier,
-and invokes `process::exit(0)` on every rank. The scratch build command was:
+Evt-0044 accepted the flushed `feedback-n1.bin` as the rank-one reference and
+authorized six remaining runs. The scratch-only hook was changed from a
+barrier followed by `process::exit(0)` to returning
+`GammaValenceHfError::QTopology` on every rank after the dump. The scratch
+example maps that error to `Ok(())` only when `H2_MPI_FEEDBACK_DUMP` is set:
+
+```diff
+-crate::hf_communicator::barrier();
+-std::process::exit(0);
++return Err(GammaValenceHfError::QTopology);
+```
+
+```diff
+-let result = run_gamma_valence_hf(&mut physics, &spec)?;
++let result = match run_gamma_valence_hf(&mut physics, &spec) {
++    Ok(result) => result,
++    Err(_) if std::env::var_os("H2_MPI_FEEDBACK_DUMP").is_some() => {
++        eprintln!("probe_done rank={mpi_rank}");
++        return Ok(());
++    }
++    Err(error) => return Err(error.into()),
++};
+```
+
+The scratch target was rebuilt with the common environment and:
 
 ```sh
 export CARGO_TARGET_DIR=/tmp/h2-hf-mpi-probe-target
 cargo build --release -p libmuffintin-runtime --features fft-fftw,mpi --example h2_hf
 ```
 
-The initial launch command was issued before that background build completed,
-so Open MPI could not access the not-yet-created executable and no application
-or numerical code ran. After the successful build, the fixed rank-one command
-was executed once:
+Build log: `build-probe-2.log`. The first re-authorized command was:
 
 ```sh
-RAYON_NUM_THREADS=10 H2_MPI_FEEDBACK_DUMP=/Users/zerozaki07/tmp/libmuffintin-harness/evidence/2026-09-08-h2-hf-mpi/feedback-n1.bin /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 900s /opt/homebrew/bin/mpirun -n 1 /tmp/h2-hf-mpi-probe-target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/mpi-feedback-n1 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 2
+RAYON_NUM_THREADS=5 H2_MPI_FEEDBACK_DUMP=/Users/zerozaki07/tmp/libmuffintin-harness/evidence/2026-09-08-h2-hf-mpi/feedback-n2.bin /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 900s /opt/homebrew/bin/mpirun -n 2 /tmp/h2-hf-mpi-probe-target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/mpi-feedback-n2 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 2
 ```
 
-The hook flushed `feedback-n1.bin`: one 1030-by-1030 block, 1,060,900
-complex entries. It then bypassed the example's retained `Universe` destructor,
-so `MPI_Finalize` was not called. Open MPI diagnosed improper rank-zero exit
-and returned exit 1 (real 53.51 s). This is an execution failure even though
-the requested rank-one bytes were written after the completed Allreduce.
-The fixed contract authorizes no failure diagnostics or replacement run.
+Both ranks printed `probe_done`, MPI finalized normally, and `mpirun` exited
+0. The run produced one 1030-by-1030 block with 1,060,900 finite complex
+entries in `feedback-n2.bin`. The fixed comparison was:
+
+```sh
+/opt/homebrew/bin/python3 compare_feedback.py feedback-n1.bin feedback-n2.bin
+```
+
+It found a maximum absolute difference of
+`2.91207674214817233e-02` at `(k=0,row=0,column=3)`.
 
 ```text
 DIGIT / HANDOFF
-Q: first-rebuild band-space exchange feedback at n=2 and n=4 versus n=1; class: R; ref: n=1
-bound: 1e-12 absolute; Delta: unavailable
-checks: n=1 dump produced, but its scratch process exited 1 without MPI_Finalize; n=2 and n=4 not run
-runs: 1 feedback probe; no diagnostic
-unresolved: obtain a cleanly finalized first-rebuild probe without spending an unapproved replacement run
+Q: first-rebuild band-space exchange feedback at n=2 versus n=1; class: R; ref: n=1
+bound: 1e-12 absolute; Delta: maximum 2.91207674214817233e-2 at (k=0,row=0,column=3)
+checks: n=2 exited 0 after normal finalization; all 1,060,900 finite entries compared
+runs: 1 of 6 re-authorized numerical runs; no diagnostic
+unresolved: rank-two feedback is not rank-independent within the fixed bound
 ```
 
-Per the explicit stop rule, the rank-two and rank-four feedback dumps, rank-two
-A0, and all three A1 timing runs were not started. `compare_feedback.py`,
-`compare_a0.py`, and `phase_summary.py` therefore have no result logs. The
-A1 ladder was not run. Total numerical executions: four (three fixtures and
-one feedback probe); an earlier no-executable launcher error ran no numerical
-code. Main implementation remains committed, but numerical MPI acceptance is
-handed off. No push.
+Logs: `feedback-n2.log` and `compare-feedback-n2.log`. Per the explicit stop
+rule, the rank-four feedback run, rank-two A0 run, and all three A1 timing runs
+were not started. The A1 ladder was not run. The continuation used one
+numerical execution, and the study remains handed off. No push.
