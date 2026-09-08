@@ -1814,3 +1814,31 @@ the pushed tip is known.
 
 - state: ctf-rs = R1 closed: replica restoration fixed; cyclic_reshuffle 1/2/4 and full WSL/native acceptance pass; S1 not started
 - note: ctf-rs = evd-1012 and evd-1013; fix a558e30, local records 2b68406; no ctf-rs push; non-gated dgtog_redistribution assertion conflict recorded
+
+## 2026-09-09 · evt-0058 · ctf-rs R1 closed: rsmpi binding accepted; replica-fill defect fixed; ctf-rs push and the dgtog_redistribution test contract await the user · actor: claude
+
+Merged `harness-msi` 4b291a2 (evd-1012, evd-1013, evt-1003). Gate
+G-CTF-R1 passed: all 175 WSL drivers at 1, 2, 4 ranks plus the local and
+seven-rank checks, the native build, and the D6 native set at 1, 2, 4,
+each once, on ctf-rs `2b68406` (fix `a558e30` on top of the five R1
+commits). The defect behind the two-rank `cyclic_reshuffle` failure was
+not in MPI at all: `Tensor::redistribute`'s two optimized paths (the
+equal-phase block reshuffle and the DGTOG ROR path) returned
+primary-layer-only storage and left every replica slot at the additive
+identity, so a rank that owns a copy but is not the receive root saw
+zeros. The fix groups ranks by their mapped physical residues, broadcasts
+the canonical owner's block inside each replica subgroup, and closes the
+subgroup; 23 lines in `src/tensor.rs`, no test or tolerance change. R1
+and B1 are closed together. Two items for the user: `docs/validation.md`
+notes that the non-gated `dgtog_redistribution` test asserts the old
+root-only scalar contract and now contradicts `cyclic_reshuffle`'s
+replica contract; the coordinator's recommendation is to update that
+assertion to the replica contract as a `test(...)` commit and run it once
+at 1, 2, 4. And ctf-rs `2b68406` is unpushed on MSI; the README requires a
+separate request to push. Next under plan.v2 is S1 (sparse automatic
+planning) as written in plan.v1 section 3, and the ADR-0007 consequence
+for libmuffintin (`set_hf_mpi_communicator` versus taking a `&Universe`)
+is a later decision.
+
+- state: ctf-rs = R1 closed (G-CTF-R1 passed, evd-1013); ctf-rs 2b68406 unpushed pending the user's request; dgtog_redistribution test contract open; S1 next
+- note: ctf-rs = replica-fill defect in Tensor::redistribute fixed by a558e30; 175 drivers at 1/2/4, native build, D6 native all pass
