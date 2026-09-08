@@ -687,3 +687,25 @@ The existing cap-1800 log is retained as `hf-a0-fock1e-10-cap1800.log`.
 
 - state: h2-hf = active: pair-FFT passed; A0 rerun to the existing 128-iteration limit
 - note: h2-hf = evd-0009 closed; A0 one run under 4500 s, no diagnostics; MPI conditional on outcome
+
+## 2026-09-08 · evt-0028 · h2-hf A0 passed, A1 base row started · actor: codex
+
+A0 outcome (a): converged in 8 outer iterations, 7 Fock iterations each,
+56 rebuilds, driver wall 1934.680438 s (supervisor wall 1935.39 s), exit 0.
+Maximum three-identity residual across all outer iterations is
+1.7276811092870048e-9 Ha; final exchange/eigenvalue/total residuals are
+0 / 7.2523410887814777e-10 / 7.2523409500035996e-10 Ha. All are below
+1e-8 Ha, all reported energies are finite, and final electron count is
+2.0000000000000058. A0 is closed; no A0 diagnostic or repeat is authorized.
+The first-outer eigenvalue residual 1.7276809149979755e-9 fits evt-0022's
+prediction; the final residual is below its predicted interval.
+
+Proceed to the immutable A1 base row: orbital 5, field 12, product 6,
+product lmax 4, overlap tolerance 1e-4, common box-8 settings. This is class P,
+report-only hartree_exchange against zero with no study bound; every run
+still requires converged finite output, electron count 2 within 1e-8, and
+the three identities within 1e-8 Ha. One execution per authorized row,
+supervised at 1800 s, no added diagnostics.
+
+- state: h2-hf = active: A0 passed; A1 base row under 1800 s cap
+- note: h2-hf = A0 outcome a; no further A0 checks; downstream study follows plan.v1

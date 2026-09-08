@@ -5,13 +5,13 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `ca2e5ed8e8e048ff74cd3e6ce8058711e3aac07c` (2026-09-08)
-- Last ledger entries: evd-1008 (MSI), evd-0009 (Mac), evt-0027 (Mac)
+- Last ledger entries: evd-1008 (MSI), evd-0009 (Mac), evt-0028 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
 | `ctf-rs` | D6 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | D6 WSL and native 1/2/4 passed; dense-first objective complete; S1 not started |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
-| `h2-hf` | active: pair-FFT passed; A0 rerun to the existing 128-iteration limit | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evd-0009 closed; A0 one run under 4500 s, no diagnostics; MPI conditional on outcome |
+| `h2-hf` | active: A0 passed; A1 base row under 1800 s cap | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | A0 outcome a; no further A0 checks; downstream study follows plan.v1 |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |

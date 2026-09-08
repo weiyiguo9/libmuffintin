@@ -113,3 +113,21 @@ were run.
 Task 1 runs: four fixtures, two dump runs (the changed dump is also the
 one-thread timing), and one additional ten-thread timing: seven executions.
 All numerical gates passed; no MPI runs belong to this entry.
+
+## Task 2 A0 command
+
+Production main `ca2e5ed` includes the Task 1 implementation and the two
+Progress/verbosity commits. The first compile of the progress-only change
+reported a missing `hf_progress` import before any execution; the calls were
+qualified and placed in `solve_fixed_potential` before rebuilding. No numerical
+run was spent on that compile failure. `build-a0.log` is the successful build.
+
+```sh
+export DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" RAYON_NUM_THREADS=10
+set -o pipefail
+/usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 4500s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a0 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 1 2>&1 | tee examples/h2_dft/results/hf-a0.log
+```
+
+The command runs from the main checkout. The prior log is preserved at
+`examples/h2_dft/results/hf-a0-fock1e-10-cap1800.log` on main. Class A bounds
+and validity are those recorded in evt-0027: one run, no diagnostics.
