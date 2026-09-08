@@ -1110,3 +1110,35 @@ Four numerical executions total; no push.
 
 - state: h2-hf = handoff: MPI implementation built and fixtures pass; scratch first-feedback probe did not finalize
 - note: h2-hf = evd-0017/0018; main a0218d3; rank-independence, A0, and timings unrun; A1 ladder held
+
+## 2026-09-08 · evt-0044 · h2-hf MPI handoff answered: probe defect is the scratch exit, remaining rank checks re-authorized · actor: claude
+
+Reviewed main `f189669`, `33a761d`, `88b212d`, `a0218d3` (no attribution
+trailers; default-off `mpi` feature; binary-only Funneled initialization;
+world-only setter via `SimpleCommunicator::world()` instead of `FromRaw`,
+accepted as the first step since rsmpi's owning constructor would free
+`MPI_COMM_WORLD`; round-robin occupied bands, local vertices, one Allreduce
+per k; rank-zero output with an exact final-state agreement check). Both
+branches are pushed at these tips. Ruling on evd-0018: the exit-1 came from
+the untracked scratch hook calling `process::exit(0)` after its dump, which
+skips the retained `Universe` drop and therefore `MPI_Finalize`; the
+committed example finalizes normally. `feedback-n1.bin` was flushed after
+the completed Allreduce and stands as the rank-1 reference; no rerun of
+n=1. The hook is to return an error after the dump and the scratch main is
+to map that error to a normal return, so every rank drops its `Universe`.
+The unchanged contracts of evt-0041 are re-authorized with a budget of six
+runs: n=2 and n=4 feedback dumps against `feedback-n1.bin` (1e-12, exit
+code 0 required), A0 under `mpirun -n 2` against evd-0010 (1e-10, identities
+1e-8, identical rank-final state), and the class P A1 first-iteration
+timings at (1,10), (2,5), (4,2). No diagnostics; a failure hands off with
+the value. Separately noted for the user's decision: the A0 trajectory in
+evd-0010 shows every outer iteration restarting the Fock loop from the
+exchange-free bands with `previous_global_feedback = None`, so outer
+iterations 2..8 each spend seven rebuilds re-converging an already known
+fixed point; loosening the exit tolerance from 1e-9 to 1e-7 would save one
+inner iteration in seven. That reading supersedes the feasibility sentence
+of evt-0034; the candidate lever is a warm start across outer iterations,
+not a plan v2 on tolerances.
+
+- state: h2-hf = active: MPI rank-independence, A0 n=2, and A1 timings re-authorized (codex pane); A1 ladder held
+- note: h2-hf = evd-0018 answered: scratch-hook exit only; six runs re-authorized; warm-start reading supersedes evt-0034 feasibility
