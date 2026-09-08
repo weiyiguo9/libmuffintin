@@ -2937,6 +2937,9 @@ fn solve_fixed_potential(
             current_density = Some(solved_density);
             bands = solved;
             previous_global_feedback = Some(global_feedback);
+            crate::hf_diagnostics::hf_progress(format_args!(
+                "Gamma valence Fock outer={outer_iteration} iteration={fock_iteration} density_residual={last_residual:.16e} feedback_residual={last_feedback_residual:.16e}"
+            ));
             if fock_iteration == spec.max_fock_iterations {
                 return Err(GammaValenceHfError::FockNotConverged {
                     outer_iteration,
@@ -2994,6 +2997,9 @@ fn solve_fixed_potential(
         )?;
         last_residual = residual;
         current_density = Some(solved_density);
+        crate::hf_diagnostics::hf_progress(format_args!(
+            "Gamma valence Fock outer={outer_iteration} iteration={fock_iteration} density_residual={last_residual:.16e} feedback_residual={last_feedback_residual:.16e}"
+        ));
         if last_residual <= spec.fock_density_tolerance
             && feedback_fixed_residual <= spec.fock_feedback_tolerance.get()
         {
