@@ -535,9 +535,9 @@ outer iteration rebuilds the Hartree potential and rematerializes the radial
 basis before starting a new inner loop. Vertices and Coulomb records are never
 moved between those frames. The final mixed global feedback, expressed in the
 common physical basis, is carried across and applied once to the fresh H0/S
-bands as the inner-loop warm start; its ordinary first rebuild then initializes
-the new frame's mixer history. The fixed-point residuals and gates are
-unchanged.
+bands as the inner-loop warm start. The warm loop skips configured start-up
+damping, keeps the carried feedback outside the history, and extrapolates from
+its second fresh record. The fixed-point residuals and gates are unchanged.
 
 `GammaValenceHfSpec::fock_mixing` explicitly controls consecutive lifted
 physical-basis exchange operators inside one fixed H0/S frame. The

@@ -2888,11 +2888,38 @@ fn solve_fixed_potential(
     let mut first_global_solve_identity_residual = None;
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
+    let fock_mixing = match (warm_start.is_some(), spec.fock_mixing) {
+        (
+            true,
+            FockMixing::CommutatorDiis {
+                history, damping, ..
+            },
+        ) => FockMixing::CommutatorDiis {
+            history,
+            startup_steps: 0,
+            damping,
+        },
+        (
+            true,
+            FockMixing::QuasiNewtonDiis {
+                history,
+                level_shift,
+                damping,
+                ..
+            },
+        ) => FockMixing::QuasiNewtonDiis {
+            history,
+            level_shift,
+            startup_steps: 0,
+            damping,
+        },
+        (_, mixing) => mixing,
+    };
     let mut previous_global_feedback = warm_start;
     if let Some(carried) = &previous_global_feedback {
         bands = bands.solve_spinor_global_feedback(carried)?;
     }
-    let mut feedback_mixer = FeedbackMixer::new(spec.fock_mixing);
+    let mut feedback_mixer = FeedbackMixer::new(fock_mixing);
     let mut current_density = None;
     for fock_iteration in 1..=spec.max_fock_iterations {
         let _iteration_timer = HfPhaseTimer::new("gamma.fock.iteration");
