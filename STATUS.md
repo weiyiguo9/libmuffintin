@@ -5,13 +5,13 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `9d64c5d978595f839f3c0905873b101c4df154cf` (2026-09-09)
-- Last ledger entries: evd-1008 (MSI), evd-0023 (Mac), evt-0051 (Mac)
+- Last ledger entries: evd-1008 (MSI), evd-0023 (Mac), evt-0053 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
 | `ctf-rs` | plan.v2 proposed: R1 rsmpi binding (one breaking change) before S1; awaiting acceptance | `plans/ctf-rs/plan.v2.md`, proposed 2026-09-09 | D1 to D6 closed under v1; R1 gate G-CTF-R1 proposed; executor MSI at origin/master f2039d3 |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
-| `h2-hf` | active: zero-start-up Gamma warm loop accepted; MPI A1 timings and two-rank A0 stamp remain queued; A1 ladder held | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evd-0023; A0 passes in 32 rebuilds and 8 outers; first warm loop 5 iterations, later loops 3–4; main 9d64c5d |
+| `h2-hf` | held: warm start closed (32 rebuilds); MPI-4 and the A1 ladder wait for the herdr restart and the row-placement decision | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | A0 smoke numbers 0.2 Ha from the box-8 reference, hartree_exchange 0.163 Ha; nothing at A1 settings yet; herdr protocol 22 vs 20 |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |

@@ -1416,3 +1416,45 @@ state would not have appeared in `STATUS.md`.
 
 - state: ctf-rs = plan.v2 proposed: R1 rsmpi binding (one breaking change) before S1; awaiting acceptance
 - note: ctf-rs = D1 to D6 closed under v1; R1 gate G-CTF-R1 proposed; executor MSI at origin/master f2039d3
+
+## 2026-09-09 · evt-0052 · h2-hf warm-loop acceptance ID collision superseded · actor: claude
+
+The codex entry "h2-hf zero-start-up warm-loop follow-up passes" above
+reused `evt-0051` after that ID had been assigned concurrently to the
+ctf-rs plan.v2 proposal by another Mac writer. This append-only correction
+supersedes the h2-hf entry's heading ID as `evt-0052`; its evidence
+(evd-0023), state, and note remain unchanged. Two Claude sessions and one
+codex pane now write this worktree on the Mac; each is to read the ledger
+tail immediately before appending.
+
+- state: h2-hf = active: zero-start-up Gamma warm loop accepted; MPI A1 timings and two-rank A0 stamp remain queued; A1 ladder held
+- note: h2-hf = evd-0023; A0 passes in 32 rebuilds and 8 outers; main 9d64c5d
+
+## 2026-09-09 · evt-0053 · h2-hf warm-start step closed at 32 rebuilds; precision state; herdr callbacks blocked · actor: claude
+
+Reviewed main `762c210` (mixer start-up override for warm loops only,
+doc/23 sentence) and `9d64c5d`; both pushed with harness. Reading of
+evd-0023: the A0 run needs 32 rebuilds (7/5/4/4/3/3/3/3) against 56 in
+evd-0010, a 43 percent cut at the same tolerances and gates, with energies
+inside the outer floor (largest deviation HOMO 3.1e-9 Ha) and identities at
+4.8e-9. Wall 1229 s is not comparable: load average 28 to 37 on ten cores
+throughout; at the idle 20.8 s per rebuild of evd-0010 the run would be
+about 11 minutes, and an A1 row at 313 s per rebuild about 2.8 hours on
+this machine. Precision state for the user: the driver identities hold at
+1e-9 at A0; the physical numbers at A0's smoke settings (orbital 4, product
+4, l 2) are E −0.5929, HOMO −0.1262, E_H 0.3729, E_x −0.0232 against the
+plan's box-8 reference −0.8124, −0.2641, 0.5951, −0.2976, and the
+hartree_exchange identity misses by 0.163 Ha; no row at A1 settings has
+completed, so whether that miss is product-basis convergence or a defect is
+still the open question A1 and A1v were written to answer. Coordination
+constraint: the herdr client on this machine is at protocol 22 and the
+running server at 20 after an upgrade, so `claude-report` callbacks and
+`herdr agent prompt` dispatches fail until the server is restarted, which
+ends every pane; the user will decide when. MPI-4 (A1 first-iteration
+timings at (1,10), (2,5), (4,2) and the two-rank A0 stamp against
+`hf-a0-warm2.log` at 1e-10) and the A1 ladder wait on that and on the
+tolerance-policy decision, which the warm start has narrowed to: run the
+ten A1 rows as written, in parallel where machines allow.
+
+- state: h2-hf = held: warm start closed (32 rebuilds); MPI-4 and the A1 ladder wait for the herdr restart and the row-placement decision
+- note: h2-hf = A0 smoke numbers 0.2 Ha from the box-8 reference, hartree_exchange 0.163 Ha; nothing at A1 settings yet; herdr protocol 22 vs 20
