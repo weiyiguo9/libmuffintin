@@ -538,11 +538,39 @@ pub(crate) fn contract_selected_spinor_mpb_exchange_with_operators(
     occupied_bands: &[usize],
     spec: &IsdfExchangeSpec,
 ) -> Result<IsdfExchangeResult, IsdfExchangeError> {
+    contract_selected_spinor_mpb_exchange(
+        inputs,
+        mpb,
+        operators,
+        occupied_bands,
+        spec,
+        false,
+    )
+}
+
+pub(crate) fn contract_mpi_selected_spinor_mpb_exchange_with_operators(
+    inputs: &[SpinorProductInput],
+    mpb: &[SpinorMpbResult],
+    operators: &[CoulombOperator],
+    occupied_bands: &[usize],
+    spec: &IsdfExchangeSpec,
+) -> Result<IsdfExchangeResult, IsdfExchangeError> {
+    contract_selected_spinor_mpb_exchange(inputs, mpb, operators, occupied_bands, spec, true)
+}
+
+fn contract_selected_spinor_mpb_exchange(
+    inputs: &[SpinorProductInput],
+    mpb: &[SpinorMpbResult],
+    operators: &[CoulombOperator],
+    occupied_bands: &[usize],
+    spec: &IsdfExchangeSpec,
+    reduce_across_hf_world: bool,
+) -> Result<IsdfExchangeResult, IsdfExchangeError> {
     let first = require_spinor_q_slice(inputs).map_err(spinor_q_slice_error)?;
     let n_k = first.pair_columns.n_k;
     let n_target = first.pair_columns.n_orb;
     validate_spec(spec, n_k, n_target)?;
-    if occupied_bands.is_empty()
+    if (!reduce_across_hf_world && occupied_bands.is_empty())
         || occupied_bands
             .iter()
             .enumerate()
@@ -550,7 +578,9 @@ pub(crate) fn contract_selected_spinor_mpb_exchange_with_operators(
     {
         return Err(IsdfExchangeError::MpbContext { index: 0 });
     }
-    if mpb.len() != inputs.len() || operators.len() != inputs.len() {
+    if ((!occupied_bands.is_empty() || !mpb.is_empty()) && mpb.len() != inputs.len())
+        || operators.len() != inputs.len()
+    {
         return Err(IsdfExchangeError::MpbCount {
             actual: if mpb.len() != inputs.len() {
                 mpb.len()
@@ -570,48 +600,53 @@ pub(crate) fn contract_selected_spinor_mpb_exchange_with_operators(
     let expected = layout
         .n_columns()
         .map_err(|_| IsdfExchangeError::MpbContext { index: 0 })?;
-    let mut ordered_vertices = Vec::with_capacity(mpb.len());
-    for (q_index, (input, result)) in inputs.iter().zip(mpb).enumerate() {
-        if !result.frozen_input_identity().matches(input)
-            || result.reciprocal != input.reciprocal
-            || result.pair_columns != input.pair_columns
-            || result.auxiliary.q != input.source.q
-            || result.auxiliary.partition != input.source.partition
-            || *operators[q_index].layout() != result.auxiliary.layout()
-            || result.vertices.len() != expected
-        {
-            return Err(IsdfExchangeError::MpbContext { index: q_index });
-        }
-        let mut columns = vec![None; expected];
-        for selected in &result.vertices {
-            let occupied = occupied_bands
-                .iter()
-                .position(|&band| band == selected.left_band)
-                .ok_or(IsdfExchangeError::MpbContext { index: q_index })?;
-            let column = layout
-                .encode(selected.k, occupied, selected.right_band)
-                .map_err(|_| IsdfExchangeError::MpbContext { index: q_index })?;
-            if selected.vertex.pair()
-                != (OrbitalPair::Bloch {
-                    k_index: selected.k,
-                    left: selected.left_band,
-                    right: selected.right_band,
-                })
-                || columns[column].replace(selected.vertex.clone()).is_some()
+    let ordered_vertices = if occupied_bands.is_empty() {
+        vec![Vec::new(); inputs.len()]
+    } else {
+        let mut ordered_vertices = Vec::with_capacity(mpb.len());
+        for (q_index, (input, result)) in inputs.iter().zip(mpb).enumerate() {
+            if !result.frozen_input_identity().matches(input)
+                || result.reciprocal != input.reciprocal
+                || result.pair_columns != input.pair_columns
+                || result.auxiliary.q != input.source.q
+                || result.auxiliary.partition != input.source.partition
+                || *operators[q_index].layout() != result.auxiliary.layout()
+                || result.vertices.len() != expected
             {
                 return Err(IsdfExchangeError::MpbContext { index: q_index });
             }
+            let mut columns = vec![None; expected];
+            for selected in &result.vertices {
+                let occupied = occupied_bands
+                    .iter()
+                    .position(|&band| band == selected.left_band)
+                    .ok_or(IsdfExchangeError::MpbContext { index: q_index })?;
+                let column = layout
+                    .encode(selected.k, occupied, selected.right_band)
+                    .map_err(|_| IsdfExchangeError::MpbContext { index: q_index })?;
+                if selected.vertex.pair()
+                    != (OrbitalPair::Bloch {
+                        k_index: selected.k,
+                        left: selected.left_band,
+                        right: selected.right_band,
+                    })
+                    || columns[column].replace(selected.vertex.clone()).is_some()
+                {
+                    return Err(IsdfExchangeError::MpbContext { index: q_index });
+                }
+            }
+            ordered_vertices.push(
+                columns
+                    .into_iter()
+                    .enumerate()
+                    .map(|(column, vertex)| {
+                        vertex.ok_or(IsdfExchangeError::MpbMissingColumn { q_index, column })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
         }
-        ordered_vertices.push(
-            columns
-                .into_iter()
-                .enumerate()
-                .map(|(column, vertex)| {
-                    vertex.ok_or(IsdfExchangeError::MpbMissingColumn { q_index, column })
-                })
-                .collect::<Result<Vec<_>, _>>()?,
-        );
-    }
+        ordered_vertices
+    };
     let records = ordered_vertices
         .iter()
         .zip(operators)
@@ -636,7 +671,7 @@ pub(crate) fn contract_selected_spinor_mpb_exchange_with_operators(
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    let contracted = contract_rectangular_exchange(
+    let mut contracted = contract_rectangular_exchange(
         layout,
         &maps,
         &records,
@@ -644,6 +679,17 @@ pub(crate) fn contract_selected_spinor_mpb_exchange_with_operators(
         &active_occupations,
         spec.gamma,
     )?;
+    if reduce_across_hf_world {
+        let mut band_values = contracted
+            .target_matrices
+            .into_iter()
+            .map(|matrix| matrix.values)
+            .collect::<Vec<_>>();
+        for values in &mut band_values {
+            crate::hf_communicator::all_reduce_sum_complex(values);
+        }
+        contracted = finalize_rectangular_values(layout, band_values)?;
+    }
     let exchange_energy = contracted
         .target_matrices
         .iter()

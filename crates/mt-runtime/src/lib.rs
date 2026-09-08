@@ -3,6 +3,8 @@
 #![forbid(unsafe_code)]
 
 pub use hf_diagnostics::{HfVerbosity, set_hf_verbosity};
+#[cfg(feature = "mpi")]
+pub use hf_communicator::set_hf_mpi_communicator;
 
 #[cfg(test)]
 extern crate self as muffintin;
@@ -13,6 +15,7 @@ mod checkpoint_physics;
 mod dft_scf;
 mod error;
 mod hf_diagnostics;
+mod hf_communicator;
 mod hf_scf;
 mod input;
 mod isdf_exchange;

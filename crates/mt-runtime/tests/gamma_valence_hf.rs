@@ -11,6 +11,9 @@ use muffintin_dft::{ScfConvergence, ScfMixing};
 use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
 use muffintin_tensor::DenseEigenvectors;
 
+#[cfg(feature = "mpi")]
+use mpi::traits::AsRaw;
+
 #[path = "spinor_hydrogen.rs"]
 mod spinor_hydrogen;
 
@@ -37,6 +40,14 @@ fn full_mpb_spec(n_k: usize, n_orb: usize) -> SpinorMpbSpec {
 
 #[test]
 fn gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals() {
+    #[cfg(feature = "mpi")]
+    let _mpi_universe = {
+        let (universe, provided) = mpi::initialize_with_threading(mpi::Threading::Funneled)
+            .expect("the fixture must initialize MPI");
+        assert!(provided >= mpi::Threading::Funneled);
+        muffintin::set_hf_mpi_communicator(universe.world().as_raw());
+        universe
+    };
     let checkpoint = hydrogen_spinor_checkpoint();
     let mut config = spinor_config([1, 1, 1], 0.5);
     let physics = CheckpointPhysics::new(&checkpoint).unwrap();

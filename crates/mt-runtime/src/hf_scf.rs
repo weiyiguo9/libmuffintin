@@ -31,8 +31,8 @@ use num_complex::Complex64;
 use thiserror::Error;
 
 use crate::isdf_exchange::{
+    contract_mpi_selected_spinor_mpb_exchange_with_operators,
     contract_scalar_mpb_exchange_with_operators,
-    contract_selected_spinor_mpb_exchange_with_operators,
 };
 use crate::q_mesh::{CanonicalQMapError, canonical_q_points};
 use crate::scalar_mpb::{
@@ -57,7 +57,7 @@ use crate::{
     SecondVariationMpbSpec, SectorOccupations, SpinorCoreInputError, SpinorExchangeMpbError,
     SpinorExchangeMpbResult, SpinorExchangeMpbSpec, SpinorMpbError, SpinorMpbSelection,
     SpinorMpbSpec, SpinorProductInput, build_frozen_core_valence_exchange,
-    build_frozen_site_valence_densities, build_spinor_exchange_mpb, build_spinor_mpb,
+    build_frozen_site_valence_densities, build_spinor_exchange_mpb,
     compare_frozen_core_valence, relax_frozen_core_at_fixed_potential,
 };
 
@@ -3080,8 +3080,14 @@ fn rebuild_exchange(
         let first = inputs.first().ok_or(GammaValenceHfError::QTopology)?;
         let n_k = first.pair_columns.n_k;
         let n_orb = first.pair_columns.n_orb;
-        let occupied_bands = (0..n_orb)
+        let all_occupied_bands = (0..n_orb)
             .filter(|&band| occupations.iter().any(|row| row[band] != 0.0))
+            .collect::<Vec<_>>();
+        let (rank, size) = crate::hf_communicator::rank_and_size();
+        let occupied_bands = all_occupied_bands
+            .into_iter()
+            .enumerate()
+            .filter_map(|(position, band)| (position % size == rank).then_some(band))
             .collect::<Vec<_>>();
         let mut selections = Vec::with_capacity(n_k * occupied_bands.len() * n_orb);
         for k in 0..n_k {
@@ -3098,31 +3104,37 @@ fn rebuild_exchange(
         (inputs, selections, occupied_bands)
     };
     let mpb_timer = HfPhaseTimer::new("gamma.rebuild.mpb");
-    let mpb = inputs
+    let mpb_spec = SpinorMpbSpec {
+        product_l_max: spec.product_l_max,
+        product_g_max: spec.product_g_max,
+        overlap_tolerance: spec.overlap_tolerance,
+        selections,
+    };
+    let bases = inputs
         .iter()
-        .map(|input| {
-            build_spinor_mpb(
-                input,
-                &SpinorMpbSpec {
-                    product_l_max: spec.product_l_max,
-                    product_g_max: spec.product_g_max,
-                    overlap_tolerance: spec.overlap_tolerance,
-                    selections: selections.clone(),
-                },
-            )
-        })
+        .map(|input| compile_spinor_mpb_basis(input, &mpb_spec))
         .collect::<Result<Vec<_>, _>>()?;
+    let mpb = if occupied_bands.is_empty() {
+        Vec::new()
+    } else {
+        inputs
+            .iter()
+            .zip(&bases)
+            .map(|(input, basis)| build_spinor_mpb_from_basis(input, &mpb_spec, basis))
+            .collect::<Result<Vec<_>, _>>()?
+    };
     drop(mpb_timer);
     let operators = {
         let _coulomb_assembly_timer = HfPhaseTimer::new("gamma.rebuild.coulomb_assembly");
-        mpb.iter()
-            .map(|result| assemble_coulomb(&result.auxiliary, &spec.coulomb))
+        bases
+            .iter()
+            .map(|basis| assemble_coulomb(&basis.auxiliary, &spec.coulomb))
             .collect::<Result<Vec<_>, _>>()
             .map_err(IsdfExchangeError::from)?
     };
     let k_weights = k_weights(bands)?;
     let _contraction_timer = HfPhaseTimer::new("gamma.rebuild.contraction");
-    Ok(contract_selected_spinor_mpb_exchange_with_operators(
+    Ok(contract_mpi_selected_spinor_mpb_exchange_with_operators(
         &inputs,
         &mpb,
         &operators,

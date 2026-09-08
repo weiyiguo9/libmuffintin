@@ -21,7 +21,9 @@ pub fn set_hf_verbosity(verbosity: HfVerbosity) {
 }
 
 pub(crate) fn hf_progress(message: Arguments<'_>) {
-    if VERBOSITY.load(Ordering::Relaxed) >= HfVerbosity::Progress as u8 {
+    if crate::hf_communicator::rank_and_size().0 == 0
+        && VERBOSITY.load(Ordering::Relaxed) >= HfVerbosity::Progress as u8
+    {
         eprintln!("[hf] {message}");
     }
 }
@@ -34,10 +36,12 @@ pub(crate) struct HfPhaseTimer {
 
 impl HfPhaseTimer {
     pub(crate) fn new(phase: &'static str) -> Self {
-        let start = (VERBOSITY.load(Ordering::Relaxed) >= HfVerbosity::Timings as u8).then(|| {
-            eprintln!("[hf timing] begin {phase}");
-            Instant::now()
-        });
+        let start = (crate::hf_communicator::rank_and_size().0 == 0
+            && VERBOSITY.load(Ordering::Relaxed) >= HfVerbosity::Timings as u8)
+            .then(|| {
+                eprintln!("[hf timing] begin {phase}");
+                Instant::now()
+            });
         Self { phase, start }
     }
 }

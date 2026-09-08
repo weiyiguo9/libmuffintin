@@ -25,6 +25,23 @@ use muffintin_io::{
 };
 use muffintin_prodbasis::mpb::DEFAULT_TOLERANCE;
 
+#[cfg(feature = "mpi")]
+use mpi::collective::SystemOperation;
+#[cfg(feature = "mpi")]
+use mpi::environment::Universe;
+#[cfg(feature = "mpi")]
+use mpi::topology::SimpleCommunicator;
+#[cfg(feature = "mpi")]
+use mpi::traits::{AsRaw, Communicator, CommunicatorCollectives};
+
+macro_rules! rank_zero_println {
+    ($rank:expr, $($argument:tt)*) => {
+        if $rank == 0 {
+            println!($($argument)*);
+        }
+    };
+}
+
 const BOND_LENGTH_BOHR: f64 = 1.4;
 const DEFAULT_MUFFIN_TIN_RADIUS_BOHR: f64 = 0.65;
 const RADIAL_FIRST_BOHR: f64 = 1.0e-6;
@@ -225,10 +242,18 @@ impl Options {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    #[cfg(feature = "mpi")]
+    let (_mpi_universe, mpi_world) = initialize_hf_mpi()?;
+    #[cfg(feature = "mpi")]
+    let mpi_rank = mpi_world.rank();
+    #[cfg(not(feature = "mpi"))]
+    let mpi_rank = 0;
     let started = Instant::now();
     let options = Options::parse()?;
     muffintin::set_hf_verbosity(options.verbosity);
-    fs::create_dir_all(&options.output_directory)?;
+    if mpi_rank == 0 {
+        fs::create_dir_all(&options.output_directory)?;
+    }
     let radial_log_increment =
         (options.muffin_tin_radius / RADIAL_FIRST_BOHR).ln() / (RADIAL_POINTS - 1) as f64;
     let geometry = h2_geometry(
@@ -260,11 +285,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         angular_grid: AngularGrid::fibonacci(302)?,
     })?;
     let atomic_start_path = options.output_directory.join("h2.atomic-start.toml");
-    fs::write(
-        &atomic_start_path,
-        checkpoint_file_to_toml(&CheckpointFile::V2(start.checkpoint.clone()))?,
-    )?;
-    println!(
+    if mpi_rank == 0 {
+        fs::write(
+            &atomic_start_path,
+            checkpoint_file_to_toml(&CheckpointFile::V2(start.checkpoint.clone()))?,
+        )?;
+    }
+    rank_zero_println!(
+        mpi_rank,
         "system=H2 bond_bohr={BOND_LENGTH_BOHR:.6} electron_count={ELECTRON_COUNT:.1} route=spinor-first-variation cores=none box_bohr={:.6} rmt_bohr={:.6} orbital_g_bohr_inverse={:.6} field_g_bohr_inverse={:.6} product_g_bohr_inverse={:.6} product_lmax={} overlap_tolerance={:.6e} exchange_coulomb={} fock_fourier_g_bohr_inverse={:.6} fock_smoothing_omega_bohr_inverse={} lexp={} speed_of_light_au={:.10}",
         options.box_size_bohr,
         options.muffin_tin_radius,
@@ -281,7 +309,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         options.lexp,
         options.speed_of_light,
     );
-    println!(
+    rank_zero_println!(
+        mpi_rank,
         "atomic_start_checkpoint={} charge_target={:.16e} charge_represented={:.16e} charge_error={:.3e} normalization_scale={:.16e}",
         atomic_start_path.display(),
         start.charge_closure.target_electron_count,
@@ -309,7 +338,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut physics = CheckpointPhysics::new(&start.checkpoint)?;
     let result = run_gamma_valence_hf(&mut physics, &spec)?;
     for diagnostic in &result.diagnostics {
-        println!(
+        rank_zero_println!(
+            mpi_rank,
             "hf_iteration={} fock_iterations={} exchange_rebuilds={} density_rms={:.16e} electron_count={:.16e} h0_ha={:.16e} electron_hartree_ha={:.16e} electron_nuclear_ha={:.16e} nuclear_hartree_ha={:.16e} exchange_ha={:.16e} total_ha={:.16e} exchange_identity_ha={:.16e} eigenvalue_identity_ha={:.16e} total_identity_ha={:.16e}",
             diagnostic.iteration,
             diagnostic.fock_iterations,
@@ -362,7 +392,31 @@ fn main() -> Result<(), Box<dyn Error>> {
         (result.exchange_energy.get() + 0.5 * result.electron_hartree.get()).abs();
     let final_electron_count = electron_count(&result.density)?;
     let wall_seconds = started.elapsed().as_secs_f64();
-    println!(
+    #[cfg(feature = "mpi")]
+    let wall_seconds = require_spmd_final_agreement(
+        &mpi_world,
+        &[
+            result.diagnostics.len() as f64,
+            final_diagnostic.fock_iterations as f64,
+            result.exchange_rebuilds as f64,
+            final_electron_count,
+            homo,
+            result.h0_expectation.get(),
+            result.electron_hartree.get(),
+            result.nuclear_nuclear.get(),
+            result.exchange_energy.get(),
+            occupation_correction,
+            band_energy,
+            result.total_energy.get(),
+            final_diagnostic.exchange_energy_identity_residual,
+            final_diagnostic.eigenvalue_identity_residual,
+            final_diagnostic.total_energy_identity_residual,
+            hartree_exchange,
+        ],
+        wall_seconds,
+    )?;
+    rank_zero_println!(
+        mpi_rank,
         "hf_final outer_iterations={} fock_iterations={} exchange_rebuilds={} electron_count={:.16e} homo_ha={:.16e} wall_s={:.6}",
         result.diagnostics.len(),
         final_diagnostic.fock_iterations,
@@ -371,7 +425,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         homo,
         wall_seconds,
     );
-    println!(
+    rank_zero_println!(
+        mpi_rank,
         "hf_energy_terms_ha h0={:.16e} electron_hartree={:.16e} nuclear_hartree={:.16e} exchange={:.16e} occupation_correction={:.16e} band={:.16e} total={:.16e}",
         result.h0_expectation.get(),
         result.electron_hartree.get(),
@@ -381,7 +436,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         band_energy,
         result.total_energy.get(),
     );
-    println!(
+    rank_zero_println!(
+        mpi_rank,
         "hf_identity_ha exchange={:.16e} eigenvalue={:.16e} total={:.16e} hartree_exchange={:.16e}",
         final_diagnostic.exchange_energy_identity_residual,
         final_diagnostic.eigenvalue_identity_residual,
@@ -389,6 +445,49 @@ fn main() -> Result<(), Box<dyn Error>> {
         hartree_exchange,
     );
     Ok(())
+}
+
+#[cfg(feature = "mpi")]
+fn initialize_hf_mpi() -> Result<(Universe, SimpleCommunicator), Box<dyn Error>> {
+    let (universe, provided) = mpi::initialize_with_threading(mpi::Threading::Funneled)
+        .ok_or("MPI was initialized before the h2_hf driver")?;
+    if provided < mpi::Threading::Funneled {
+        return Err(format!("MPI provided {provided:?}, below required Funneled support").into());
+    }
+    let world = universe.world();
+    muffintin::set_hf_mpi_communicator(world.as_raw());
+    Ok((universe, world))
+}
+
+#[cfg(feature = "mpi")]
+fn require_spmd_final_agreement(
+    world: &SimpleCommunicator,
+    values: &[f64],
+    wall_seconds: f64,
+) -> Result<f64, Box<dyn Error>> {
+    let mut value_min = vec![0.0; values.len()];
+    let mut value_max = vec![0.0; values.len()];
+    world.all_reduce_into(values, &mut value_min, SystemOperation::min());
+    world.all_reduce_into(values, &mut value_max, SystemOperation::max());
+    if let Some(index) = value_min
+        .iter()
+        .zip(&value_max)
+        .position(|(minimum, maximum)| minimum != maximum)
+    {
+        return Err(format!(
+            "MPI ranks disagree on final HF field {index}: min={:.16e}, max={:.16e}",
+            value_min[index], value_max[index]
+        )
+        .into());
+    }
+
+    let mut maximum_wall = 0.0;
+    world.all_reduce_into(
+        &wall_seconds,
+        &mut maximum_wall,
+        SystemOperation::max(),
+    );
+    Ok(maximum_wall)
 }
 
 fn h2_geometry(
