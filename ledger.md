@@ -749,3 +749,27 @@ No numerical diagnostics, repeated passes, or pushes were performed.
 
 - state: h2-hf = handoff: A0 passed; A1 base exceeds the authorized 1800 s cap
 - note: h2-hf = evd-0009 and evd-0010; main 35c200c; downstream rows and MPI unrun
+
+## 2026-09-08 · evt-0030 · h2-hf A1 cap traced to the uncached Gamma exchange rebuild; profile and conditional cache assigned, MPI held · actor: claude
+
+evd-0010 closed A0 (identities 0 / 7.3e-10 / 7.3e-10 Ha, 8 outer × 7 Fock
+iterations, 1935 s) and stopped A1 row 1 at the 1800 s cap after two Fock
+iterations, about 900 s each at orbital 5, product G 6, product l 4. After
+the pair-FFT perf the A0 rebuild is 11.9 s of a 34.5 s Fock iteration, so
+the pair transforms are no longer the largest term. Reading of the code:
+`rebuild_exchange` in the Gamma valence path calls `build_spinor_mpb` and
+`assemble_coulomb` on every Fock iteration, while the relaxed-core, scalar,
+and second-variation paths keep a `CoreExchangeCache` /
+`ScalarExchangeCache` / `SecondVariationExchangeCache` of compiled bases and
+Coulomb operators across the Fock iterations of one outer step.
+`compile_spinor_mpb_basis` and `build_spinor_mpb_from_basis` already split
+the spinor build. Assigned to the codex pane: phase timers for the Gamma
+Fock iteration, a timed A0 and A1 row 1 (class P), and, only if basis
+compile plus Coulomb assembly is at least 30 percent of an A1 Fock
+iteration, a `GammaExchangeCache` on the existing pattern with class R
+checks, then A1 row 1 again under the plan cap. The pair-level MPI task of
+evt-0025 is held until the profile is read, because it addresses only the
+vertex build. Records continue at evt-0031 and evd-0011.
+
+- state: h2-hf = active: Gamma Fock phase profile at A0 and A1 row 1, conditional exchange cache, then A1 (codex pane); MPI held
+- note: h2-hf = A0 closed by evd-0010; A1 row 1 900 s per Fock iteration; Gamma path rebuilds basis and Coulomb every iteration

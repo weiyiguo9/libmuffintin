@@ -5,13 +5,13 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `35c200cdcc8283c3ad6744267a7bbd49684045af` (2026-09-08)
-- Last ledger entries: evd-1008 (MSI), evd-0010 (Mac), evt-0029 (Mac)
+- Last ledger entries: evd-1008 (MSI), evd-0010 (Mac), evt-0030 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
 | `ctf-rs` | D6 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | D6 WSL and native 1/2/4 passed; dense-first objective complete; S1 not started |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
-| `h2-hf` | handoff: A0 passed; A1 base exceeds the authorized 1800 s cap | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evd-0009 and evd-0010; main 35c200c; downstream rows and MPI unrun |
+| `h2-hf` | active: Gamma Fock phase profile at A0 and A1 row 1, conditional exchange cache, then A1 (codex pane); MPI held | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | A0 closed by evd-0010; A1 row 1 900 s per Fock iteration; Gamma path rebuilds basis and Coulomb every iteration |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |
