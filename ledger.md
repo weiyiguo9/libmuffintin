@@ -1031,3 +1031,25 @@ policy. Records continue at evt-0041 and evd-0017.
 
 - state: h2-hf = active: pair-level MPI feature (codex pane); A1 ladder held pending the tolerance policy
 - note: h2-hf = MPI released by the user for Snellius wall time; ADR-0006 first step refined to local contraction plus Allreduce
+
+## 2026-09-08 · evt-0041 · h2-hf bounded pair-level MPI implementation started · actor: codex
+
+Verified clean main `5f40aac4c88cb36805fcba1d7494a6bec22a3514` and clean
+harness `476237f1f96f5937ca4b453f73b67208c5e117f6`, including evt-0040 and
+the refined ADR-0006. The optional `mpi` feature uses safe rsmpi 0.8 over
+mpi-sys 0.2; the binary owns `MPI_Init_thread` at Funneled and the library
+never initializes or finalizes MPI. Distribution is round-robin over occupied
+left bands; vertices and contractions stay local and one band-feedback
+Allreduce per k restores identical SPMD state.
+
+Fixed class-R contracts: fixture identities within 1e-8 for no feature,
+one-process mpi feature, and `mpirun -n 2`; maximum first-rebuild feedback
+difference for ranks 2 and 4 versus rank 1 within 1e-12; A0 rank-2
+E/HOMO/E_H/E_x within 1e-10 Ha of evd-0010, identities within 1e-8, and
+identical rank-final state. Class-P timing list: A1 first Fock iteration at
+(1,10), (2,5), and (4,2), 900 s cap each. Budget: three fixtures, three
+feedback dumps, one A0, three A1 timings; no diagnostics. The A1 ladder is
+held and no push is authorized.
+
+- state: h2-hf = active: implementing occupied-band MPI and fixed rank-count gates
+- note: h2-hf = evt-0040; ten-run budget; A1 ladder held; no push

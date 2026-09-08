@@ -5,13 +5,13 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `5f40aac4c88cb36805fcba1d7494a6bec22a3514` (2026-09-08)
-- Last ledger entries: evd-1008 (MSI), evd-0016 (Mac), evt-0040 (Mac)
+- Last ledger entries: evd-1008 (MSI), evd-0016 (Mac), evt-0041 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
 | `ctf-rs` | D6 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | D6 WSL and native 1/2/4 passed; dense-first objective complete; S1 not started |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
-| `h2-hf` | active: pair-level MPI feature (codex pane); A1 ladder held pending the tolerance policy | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | MPI released by the user for Snellius wall time; ADR-0006 first step refined to local contraction plus Allreduce |
+| `h2-hf` | active: implementing occupied-band MPI and fixed rank-count gates | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evt-0040; ten-run budget; A1 ladder held; no push |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |
