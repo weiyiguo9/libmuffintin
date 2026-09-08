@@ -458,6 +458,60 @@ unresolved: A1 base still cannot finish within its authorized 1800 s cap; stop b
 No numerical acceptance is inferred from the timing data, and the earlier
 A0 pass remains closed. No Task C fixtures or A0 rerun were performed.
 
+### BLAS-3 contraction and projection
+
+Main `16ff436` contracts one occupied band at a time with RSTSR 0.7.10/faer
+GEMMs, gathering contiguous column-major vertex blocks and tiling target
+columns above 1 GB. It preserves weights, sign, and row-major output.
+Main `700fa1f` uses the same borrowed matmul route for FFTW projection in
+256-right-band chunks, retaining resident theta, spectra caching, and the
+existing Rayon left-band structure. The Fock loop and kernels are unchanged.
+
+```text
+DIGIT / PASS
+Q: fixture exchange/eigenvalue/total identities (Ha); class: R; ref: fixture
+bound: 1e-8; Delta: maximum 4.83771009363032078e-16 after Task 1 and after both tasks
+checks: two baseline fixtures, two after contraction, two after projection, with and without fft-fftw; closed
+
+DIGIT / PASS
+Q: fixture total_energy and exchange_energy (Ha); class: R; ref: 10f6b39
+bound: 1e-10; Delta: 0 / 4.20128341838132968e-19 at both stages and both feature variants; closed
+
+DIGIT / PASS
+Q: first-rebuild band-space exchange feedback; class: R; ref: 10f6b39
+bound: 1e-10 absolute; Delta: maximum 1.21430643318376497e-16
+checks: all 1,060,900 finite entries in the 1030-by-1030 k block; two dumps; closed
+
+DIGIT / PASS
+Q: A0 E/HOMO/E_H/E_x (Ha); class: R; ref: evd-0010
+bound: 1e-10; Delta: 1.22124532708767219e-15 / 1.76803016671556179e-14 / 2.52575738102223113e-14 / 3.95516952522712018e-15
+checks: converged, finite energies, maximum driver identity 1.72767455897115951e-9 Ha <= 1e-8; final electron-count error 5.32907051820075139e-15
+runs: one A0; closed without diagnostics or repeats
+```
+
+A0 again used eight outer iterations and 56 Fock iterations. Driver wall was
+1166.331817 s (supervisor 1166.76 s), versus evd-0010's 1934.680438 s.
+The new log is [`results/hf-a0-contract.log`](results/hf-a0-contract.log);
+the evd-0010 reference log is unchanged.
+
+| A1 first-iteration timing | Before, evd-0011 (s) | After both changes (s) |
+|---|---:|---:|
+| `gamma.rebuild.contraction` | 290.551110 | 179.435197 |
+| `gamma.rebuild.mpb` | 151.026190 | 96.477896 |
+| `gamma.fock.iteration` | 482.082668 | 313.415279 |
+
+This was one class-P report-only timing under the 1200 s cap, exit 124,
+not an A1 plan row. Whole-run user/real was 3857.62 / 1200.52 = 3.213 cores,
+versus approximately 3.1 before. The faer pool is configured for ten threads,
+but the measurement does **not** establish sustained ten-core utilization.
+No additional profiling was run to explain the remaining utilization gap.
+
+The full evidence, feedback dumps, and comparison scripts are under
+`evidence/2026-09-08-h2-hf-contraction-perf/` on `harness`. Ten numerical
+executions exhausted the agreed list: six fixtures, two feedback probes,
+one A0, and one A1 timing. MPI and the A1 ladder remain held; the study
+tolerance policy is still a separate user decision.
+
 ### B kernel study
 
 The B rows use the accepted A1v settings with orbital cutoff 5.
