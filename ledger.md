@@ -1479,3 +1479,75 @@ channel is that push, not `claude-report`.
 
 - state: ctf-rs = active: R1 rsmpi binding (Codex on MSI); G-CTF-R1 accepted
 - note: ctf-rs = plan.v2 accepted 2026-09-09; executor MSI at f2039d3; report by harness-msi push
+
+## 2026-09-09 · evd-1009 · ctf-rs R1 rsmpi binding acceptance handoff · ctf-rs 813d90a8f76a4f67e21c5b28340d014f4ce2dfc3
+
+Gate `G-CTF-R1`, accepted plan.v2 and ADR-0007. Implementation ends at
+`f072971`; validation/ownership records end at `813d90a`. The ordered local
+master series starts after `f2039d3`; ctf-rs was not pushed. All 184 driver
+entry points changed mechanically; no algorithm, metric, tolerance, fixture,
+driver body, or acceptance-script changes. Host communicator ownership and
+Universe lifetimes are explicit; no Runtime, libffi, or collective Drop.
+
+```text
+DIGIT / HANDOFF
+Q: each WSL driver's existing metric and invariants; class: R
+ref: pinned upstream f69cbb46; bound: upstream per driver, unchanged
+Delta: cyclic_reshuffle, two ranks, rank 1 local offset 0: actual 0,
+       expected -5; absolute difference 5 against exact bound 0
+checks: all 175 one-rank drivers completed; eight two-rank drivers passed,
+        ninth cyclic_reshuffle failed; rank 4 and subsequent local/7-rank calls not reached
+runs: acceptance-wsl.sh once (its own 1/2/4 loop); script exit 1 after the
+      failed launcher's blocked MPI peers were terminated
+diagnostics: one computation, named diagnostic 1 at two ranks; both ranks
+             size 2, Funneled, main-thread check passed; same mismatch before
+             explicit close/drop; 60-second supervisor exit 124 after panic
+scope: no numerical repair, baseline rerun, sweep, changed bound, or repeated pass
+open: what R1-scoped resolution is authorized for cyclic_reshuffle's exact
+      replica/layout mismatch (0 versus -5) with correct rank/thread setup?
+
+DIGIT / PASS
+Q: native Windows GNU compile/link of all tests and examples; class: R
+ref: plan.v2 build gate; bound: compile/link success, exit 0
+Delta: no compile/link failure; numerical delta not applicable
+runs: acceptance-native.ps1 -BuildOnly once
+
+DIGIT / PASS
+Q: native D6 drivers' existing metrics and invariants; class: R
+ref: pinned upstream f69cbb46; bound: exact or upstream per driver, unchanged
+Delta: all unchanged assertions passed; emitted numerical deltas retained in log
+checks: 50 dense drivers at each of 1/2/4 ranks and four local scaling tests passed
+runs: acceptance-native.ps1 -D6Only once; each rank once; exit 0; no diagnostics
+closed: native numerical verification; overall R1 remains HANDOFF
+```
+
+Exact commands, run from `D:/projects/ctf-rs`:
+
+```powershell
+wsl -d Ubuntu-26.04 -- bash -lc 'cd /mnt/d/projects/ctf-rs && bash scripts/sync-wsl.sh && cd /home/xylxp/ctf-rs-work && bash -x scripts/acceptance-wsl.sh > /mnt/d/projects/runs/ctf-rs-r1/wsl.log 2>&1'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance-native.ps1 -BuildOnly > D:/projects/runs/ctf-rs-r1/native-build.log 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance-native.ps1 -D6Only > D:/projects/runs/ctf-rs-r1/native-d6.log 2>&1
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-r1/diagnostic-1.sh > D:/projects/runs/ctf-rs-r1/diagnostic-1.log 2>&1
+```
+
+Logs and commands remain under `D:/projects/runs/ctf-rs-r1/`; `commands.md`
+records the diagnostic instrumentation and exact nested command, the tooling
+quoting correction before its one execution, stale Linux copy cleanup, and the
+single keepalive startup. Temporary diagnostic printing was removed from the
+Linux work copy; delivery source was not instrumented. ctf-rs
+`docs/validation.md` section "rsmpi binding" carries these stamps. Total:
+three acceptance-script invocations, one named diagnostic computation, no
+repeated passing driver at the same platform/rank configuration.
+
+## 2026-09-09 · evt-1001 · ctf-rs R1 implementation recorded with WSL gate handoff · actor: codex
+
+The ordered R1 commit series is local on MSI master through `813d90a`.
+Native build and the native D6 1/2/4 set pass. WSL one-rank acceptance passes,
+but two-rank cyclic_reshuffle fails exactly with 0 instead of -5; the named
+initialization diagnostic reproduces it with valid rank/thread setup. Per the
+immutable plan, no numerical or driver repair followed and R1 is not closed.
+S1 has not started. Evidence is evd-1009; this harness-msi push is the report
+channel, not claude-report, and no ctf-rs push was made.
+
+- state: ctf-rs = handoff: R1 rsmpi implementation committed; WSL two-rank cyclic_reshuffle fails exact 0 versus -5; native build and D6 1/2/4 pass; S1 held
+- note: ctf-rs = evd-1009; local master 813d90a; one named diagnostic, valid Funneled/main-thread setup; no numerical repair or ctf-rs push
