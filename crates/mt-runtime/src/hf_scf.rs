@@ -629,9 +629,9 @@ pub fn run_gamma_valence_hf(
 ///
 /// Every Fock rebuild consumes one live frame containing all physical shifted
 /// k points and constructs the complete unshifted canonical q slice from that
-/// same frame. No vertex or Coulomb record survives an orbital update. Every
-/// outer density step rematerializes the radial basis, so feedback is never
-/// carried between incompatible H0/S frames.
+/// same frame. No vertex or Coulomb record survives an orbital update. Across
+/// outer density steps, only the final mixed physical-basis feedback is carried
+/// to seed the freshly rematerialized H0/S frame.
 pub fn run_valence_hf(
     physics: &mut CheckpointPhysics,
     spec: &ValenceHfSpec,
@@ -649,6 +649,7 @@ pub fn run_valence_hf(
     let mut diagnostics = Vec::with_capacity(spec.config.convergence.max_iterations);
     let mut total_exchange_rebuilds = 0;
     let mut first_one_shot_exchange = None;
+    let mut carried_global_feedback = None;
 
     for outer_iteration in 1..=spec.config.convergence.max_iterations {
         let electrostatic = evaluate_regional_electrostatics(
@@ -681,6 +682,7 @@ pub fn run_valence_hf(
             outer_iteration,
             &k_fractional,
             &q_fractional,
+            carried_global_feedback.take(),
         )?;
         total_exchange_rebuilds += fixed.exchange_rebuilds;
         if let Some(first) = fixed.first_one_shot_exchange.clone() {
@@ -776,6 +778,7 @@ pub fn run_valence_hf(
         }
         previous_total = Some(energy.total);
         density = mixer.mix(&density, &output_density)?.density;
+        carried_global_feedback = Some(fixed.global_feedback);
     }
 
     let last = diagnostics
@@ -1955,6 +1958,7 @@ struct FixedPotentialResult {
     bands: CheckpointBandSolution,
     occupation: OccupationSolution,
     exchange: IsdfExchangeResult,
+    global_feedback: Vec<DenseHermitianMatrix>,
     fock_iterations: usize,
     exchange_rebuilds: usize,
     fixed_point_residual: f64,
@@ -2876,6 +2880,7 @@ fn solve_fixed_potential(
     outer_iteration: usize,
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
+    warm_start: Option<Vec<DenseHermitianMatrix>>,
 ) -> Result<FixedPotentialResult, GammaValenceHfError> {
     use crate::hf_diagnostics::HfPhaseTimer;
     let mut rebuilds = 0;
@@ -2883,7 +2888,10 @@ fn solve_fixed_potential(
     let mut first_global_solve_identity_residual = None;
     let mut last_residual = f64::INFINITY;
     let mut last_feedback_residual = f64::INFINITY;
-    let mut previous_global_feedback = None;
+    let mut previous_global_feedback = warm_start;
+    if let Some(carried) = &previous_global_feedback {
+        bands = bands.solve_spinor_global_feedback(carried)?;
+    }
     let mut feedback_mixer = FeedbackMixer::new(spec.fock_mixing);
     let mut current_density = None;
     for fock_iteration in 1..=spec.max_fock_iterations {
@@ -3042,6 +3050,7 @@ fn solve_fixed_potential(
                 bands,
                 occupation,
                 exchange: rebuilt,
+                global_feedback,
                 fock_iterations: fock_iteration,
                 exchange_rebuilds: rebuilds,
                 fixed_point_residual: last_residual,

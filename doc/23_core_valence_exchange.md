@@ -532,8 +532,12 @@ $S C K C^\dagger S$, added to H0, and solved again; it is never added to old Foc
 eigenvalues. The inner Fock iteration may rebuild vertices as orbitals rotate
 because its radial basis is fixed. After regional density mixing, the next
 outer iteration rebuilds the Hartree potential and rematerializes the radial
-basis before starting a new inner loop, so feedback is never moved between
-incompatible radial frames.
+basis before starting a new inner loop. Vertices and Coulomb records are never
+moved between those frames. The final mixed global feedback, expressed in the
+common physical basis, is carried across and applied once to the fresh H0/S
+bands as the inner-loop warm start; its ordinary first rebuild then initializes
+the new frame's mixer history. The fixed-point residuals and gates are
+unchanged.
 
 `GammaValenceHfSpec::fock_mixing` explicitly controls consecutive lifted
 physical-basis exchange operators inside one fixed H0/S frame. The
