@@ -138,3 +138,11 @@ Per the explicit stop rule, the three class-P A1 timing runs were not started:
 This continuation used two of five authorized numerical runs. No diagnostic
 or rerun was made, and the A1 ladder was not run. Main record: `b282484`. No
 push.
+
+## Probe hook source
+
+`probe-hook.patch` is the scratch-only instrumentation against main
+`88b212d` (feedback dump on rank zero after the first Allreduce, error
+return on every rank, `H2_MPI_FEEDBACK_DUMP` mapped to a normal exit in the
+example). It was never on main; reapply it to a `git archive` copy to take
+another first-rebuild dump.

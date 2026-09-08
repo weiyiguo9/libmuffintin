@@ -1,0 +1,47 @@
+--- a/crates/mt-runtime/src/hf_scf.rs
++++ b/crates/mt-runtime/src/hf_scf.rs
+@@ -2911,6 +2911,26 @@
+             let (band_feedback, global_feedback) = {
+                 let _feedback_lift_timer = HfPhaseTimer::new("gamma.fock.feedback_lift");
+                 let band_feedback = exchange_feedback(&driver)?;
++                if let Some(path) = std::env::var_os("H2_MPI_FEEDBACK_DUMP") {
++                    if crate::hf_communicator::rank_and_size().0 == 0 {
++                        use std::io::Write;
++                        let mut output = std::io::BufWriter::new(std::fs::File::create(&path).unwrap());
++                        output.write_all(&(band_feedback.len() as u64).to_le_bytes()).unwrap();
++                        let mut entries = 0;
++                        for (k, matrix) in band_feedback.iter().enumerate() {
++                            output.write_all(&(k as u64).to_le_bytes()).unwrap();
++                            output.write_all(&(matrix.dimension() as u64).to_le_bytes()).unwrap();
++                            for value in matrix.as_tensor().to_host_row_major() {
++                                output.write_all(&value.re.to_le_bytes()).unwrap();
++                                output.write_all(&value.im.to_le_bytes()).unwrap();
++                                entries += 1;
++                            }
++                        }
++                        output.flush().unwrap();
++                        eprintln!("[mpi feedback dump] blocks={} entries={entries} path={path:?}", band_feedback.len());
++                    }
++                    return Err(GammaValenceHfError::QTopology);
++                }
+                 let global_feedback = lift_global_feedback(&bands, &band_feedback)?;
+                 (band_feedback, global_feedback)
+             };
+--- a/crates/mt-runtime/examples/h2_hf.rs
++++ b/crates/mt-runtime/examples/h2_hf.rs
+@@ -336,7 +336,14 @@
+         },
+     };
+     let mut physics = CheckpointPhysics::new(&start.checkpoint)?;
+-    let result = run_gamma_valence_hf(&mut physics, &spec)?;
++    let result = match run_gamma_valence_hf(&mut physics, &spec) {
++        Ok(result) => result,
++        Err(_) if std::env::var_os("H2_MPI_FEEDBACK_DUMP").is_some() => {
++            eprintln!("probe_done rank={mpi_rank}");
++            return Ok(());
++        }
++        Err(error) => return Err(error.into()),
++    };
+     for diagnostic in &result.diagnostics {
+         rank_zero_println!(
+             mpi_rank,
