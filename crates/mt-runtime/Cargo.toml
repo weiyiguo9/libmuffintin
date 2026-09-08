@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [features]
 fft-fftw = ["libmuffintin-dft/fft-fftw", "libmuffintin-coulomb/fft-fftw", "libmuffintin-tensor/fft-fftw"]
+mpi = ["dep:mpi"]
 
 [dependencies]
 libmuffintin-prodbasis = { path = "../mt-prodbasis" }
@@ -34,6 +35,7 @@ rayon.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 toml.workspace = true
+mpi = { workspace = true, optional = true }
 
 [lints]
 workspace = true

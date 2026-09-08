@@ -33,6 +33,7 @@ rayon = "1.11.0"
 faer = { version = "0.22.6", default-features = false, features = ["std", "linalg"] }
 serde = { version = "1.0.219", features = ["derive"] }
 toml = "0.8.20"
+mpi = { version = "0.8.2", default-features = false }
 
 [patch.crates-io]
 # Preserve tblis-src's bundled default, but let machine-local TBLIS_DIR select
