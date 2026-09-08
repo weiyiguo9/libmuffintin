@@ -264,16 +264,20 @@ never committed.
 
 ### A0 smoke
 
-The rerun used the exact same command with orbital cutoff 4, field cutoff 12,
-product cutoff 4, product $l_{max}=2$, and overlap tolerance $10^{-4}$. It now
-returns in 251 s, well inside the 1800 s limit, and fails its class A gate:
-the valence eigenvalue identity residual is $3.4089473164444770\times10^{-4}$
-against a driver tolerance of $2\times10^{-8}$. The driver returns the gate
-error before the example prints `hf_energy_terms_ha`, so this row has no $E$,
-HOMO, $E_H$, or $E_x$. The log is
-[`results/hf-a0.log`](results/hf-a0.log).
+A0 was run twice, once before and once after the example's Fock exit
+tolerances were corrected. Both runs used the same command: orbital cutoff 4,
+field cutoff 12, product cutoff 4, product $l_{max}=2$, overlap tolerance
+$10^{-4}$, box 8, and the periodic finite-body kernel. Both failed the class A
+identity gate, and in both the driver returns the gate error before the example
+prints `hf_energy_terms_ha`, so neither row carries $E$, HOMO, $E_H$, or $E_x$,
+and neither prints a Fock iteration count or a wall time of its own.
 
-The three diagnostics the plan allows, in order:
+| Run | Fock exit tolerances (density, feedback Ha) | Eigenvalue identity (Ha) | Wall (s) | Log |
+|---|---|---:|---:|---|
+| first | $10^{-5}$, $10^{-5}$ | $3.4089473164444770\times10^{-4}$ | 251 | [`results/hf-a0-fock1e-5.log`](results/hf-a0-fock1e-5.log) |
+| rerun | $10^{-7}$, $10^{-8}$ | $1.6477445782814293\times10^{-7}$ | 282 | [`results/hf-a0.log`](results/hf-a0.log) |
+
+The three diagnostics the plan allows for the first run, in order:
 
 | # | Diagnostic | Question | Answer | Log |
 |---:|---|---|---|---|
@@ -281,22 +285,35 @@ The three diagnostics the plan allows, in order:
 | 2 | orbital 3 / product 3 | dimension dependent defect or setup error? | the same identity fails, at $1.4380668996653856\times10^{-4}$; it does not change which identity fails | [`results/hf-a0-diag2-orb3prod3.log`](results/hf-a0-diag2-orb3prod3.log) |
 | 3 | `gamma_valence_hf` fixture at `product_g_max` 4 | does the driver hold its identities at this product cutoff? | yes, every identity stays $\le 10^{-8}$ on the one atom fixture | [`results/hf-a0-diag3-fixture-productg4.log`](results/hf-a0-diag3-fixture-productg4.log) |
 
-The failing identity compares band eigenvalues solved with the previous
-mixed CDIIS feedback against the freshly rebuilt exchange, so its floor is
-the Fock exit tolerance. This example exits at `fock_density_tolerance`
-$10^{-5}$ and `fock_feedback_tolerance` $10^{-5}$ Ha, while the fixture that
-passes at $10^{-8}$ exits at $10^{-7}$ and $10^{-8}$ Ha. Diagnostic 3 does not
-separate a two site setup error from a driver defect under fractional
-occupation tails: the fixture carries one fully occupied band, while A0 spreads
-$38$ fractionally occupied bands over the 1 mHa tail. Nothing in the plan
-authorizes moving the example tolerance, so A0 hands off.
+Diagnostic 1 fixed the reading. The failing identity compares band eigenvalues
+solved against the previous mixed CDIIS feedback with the freshly rebuilt
+exchange, so its floor is the Fock exit tolerance, and doubling the iteration
+limit changed nothing because the loop was already exiting on its own
+tolerances. This example had inherited the Kr example's
+`fock_density_tolerance` $10^{-5}$ and `fock_feedback_tolerance` $10^{-5}$ Ha,
+four orders of magnitude above the driver's $2\times10^{-8}$ identity gate,
+while the `gamma_valence_hf` fixture that holds every identity at $10^{-8}$
+exits at $10^{-7}$ and $10^{-8}$ Ha. The example now uses the fixture's values;
+`FOCK_MAX_ITERATIONS` and every gate bound are unchanged.
+
+The rerun moved the residual by a factor of 2069, from
+$3.4089473164444770\times10^{-4}$ to $1.6477445782814293\times10^{-7}$, and
+still fails. It did not stop on the Fock iteration limit: the driver reaches
+its identity gate only after the Fock loop has converged to the requested
+$10^{-7}$ and $10^{-8}$ Ha, so the single diagnostic the rerun budget allowed
+was not authorized and was not spent. The gates are checked in the order
+electron count, exchange identity, valence eigenvalue identity, total identity,
+so the exchange identity passed the driver's $2\times10^{-8}$ check without its
+value being printed, and the total identity was never reached. The surviving
+residual is 16.5 times the $10^{-8}$ Ha feedback tolerance the Fock loop
+exited on.
 
 ```text
 DIGIT / HANDOFF
 Q: valence eigenvalue identity residual (Ha); class: A; ref: 0
-bound: 1e-8; Delta: 3.4089473164444770e-4; d: 3.4e4
-checks: exchange and total identity gates were never reached; runs: 1 + 3 diagnostics
-unresolved: is the 3.4e-4 residual only the example's own 1e-5 Fock exit tolerance showing through the 2e-8 identity gate, or a defect of the two site setup under fractional occupation tails?
+bound: 1e-8; Delta: 1.6477445782814293e-7; d: 16.5
+checks: exchange identity passed the driver 2e-8 check, value not printed; total identity never reached; runs: 1; no diagnostic authorized, the run stopped on a residual and not on the Fock iteration limit
+unresolved: the residual is no longer the example's Fock exit tolerance, so the eigenvalue identity of the two site Gamma valence path does not close at 1e-8 for reasons inside the driver
 ```
 
 ### A1 identity-floor study
@@ -319,8 +336,9 @@ finite-body kernel. Each row changes one base setting.
 | 10 | field cutoff 18 | not run | – | – | – | – | – | – | – | – | – | – |
 
 The closed A1 row list was not run because the ordered predecessor A0 handed
-off, now on its class A identity gate rather than on wall time. Consequently
-A1v and A2 have no numerical evidence or stamps.
+off a second time, on its class A identity gate and no longer on wall time or
+on the example's own Fock exit tolerance. Consequently A1v and A2 have no
+numerical evidence or stamps.
 
 ### B kernel study
 
@@ -337,5 +355,6 @@ The B rows use the accepted A1v settings with orbital cutoff 5.
 | 7 | smoothed Spencer–Alavi | 8 | product $G$ | 3.2 | not run | – | – | – | – | – | – | – | – | – | – |
 | 8 | smoothed Spencer–Alavi | 12 | product $G$ | 0.8 | not run | – | – | – | – | – | – | – | – | – | – |
 
-The closed B row list and Bv verdict were not run after the A0 handoff. No Bv
-stamp exists because no box 12 sharp kernel value was produced.
+The closed B row list and Bv verdict were not run after the second A0
+handoff. No Bv stamp exists because no box 12 sharp kernel value was
+produced.
