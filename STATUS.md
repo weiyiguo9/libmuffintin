@@ -5,11 +5,11 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `05b6d520f7c04c7855abf655a3731b90f141771b` (2026-09-08)
-- Last ledger entries: evd-1007 (MSI), evd-0006 (Mac), evt-0020 (Mac)
+- Last ledger entries: evd-1008 (MSI), evd-0006 (Mac), evt-0020 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
-| `ctf-rs` | D6 handoff: d4_blas_flops never executed because mpiexec was not found | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | D6 code and WSL 1/2/4 closed; native compile/link passed; install Microsoft MPI launcher before the one remaining runtime gate |
+| `ctf-rs` | D6 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | D6 WSL and native 1/2/4 passed; dense-first objective complete; S1 not started |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
 | `h2-hf` | active: A0 rerun with the fixture's Fock exit tolerances (claude-worker) | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evt-0019 handoff accepted as an example defect; plan.v1 bounds unchanged |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
