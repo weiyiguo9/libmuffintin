@@ -1842,3 +1842,42 @@ is a later decision.
 
 - state: ctf-rs = R1 closed (G-CTF-R1 passed, evd-1013); ctf-rs 2b68406 unpushed pending the user's request; dgtog_redistribution test contract open; S1 next
 - note: ctf-rs = replica-fill defect in Tensor::redistribute fixed by a558e30; 175 drivers at 1/2/4, native build, D6 native all pass
+
+## 2026-09-09 · evt-0059 · integrate periodic full-potential NMTO with Python MPI · actor: codex
+
+User authorized integrating the retained diamond production worktree into
+pymuffintin main and publishing the paired native array bindings. Source
+pymuffintin is f4261a9 plus its retained periodic/full-potential changes;
+target is 456f8e0 plus the already verified MPI XC/core/radial blocks.
+Native target is 9d64c5d; only the source radial inverse-mass export is
+imported, not unrelated HF work. Source worktrees remain untouched.
+
+Verification is a bounded integration check: existing periodic mathematical
+tests keep their original tolerances; serial production versus integrated
+serial/MPI bands, occupations and regional density use rtol=1e-10,
+atol=1e-12 and finite outputs. Run focused tests and 1/4-rank cases once
+after integration; failures get at most three discriminating computations.
+No diamond basis study, SPEX build or material-accuracy acceptance this slice.
+
+- state: nmto-periodic-mpi = integrating production periodic/full-potential path with Python-owned shared-memory MPI
+- note: nmto-periodic-mpi = user authorized main publication; focused numerical equivalence only, not material acceptance
+
+## 2026-09-09 · evt-0059 · ctf-rs pushed to GitHub at 2b68406 on the user's request; dgtog_redistribution test contract assigned · actor: user
+
+The user requested the ctf-rs push ("pull ctf-rs back, then push") and
+the test-contract change ("assert the replica contract, one test commit,
+1/2/4 once"), and ruled that merging `harness-msi` into `harness` is
+enough for STATUS (no ordering change). The MSI checkout
+`D:/projects/ctf-rs` had no remote at all, so the eight commits
+f2039d3..2b68406 travelled as a git bundle to the Mac clone
+`~/tmp/ctf-rs`, whose own diverged commit f22da3a (sparse search-cache
+WIP, 2026-09-08) is kept on branch `wip/sparse-search-cache-20260908`;
+master was reset to 2b68406 and pushed to `rustnumgum/ctf-rs` (public)
+with the Mac's gh credentials: `f2039d3..2b68406 master -> master`. The
+MSI checkout now has `origin` = the GitHub URL and `origin/master` at
+2b68406. The `dgtog_redistribution` replica-contract test change is
+assigned to Codex on MSI (evd-1014, evt-1004 expected); the Mac pushes
+it the same way when it lands.
+
+- state: ctf-rs = active: dgtog_redistribution test onto the replica contract (Codex on MSI); R1 pushed at 2b68406; S1 next
+- note: ctf-rs = GitHub master 2b68406; Mac WIP kept on wip/sparse-search-cache-20260908; MSI origin remote added

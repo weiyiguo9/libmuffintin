@@ -5,7 +5,7 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `9d64c5d978595f839f3c0905873b101c4df154cf` (2026-09-09)
-- Last ledger entries: evd-1013 (MSI), evt-1003 (MSI), evd-0023 (Mac), evt-0058 (Mac)
+- Last ledger entries: evd-1013 (MSI), evt-1003 (MSI), evd-0023 (Mac), evt-0059 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
@@ -15,6 +15,7 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |
+| `nmto-periodic-mpi` | integrating production periodic/full-potential path with Python-owned shared-memory MPI | none | user authorized main publication; focused numerical equivalence only, not material acceptance |
 | `v0.1-lapw-foundation` | closed | `plans/v0.1-lapw-foundation/plan.v1.md`, accepted | superseded by v0.2 |
 | `v0.2-isdf-thc` | closed (M-L implementation closed 2026-09-08; cross-code acceptance deferred) | `plans/v0.2-isdf-thc/plan.v1.md`, accepted | deferred: span metric, Dy bcc demo, magnetic+SOC 4c cross-code; successor hf-thc-scf |
 | `v0.3-mto-family` | draft, not authorized | `plans/v0.3-mto-family/plan.v1.md`, draft |  |
