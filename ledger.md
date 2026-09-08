@@ -635,3 +635,16 @@ timing logs go to evidence/2026-09-08-h2-hf-pair-fft-perf/.
 
 - state: h2-hf = active: pair-FFT perf, then A0 to the loop's own limit, then pair-level MPI (codex pane)
 - note: h2-hf = evd-0008 cap kill traced to the serial pair FFT; ADR-0006 fixes MPI at pair level
+
+## 2026-09-08 · evt-0026 · h2-hf pair-FFT implementation started · actor: codex
+
+Verified clean main at 421a44750468e8d34a375a6dea387f07fa82da4e and clean
+harness at 96fb7fdadf0200076a07401f1bb5e3329603f27b, including evt-0025 and
+ADR-0006. Task 1 uses the brief's fixed class-R bounds: fixture identities
+1e-8 Ha, fixture energy preservation 1e-10 Ha, and maximum absolute A0
+interstitial vertex difference 1e-10. Budget: two fixture runs before and
+two after, two vertex dumps, two after timings; no failure diagnostics.
+No push is authorized.
+
+- state: h2-hf = active: capturing pair-FFT baseline and implementing spectrum caching
+- note: h2-hf = evt-0025 fixed contracts; task 2 and MPI wait for task 1
