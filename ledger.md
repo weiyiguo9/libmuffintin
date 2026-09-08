@@ -559,3 +559,40 @@ pane executes; its records continue at evt-0023 and evd-0008.
 
 - state: h2-hf = active: second A0 rerun, Fock exit tolerances 1e-9 / 1e-10, prediction 1e-9 to 4e-9 (claude-worker)
 - note: h2-hf = evd-0007 read as a convergence residue; driver gate versus exit tolerance mismatch deferred to hf-input
+
+## 2026-09-08 · evd-0008 · h2-hf G-H2-HF-0 A0 wall cap handoff at Fock exit tolerances 1e-9 / 1e-10 · main 08f7c21c9e71b0382363ae32d0347f3ce38abbd3, recorded through 421a44750468e8d34a375a6dea387f07fa82da4e
+
+```text
+DIGIT / HANDOFF
+Q: valence eigenvalue identity residual (Ha); class: A; ref: 0
+bound: 1e-8; Delta: unavailable, no outer iteration completed
+prediction: untested; the run produced no residual, so it neither confirms the predicted 1e-9 to 4e-9 nor shows a floor near 1.6477e-7
+checks: killed by the supervisor at the 1800 s cap, exit 124, after writing only its two header lines; runs: 1
+budget: plan.v1 diagnostic 1 was conditional on the run ending in a Fock not-converged error; it ended in a wall clock kill, so no diagnostic was authorized and none was spent
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a0 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 2>&1 | tee examples/h2_dft/results/hf-a0.log
+supervisor: /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 1800s
+log: examples/h2_dft/results/hf-a0.log (main), two lines, header only; the evd-0007 run is preserved as examples/h2_dft/results/hf-a0-fock1e-8.log
+scope: 08f7c21c9e71b0382363ae32d0347f3ce38abbd3 sets FOCK_DENSITY_TOLERANCE 1e-9 and
+FOCK_FEEDBACK_TOLERANCE_HARTREE 1e-10 in crates/mt-runtime/examples/h2_hf.rs
+with a two line comment and changes nothing else; FOCK_MAX_ITERATIONS stays 128
+and every plan.v1 bound stays as written. This is not the plan.v1 memory kill
+case: the command, the plane wave dimension and the spinor basis are identical
+to the evd-0007 run, which reached the identity gate in 282 s, and the only
+change is the exit tolerance, so the loop was still inside its first Fock cycle
+when the cap arrived. The loop's own limit is above the cap, since
+FOCK_MAX_ITERATIONS is 128 and evd-0005 measured one exchange rebuild at these
+settings at 28.7 s; what the loop would have done with more time is not
+claimed. A1, A1v, A2, B, and Bv were not run and claim no evidence.
+```
+
+## 2026-09-08 · evt-0023 · h2-hf handed off on the A0 wall cap · actor: claude
+
+The evt-0022 authorization is spent. The fix landed as one fix(examples)
+commit and the A0 rerun used the unchanged evd-0002 command, but the run was
+killed at the 1800 s cap without completing an outer iteration. evd-0008
+therefore answers neither the evt-0022 prediction nor the residue versus floor
+question: no residual was produced. Per the assignment the failure was not
+investigated.
+
+- state: h2-hf = handoff: A0 at Fock exit tolerances 1e-9 / 1e-10 was killed at the 1800 s cap with no residual; can the Fock loop reach 1e-10 Ha within the cap at the A0 dimension, or does the residue versus floor test need a longer cap or an intermediate tolerance?
+- note: h2-hf = evd-0008; prediction untested, no diagnostic authorized; main 08f7c21 fix and 421a447 docs; A1 through Bv not run
