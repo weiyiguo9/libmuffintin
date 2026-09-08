@@ -971,7 +971,7 @@ fn contract_interstitial_selections(
                             .collect::<Vec<_>>();
                         let left = &left_spectra[&left_band];
                         let mut projected_blocks = Vec::with_capacity(selected_right.len());
-                        for right_chunk in selected_right.chunks(64) {
+                        for right_chunk in selected_right.chunks(256) {
                             let mut amplitudes = Vec::with_capacity(right_chunk.len() * n_raw);
                             for &(_, right) in right_chunk {
                                 let start = amplitudes.len();
@@ -992,7 +992,7 @@ fn contract_interstitial_selections(
                                 amplitudes,
                             )?;
                             let projected =
-                                einsum("pr,ra->pa", &[&raw, theta])?.to_host_row_major();
+                                muffintin_tensor::matmul(&raw, theta)?.to_host_row_major();
                             for ((right_band, _), vertex) in
                                 right_chunk.iter().zip(projected.chunks_exact(n_pw))
                             {
