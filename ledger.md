@@ -1943,3 +1943,57 @@ a later ADR.
 
 - state: ctf-rs = idle: R1 line complete and pushed (b9990fa); S1 not started
 - note: ctf-rs = GitHub master b9990fa; dgtog_redistribution on the replica contract; MSI and Mac clones in sync
+
+## 2026-09-09 · evd-0024 · periodic full-potential NMTO MPI integration · main 5f5dc92c7bbc9d562bfc53e65e23cc9082a5f34e
+
+DIGIT / PASS
+Q: fixed H first-iteration bands, coefficients, occupations, chemical potential,
+normalization and regional density; class: R relative to retained production
+implementation f4261a9 plus periodic/full-potential working-tree changes.
+Bound: elementwise rtol=1e-10, atol=1e-12, finite outputs required.
+Delta: 1-rank maximum absolute difference 0; 4-rank maximum 2.220446049250313e-16
+in MT density, with all other recorded quantities identical.
+Python publication: 0c7bf7a84bc545cc3cb7804dcde91f761a60cba1.
+
+Logs and fixed source-reference NPZ:
+`/Users/zerozaki07/tmp/pymuffintin/local_experiment/generated/periodic_mpi_merge_20260909_xhB4hC/`.
+`native-build.log`: FFTW release extension build passed.
+`focused.log`: 21 focused tests passed. `mpi1.log`: four MPI/native block
+checks passed. `mpi4.log`: eight MPI/native/control-flow checks passed per
+rank. `source-vs-mpi1.log` and `source-vs-mpi4.log` retain the source comparison.
+No failed numerical checks, additional diagnostics, or post-pass reruns.
+
+Commands from `/Users/zerozaki07/tmp/pymuffintin`, after `unalias python`
+and `unalias python3`, with `PYTHONPATH=$PWD/src:$PWD/.venv/lib/python3.14/site-packages:/Users/zerozaki07/tmp/libmuffintin/python`
+and OMP/OPENBLAS/TBLIS/VECLIB_MAXIMUM/RAYON thread counts set to 1:
+
+```sh
+/opt/homebrew/bin/python3 -m pytest tests/test_periodic_nmto.py tests/test_nmto.py tests/test_nmto_regional_density.py tests/test_mto_hydrogen_checkpoint.py tests/test_nmto_scf_input.py tests/test_nmto_scf_loop.py -q
+mpiexec --oversubscribe -n 1 /opt/homebrew/bin/python3 -m mpi4py -m pytest tests/test_nmto_mpi.py tests/test_nmto_potential_mpi.py -q
+mpiexec --oversubscribe -n 4 /opt/homebrew/bin/python3 -m mpi4py -m pytest tests/test_nmto_mpi.py tests/test_nmto_potential_mpi.py tests/test_nmto_scf_loop.py -q
+mpiexec --oversubscribe -n 1 /opt/homebrew/bin/python3 -m mpi4py local_experiment/generated/periodic_mpi_merge_20260909_xhB4hC/compare.py
+mpiexec --oversubscribe -n 4 /opt/homebrew/bin/python3 -m mpi4py local_experiment/generated/periodic_mpi_merge_20260909_xhB4hC/compare.py
+```
+
+Build used `uvx maturin develop --release --features fft-fftw` from paired
+`libmuffintin/python`, with Homebrew TBLIS/HDF5, `LIBRARY_PATH=/opt/homebrew/opt/fftw/lib`,
+`CARGO_BUILD_JOBS=2`, and the pymuffintin virtualenv.
+Timeouts: 600 seconds for focused tests, 300 seconds per MPI command.
+Scope: integration equivalence, strict periodic mathematical tests and native
+shared-array/mass-field parity; not diamond convergence, scaling or SPEX agreement.
+
+## 2026-09-09 · evt-0061 · periodic full-potential NMTO MPI integrated and published · actor: codex
+
+Both main branches were pushed: native 5f5dc92 and Python 0c7bf7a.
+Production source trees remain untouched; unrelated `uv.lock` was restored.
+Review corrected serialized k-owner preparation and duplicated per-rank
+potential quadrature: k geometries now compute concurrently, root alone
+prepares FFT/quadrature data, and shared read-only arrays feed fixed blocks.
+The new input contract replaces minimum-cells with explicit periodic cutoffs
+and quadrature, and preserves linear/Pulay selection and KH inverse masses.
+The two older evt-0059 headings resulted from concurrent Mac ledger writers;
+this closes the one titled "integrate periodic full-potential NMTO with Python MPI"
+without rewriting either historical entry.
+
+- state: nmto-periodic-mpi = integrated and published; focused serial/source/MPI checks passed; material study not run
+- note: nmto-periodic-mpi = evd-0024; pymuffintin 0c7bf7a and libmuffintin 5f5dc92; SPEX/diamond band comparison remains separate
