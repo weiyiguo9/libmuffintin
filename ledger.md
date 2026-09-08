@@ -648,3 +648,42 @@ No push is authorized.
 
 - state: h2-hf = active: capturing pair-FFT baseline and implementing spectrum caching
 - note: h2-hf = evt-0025 fixed contracts; task 2 and MPI wait for task 1
+
+## 2026-09-08 · evd-0009 · h2-hf pair-FFT preservation and timing · main 814003278024a560de4fef737749015215b36b74
+
+```text
+DIGIT / PASS
+Q: fixture exchange/eigenvalue/total identity residuals (Ha); class: R; ref: fixture
+bound: 1e-8; Delta: maximum 3.42933147157165052e-16
+Q: fixture total and exchange energy preservation (Ha); class: R; ref: 421a447
+bound: 1e-10; Delta: 0 for both energies with and without fft-fftw
+Q: maximum absolute first-rebuild A0 interstitial vertex difference; class: R; ref: 421a447 fft-fftw
+bound: 1e-10; Delta: 6.50521335639941991e-19 over 20,157,100 finite entries
+command: cargo test --release -p libmuffintin-runtime --test gamma_valence_hf --features fft-fftw -- --nocapture
+command: cargo test --release -p libmuffintin-runtime --test gamma_valence_hf -- --nocapture
+command: /opt/homebrew/bin/python3 compare_vertices.py /tmp/h2-hf-perf-before.bin /tmp/h2-hf-perf-after.bin 1e-10
+log: evidence/2026-09-08-h2-hf-pair-fft-perf/{fixture-before-fftw,fixture-before-direct,fixture-after-fftw,fixture-after-direct,fixture-compare,vertex-compare}.log
+scope: fixed task-1 gates closed. Four fixture runs, two vertex dumps, two changed timing samples (one overlaps the changed dump); seven numerical executions total. No diagnostics.
+```
+
+The README in that evidence directory records the exact scratch build/run
+commands, environment, and log mapping. First-rebuild class-P report-only
+timings (`vv.interstitial` / `vv.mpb_rebuild` seconds): old evd-0005 reference
+27.281043 / 28.657877; captured 421a447 one-thread baseline 34.261638 /
+37.398714; changed one-thread 21.380939 / 24.576575; changed ten-thread
+9.604797 / 11.903934. Transform count is 234,840 before versus 41,276 after.
+The right-spectrum cache uses 305,242,560 bytes at A0 and disjoint right-band
+chunks above 4,000,000,000 bytes. MPI remains unimplemented and unrun.
+
+## 2026-09-08 · evt-0027 · h2-hf pair-FFT gates closed, A0 own-limit run started · actor: codex
+
+Task 1 closed at evd-0009. Main adds Progress residual output in `7efe82c`
+and the default-quiet `--verbosity` option in `ca2e5ed`. A0 retains the exact
+evd-0002 numerical settings, adds `--verbosity 1`, and is supervised by
+`/opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 4500s`. Class A:
+three identities against zero within 1e-8 Ha; validity requires convergence,
+finite energies, and electron count 2 within 1e-8. One run, no diagnostics.
+The existing cap-1800 log is retained as `hf-a0-fock1e-10-cap1800.log`.
+
+- state: h2-hf = active: pair-FFT passed; A0 rerun to the existing 128-iteration limit
+- note: h2-hf = evd-0009 closed; A0 one run under 4500 s, no diagnostics; MPI conditional on outcome

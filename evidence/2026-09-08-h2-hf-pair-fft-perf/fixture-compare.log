@@ -1,0 +1,2 @@
+DIGIT / PASS class=R feature=fftw ref=421a447 total_delta=0.00000000000000000e+00 exchange_delta=0.00000000000000000e+00 bound=1e-10 Ha; fixture_identity_max=3.42933147157165052e-16 bound=1e-8 Ha
+DIGIT / PASS class=R feature=direct ref=421a447 total_delta=0.00000000000000000e+00 exchange_delta=0.00000000000000000e+00 bound=1e-10 Ha; fixture_identity_max=3.42933147157165052e-16 bound=1e-8 Ha

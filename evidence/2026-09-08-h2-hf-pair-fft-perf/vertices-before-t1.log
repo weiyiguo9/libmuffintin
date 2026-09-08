@@ -1,0 +1,39 @@
+[hf timing] begin atomic_start.total
+[hf timing] begin atomic_start.superposition_density
+[hf timing] end atomic_start.superposition_density elapsed_s=2.119489
+[hf timing] begin atomic_start.density_conversion
+[hf timing] end atomic_start.density_conversion elapsed_s=0.008487
+[hf timing] begin atomic_start.potential
+[hf timing] end atomic_start.potential elapsed_s=0.513457
+[hf timing] begin atomic_start.checkpoint
+[hf timing] end atomic_start.checkpoint elapsed_s=0.091777
+[hf timing] end atomic_start.total elapsed_s=2.737280
+system=H2 bond_bohr=1.400000 electron_count=2.0 route=spinor-first-variation cores=none box_bohr=8.000000 rmt_bohr=0.650000 orbital_g_bohr_inverse=4.000000 field_g_bohr_inverse=12.000000 product_g_bohr_inverse=4.000000 product_lmax=2 overlap_tolerance=1.000000e-4 exchange_coulomb=periodic-finite-body fock_fourier_g_bohr_inverse=4.000000 fock_smoothing_omega_bohr_inverse=none lexp=14 speed_of_light_au=137035.9895000000
+atomic_start_checkpoint=/tmp/h2-hf-perf-baseline/a0/h2.atomic-start.toml charge_target=2.0000000000000000e0 charge_represented=2.0000000000000271e0 charge_error=2.709e-14 normalization_scale=8.4314746035398769e-1
+[hf timing] begin exchange.cache.vv_basis.validate
+[hf timing] end exchange.cache.vv_basis.validate elapsed_s=0.000349
+[hf timing] begin exchange.cache.vv_basis.raw_dirac_space
+[hf timing] end exchange.cache.vv_basis.raw_dirac_space elapsed_s=0.119702
+[hf timing] begin exchange.cache.vv_basis.overlap_cutoff
+[hf timing] end exchange.cache.vv_basis.overlap_cutoff elapsed_s=0.011284
+[hf timing] begin exchange.cache.vv_basis.vertex_context
+[hf timing] end exchange.cache.vv_basis.vertex_context elapsed_s=0.001581
+[hf timing] begin exchange.cache.vv_basis.interstitial_table
+[hf timing] end exchange.cache.vv_basis.interstitial_table elapsed_s=0.075731
+[hf timing] begin exchange.cache.vv_basis.interstitial_theta
+[hf timing] end exchange.cache.vv_basis.interstitial_theta elapsed_s=0.025159
+[hf timing] begin exchange.cache.vv_basis.mt_coordinate_tensors
+[hf timing] end exchange.cache.vv_basis.mt_coordinate_tensors elapsed_s=1.609530
+[hf timing] begin vv.mpb_rebuild
+[hf timing] begin vv.validate_frozen_inputs
+[hf timing] end vv.validate_frozen_inputs elapsed_s=0.000554
+[hf timing] begin vv.site_projection
+[hf timing] end vv.site_projection elapsed_s=0.459159
+[hf timing] begin vv.mt_contraction
+[hf timing] end vv.mt_contraction elapsed_s=1.655627
+[hf timing] begin vv.interstitial
+[hf timing] end vv.interstitial elapsed_s=34.261638
+[hf timing] begin vv.vertex_assembly_and_frozen_identity
+[hf timing] end vv.vertex_assembly_and_frozen_identity elapsed_s=1.019988
+[hf timing] end vv.mpb_rebuild elapsed_s=37.398714
+[hf dump] interstitial_vertices selections=39140 n_pw=515 path=/tmp/h2-hf-perf-before.bin
