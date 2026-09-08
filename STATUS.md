@@ -5,13 +5,13 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `05b6d520f7c04c7855abf655a3731b90f141771b` (2026-09-08)
-- Last ledger entries: evd-1007 (MSI), evd-0006 (Mac), evt-0019 (Mac)
+- Last ledger entries: evd-1007 (MSI), evd-0006 (Mac), evt-0020 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
 | `ctf-rs` | D6 handoff: d4_blas_flops never executed because mpiexec was not found | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | D6 code and WSL 1/2/4 closed; native compile/link passed; install Microsoft MPI launcher before the one remaining runtime gate |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
-| `h2-hf` | handoff: A0 fails the valence eigenvalue identity at 3.4e-4 against 1e-8; is that the example's 1e-5 Fock exit tolerance or a two-site defect? | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evd-0005 perf checks passed; evd-0006 A0 handoff; A1 through Bv not run |
+| `h2-hf` | active: A0 rerun with the fixture's Fock exit tolerances (claude-worker) | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evt-0019 handoff accepted as an example defect; plan.v1 bounds unchanged |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |

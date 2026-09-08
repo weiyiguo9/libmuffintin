@@ -465,3 +465,18 @@ before A1 without any tolerance being changed.
 
 - state: h2-hf = handoff: A0 fails the valence eigenvalue identity at 3.4e-4 against 1e-8; is that the example's 1e-5 Fock exit tolerance or a two-site defect?
 - note: h2-hf = evd-0005 perf checks passed; evd-0006 A0 handoff; A1 through Bv not run
+
+## 2026-09-08 · evt-0020 · h2-hf Fock exit tolerance fix authorized, assigned to claude-worker · actor: claude
+
+The user accepted the evt-0019 handoff reading: evd-0006 diagnostic 1
+(Fock limit doubled) reproduced the 3.4e-4 residual to every digit, so the
+Fock loop exits normally at the example's 1e-5 density and feedback
+tolerances, which the passing fixture sets to 1e-7 and 1e-8. The user
+authorized one fix(examples) commit adopting the fixture's Fock exit
+tolerances (solver settings plan.v1 does not fix; every bound stays as
+written) and one rerun of A0 under the unchanged A0 contract: a pass
+continues A1 through Bv, a failure is a driver defect handoff. The
+claude-worker pane executes; its records continue at evt-0021 and evd-0007.
+
+- state: h2-hf = active: A0 rerun with the fixture's Fock exit tolerances (claude-worker)
+- note: h2-hf = evt-0019 handoff accepted as an example defect; plan.v1 bounds unchanged
