@@ -1196,3 +1196,46 @@ harness tip are pushed.
 
 - state: h2-hf = active: MPI n=4 spectrum check, A0 n=2, and A1 timings re-authorized (codex pane); A1 ladder held
 - note: h2-hf = evd-0019 read as band gauge; spectrum contract fixed; n=2 passes at 9.9e-16
+
+## 2026-09-08 · evd-0020 · h2-hf rank-four feedback spectrum pass · main c46223c673c6a5e1d3595f2a7e7205cddf8b9260, recorded through b282484
+
+```text
+DIGIT / PASS
+Q: sorted eigenvalues of each first-rebuild band-feedback block at n=4 versus n=1; class: R; ref: evidence/2026-09-08-h2-hf-mpi/feedback-n1.bin
+bound: 1e-12 absolute; Delta: maximum 5.62050406216485499e-16
+command: RAYON_NUM_THREADS=2 H2_MPI_FEEDBACK_DUMP=/Users/zerozaki07/tmp/libmuffintin-harness/evidence/2026-09-08-h2-hf-mpi/feedback-n4.bin /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 900s /opt/homebrew/bin/mpirun -n 4 /tmp/h2-hf-mpi-probe-target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/mpi-feedback-n4 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 2
+command: /opt/homebrew/bin/python3 compare_feedback_spectrum.py feedback-n1.bin feedback-n4.bin | tee compare-feedback-spectrum-n4.log
+log: evidence/2026-09-08-h2-hf-mpi/feedback-n4.log, feedback-n4.bin, and compare-feedback-spectrum-n4.log
+checks: mpirun exit 0; one 1030-dimensional feedback block; spectrum comparison passed. The existing n=2 dump separately passes at maximum 9.85322934354826430e-16 under evt-0046 with no rerun.
+runs: one; spectrum contract closed without diagnostics or repeats
+```
+
+## 2026-09-08 · evd-0021 · h2-hf MPI A0 cap handoff · main c46223c673c6a5e1d3595f2a7e7205cddf8b9260, recorded through b282484
+
+```text
+DIGIT / HANDOFF
+Q: A0 E/HOMO/E_H/E_x (Ha) and three identity residuals (Ha); class: R; ref: evd-0010
+bound: 1e-10 for E/HOMO/E_H/E_x and 1e-8 for identities; Delta: unavailable
+command: RAYON_NUM_THREADS=5 /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 1800s /opt/homebrew/bin/mpirun -n 2 target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a0-mpi-n2 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 1
+log: examples/h2_dft/results/hf-a0-mpi-n2.log on main b282484
+checks: the 1800 s supervisor cap returned exit 124 before convergence, final energies, identities, driver wall_s, or the example's rank-agreement check. Forty exchange rebuilds completed; supervisor wall was 1800.12 s. compare_a0.py was not run.
+runs: one; no diagnostic or repeat
+unresolved: the rank-two MPI A0 acceptance quantities were not produced within the fixed cap. The three A1 timings are unrun under the stop rule; the A1 ladder remains held.
+```
+
+## 2026-09-08 · evt-0047 · h2-hf spectrum gates pass; MPI A0 handed off at the fixed cap · actor: codex
+
+The re-posed spectrum contract passes for both remaining rank counts: the
+existing rank-two dump differs from rank one by at most
+`9.85322934354826430e-16`, and the new rank-four dump by at most
+`5.62050406216485499e-16`, both below the absolute `1e-12` bound. The
+rank-four launcher finalized normally and exited 0. The next authorized run,
+A0 at two ranks and five Rayon threads per rank, completed 40 exchange
+rebuilds but reached its 1800 s cap before producing final acceptance
+quantities or executing the example's rank-agreement check. It returned exit
+124 with supervisor wall 1800.12 s. Per the fixed stop rule, no comparison,
+diagnostic, repeat, or A1 timing followed. Two of five authorized runs were
+used; the A1 ladder remains held. Main documentation is `b282484`; no push.
+
+- state: h2-hf = handoff: MPI feedback spectrum passes at n=2/n=4; A0 n=2 exceeds the fixed 1800 s cap; A1 ladder held
+- note: h2-hf = evd-0020/0021; two of five runs used; A1 timings unrun; no diagnostics; main b282484
