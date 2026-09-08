@@ -1704,3 +1704,113 @@ closes with the fix. Stop That Digit unchanged for the gates.
 
 - state: ctf-rs = active: direct fix of the two-rank cyclic_reshuffle defect, then the R1 acceptance rerun (Codex on MSI)
 - note: ctf-rs = bisect withdrawn by the user; fix in the current tree; R1 faithful per evd-1010; S1 held
+
+## 2026-09-09 · evd-1012 · ctf-rs direct replica-restoration fix and single-test confirmation · ctf-rs a558e30c57bcb0e12abf18c8d2906237d41ccf90
+
+The withdrawn B1 bisect scratch trees, build patches and target directories
+were discarded without further history investigation.
+
+Current-tree inspection and one scratch-only two-rank diagnostic identified
+missing replica restoration in `Tensor::redistribute`. Both optimized paths
+(equal-phase block reshuffle and DGTOG ROR) return primary-layer-only buffers;
+the public Tensor layout requires values on every owning rank. In the first
+failing `[3,5]` cyclic-to-unmapped transition, rank 1 has `receive_root=false`,
+receive counts `[10,5]` and 15 valid but unpopulated local slots, so offset 0
+contains 0 instead of key 0's i8 value -5. Rank 0 unpacks correctly; the MPI
+exchange remains cleared by evd-1010.
+
+Fix `a558e30` changes only `src/tensor.rs`: after either optimized path, group
+ranks by mapped physical residues, order by original rank so the canonical
+owner is subgroup rank 0, broadcast that local block and explicitly close
+the subgroup. This restores scalar/partial/full replicas and preserves zero
+padding, low-level primary-only primitives and the legacy path. No test,
+driver, fixture, tolerance or acceptance script changed. The fix is on top
+of `622ef10`, with no rewritten commits and no ctf-rs push.
+
+```text
+DIGIT / PASS
+Q: cyclic_reshuffle exact values/padding/replicas, virtual phases, empty/scalar,
+   i8/bool/complex/non-Copy Wire, world/parity contexts; class: R
+ref: unchanged test assertions; bound: exact equality, 0
+Delta: before fix rank 1 offset 0 difference 5, actual 0 versus expected -5;
+       after fix all unchanged assertions pass, exact difference 0
+runs: one pre-fix two-rank diagnostic, supervisor exit 124 after assertion panic;
+      one post-fix confirmation at each of 1/2/4 ranks, exit 0
+closed: single-test confirmation, no further diagnostics after the fix
+```
+
+```powershell
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-r1-4/diagnostic.sh
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-r1-4/confirm.sh
+```
+
+Logs: `D:/projects/runs/ctf-rs-r1-4/diagnostic.log` and `confirmation.log`.
+The scripts and `commands.md` beside them give exact nested commands and
+scratch instrumentation. Only scratch code was instrumented, not delivery
+source. The existing keepalive was reused.
+
+## 2026-09-09 · evd-1013 · ctf-rs full R1 acceptance passes after replica restoration · ctf-rs 2b684061b7f5bf2699d646ec4113c04084789f71
+
+Implementation `a558e30`, records `2b68406`, gate G-CTF-R1 under plan.v2 and
+BRIEF-4. All prescribed scripts ran unchanged, including the WSL script's
+complete selection and post-loop checks.
+
+```text
+DIGIT / PASS
+Q: every WSL driver's own metric and required invariants; class: R
+ref: pinned upstream f69cbb46; bound: exact or upstream per driver, unchanged
+Delta: all unchanged assertions passed; emitted numerical values preserved in log
+checks: all 175 MPI drivers at each of 1/2/4 ranks, followed by all prescribed
+        library/local checks and the seven-rank Strassen invocation
+runs: acceptance-wsl.sh once, each configured rank set once; exit 0
+
+DIGIT / PASS
+Q: native Windows GNU compile/link of all tests/examples; class: R
+ref: plan.v2 native build gate; bound: successful compile/link, exit 0
+Delta: no compile/link failure; numerical delta not applicable
+runs: acceptance-native.ps1 -BuildOnly once
+
+DIGIT / PASS
+Q: native D6 drivers' own metrics/invariants; class: R
+ref: pinned upstream f69cbb46; bound: exact or upstream per driver, unchanged
+Delta: all unchanged assertions passed; emitted numerical values preserved in log
+checks: 50 dense drivers at each of 1/2/4 ranks, plus four local scaling tests;
+        150 driver PASS stamps, 151 target executions
+runs: acceptance-native.ps1 -D6Only once, each rank set once; exit 0
+closed: G-CTF-R1 and direct replica-restoration defect; no post-gate diagnostics
+```
+
+Exact commands (native commands from `D:/projects/ctf-rs`):
+
+```powershell
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-r1-4/acceptance.sh
+$env:CARGO_BUILD_JOBS='2'
+cmd.exe /d /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance-native.ps1 -BuildOnly > D:\projects\runs\ctf-rs-r1-4\native-build.log 2>&1"
+cmd.exe /d /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance-native.ps1 -D6Only > D:\projects\runs\ctf-rs-r1-4\native-d6.log 2>&1"
+```
+
+Logs stay outside source under `D:/projects/runs/ctf-rs-r1-4/`: `wsl.log`,
+`native-build.log`, `native-d6.log`; `commands.md` and `acceptance.sh` retain
+the exact nested commands. ctf-rs validation.md "rsmpi binding" records
+the stamps and coverage.md's phase 1 row now records R1 acceptance.
+
+Scope caveat: the separate `dgtog_redistribution` target is not selected by
+the prescribed runtime scripts; its root-only Tensor scalar assertion
+conflicts with the replica-populated contract explicitly required by
+cyclic_reshuffle. It was left unchanged as instructed, and no runtime pass
+is claimed for it. Low-level primary-only primitive semantics are unchanged.
+
+## 2026-09-09 · evt-1003 · ctf-rs R1 closes after direct Tensor replica restoration · actor: codex
+
+The missing public-layer replica fill is fixed in `a558e30`, the unchanged
+cyclic_reshuffle test passes its separate 1/2/4 confirmation, and the full
+prescribed R1 acceptance passes without skipping any WSL driver. Numerical
+verification is closed. One diagnostic, three single-test confirmations and
+three acceptance-script invocations were used; no extra post-pass check was
+run. Records are `2b68406`; no ctf-rs push or S1 implementation followed.
+The non-gated root-only Tensor test conflict is explicitly recorded in evd-1013.
+This harness-msi push is the durable record; claude-report is notified after
+the pushed tip is known.
+
+- state: ctf-rs = R1 closed: replica restoration fixed; cyclic_reshuffle 1/2/4 and full WSL/native acceptance pass; S1 not started
+- note: ctf-rs = evd-1012 and evd-1013; fix a558e30, local records 2b68406; no ctf-rs push; non-gated dgtog_redistribution assertion conflict recorded
