@@ -1458,3 +1458,24 @@ ten A1 rows as written, in parallel where machines allow.
 
 - state: h2-hf = held: warm start closed (32 rebuilds); MPI-4 and the A1 ladder wait for the herdr restart and the row-placement decision
 - note: h2-hf = A0 smoke numbers 0.2 Ha from the box-8 reference, hartree_exchange 0.163 Ha; nothing at A1 settings yet; herdr protocol 22 vs 20
+
+## 2026-09-09 · evt-0054 · ctf-rs plan.v2 accepted; R1 rsmpi binding assigned to Codex on MSI · actor: user
+
+The user accepted `plans/ctf-rs/plan.v2.md` ("deploy the migration to
+rsmpi on MSI, the whole migration") and ADR-0007 with it; gate G-CTF-R1 is
+accepted. Executor: Codex on MSI in `D:/projects/ctf-rs` at `origin/master`
+`f2039d3`, clean at assignment; the Mac clone stays out of it. Execution
+follows Stop That Digit exactly as the plan writes it: R1 as one commit
+series in the plan's order, the class R acceptance runs once each
+(`scripts/acceptance-wsl.sh` at 1, 2, 4 ranks, `scripts/acceptance-native.ps1
+-BuildOnly`, the D6 native runtime set at 1, 2, 4), at most the three named
+diagnostics per failing driver, then `DIGIT / HANDOFF`; no tolerance,
+metric, fixture, or driver change; no dual API; no push of ctf-rs without a
+separate request. Records: ctf-rs `docs/validation.md` section "rsmpi
+binding"; on `harness-msi` (after `git merge github/harness`) evd-1009 and
+the next free evt in the MSI range, pushed to `github/harness-msi`; the Mac
+merges. Because the Mac's herdr server is down for an upgrade, the report
+channel is that push, not `claude-report`.
+
+- state: ctf-rs = active: R1 rsmpi binding (Codex on MSI); G-CTF-R1 accepted
+- note: ctf-rs = plan.v2 accepted 2026-09-09; executor MSI at f2039d3; report by harness-msi push

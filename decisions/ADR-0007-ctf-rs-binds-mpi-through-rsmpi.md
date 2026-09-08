@@ -1,6 +1,6 @@
 # ctf-rs binds MPI through rsmpi; the host owns the Universe
 
-- Status: proposed 2026-09-09 (user direction; acceptance of `plans/ctf-rs/plan.v2.md` closes it)
+- Status: accepted 2026-09-09 with `plans/ctf-rs/plan.v2.md` (evt-0054)
 - Date: 2026-09-09
 - Supersedes: the ADR-0006 "MPI binding rule" lines on raw-handle crossing (`AsRaw` outward, `FromRaw` inward) and on a ctf-rs constructor that adopts a raw `MPI_Comm`
 

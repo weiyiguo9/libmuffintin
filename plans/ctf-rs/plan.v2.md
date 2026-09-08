@@ -2,7 +2,7 @@
 
 - Workstream ID: `ctf-rs`
 - Plan version: 2
-- Approval: proposed 2026-09-09; direction authorized by the user (one breaking change to rsmpi); acceptance on review
+- Approval: accepted 2026-09-09 (immutable; direction changes make plan.v3); executor Codex on MSI, `D:/projects/ctf-rs`
 - Supersedes: `plans/ctf-rs/plan.v1.md` (D1 to D6 closed under it, evd-1004 to evd-1008; S1 carried over unchanged)
 - Repository: rustnumgum/ctf-rs, `origin/master` at `f2039d3` (D6 close plus formatting); the MSI checkout `D:/projects/ctf-rs` executes; the Mac clone `~/tmp/ctf-rs` is stale and diverged and is not the baseline
 - Decision: `decisions/ADR-0007-ctf-rs-binds-mpi-through-rsmpi.md`
