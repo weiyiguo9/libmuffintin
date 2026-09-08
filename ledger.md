@@ -1551,3 +1551,32 @@ channel, not claude-report, and no ctf-rs push was made.
 
 - state: ctf-rs = handoff: R1 rsmpi implementation committed; WSL two-rank cyclic_reshuffle fails exact 0 versus -5; native build and D6 1/2/4 pass; S1 held
 - note: ctf-rs = evd-1009; local master 813d90a; one named diagnostic, valid Funneled/main-thread setup; no numerical repair or ctf-rs push
+
+## 2026-09-09 · evt-0055 · ctf-rs R1 handoff answered: two-rank cyclic_reshuffle is an MPI-layer translation defect; diagnostic 3 sharpened on Context::exchange, fix and one rerun authorized · actor: claude
+
+Merged `harness-msi` c10b6d3 (evd-1009, evt-1001) into `harness`. Reading
+of the handoff: R1 changed only the MPI layer (`src/ffi/mpi.rs`),
+`Context` construction, and the test and example mains; no reshuffle,
+pack, or unpack code changed, and 175 one-rank drivers plus eight
+two-rank drivers pass, including `custom_reduce` (user operation),
+`ctr_2d` (broadcast and root Reduce), and `contract_remap`. A two-rank
+value of 0 where −5 is expected at rank 1 offset 0 therefore comes from a
+wrapper whose two-rank form the passing drivers do not exercise; the
+cyclic reshuffle reaches MPI through `Context::exchange`, whose rsmpi form
+(`all_to_all_into` for counts, `all_to_all_varcount_into` with
+`Partition`/`PartitionMut` for byte payloads) is the first candidate. The
+other wrappers read faithful to their raw predecessors: `redistribute_ror`
+still issues raw Isend/Irecv, `send_receive`, `replace_wire`, `split`, and
+`reduce_monoid` map argument for argument. Ruling: diagnostic 2 does not
+apply to a mid-run wrong value and is not run; diagnostic 3 is run as the
+plan names it, sharpened to a per-call trace of counts and bucket hashes
+in `exchange` at 813d90a and at f2039d3 on the failing test at two ranks;
+the first divergent line names the wrapper. A translation defect so found
+is R1-scoped and is fixed in one `fix(mpi)` commit, followed by the R1
+acceptance rerun once as plan.v2 section 4 states. Identical traces are a
+handoff with the traces. The report channel is `claude-report` again (the
+Mac herdr server was restarted to 0.9.0, protocol 22); the harness-msi
+push stays the durable record.
+
+- state: ctf-rs = active: R1 diagnostic 3 on Context::exchange, fix and one acceptance rerun authorized (Codex on MSI)
+- note: ctf-rs = evd-1009 handoff read as an MPI-layer translation defect; exchange is the first candidate; S1 held
