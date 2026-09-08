@@ -1924,3 +1924,22 @@ the pushed tip is known.
 
 - state: ctf-rs = R1 and dgtog_redistribution test contract closed; WSL single-test 1/2/4 passed; publication left to the Mac; S1 not started
 - note: ctf-rs = evd-1014; test cccd5e8, local records b9990fa; three exact passes, no diagnostics or ctf-rs push
+
+## 2026-09-09 · evt-0060 · ctf-rs dgtog_redistribution test contract closed and pushed; R1 line complete; S1 next · actor: claude
+
+Merged `harness-msi` b176e65 (evd-1014, evt-1004). The test-only commit
+cccd5e8 (12 lines in `tests/dgtog_redistribution.rs`: the scalar asserts
+29 on every replica instead of zero on non-roots, the local-storage
+helper asserts the value for every valid global key with zero only for
+padding) passed at 1, 2, 4 ranks once each; records b9990fa. Pulled to
+the Mac clone by bundle and pushed: `2b68406..b9990fa master -> master`
+on rustnumgum/ctf-rs; the MSI checkout's `origin/master` is b9990fa. With
+this the rsmpi binding line is complete: R1 closed under G-CTF-R1, the
+replica-fill defect fixed, both redistribution tests stating the same
+contract, everything on GitHub. Next under plan.v2 is S1 (sparse
+automatic planning, plan.v1 section 3) when the user starts it; the
+libmuffintin `set_hf_mpi_communicator` versus `&Universe` question stays
+a later ADR.
+
+- state: ctf-rs = idle: R1 line complete and pushed (b9990fa); S1 not started
+- note: ctf-rs = GitHub master b9990fa; dgtog_redistribution on the replica contract; MSI and Mac clones in sync

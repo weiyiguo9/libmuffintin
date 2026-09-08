@@ -5,7 +5,7 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `9d64c5d978595f839f3c0905873b101c4df154cf` (2026-09-09)
-- Last ledger entries: evd-1014 (MSI), evt-1004 (MSI), evd-0023 (Mac), evt-0059 (Mac)
+- Last ledger entries: evd-1014 (MSI), evt-1004 (MSI), evd-0023 (Mac), evt-0060 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
