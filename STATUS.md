@@ -5,13 +5,13 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `b2824841a0b84c94a0329e2543fdc63973f7dc65` (2026-09-08)
-- Last ledger entries: evd-1008 (MSI), evd-0021 (Mac), evt-0047 (Mac)
+- Last ledger entries: evd-1008 (MSI), evd-0021 (Mac), evt-0048 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
 | `ctf-rs` | D6 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | D6 WSL and native 1/2/4 passed; dense-first objective complete; S1 not started |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
-| `h2-hf` | handoff: MPI feedback spectrum passes at n=2/n=4; A0 n=2 exceeds the fixed 1800 s cap; A1 ladder held | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evd-0020/0021; two of five runs used; A1 timings unrun; no diagnostics; main b282484 |
+| `h2-hf` | active: Fock-loop warm start (codex pane); MPI A1 timings and two-rank A0 stamp queued behind it; A1 ladder held | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | MPI spectrum passes at n=2 and n=4; two-rank A0 45 s per rebuild on one machine; warm start authorized by the user |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |

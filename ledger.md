@@ -1239,3 +1239,30 @@ used; the A1 ladder remains held. Main documentation is `b282484`; no push.
 
 - state: h2-hf = handoff: MPI feedback spectrum passes at n=2/n=4; A0 n=2 exceeds the fixed 1800 s cap; A1 ladder held
 - note: h2-hf = evd-0020/0021; two of five runs used; A1 timings unrun; no diagnostics; main b282484
+
+## 2026-09-08 · evt-0048 · h2-hf MPI rank checks read; A0 under two ranks deferred behind the warm start, which the user authorized · actor: user
+
+Reviewed main `b282484` and harness `6aabfd1` (records only, no trailers);
+both pushed. Reading of evd-0020/0021: the spectrum contract passes at n=2
+(9.9e-16) and n=4 (5.6e-16), so the distributed first rebuild is the same
+operator at every rank count. The A0 run under `mpirun -n 2` with five
+threads per rank completed 40 rebuilds in 1800 s, 45 s per rebuild against
+20.8 s at one process with ten threads (evd-0010, 1166 s / 56). On one
+ten-core machine splitting cores across ranks halves the threads of every
+redundant phase and shares the memory bandwidth, so a per-node loss was
+expected; the feature's value is on nodes where ranks add cores, which is
+what the A1 timing table is for. Its residual trajectory tracks evd-0010 to
+about 1e-13 relative at every printed iteration, which is a reading, not a
+stamp. The user authorized the warm start (evt-0044 reading) and assigned it
+to the codex pane ahead of the remaining MPI runs: Gamma valence path only,
+carry the final mixed global feedback across outer iterations and seed the
+inner loop with one spinor solve, fixed point unchanged; class R fixture
+identities 1e-8, A0 energies within 2e-8 Ha of evd-0010 (twice the outer
+exit tolerance, the reason a changed inner path can end elsewhere inside
+that floor), identities 2e-8; class P rebuild count with the pre-stated
+prediction 12 to 24; two runs, no diagnostics. After it lands, the MPI A1
+first-iteration timings at (1,10), (2,5), (4,2) and the A0 two-rank stamp
+against the warm-start A0 log at 1e-10 with the cap raised to 3600 s.
+
+- state: h2-hf = active: Fock-loop warm start (codex pane); MPI A1 timings and two-rank A0 stamp queued behind it; A1 ladder held
+- note: h2-hf = MPI spectrum passes at n=2 and n=4; two-rank A0 45 s per rebuild on one machine; warm start authorized by the user
