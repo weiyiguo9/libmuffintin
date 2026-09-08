@@ -131,3 +131,27 @@ set -o pipefail
 The command runs from the main checkout. The prior log is preserved at
 `examples/h2_dft/results/hf-a0-fock1e-10-cap1800.log` on main. Class A bounds
 and validity are those recorded in evt-0027: one run, no diagnostics.
+
+A0 exited 0: eight outer iterations, seven Fock iterations per outer,
+56 exchange rebuilds, driver wall 1934.680438 s and supervisor wall 1935.39 s.
+The full accepted row is committed in the main example README at `35c200c`.
+Maximum identity residual across the run is 1.7276811092870048e-9 Ha;
+final electron-count error is approximately 5.8e-15. A0 outcome (a), PASS.
+
+The next authorized A1 base row used the same environment and binary:
+
+```sh
+/usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 1800s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a1-row1 --box 8 --orbital-g 5 --field-g 12 --product-g 6 --product-lmax 4 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 1 2>&1 | tee examples/h2_dft/results/hf-a1-row1.log
+```
+
+A1 base exited 124 at supervisor wall 1800.83 s, after two completed Fock
+iterations with no completed outer iteration. Last printed density and feedback
+residuals: 1.0988849307297540e-4 and 1.3734823798679154e-4 Ha. There is no
+converged energy, final electron count, identity row, or `hartree_exchange`.
+The run was not a `FockNotConverged` error at 128, and establishes no floor.
+Class P, report-only bound, DIGIT / HANDOFF at the authorized resource limit.
+
+Task 2 used two executions: the passed A0 and timed-out A1 base. Task 3 MPI
+was not started; its fixture/dump/timing counts are all zero. A1 rows 2–10,
+A1v, A2, B, and Bv remain unrun. Total numerical executions across the brief:
+nine, with no numerical diagnostics or repeats after a pass.

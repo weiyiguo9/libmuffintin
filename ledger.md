@@ -709,3 +709,43 @@ supervised at 1800 s, no added diagnostics.
 
 - state: h2-hf = active: A0 passed; A1 base row under 1800 s cap
 - note: h2-hf = A0 outcome a; no further A0 checks; downstream study follows plan.v1
+
+## 2026-09-08 · evd-0010 · h2-hf A0 pass and A1 base resource handoff · main ca2e5ed, recorded through 35c200cdcc8283c3ad6744267a7bbd49684045af
+
+```text
+DIGIT / PASS
+Q: driver exchange/eigenvalue/total identity residuals (Ha); class: A; ref: 0
+bound: 1e-8; Delta: maxima 0 / 1.7276809149979755e-9 / 1.7276811092870048e-9
+checks: converged, finite energies; final electron_count=2.0000000000000058 within 1e-8 of 2; exit 0
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 4500s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a0 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 1 2>&1 | tee examples/h2_dft/results/hf-a0.log
+log: examples/h2_dft/results/hf-a0.log (main)
+scope: A0 outcome (a), closed; one run, no diagnostics. E=-0.59291354371542793, HOMO=-0.12617886551775270, E_H=0.37293092552423746, E_x=-0.023151590595997563 Ha; final identities=0 / 7.2523410887814777e-10 / 7.2523409500035996e-10 Ha; hartree_exchange=0.16331387216612117 Ha. Eight outer iterations, seven Fock iterations each, 56 total rebuilds; driver wall=1934.680438 s, supervisor wall=1935.39 s.
+
+DIGIT / HANDOFF
+Q: A1 base hartree_exchange (Ha); class: P; ref: 0
+bound: none (study); Delta: unavailable
+checks: no completed outer iteration or converged result; required three identities within 1e-8 Ha and final electron count 2 within 1e-8 not established
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 1800s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a1-row1 --box 8 --orbital-g 5 --field-g 12 --product-g 6 --product-lmax 4 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 1 2>&1 | tee examples/h2_dft/results/hf-a1-row1.log
+log: examples/h2_dft/results/hf-a1-row1.log (main)
+scope: one run, supervisor exit 124 at 1800.83 s; two completed Fock iterations. Last density=1.0988849307297540e-4 and feedback=1.3734823798679154e-4 Ha. No diagnostic; no convergence-floor claim.
+unresolved: the A1 base row cannot finish within its authorized 1800 s cap.
+```
+
+The first-outer A0 eigenvalue residual fits evt-0022's [1e-9, 4e-9]
+prediction and is 95.37 times below 1.6477445782814293e-7. The final residual
+is below that predicted interval. This is not an external-energy or
+product-basis-completeness pass. Main preserves the old A0 log under
+`hf-a0-fock1e-10-cap1800.log`. All exact scratch commands and timing logs
+remain in `evidence/2026-09-08-h2-hf-pair-fft-perf/`.
+
+## 2026-09-08 · evt-0029 · h2-hf handed off at the A1 base cap · actor: codex
+
+A0 and Task 1 remain closed. Stop at the A1 resource-budget handoff;
+A1 rows 2–10, A1v, A2, B, Bv, and Task 3 pair-level MPI were not run.
+No MPI implementation or rank-count evidence is claimed. The brief used
+nine numerical executions: four fixtures, two vertex dumps, one separate
+timing, A0, and A1 base. Two changed timing samples include the changed dump.
+No numerical diagnostics, repeated passes, or pushes were performed.
+
+- state: h2-hf = handoff: A0 passed; A1 base exceeds the authorized 1800 s cap
+- note: h2-hf = evd-0009 and evd-0010; main 35c200c; downstream rows and MPI unrun
