@@ -897,3 +897,33 @@ hands off without diagnostics. MPI remains held; no A1 ladder or push.
 
 - state: h2-hf = active: BLAS-3 contraction implementation and baseline capture
 - note: h2-hf = evt-0034 fixed preservation bounds and finite run budget; MPI and ladder held
+
+## 2026-09-08 · evt-0036 · h2-hf Task 1 fixture gates passed, projection stage started · actor: codex
+
+The Task 1-only scratch snapshot passed the two prescribed fixture runs,
+with and without fft-fftw. Class R: maximum identity residual
+4.83771009363032078e-16 Ha against 1e-8; total/exchange energy differences
+from 10f6b39 are 0 / 4.20128341838132968e-19 Ha against 1e-10. These
+stage-specific passes are closed. The first-rebuild baseline feedback dump
+contains one 1030-by-1030 k block (1,060,900 complex entries).
+Proceed to Task 2: the existing FFTW-only projection uses the same borrowed
+RSTSR/faer matmul route with 256 right bands per projection chunk; the
+spectrum cache and Rayon structure remain unchanged.
+
+- state: h2-hf = active: Task 1 fixtures closed; checking Task 2 projection
+- note: h2-hf = fixed six-fixture budget; no extra diagnostics; MPI and ladder held
+
+## 2026-09-08 · evt-0037 · h2-hf staged fixtures and feedback preservation closed · actor: codex
+
+Task 2 passed its two prescribed fixture runs; its total/exchange differences
+and maximum identity residual equal the accepted Task 1 values in evt-0036.
+The after-both first-rebuild feedback comparison passed over all 1,060,900
+finite entries: maximum absolute difference 1.21430643318376497e-16 against
+the fixed 1e-10 bound, reference 10f6b39. Six fixture executions and both
+feedback dumps are complete; none will be repeated.
+Run the single A0 preservation check under 2400 s, comparing E/HOMO/E_H/E_x
+to evd-0010 within 1e-10 Ha and retaining the plan's 1e-8 identities, then
+the one report-only A1 timing under 1200 s. No A1 ladder, MPI, or diagnostics.
+
+- state: h2-hf = active: fixtures and feedback passed; final A0 and A1 timing remain
+- note: h2-hf = eight numerical executions used; two authorized runs remain

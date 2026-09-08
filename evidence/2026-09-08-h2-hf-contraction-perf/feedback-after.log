@@ -1,0 +1,54 @@
+[hf timing] begin atomic_start.total
+[hf timing] begin atomic_start.superposition_density
+[hf timing] end atomic_start.superposition_density elapsed_s=1.497334
+[hf timing] begin atomic_start.density_conversion
+[hf timing] end atomic_start.density_conversion elapsed_s=0.007779
+[hf timing] begin atomic_start.potential
+[hf timing] end atomic_start.potential elapsed_s=0.461026
+[hf timing] begin atomic_start.checkpoint
+[hf timing] end atomic_start.checkpoint elapsed_s=0.093719
+[hf timing] end atomic_start.total elapsed_s=2.063199
+system=H2 bond_bohr=1.400000 electron_count=2.0 route=spinor-first-variation cores=none box_bohr=8.000000 rmt_bohr=0.650000 orbital_g_bohr_inverse=4.000000 field_g_bohr_inverse=12.000000 product_g_bohr_inverse=4.000000 product_lmax=2 overlap_tolerance=1.000000e-4 exchange_coulomb=periodic-finite-body fock_fourier_g_bohr_inverse=4.000000 fock_smoothing_omega_bohr_inverse=none lexp=14 speed_of_light_au=137035.9895000000
+atomic_start_checkpoint=/tmp/libmuffintin-h2-hf/contract-after/h2.atomic-start.toml charge_target=2.0000000000000000e0 charge_represented=2.0000000000000271e0 charge_error=2.709e-14 normalization_scale=8.4314746035398769e-1
+[hf timing] begin gamma.fock.iteration
+[hf timing] begin gamma.fock.occupations
+[hf timing] end gamma.fock.occupations elapsed_s=0.000026
+[hf timing] begin gamma.rebuild.inputs
+[hf timing] end gamma.rebuild.inputs elapsed_s=0.014438
+[hf timing] begin gamma.rebuild.mpb
+[hf timing] begin exchange.cache.vv_basis.validate
+[hf timing] end exchange.cache.vv_basis.validate elapsed_s=0.000226
+[hf timing] begin exchange.cache.vv_basis.raw_dirac_space
+[hf timing] end exchange.cache.vv_basis.raw_dirac_space elapsed_s=0.130654
+[hf timing] begin exchange.cache.vv_basis.overlap_cutoff
+[hf timing] end exchange.cache.vv_basis.overlap_cutoff elapsed_s=0.004336
+[hf timing] begin exchange.cache.vv_basis.vertex_context
+[hf timing] end exchange.cache.vv_basis.vertex_context elapsed_s=0.001256
+[hf timing] begin exchange.cache.vv_basis.interstitial_table
+[hf timing] end exchange.cache.vv_basis.interstitial_table elapsed_s=0.073982
+[hf timing] begin exchange.cache.vv_basis.interstitial_theta
+[hf timing] end exchange.cache.vv_basis.interstitial_theta elapsed_s=0.022801
+[hf timing] begin exchange.cache.vv_basis.mt_coordinate_tensors
+[hf timing] end exchange.cache.vv_basis.mt_coordinate_tensors elapsed_s=1.480942
+[hf timing] begin vv.mpb_rebuild
+[hf timing] begin vv.validate_frozen_inputs
+[hf timing] end vv.validate_frozen_inputs elapsed_s=0.000399
+[hf timing] begin vv.site_projection
+[hf timing] end vv.site_projection elapsed_s=0.222243
+[hf timing] begin vv.mt_contraction
+[hf timing] end vv.mt_contraction elapsed_s=0.609183
+[hf timing] begin vv.interstitial
+[hf timing] end vv.interstitial elapsed_s=3.916355
+[hf timing] begin vv.vertex_assembly_and_frozen_identity
+[hf timing] end vv.vertex_assembly_and_frozen_identity elapsed_s=0.507282
+[hf timing] end vv.mpb_rebuild elapsed_s=5.283502
+[hf timing] end gamma.rebuild.mpb elapsed_s=7.080772
+[hf timing] begin gamma.rebuild.coulomb_assembly
+[hf timing] end gamma.rebuild.coulomb_assembly elapsed_s=1.033359
+[hf timing] begin gamma.rebuild.contraction
+[hf timing] end gamma.rebuild.contraction elapsed_s=4.025261
+[hf timing] begin gamma.fock.feedback_lift
+[feedback dump] blocks=1 entries=1060900 path="/Users/zerozaki07/tmp/libmuffintin-harness/evidence/2026-09-08-h2-hf-contraction-perf/feedback-after.bin"
+real 33.87
+user 81.14
+sys 4.51

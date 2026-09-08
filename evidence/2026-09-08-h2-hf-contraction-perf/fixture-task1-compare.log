@@ -1,0 +1,6 @@
+stage=task1 feature=fftw class=R ref=10f6b39 total_delta=0.00000000000000000e+00 exchange_delta=4.20128341838132968e-19 bound=1e-10 Ha
+identity_max=4.83771009363032078e-16 ref=fixture bound=1e-8 Ha
+DIGIT / PASS
+stage=task1 feature=direct class=R ref=10f6b39 total_delta=0.00000000000000000e+00 exchange_delta=4.20128341838132968e-19 bound=1e-10 Ha
+identity_max=4.83771009363032078e-16 ref=fixture bound=1e-8 Ha
+DIGIT / PASS

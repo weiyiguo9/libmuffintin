@@ -1,0 +1,26 @@
+   Compiling libmuffintin-tensor v0.2.0 (/private/tmp/h2-hf-contract-task1/crates/mt-tensor)
+   Compiling libmuffintin-operators v0.2.0 (/private/tmp/h2-hf-contract-task1/crates/mt-operators)
+   Compiling libmuffintin-prodbasis v0.2.0 (/private/tmp/h2-hf-contract-task1/crates/mt-prodbasis)
+   Compiling libmuffintin-coulomb v0.2.0 (/private/tmp/h2-hf-contract-task1/crates/mt-coulomb)
+   Compiling libmuffintin-dft v0.2.0 (/private/tmp/h2-hf-contract-task1/crates/mt-dft)
+   Compiling libmuffintin-runtime v0.2.0 (/private/tmp/h2-hf-contract-task1/crates/mt-runtime)
+warning: unused import: `thc_fixture_common::spinor_parent_grid as parent_grid`
+  --> crates/mt-runtime/tests/spinor_hydrogen.rs:33:9
+   |
+33 | pub use thc_fixture_common::spinor_parent_grid as parent_grid;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `libmuffintin-runtime` (test "gamma_valence_hf") generated 1 warning (run `cargo fix --test "gamma_valence_hf" -p libmuffintin-runtime` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 17.89s
+     Running tests/gamma_valence_hf.rs (/Users/zerozaki07/tmp/libmuffintin/target/release/deps/gamma_valence_hf-06380069dd40a60b)
+
+running 1 test
+CONTRACT_FIXTURE total=-5.32924235801359503e-1 exchange=-1.71511931745918543e-5
+CONTRACT_ID exchange=0.00000000000000000e0 eigenvalue=2.84697937967537396e-16 total=3.33066907387546962e-16
+CONTRACT_ID exchange=0.00000000000000000e0 eigenvalue=4.83771009363032078e-16 total=4.44089209850062616e-16
+test gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
