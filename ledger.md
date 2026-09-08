@@ -1881,3 +1881,46 @@ it the same way when it lands.
 
 - state: ctf-rs = active: dgtog_redistribution test onto the replica contract (Codex on MSI); R1 pushed at 2b68406; S1 next
 - note: ctf-rs = GitHub master 2b68406; Mac WIP kept on wip/sparse-search-cache-20260908; MSI origin remote added
+## 2026-09-09 · evd-1014 · dgtog_redistribution replica-contract test passes · ctf-rs b9990fa5b7e67fb105a9dc55da5f36d65be9d8b8
+
+BRIEF-5's authorized test-only change is `cccd5e8`: the scalar now asserts
+`[29]` on every replica instead of zero on nonroots, and the local-storage
+helper asserts `key + 11` on every valid global key, zero only for padding.
+All empty/high-order and other exact assertions remain. No `src/` file or
+low-level root-only primitive test changed. Records `b9990fa` replace the
+obsolete validation.md "Scope note" with this outcome; no ctf-rs push.
+
+```text
+DIGIT / PASS
+Q: every assertion of tests/dgtog_redistribution.rs under the replica contract
+class: R; ref: test committed at cccd5e8; bound: exact equality, 0
+Delta: every assertion passed, exact difference 0
+checks: populated replicas, padding, virtual/scalar/empty/high-order storage,
+        world and parity contexts at each configured rank count
+runs: WSL 1/2/4 once each, three runs total; exit 0; no diagnostics
+closed: dgtog_redistribution contract; no full R1 or native rerun
+```
+
+Exact command:
+
+```powershell
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-dgtog-test/confirm.sh
+```
+
+Log: `D:/projects/runs/ctf-dgtog-test/confirmation.log`. The adjacent
+`confirm.sh` and `commands.md` retain the exact nested commands: sync to the
+Linux work copy, compile the single test with `--no-run`, then run it once
+per rank using `mpirun --oversubscribe -n 1/2/4` under a 60-second supervisor.
+The existing keepalive was reused. Prior G-CTF-R1 passes remain closed.
+
+## 2026-09-09 · evt-1004 · dgtog_redistribution test contract closes · actor: codex
+
+The public Tensor replica contract is now stated by the formerly root-only
+test and passes the authorized three runs. Test commit `cccd5e8`, records
+`b9990fa`; no source change, additional diagnostic, native test, full R1 rerun,
+or ctf-rs push. Publication of ctf-rs remains with the Mac as BRIEF-5 directs.
+This harness-msi push is the durable record; claude-report is notified after
+the pushed tip is known.
+
+- state: ctf-rs = R1 and dgtog_redistribution test contract closed; WSL single-test 1/2/4 passed; publication left to the Mac; S1 not started
+- note: ctf-rs = evd-1014; test cccd5e8, local records b9990fa; three exact passes, no diagnostics or ctf-rs push
