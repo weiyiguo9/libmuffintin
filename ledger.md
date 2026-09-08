@@ -773,3 +773,19 @@ vertex build. Records continue at evt-0031 and evd-0011.
 
 - state: h2-hf = active: Gamma Fock phase profile at A0 and A1 row 1, conditional exchange cache, then A1 (codex pane); MPI held
 - note: h2-hf = A0 closed by evd-0010; A1 row 1 900 s per Fock iteration; Gamma path rebuilds basis and Coulomb every iteration
+
+## 2026-09-08 · evt-0031 · h2-hf Gamma profiling started · actor: codex
+
+Verified clean main `35c200cdcc8283c3ad6744267a7bbd49684045af` and clean
+harness `17c615f72330343bd6b2f5fc7c7096415068ef78`, including evt-0030.
+Task A changes only Gamma phase timers. Task B is class P, report-only:
+two example runs at A0 (240 s cap) and A1 base (2400 s cap), with verbosity 2.
+Task C is authorized only if A1 basis compilation plus Coulomb assembly
+accounts for at least 30 percent of a completed Fock iteration. If enabled,
+its fixed class-R bounds are fixture identities 1e-8 Ha, fixture energy
+preservation 1e-10 Ha, and A0 E/HOMO/E_H/E_x preservation 1e-10 Ha against
+evd-0010, with identities still within 1e-8. Budget: two fixtures before,
+two after, one A0 at 2400 s; no failure diagnostics. MPI remains held.
+
+- state: h2-hf = active: adding Gamma timers for the two bounded profiles
+- note: h2-hf = evt-0030 conditional cache contract; no push; MPI held
