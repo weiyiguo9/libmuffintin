@@ -512,6 +512,45 @@ executions exhausted the agreed list: six fixtures, two feedback probes,
 one A0, and one A1 timing. MPI and the A1 ladder remain held; the study
 tolerance policy is still a separate user decision.
 
+### Pair-level MPI
+
+Main `f189669` adds the default-off runtime `mpi` feature through rsmpi 0.8.2
+and mpi-sys 0.2.4, with MSRV 1.89 unchanged. Main `33a761d` assigns occupied
+left bands round-robin across ranks, constructs and contracts only rank-local
+vertices, and Allreduces one band-feedback block per k. Basis compilation,
+Coulomb assembly, spinor solves, occupations, and density remain redundant.
+The `h2_hf` binary owns Funneled initialization; the library never initializes
+or finalizes MPI. Output is rank-zero-only, with an exact final-state agreement
+check before printing.
+
+The communicator setter accepts the raw `MPI_COMM_WORLD` handle and verifies
+it, but reconstructs safe world views rather than calling rsmpi `FromRaw`.
+The latter is an owning constructor that explicitly cannot adopt or free a
+system communicator. Root [`README.md`](../../README.md) documents Snellius
+build, launch, module, and per-rank Rayon-thread rules (`88b212d`).
+
+```text
+DIGIT / PASS
+Q: fixture exchange/eigenvalue/total identities; class: R; ref: fixture
+bound: 1e-8; Delta: every unchanged assertion passed
+checks: default single process, fft-fftw+mpi single process, and the MPI-enabled test binary under mpirun -n 2; genuine Funneled initialization in the fixture
+runs: 3; closed
+
+DIGIT / HANDOFF
+Q: first-rebuild band-space feedback at ranks 2 and 4 versus rank 1; class: R; ref: rank 1
+bound: 1e-12 absolute; Delta: unavailable
+checks: rank-one scratch probe wrote all 1,060,900 entries, then exited 1 because process::exit bypassed Universe drop and MPI_Finalize
+runs: 1 feedback probe; ranks 2 and 4 not run; no diagnostics authorized
+unresolved: obtain a cleanly finalized first-rebuild probe without spending an unapproved replacement run
+```
+
+The feedback failure belongs to the scratch evidence hook, after its flushed
+rank-one dump, not to the committed distribution path. Nevertheless, MPI
+execution failure cannot be accepted numerically. Per the fixed stop rule,
+rank-two/rank-four dumps, the rank-two A0 run, and all three report-only A1
+timings were not run. The A1 ladder was not restarted. Evidence is under
+`evidence/2026-09-08-h2-hf-mpi/` on `harness`.
+
 ### B kernel study
 
 The B rows use the accepted A1v settings with orbital cutoff 5.
