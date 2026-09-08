@@ -927,3 +927,90 @@ the one report-only A1 timing under 1200 s. No A1 ladder, MPI, or diagnostics.
 
 - state: h2-hf = active: fixtures and feedback passed; final A0 and A1 timing remain
 - note: h2-hf = eight numerical executions used; two authorized runs remain
+
+## 2026-09-08 · evt-0038 · h2-hf A0 preservation passed; final A1 timing started · actor: codex
+
+The single A0 run exited 0, converged in eight outer iterations and 56 Fock
+iterations, and took 1166.331817 driver seconds (1166.76 supervisor seconds).
+Class-R absolute differences from evd-0010 for E/HOMO/E_H/E_x are
+1.22124532708767219e-15 / 1.76803016671556179e-14 /
+2.52575738102223113e-14 / 3.95516952522712018e-15 Ha, all below 1e-10.
+Maximum driver identity residual is 1.72767455897115951e-9 Ha, below 1e-8;
+final electron-count error is 5.32907051820075139e-15. This pass is closed.
+Run only the remaining class-P first-iteration A1 timing under 1200 s,
+including whole-run user/real utilization. It is not an A1 ladder row.
+
+- state: h2-hf = active: all contraction preservation gates passed; A1 timing remains
+- note: h2-hf = nine numerical executions used; final report-only timing running; no further checks
+
+## 2026-09-08 · evd-0013 · h2-hf Task 1 contraction fixture preservation · main 16ff43682537c752902ecbb1440f43ae612b8d55
+
+```text
+DIGIT / PASS
+Q: fixture exchange/eigenvalue/total identities (Ha); class: R; ref: fixture
+bound: 1e-8; Delta: maximum 4.83771009363032078e-16
+Q: fixture total/exchange energy preservation (Ha); class: R; ref: 10f6b39
+bound: 1e-10; Delta: 0 / 4.20128341838132968e-19 in both feature variants
+command: cargo test --release -p libmuffintin-runtime --test gamma_valence_hf --features fft-fftw -- --nocapture
+command: cargo test --release -p libmuffintin-runtime --test gamma_valence_hf -- --nocapture
+log: evidence/2026-09-08-h2-hf-contraction-perf/fixture-before-{fftw,direct}.log and fixture-task1-{fftw,direct,compare}.log
+scope: two baseline and two Task 1-only scratch fixture executions; temporary prints only, no assertion changes. Source snapshot and environment are documented in the evidence README. Pass closed; no repeat or diagnostic.
+```
+
+## 2026-09-08 · evd-0014 · h2-hf Task 2 fixtures and full feedback preservation · main 700fa1f7c1ba467edff41363f8b5f51d2ee9589d
+
+```text
+DIGIT / PASS
+Q: fixture exchange/eigenvalue/total identities (Ha); class: R; ref: fixture
+bound: 1e-8; Delta: maximum 4.83771009363032078e-16
+Q: fixture total/exchange energies (Ha); class: R; ref: 10f6b39
+bound: 1e-10; Delta: 0 / 4.20128341838132968e-19 in both feature variants
+command: cargo test --release -p libmuffintin-runtime --test gamma_valence_hf --features fft-fftw -- --nocapture
+command: cargo test --release -p libmuffintin-runtime --test gamma_valence_hf -- --nocapture
+log: evidence/2026-09-08-h2-hf-contraction-perf/fixture-task2-{fftw,direct,compare}.log
+scope: two after-both fixture runs; stage-specific acceptance closed.
+
+DIGIT / PASS
+Q: every entry of first-rebuild band-space exchange feedback; class: R; ref: 10f6b39
+bound: 1e-10 absolute; Delta: maximum 1.21430643318376497e-16
+command: /opt/homebrew/bin/python3 compare_feedback.py feedback-before.bin feedback-after.bin
+log: evidence/2026-09-08-h2-hf-contraction-perf/feedback-{before,after,compare}.log and feedback-{before,after}.bin
+scope: one ordered 1030-by-1030 k block, 1,060,900 finite complex entries; two scratch first-feedback probes, each under 2400 s, both exit 0. Exact build/run commands are in the evidence README. Pass closed, no diagnostics.
+```
+
+## 2026-09-08 · evd-0015 · h2-hf A0 full-run preservation · main 700fa1f7c1ba467edff41363f8b5f51d2ee9589d, recorded through 5f40aac4c88cb36805fcba1d7494a6bec22a3514
+
+```text
+DIGIT / PASS
+Q: A0 E/HOMO/E_H/E_x (Ha); class: R; ref: evd-0010
+bound: 1e-10; Delta: 1.22124532708767219e-15 / 1.76803016671556179e-14 / 2.52575738102223113e-14 / 3.95516952522712018e-15
+checks: converged, finite energies; maximum driver identity residual 1.72767455897115951e-9 Ha <= 1e-8; final electron-count error 5.32907051820075139e-15
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 2400s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a0 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 2>&1 | tee examples/h2_dft/results/hf-a0-contract.log
+command: /opt/homebrew/bin/python3 ../libmuffintin-harness/evidence/2026-09-08-h2-hf-contraction-perf/compare_a0.py examples/h2_dft/results/hf-a0-contract.log
+log: examples/h2_dft/results/hf-a0-contract.log (main); evidence/2026-09-08-h2-hf-contraction-perf/a0-compare.log
+scope: one run, exit 0, eight outer iterations and 56 Fock iterations. Driver wall 1166.331817 s, supervisor 1166.76 s; reference driver wall 1934.680438 s. Preservation pass closed, no diagnostic; no new external-energy or product-basis acceptance claim.
+```
+
+## 2026-09-08 · evd-0016 · h2-hf A1 first-iteration timing and utilization · main 700fa1f7c1ba467edff41363f8b5f51d2ee9589d
+
+```text
+STUDY / REPORT
+Q: first-iteration contraction/MPB/Fock seconds and whole-run user/real; class: P; ref: evd-0011
+bound: none; before: 290.551110 / 151.026190 / 482.082668 s, about 3.1 cores; after: 179.435197 / 96.477896 / 313.415279 s, 3.213291 cores
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 1200s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/contract-a1-timing --box 8 --orbital-g 5 --field-g 12 --product-g 6 --product-lmax 4 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 2
+log: evidence/2026-09-08-h2-hf-contraction-perf/a1-timing.stdout.log, a1-timing.stderr.log, a1-summary.log
+scope: one report-only run, cap exit 124; user 3857.62 s / real 1200.52 s, system 195.48 s. RSTSR/faer has a ten-thread pool; observed whole-run utilization does not establish sustained ten-core execution. No extra profiling was authorized or run. This is not a ladder row.
+```
+
+## 2026-09-08 · evt-0039 · h2-hf BLAS-3 performance task completed; ladder policy still held · actor: codex
+
+Both scoped performance changes and their requested evidence are complete:
+`16ff436` per-occupied-band faer GEMMs with 1 GB target tiles; `700fa1f`
+256-right-band projection matmul with resident theta; `5f40aac` examples
+records. All class-R gates passed; the report-only timing is recorded as
+measured, including limited average core utilization. Ten numerical executions
+used the exact budget, with no diagnostics or repeated acceptance checks.
+MPI and the A1 ladder remain held. No push was performed.
+
+- state: h2-hf = handoff: BLAS-3 perf gates closed; A1 tolerance-policy decision pending
+- note: h2-hf = evd-0013 through evd-0016; A1 iteration 313.415279 s at 3.213 average cores; main 5f40aac; MPI held

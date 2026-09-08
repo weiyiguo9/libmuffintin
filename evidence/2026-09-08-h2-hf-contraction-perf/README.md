@@ -132,3 +132,57 @@ fixed evd-0010 values and the driver identities; it does not adjust a bound
 or launch another calculation. The two performance commits will be made
 after the authorized timing, allowing both bodies to cite actual user/real
 thread evidence without rewriting previously recorded commit IDs.
+
+A0 exited 0 and converged in eight outer iterations, seven Fock iterations
+each, 56 rebuilds. Driver wall: 1166.331817 s; supervisor wall: 1166.76 s.
+From `compare_a0.py examples/h2_dft/results/hf-a0-contract.log` (run from
+the main checkout), `a0-compare.log` records:
+
+| Quantity | Absolute difference from evd-0010 (Ha) | Bound (Ha) |
+|---|---:|---:|
+| E | 1.22124532708767219e-15 | 1e-10 |
+| HOMO | 1.76803016671556179e-14 | 1e-10 |
+| E_H | 2.52575738102223113e-14 | 1e-10 |
+| E_x | 3.95516952522712018e-15 | 1e-10 |
+
+Maximum driver identity residual: 1.72767455897115951e-9 Ha (bound 1e-8).
+Final electron-count error: 5.32907051820075139e-15. Finite converged
+energies; class-R PASS, closed without diagnostics or extra checks.
+
+## Authorized A1 timing command
+
+Same main working source and build, ten Rayon threads. This is a report-only
+class-P timing, not a plan row or an A1 ladder restart. Logs stay here:
+
+```sh
+/usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 1200s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/contract-a1-timing --box 8 --orbital-g 5 --field-g 12 --product-g 6 --product-lmax 4 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 2 > ../libmuffintin-harness/evidence/2026-09-08-h2-hf-contraction-perf/a1-timing.stdout.log 2> ../libmuffintin-harness/evidence/2026-09-08-h2-hf-contraction-perf/a1-timing.stderr.log
+```
+
+| First A1 Fock iteration | Before, evd-0011 (s) | After (s) |
+|---|---:|---:|
+| `gamma.rebuild.contraction` | 290.551110 | 179.435197 |
+| `gamma.rebuild.mpb` | 151.026190 | 96.477896 |
+| `gamma.fock.iteration` | 482.082668 | 313.415279 |
+
+The timing exited 124 at the authorized cap: real 1200.52 s, user 3857.62 s,
+system 195.48 s. User/real = 3.213291 average cores, versus about 3.1 in
+evd-0011. The source configures a ten-thread faer pool, but whole-run data
+does not establish sustained ten-core use or isolate GEMM-only utilization.
+No extra run or instrumentation was added to explain that gap. This class-P
+report is not an A1 numerical acceptance row.
+
+## Delivery
+
+Task 1 is `16ff43682537c752902ecbb1440f43ae612b8d55`; Task 2 is
+`700fa1f7c1ba467edff41363f8b5f51d2ee9589d`; main documentation and the
+A0 log are `5f40aac4c88cb36805fcba1d7494a6bec22a3514`. Both performance
+commit bodies name the shared route, chunking, and measured thread evidence.
+Incidental formatter-only changes outside the projection scope were removed;
+the protected Fock loop and spectrum cache are unchanged. No numerical
+verification was repeated for whitespace-only cleanup.
+
+All class-R gates passed. Ten numerical executions: two baseline fixtures,
+two Task 1 fixtures, two Task 2 fixtures, two feedback dumps, one A0, one A1
+timing. No diagnostics or extra checks. MPI and the A1 ladder remain held,
+and neither branch is pushed. The task is complete; the broader workstream
+still awaits the user's A1 tolerance-policy decision.

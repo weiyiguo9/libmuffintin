@@ -1,0 +1,5 @@
+gamma.rebuild.contraction=179.435197
+gamma.rebuild.mpb=96.477896
+gamma.fock.iteration=313.415279
+{'real': 1200.52, 'user': 3857.62, 'sys': 195.48}
+user_per_real=3.213291
