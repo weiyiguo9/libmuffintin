@@ -11,8 +11,7 @@ runs the driver redundantly (SPMD); only the interstitial pair-vertex
 construction is distributed, and an allgather returns the complete vertex
 list to every rank, so the Coulomb contraction and the Fock loop stay
 unchanged. The FFTs stay rank-local. The capability is an optional `mpi`
-feature, default off, bound through `mpi` (rsmpi) or `mpi-sys` 0.2 as ctf-rs
-does, with the workspace MSRV unchanged at 1.89.
+feature, default off, with the workspace MSRV unchanged at 1.89.
 
 Not chosen: slab or pencil decomposition of the pair FFT grid (FFTW-MPI in
 rustnumgum/fftw). That is reserved for a single large density or THC grid.
@@ -36,3 +35,23 @@ EXX practice (band groups over pairs, few ranks per transform).
   ctf-rs.
 - The redundant SPMD driver is acceptable while the exchange build
   dominates the wall time; it is not a scaling claim.
+
+## MPI binding rule (added 2026-09-08, user decision)
+
+`mpi` and `mpi-sys` are one project (rsmpi/rsmpi; `mpi` 0.8.2 and
+`mpi-sys` 0.2.4 both released 2026-07-09). rustnumgum/fftw's `mpi` feature
+uses the safe `mpi` 0.8 API on top of `mpi-sys` 0.2; ctf-rs uses raw
+`mpi-sys` 0.2 with its own `Comm` wrapper and its own `Context::initialize`.
+Rule for every crate in this stack:
+
+- One FFI layer: `mpi-sys` 0.2 from rsmpi, resolved to a single copy by
+  Cargo, so `MPI_Comm` is one type everywhere.
+- libmuffintin binds through the safe `mpi` 0.8 crate, like the fftw fork.
+- One initializer: the binary calls `mpi::initialize_with_threading` at
+  `Threading::Funneled` or higher (rayon threads live inside each rank; MPI
+  calls stay on the main thread). Libraries check `mpi::is_initialized()`
+  and never call `MPI_Init` or `MPI_Finalize` themselves.
+- Communicators cross crate boundaries as raw handles: rsmpi `AsRaw::as_raw`
+  outward, `FromRaw::from_raw` inward. ctf-rs needs a constructor that
+  adopts an existing `MPI_Comm` without initializing or finalizing; that is
+  a small ctf-rs change recorded under its own workstream.
