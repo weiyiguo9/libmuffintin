@@ -8,6 +8,9 @@ use num_complex::Complex64;
 pub(crate) struct PairFft {
     grid: FftGrid,
     plan: FftPlan,
+    sparse: Vec<Complex64>,
+    product: Vec<Complex64>,
+    correlation: Vec<Complex64>,
 }
 
 impl PairFft {
@@ -46,7 +49,62 @@ impl PairFft {
         };
         let grid = FftGrid::new(dimensions)?;
         let plan = FftPlan::new(grid)?;
-        Ok(Self { grid, plan })
+        let sparse = vec![Complex64::default(); grid.len()];
+        let product = vec![Complex64::default(); grid.len()];
+        let correlation = vec![Complex64::default(); grid.len()];
+        Ok(Self {
+            grid,
+            plan,
+            sparse,
+            product,
+            correlation,
+        })
+    }
+
+    pub(crate) fn grid_len(&self) -> usize {
+        self.grid.len()
+    }
+
+    /// Gather one sparse band and cache its forward transform.
+    pub(crate) fn spectrum(
+        &mut self,
+        indices: &[[i32; 3]],
+        values: &[Complex64],
+    ) -> Result<Vec<Complex64>, FftError> {
+        self.load_sparse(indices, values);
+        let mut spectrum = vec![Complex64::default(); self.grid.len()];
+        self.plan.forward_into(&self.sparse, &mut spectrum)?;
+        Ok(spectrum)
+    }
+
+    /// Sum the two spin correlations in reciprocal space and append the
+    /// requested real-space support. All transform workspaces are reused.
+    pub(crate) fn correlate_spin_spectra_into(
+        &mut self,
+        left: [&[Complex64]; 2],
+        right: [&[Complex64]; 2],
+        raw_indices: &[[i32; 3]],
+        wrap: [i32; 3],
+        output: &mut Vec<Complex64>,
+    ) -> Result<(), FftError> {
+        for (index, product) in self.product.iter_mut().enumerate() {
+            *product =
+                left[0][index].conj() * right[0][index] + left[1][index].conj() * right[1][index];
+        }
+        self.plan
+            .inverse_into(&self.product, &mut self.correlation)?;
+        output.extend(raw_indices.iter().map(|index| {
+            let relative = std::array::from_fn(|axis| index[axis] - wrap[axis]);
+            self.correlation[self.grid.index(relative)]
+        }));
+        Ok(())
+    }
+
+    fn load_sparse(&mut self, indices: &[[i32; 3]], values: &[Complex64]) {
+        self.sparse.fill(Complex64::default());
+        for (&index, &value) in indices.iter().zip(values) {
+            self.sparse[self.grid.index(index)] = value;
+        }
     }
 
     /// Correlate one orbital pair and return only the requested raw support,
@@ -61,25 +119,21 @@ impl PairFft {
         raw_indices: &[[i32; 3]],
         wrap: [i32; 3],
     ) -> Result<Vec<Complex64>, FftError> {
-        let mut left_grid = vec![Complex64::default(); self.grid.len()];
-        for (&index, &value) in left_indices.iter().zip(left) {
-            left_grid[self.grid.index(index)] = value;
-        }
-        let mut right_grid = vec![Complex64::default(); self.grid.len()];
-        for (&index, &value) in right_indices.iter().zip(right) {
-            right_grid[self.grid.index(index)] = value;
-        }
-        let mut product = self.plan.forward(&left_grid)?;
-        let right_spectrum = self.plan.forward(&right_grid)?;
-        for (target, right) in product.iter_mut().zip(right_spectrum) {
+        self.load_sparse(left_indices, left);
+        self.plan.forward_into(&self.sparse, &mut self.product)?;
+        self.load_sparse(right_indices, right);
+        self.plan
+            .forward_into(&self.sparse, &mut self.correlation)?;
+        for (target, right) in self.product.iter_mut().zip(&self.correlation) {
             *target = target.conj() * right;
         }
-        let correlation = self.plan.inverse(&product)?;
+        self.plan
+            .inverse_into(&self.product, &mut self.correlation)?;
         Ok(raw_indices
             .iter()
             .map(|index| {
                 let relative = std::array::from_fn(|axis| index[axis] - wrap[axis]);
-                correlation[self.grid.index(relative)]
+                self.correlation[self.grid.index(relative)]
             })
             .collect())
     }

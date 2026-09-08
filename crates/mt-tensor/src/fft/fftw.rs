@@ -51,24 +51,47 @@ impl FftPlan {
     }
 
     pub fn forward(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, FftError> {
+        let mut output = vec![Complex64::default(); self.output.len()];
+        self.forward_into(input, &mut output)?;
+        Ok(output)
+    }
+
+    /// Execute a forward transform into caller-owned storage.
+    pub fn forward_into(
+        &mut self,
+        input: &[Complex64],
+        output: &mut [Complex64],
+    ) -> Result<(), FftError> {
         self.load(input)?;
         self.forward
             .c2c(&mut self.input, &mut self.output)
             .map_err(|error| FftError::Backend(error.to_string()))?;
-        Ok(self.output.to_vec())
+        output.copy_from_slice(&self.output);
+        Ok(())
     }
 
     pub fn inverse(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, FftError> {
+        let mut output = vec![Complex64::default(); self.output.len()];
+        self.inverse_into(input, &mut output)?;
+        Ok(output)
+    }
+
+    /// Execute a normalized inverse transform into caller-owned storage.
+    pub fn inverse_into(
+        &mut self,
+        input: &[Complex64],
+        output: &mut [Complex64],
+    ) -> Result<(), FftError> {
+        assert_eq!(output.len(), self.output.len());
         self.load(input)?;
         self.inverse
             .c2c(&mut self.input, &mut self.output)
             .map_err(|error| FftError::Backend(error.to_string()))?;
         let normalization = self.output.len() as f64;
-        Ok(self
-            .output
-            .iter()
-            .map(|value| value / normalization)
-            .collect())
+        for (target, value) in output.iter_mut().zip(self.output.iter()) {
+            *target = value / normalization;
+        }
+        Ok(())
     }
 
     fn load(&mut self, input: &[Complex64]) -> Result<(), FftError> {
