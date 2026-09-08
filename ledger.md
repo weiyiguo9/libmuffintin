@@ -1661,3 +1661,29 @@ after the pushed tip is known.
 
 - state: ctf-rs = handoff: R1 diagnostic 3 traces identical at 813d90a and f2039d3; both fail exact 0 versus -5; no wrapper fix or acceptance rerun; S1 held
 - note: ctf-rs = evd-1010 and evd-1011; two diagnostic runs; local master 622ef10; baseline failure reproduced; traces attached; no ctf-rs push
+
+## 2026-09-09 · evt-0056 · ctf-rs R1 faithful on cyclic_reshuffle; the two-rank failure predates R1 and is opened as B1 against the ungated formatting commit · actor: claude
+
+Merged `harness-msi` ecfc4a8 (evd-1010, evd-1011, evt-1002). Reading:
+diagnostic 3 gives identical `Context::exchange` traces at 813d90a and at
+the raw-MPI baseline f2039d3, and both fail the same exact assertion
+(rank 1 offset 0, 0 against −5). R1 therefore reproduces the baseline on
+this driver and is not the cause; no wrapper translation is at fault. The
+baseline itself is the regression: the D6 close 354cf7d passed the WSL
+gate at 1, 2, 4 ranks (evd-1008), and the following commit f2039d3,
+labelled "style: finalize restored Rust formatting", changed 64 files
+with 6605 insertions and 2256 deletions including `src/tensor.rs`,
+`src/mapping.rs`, `src/map_tensor.rs`, and `src/context.rs`, and was never
+gated. Opened as item B1 under the ctf-rs workstream with a fixed budget:
+one two-rank run of `tests/cyclic_reshuffle.rs` at 354cf7d; if it passes,
+a non-whitespace diff of f2039d3 on the redistribute path names the hunk
+and one run with that hunk reverted verifies the naming; then one `fix`
+commit restoring the 354cf7d semantics on top of 622ef10, and the R1
+acceptance once in full (the WSL script running past every driver at 1,
+2, 4, native build, D6 native set). A pass closes R1 and B1 together. If
+354cf7d also fails, handoff. Lesson recorded: a commit labelled style
+with thousands of changed lines is not exempt from the gate; the
+executor is to run the WSL gate on every commit that reaches master.
+
+- state: ctf-rs = active: B1 bisect of the ungated formatting commit f2039d3, then the R1 acceptance rerun (Codex on MSI)
+- note: ctf-rs = R1 faithful on cyclic_reshuffle (identical traces); failure predates R1; suspect f2039d3; S1 held
