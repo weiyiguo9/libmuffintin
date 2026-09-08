@@ -1,0 +1,243 @@
+[hf timing] begin atomic_start.total
+[hf timing] begin atomic_start.superposition_density
+[hf timing] end atomic_start.superposition_density elapsed_s=1.471435
+[hf timing] begin atomic_start.density_conversion
+[hf timing] end atomic_start.density_conversion elapsed_s=0.008053
+[hf timing] begin atomic_start.potential
+[hf timing] end atomic_start.potential elapsed_s=0.519222
+[hf timing] begin atomic_start.checkpoint
+[hf timing] end atomic_start.checkpoint elapsed_s=0.090060
+[hf timing] end atomic_start.total elapsed_s=2.091375
+[hf timing] begin gamma.fock.iteration
+[hf timing] begin gamma.fock.occupations
+[hf timing] end gamma.fock.occupations elapsed_s=0.000106
+[hf timing] begin gamma.rebuild.inputs
+[hf timing] end gamma.rebuild.inputs elapsed_s=0.099336
+[hf timing] begin gamma.rebuild.mpb
+[hf timing] begin exchange.cache.vv_basis.validate
+[hf timing] end exchange.cache.vv_basis.validate elapsed_s=0.001002
+[hf timing] begin exchange.cache.vv_basis.raw_dirac_space
+[hf timing] end exchange.cache.vv_basis.raw_dirac_space elapsed_s=0.485863
+[hf timing] begin exchange.cache.vv_basis.overlap_cutoff
+[hf timing] end exchange.cache.vv_basis.overlap_cutoff elapsed_s=0.013875
+[hf timing] begin exchange.cache.vv_basis.vertex_context
+[hf timing] end exchange.cache.vv_basis.vertex_context elapsed_s=0.004218
+[hf timing] begin exchange.cache.vv_basis.interstitial_table
+[hf timing] end exchange.cache.vv_basis.interstitial_table elapsed_s=0.681802
+[hf timing] begin exchange.cache.vv_basis.interstitial_theta
+[hf timing] end exchange.cache.vv_basis.interstitial_theta elapsed_s=0.174945
+[hf timing] begin exchange.cache.vv_basis.mt_coordinate_tensors
+[hf timing] end exchange.cache.vv_basis.mt_coordinate_tensors elapsed_s=5.895595
+[hf timing] begin vv.mpb_rebuild
+[hf timing] begin vv.validate_frozen_inputs
+[hf timing] end vv.validate_frozen_inputs elapsed_s=0.000777
+[hf timing] begin vv.site_projection
+[hf timing] end vv.site_projection elapsed_s=0.975185
+[hf timing] begin vv.mt_contraction
+[hf timing] end vv.mt_contraction elapsed_s=5.652718
+[hf timing] begin vv.interstitial
+[hf timing] end vv.interstitial elapsed_s=126.803971
+[hf timing] begin vv.vertex_assembly_and_frozen_identity
+[hf timing] end vv.vertex_assembly_and_frozen_identity elapsed_s=9.757196
+[hf timing] end vv.mpb_rebuild elapsed_s=143.437000
+[hf timing] end gamma.rebuild.mpb elapsed_s=151.026190
+[hf timing] begin gamma.rebuild.coulomb_assembly
+[hf timing] end gamma.rebuild.coulomb_assembly elapsed_s=8.563591
+[hf timing] begin gamma.rebuild.contraction
+[hf timing] end gamma.rebuild.contraction elapsed_s=290.551110
+[hf timing] begin gamma.fock.feedback_lift
+[hf timing] end gamma.fock.feedback_lift elapsed_s=2.616436
+[hf timing] begin gamma.fock.spinor_solve
+[hf timing] end gamma.fock.spinor_solve elapsed_s=10.895720
+[hf timing] begin gamma.fock.occupations
+[hf timing] end gamma.fock.occupations elapsed_s=0.001140
+[hf timing] begin gamma.fock.density_residual
+[hf timing] end gamma.fock.density_residual elapsed_s=2.214952
+[hf] Gamma valence Fock outer=1 iteration=1 density_residual=1.3888959366954300e-3 feedback_residual=inf
+[hf timing] end gamma.fock.iteration elapsed_s=482.082668
+[hf timing] begin gamma.fock.iteration
+[hf timing] begin gamma.fock.occupations
+[hf timing] end gamma.fock.occupations elapsed_s=0.000085
+[hf timing] begin gamma.rebuild.inputs
+[hf timing] end gamma.rebuild.inputs elapsed_s=0.073164
+[hf timing] begin gamma.rebuild.mpb
+[hf timing] begin exchange.cache.vv_basis.validate
+[hf timing] end exchange.cache.vv_basis.validate elapsed_s=0.000825
+[hf timing] begin exchange.cache.vv_basis.raw_dirac_space
+[hf timing] end exchange.cache.vv_basis.raw_dirac_space elapsed_s=0.449903
+[hf timing] begin exchange.cache.vv_basis.overlap_cutoff
+[hf timing] end exchange.cache.vv_basis.overlap_cutoff elapsed_s=0.013004
+[hf timing] begin exchange.cache.vv_basis.vertex_context
+[hf timing] end exchange.cache.vv_basis.vertex_context elapsed_s=0.004095
+[hf timing] begin exchange.cache.vv_basis.interstitial_table
+[hf timing] end exchange.cache.vv_basis.interstitial_table elapsed_s=0.699188
+[hf timing] begin exchange.cache.vv_basis.interstitial_theta
+[hf timing] end exchange.cache.vv_basis.interstitial_theta elapsed_s=0.186813
+[hf timing] begin exchange.cache.vv_basis.mt_coordinate_tensors
+[hf timing] end exchange.cache.vv_basis.mt_coordinate_tensors elapsed_s=6.215709
+[hf timing] begin vv.mpb_rebuild
+[hf timing] begin vv.validate_frozen_inputs
+[hf timing] end vv.validate_frozen_inputs elapsed_s=0.001135
+[hf timing] begin vv.site_projection
+[hf timing] end vv.site_projection elapsed_s=1.078809
+[hf timing] begin vv.mt_contraction
+[hf timing] end vv.mt_contraction elapsed_s=5.960206
+[hf timing] begin vv.interstitial
+[hf timing] end vv.interstitial elapsed_s=136.104290
+[hf timing] begin vv.vertex_assembly_and_frozen_identity
+[hf timing] end vv.vertex_assembly_and_frozen_identity elapsed_s=12.088669
+[hf timing] end vv.mpb_rebuild elapsed_s=155.476717
+[hf timing] end gamma.rebuild.mpb elapsed_s=163.421110
+[hf timing] begin gamma.rebuild.coulomb_assembly
+[hf timing] end gamma.rebuild.coulomb_assembly elapsed_s=8.706197
+[hf timing] begin gamma.rebuild.contraction
+[hf timing] end gamma.rebuild.contraction elapsed_s=290.071677
+[hf timing] begin gamma.fock.feedback_lift
+[hf timing] end gamma.fock.feedback_lift elapsed_s=2.118557
+[hf timing] begin gamma.fock.mix
+[hf timing] end gamma.fock.mix elapsed_s=0.217158
+[hf timing] begin gamma.fock.spinor_solve
+[hf timing] end gamma.fock.spinor_solve elapsed_s=9.676953
+[hf timing] begin gamma.fock.occupations
+[hf timing] end gamma.fock.occupations elapsed_s=0.001114
+[hf timing] begin gamma.fock.density_residual
+[hf timing] end gamma.fock.density_residual elapsed_s=1.301674
+[hf] Gamma valence Fock outer=1 iteration=2 density_residual=1.0988849307297540e-4 feedback_residual=1.3734823798679154e-4
+[hf timing] end gamma.fock.iteration elapsed_s=482.213549
+[hf timing] begin gamma.fock.iteration
+[hf timing] begin gamma.fock.occupations
+[hf timing] end gamma.fock.occupations elapsed_s=0.000075
+[hf timing] begin gamma.rebuild.inputs
+[hf timing] end gamma.rebuild.inputs elapsed_s=0.067280
+[hf timing] begin gamma.rebuild.mpb
+[hf timing] begin exchange.cache.vv_basis.validate
+[hf timing] end exchange.cache.vv_basis.validate elapsed_s=0.000740
+[hf timing] begin exchange.cache.vv_basis.raw_dirac_space
+[hf timing] end exchange.cache.vv_basis.raw_dirac_space elapsed_s=0.410247
+[hf timing] begin exchange.cache.vv_basis.overlap_cutoff
+[hf timing] end exchange.cache.vv_basis.overlap_cutoff elapsed_s=0.012437
+[hf timing] begin exchange.cache.vv_basis.vertex_context
+[hf timing] end exchange.cache.vv_basis.vertex_context elapsed_s=0.003774
+[hf timing] begin exchange.cache.vv_basis.interstitial_table
+[hf timing] end exchange.cache.vv_basis.interstitial_table elapsed_s=0.652093
+[hf timing] begin exchange.cache.vv_basis.interstitial_theta
+[hf timing] end exchange.cache.vv_basis.interstitial_theta elapsed_s=0.170329
+[hf timing] begin exchange.cache.vv_basis.mt_coordinate_tensors
+[hf timing] end exchange.cache.vv_basis.mt_coordinate_tensors elapsed_s=5.971230
+[hf timing] begin vv.mpb_rebuild
+[hf timing] begin vv.validate_frozen_inputs
+[hf timing] end vv.validate_frozen_inputs elapsed_s=0.000800
+[hf timing] begin vv.site_projection
+[hf timing] end vv.site_projection elapsed_s=1.036119
+[hf timing] begin vv.mt_contraction
+[hf timing] end vv.mt_contraction elapsed_s=6.153972
+[hf timing] begin vv.interstitial
+[hf timing] end vv.interstitial elapsed_s=140.573727
+[hf timing] begin vv.vertex_assembly_and_frozen_identity
+[hf timing] end vv.vertex_assembly_and_frozen_identity elapsed_s=11.200365
+[hf timing] end vv.mpb_rebuild elapsed_s=159.181504
+[hf timing] end gamma.rebuild.mpb elapsed_s=166.600017
+[hf timing] begin gamma.rebuild.coulomb_assembly
+[hf timing] end gamma.rebuild.coulomb_assembly elapsed_s=8.424562
+[hf timing] begin gamma.rebuild.contraction
+[hf timing] end gamma.rebuild.contraction elapsed_s=284.115233
+[hf timing] begin gamma.fock.feedback_lift
+[hf timing] end gamma.fock.feedback_lift elapsed_s=1.763272
+[hf timing] begin gamma.fock.mix
+[hf timing] end gamma.fock.mix elapsed_s=0.194867
+[hf timing] begin gamma.fock.spinor_solve
+[hf timing] end gamma.fock.spinor_solve elapsed_s=9.283353
+[hf timing] begin gamma.fock.occupations
+[hf timing] end gamma.fock.occupations elapsed_s=0.001361
+[hf timing] begin gamma.fock.density_residual
+[hf timing] end gamma.fock.density_residual elapsed_s=1.274755
+[hf] Gamma valence Fock outer=1 iteration=3 density_residual=6.3664758060341759e-5 feedback_residual=7.9480430635287458e-5
+[hf timing] end gamma.fock.iteration elapsed_s=478.474393
+[hf timing] begin gamma.fock.iteration
+[hf timing] begin gamma.fock.occupations
+[hf timing] end gamma.fock.occupations elapsed_s=0.000075
+[hf timing] begin gamma.rebuild.inputs
+[hf timing] end gamma.rebuild.inputs elapsed_s=0.068650
+[hf timing] begin gamma.rebuild.mpb
+[hf timing] begin exchange.cache.vv_basis.validate
+[hf timing] end exchange.cache.vv_basis.validate elapsed_s=0.000747
+[hf timing] begin exchange.cache.vv_basis.raw_dirac_space
+[hf timing] end exchange.cache.vv_basis.raw_dirac_space elapsed_s=0.405487
+[hf timing] begin exchange.cache.vv_basis.overlap_cutoff
+[hf timing] end exchange.cache.vv_basis.overlap_cutoff elapsed_s=0.012133
+[hf timing] begin exchange.cache.vv_basis.vertex_context
+[hf timing] end exchange.cache.vv_basis.vertex_context elapsed_s=0.003889
+[hf timing] begin exchange.cache.vv_basis.interstitial_table
+[hf timing] end exchange.cache.vv_basis.interstitial_table elapsed_s=0.642983
+[hf timing] begin exchange.cache.vv_basis.interstitial_theta
+[hf timing] end exchange.cache.vv_basis.interstitial_theta elapsed_s=0.174900
+[hf timing] begin exchange.cache.vv_basis.mt_coordinate_tensors
+[hf timing] end exchange.cache.vv_basis.mt_coordinate_tensors elapsed_s=5.810194
+[hf timing] begin vv.mpb_rebuild
+[hf timing] begin vv.validate_frozen_inputs
+[hf timing] end vv.validate_frozen_inputs elapsed_s=0.000838
+[hf timing] begin vv.site_projection
+[hf timing] end vv.site_projection elapsed_s=1.014040
+[hf timing] begin vv.mt_contraction
+[hf timing] end vv.mt_contraction elapsed_s=5.722306
+[hf timing] begin vv.interstitial
+[hf timing] end vv.interstitial elapsed_s=137.447934
+[hf timing] begin vv.vertex_assembly_and_frozen_identity
+[hf timing] end vv.vertex_assembly_and_frozen_identity elapsed_s=11.340721
+[hf timing] end vv.mpb_rebuild elapsed_s=155.761752
+[hf timing] end gamma.rebuild.mpb elapsed_s=163.006657
+[hf timing] begin gamma.rebuild.coulomb_assembly
+[hf timing] end gamma.rebuild.coulomb_assembly elapsed_s=8.298617
+[hf timing] begin gamma.rebuild.contraction
+[hf timing] end gamma.rebuild.contraction elapsed_s=302.688884
+[hf timing] begin gamma.fock.feedback_lift
+[hf timing] end gamma.fock.feedback_lift elapsed_s=1.717683
+[hf timing] begin gamma.fock.mix
+[hf timing] end gamma.fock.mix elapsed_s=4.313449
+[hf timing] begin gamma.fock.spinor_solve
+[hf timing] end gamma.fock.spinor_solve elapsed_s=8.578281
+[hf timing] begin gamma.fock.occupations
+[hf timing] end gamma.fock.occupations elapsed_s=0.000512
+[hf timing] begin gamma.fock.density_residual
+[hf timing] end gamma.fock.density_residual elapsed_s=1.591753
+[hf] Gamma valence Fock outer=1 iteration=4 density_residual=7.3775698606663964e-5 feedback_residual=4.5998367706714472e-5
+[hf timing] end gamma.fock.iteration elapsed_s=496.965958
+[hf timing] begin gamma.fock.iteration
+[hf timing] begin gamma.fock.occupations
+[hf timing] end gamma.fock.occupations elapsed_s=0.000071
+[hf timing] begin gamma.rebuild.inputs
+[hf timing] end gamma.rebuild.inputs elapsed_s=0.069721
+[hf timing] begin gamma.rebuild.mpb
+[hf timing] begin exchange.cache.vv_basis.validate
+[hf timing] end exchange.cache.vv_basis.validate elapsed_s=0.000746
+[hf timing] begin exchange.cache.vv_basis.raw_dirac_space
+[hf timing] end exchange.cache.vv_basis.raw_dirac_space elapsed_s=0.408364
+[hf timing] begin exchange.cache.vv_basis.overlap_cutoff
+[hf timing] end exchange.cache.vv_basis.overlap_cutoff elapsed_s=0.012072
+[hf timing] begin exchange.cache.vv_basis.vertex_context
+[hf timing] end exchange.cache.vv_basis.vertex_context elapsed_s=0.003739
+[hf timing] begin exchange.cache.vv_basis.interstitial_table
+[hf timing] end exchange.cache.vv_basis.interstitial_table elapsed_s=0.647126
+[hf timing] begin exchange.cache.vv_basis.interstitial_theta
+[hf timing] end exchange.cache.vv_basis.interstitial_theta elapsed_s=0.246491
+[hf timing] begin exchange.cache.vv_basis.mt_coordinate_tensors
+[hf timing] end exchange.cache.vv_basis.mt_coordinate_tensors elapsed_s=6.989359
+[hf timing] begin vv.mpb_rebuild
+[hf timing] begin vv.validate_frozen_inputs
+[hf timing] end vv.validate_frozen_inputs elapsed_s=0.000852
+[hf timing] begin vv.site_projection
+[hf timing] end vv.site_projection elapsed_s=1.030396
+[hf timing] begin vv.mt_contraction
+[hf timing] end vv.mt_contraction elapsed_s=6.012584
+[hf timing] begin vv.interstitial
+[hf timing] end vv.interstitial elapsed_s=140.519796
+[hf timing] begin vv.vertex_assembly_and_frozen_identity
+[hf timing] end vv.vertex_assembly_and_frozen_identity elapsed_s=10.951953
+[hf timing] end vv.mpb_rebuild elapsed_s=158.797407
+[hf timing] end gamma.rebuild.mpb elapsed_s=167.470833
+[hf timing] begin gamma.rebuild.coulomb_assembly
+[hf timing] end gamma.rebuild.coulomb_assembly elapsed_s=8.757968
+[hf timing] begin gamma.rebuild.contraction
+real 2400.31
+user 7362.80
+sys 415.66

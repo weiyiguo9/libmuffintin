@@ -789,3 +789,35 @@ two after, one A0 at 2400 s; no failure diagnostics. MPI remains held.
 
 - state: h2-hf = active: adding Gamma timers for the two bounded profiles
 - note: h2-hf = evt-0030 conditional cache contract; no push; MPI held
+
+## 2026-09-08 · evd-0011 · h2-hf Gamma phase profiles · main 79623b8b4765b76ce6341be30716f9052a4b339d
+
+```text
+STUDY / REPORT
+Q: completed Fock phase seconds and shares; class: P; ref: none
+bound: none; budget: two runs, A0 cap 240 s and A1 base cap 2400 s
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 240s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/gamma-profile-a0 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 2
+log: evidence/2026-09-08-h2-hf-gamma-profile/a0.stdout.log and a0.stderr.log
+command: RAYON_NUM_THREADS=10 DYLD_LIBRARY_PATH="$(brew --prefix fftw)/lib" /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 2400s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/gamma-profile-a1 --box 8 --orbital-g 5 --field-g 12 --product-g 6 --product-lmax 4 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 2
+log: evidence/2026-09-08-h2-hf-gamma-profile/a1.stdout.log and a1.stderr.log
+scope: A0 iterations 1 and 2 and A1 iteration 1 tabulated in the evidence README; neither profile is a plan row or SCF acceptance result. Both exited 124 at their caps (240.12 and 2400.31 s). Build passed; one static review of the delegated timer-only changes; no numerical tests beyond the two requested profile runs.
+```
+
+A0 iteration totals: 17.479391 and 15.698071 s. MPB: 8.108799 / 7.799805 s;
+contraction: 4.875244 / 4.592004 s. A1 iteration total: 482.082668 s;
+contraction: 290.551110 s (60.270%); MPB: 151.026190 s (31.328%);
+spinor solve: 10.895720 s (2.260%); Coulomb assembly: 8.563591 s (1.776%).
+The A1 vertex rebuild is 143.437000 s, so compile plus Coulomb is
+151.026190 − 143.437000 + 8.563591 = 16.152781 s, **3.351%**, below 30%.
+Task C is skipped. There are no Task C fixture checks or A0 rerun results.
+
+## 2026-09-08 · evt-0032 · h2-hf cache condition failed; advance to the prescribed A1 retry · actor: codex
+
+The fixed 30% cache threshold was not met (evd-0011: 3.351%). No cache,
+contraction, pair-FFT, or MPI implementation is made. Task D reruns A1 base
+once with its unchanged numerical settings and 1800 s cap, preserving the
+prior log as `hf-a1-row1-cap1800.log`. A repeated base-row cap stops the task;
+the budget does not authorize a diagnostic or extension.
+
+- state: h2-hf = active: profile complete; cache skipped; A1 base retry under 1800 s cap
+- note: h2-hf = evd-0011 compile plus Coulomb 3.351% below 30%; MPI held
