@@ -5,11 +5,11 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `9d64c5d978595f839f3c0905873b101c4df154cf` (2026-09-09)
-- Last ledger entries: evd-1009 (MSI), evt-1001 (MSI), evd-0023 (Mac), evt-0055 (Mac)
+- Last ledger entries: evd-1011 (MSI), evt-1002 (MSI), evd-0023 (Mac), evt-0055 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
-| `ctf-rs` | handoff: R1 rsmpi implementation committed; WSL two-rank cyclic_reshuffle fails exact 0 versus -5; native build and D6 1/2/4 pass; S1 held | `plans/ctf-rs/plan.v2.md`, accepted 2026-09-09 | evd-1009; local master 813d90a; one named diagnostic, valid Funneled/main-thread setup; no numerical repair or ctf-rs push |
+| `ctf-rs` | handoff: R1 diagnostic 3 traces identical at 813d90a and f2039d3; both fail exact 0 versus -5; no wrapper fix or acceptance rerun; S1 held | `plans/ctf-rs/plan.v2.md`, accepted 2026-09-09 | evd-1010 and evd-1011; two diagnostic runs; local master 622ef10; baseline failure reproduced; traces attached; no ctf-rs push |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
 | `h2-hf` | held: warm start closed (32 rebuilds); MPI-4 and the A1 ladder wait for the herdr restart and the row-placement decision | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | A0 smoke numbers 0.2 Ha from the box-8 reference, hartree_exchange 0.163 Ha; nothing at A1 settings yet; herdr protocol 22 vs 20 |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |

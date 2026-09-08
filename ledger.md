@@ -1580,3 +1580,84 @@ push stays the durable record.
 
 - state: ctf-rs = active: R1 diagnostic 3 on Context::exchange, fix and one acceptance rerun authorized (Codex on MSI)
 - note: ctf-rs = evd-1009 handoff read as an MPI-layer translation defect; exchange is the first candidate; S1 held
+
+## 2026-09-09 · evd-1010 · ctf-rs R1 diagnostic 3 identical exchange traces and baseline failure · ctf-rs 622ef106fdff963e1f8f3d3e43a28b98f9162182
+
+Executed evt-0055 / BRIEF-2's sharpened diagnostic on scratch archives of
+candidate `813d90a` and raw-MPI baseline `f2039d3`, with separate WSL target
+directories. Delivery source was not instrumented. Only the bool/complex/Word
+calls were omitted to select i8; no assertions, layouts, initialization,
+splits, or cleanup changed. The five original R1 commits stand.
+
+```text
+DIGIT / HANDOFF
+Q: per-call/rank send_counts, recv_counts and sent/received bucket FNV-1a-64
+   hashes in Comm::exchange; existing exact i8 cyclic_reshuffle assertions
+class: R; ref: f2039d3; candidate: 813d90a
+bound: exact trace equality and unchanged exact driver bound 0
+Delta: zero differing fields across two trace rows, call 0 at ranks 0 and 1
+driver result: both revisions fail rank 1 local offset 0, actual 0, expected -5;
+               absolute difference 5 against exact bound 0
+runs: two total, one two-rank diagnostic run per revision; no repeats
+exits: candidate 124 at the 60-second supervisor after panic; baseline 101
+       after the same assertion panic and MPI process failure
+finding: identical traces, no first divergent line, no wrapper named for repair;
+         the pre-R1 baseline reproduces the same driver failure
+scope: no wrapper fix, no further diagnostics, diagnostic 2 not applicable
+open: what scope is authorized for the baseline failure with identical
+      exchange traces, rather than an R1 wrapper translation defect?
+```
+
+Both attached traces contain these same complete tuples, sorted by call/rank:
+
+```text
+call=0 rank=0 send_counts=[10, 0] recv_counts=[10, 0] sent_hashes=[3bc129cffea72d2d, cbf29ce484222325] received_hashes=[3bc129cffea72d2d, cbf29ce484222325]
+call=0 rank=1 send_counts=[0, 10] recv_counts=[0, 10] sent_hashes=[cbf29ce484222325, 4a98c824fe6e7321] received_hashes=[cbf29ce484222325, 4a98c824fe6e7321]
+```
+
+Attachments: [candidate trace](evidence/2026-09-09-ctf-rs-r1-2/current.trace),
+[baseline trace](evidence/2026-09-09-ctf-rs-r1-2/baseline.trace),
+[candidate log](evidence/2026-09-09-ctf-rs-r1-2/current.log),
+[baseline log](evidence/2026-09-09-ctf-rs-r1-2/baseline.log),
+[commands and instrumentation](evidence/2026-09-09-ctf-rs-r1-2/commands.md),
+[exact nested commands](evidence/2026-09-09-ctf-rs-r1-2/diagnostic-3.sh).
+Raw logs are UTF-16 PowerShell output; extraction joined wrapped whitespace
+across each full tuple without dropping counts or hashes. Originals remain
+under `D:/projects/runs/ctf-rs-r1-2/`.
+
+```powershell
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-r1-2/diagnostic-3.sh current > D:/projects/runs/ctf-rs-r1-2/current.log 2>&1
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-r1-2/diagnostic-3.sh baseline > D:/projects/runs/ctf-rs-r1-2/baseline.log 2>&1
+```
+
+The script builds the single test without execution first, then runs it once
+with `mpirun --oversubscribe -n 2`, a 60-second timeout and five-second kill
+grace. The existing keepalive was reused; no diagnostic processes remain.
+This establishes the baseline failure, not global R1 behavioral equivalence.
+
+## 2026-09-09 · evd-1011 · ctf-rs R1 conditional acceptance rerun not executed · ctf-rs 622ef106fdff963e1f8f3d3e43a28b98f9162182
+
+```text
+DIGIT / HANDOFF
+Q: G-CTF-R1 acceptance; class: R; ref: pinned upstream f69cbb46
+bound: upstream metrics/tolerances unchanged; Delta: no new acceptance value
+runs: zero acceptance reruns in CTF-R1-2
+reason: BRIEF-2 mandates handoff for identical diagnostic traces; evd-1010
+        identifies no translation fix, so the after-a-fix rerun is not triggered
+closed evidence: evd-1009 native build and D6 1/2/4 passes remain closed;
+                 no new pass or full R1 closure is claimed
+```
+
+## 2026-09-09 · evt-1002 · ctf-rs R1 diagnostic 3 hands off identical traces · actor: codex
+
+The two authorized computations produced identical exchange traces and the
+same exact i8 failure at `813d90a` and `f2039d3`. Per BRIEF-2's identical-trace
+branch, no `fix(mpi)` commit or acceptance rerun was made, and numerical work
+stopped. ctf-rs `622ef10` only adds the finding/stamps to "rsmpi binding" in
+validation.md, without rewriting the five R1 commits or pushing ctf-rs.
+Both traces and raw logs accompany evd-1010; evd-1011 records the untriggered
+rerun. This harness-msi push is the durable report; claude-report is notified
+after the pushed tip is known.
+
+- state: ctf-rs = handoff: R1 diagnostic 3 traces identical at 813d90a and f2039d3; both fail exact 0 versus -5; no wrapper fix or acceptance rerun; S1 held
+- note: ctf-rs = evd-1010 and evd-1011; two diagnostic runs; local master 622ef10; baseline failure reproduced; traces attached; no ctf-rs push
