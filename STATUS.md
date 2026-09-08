@@ -5,13 +5,13 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `421a44750468e8d34a375a6dea387f07fa82da4e` (2026-09-08)
-- Last ledger entries: evd-1008 (MSI), evd-0008 (Mac), evt-0024 (Mac)
+- Last ledger entries: evd-1008 (MSI), evd-0008 (Mac), evt-0025 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
 | `ctf-rs` | D6 closed | `plans/ctf-rs/plan.v1.md`, accepted 2026-09-08 | D6 WSL and native 1/2/4 passed; dense-first objective complete; S1 not started |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
-| `h2-hf` | handoff: A0 at Fock exit tolerances 1e-9 / 1e-10 was killed at the 1800 s cap with no residual; can the Fock loop reach 1e-10 Ha within the cap at the A0 dimension, or does the residue versus floor test need a longer cap or an intermediate tolerance? | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evd-0008; prediction untested, no diagnostic authorized; main 08f7c21 fix and 421a447 docs; A1 through Bv not run |
+| `h2-hf` | active: pair-FFT perf, then A0 to the loop's own limit, then pair-level MPI (codex pane) | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | evd-0008 cap kill traced to the serial pair FFT; ADR-0006 fixes MPI at pair level |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |

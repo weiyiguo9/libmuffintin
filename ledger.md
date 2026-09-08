@@ -617,3 +617,21 @@ hf-thc-scf (THC exchange inside the Fock loop), to be proposed.
 
 - state: v0.2-isdf-thc = closed (M-L implementation closed 2026-09-08; cross-code acceptance deferred)
 - note: v0.2-isdf-thc = deferred: span metric, Dy bcc demo, magnetic+SOC 4c cross-code; successor hf-thc-scf
+
+## 2026-09-08 · evt-0025 · h2-hf pair-FFT perf and pair-level MPI authorized, assigned to the codex pane · actor: claude
+
+The user chose speed over a fourth tolerance step. The evd-0008 cap kill
+came from a Fock loop whose rebuild costs 28.7 s, of which 27.3 s is the
+serial fft-fftw interstitial pair correlation: 234,840 transforms of 21³ per
+rebuild on one core, two forward and one inverse per pair and spin. Work
+authorized, in order: (1) perf(runtime), cache the per-orbital spectra and
+sum spins before one inverse transform, rayon over left bands with one plan
+per worker; (2) rerun A0 with the exact evd-0002 command under a 75 minute
+cap so the loop reaches its own verdict, with a Progress-level per-iteration
+residual print; (3) feat(runtime), pair-level MPI under an optional `mpi`
+feature per ADR-0006. The Stop That Digit contracts are fixed in the brief;
+the codex pane w1:p2 executes; records continue at evt-0026 and evd-0009;
+timing logs go to evidence/2026-09-08-h2-hf-pair-fft-perf/.
+
+- state: h2-hf = active: pair-FFT perf, then A0 to the loop's own limit, then pair-level MPI (codex pane)
+- note: h2-hf = evd-0008 cap kill traced to the serial pair FFT; ADR-0006 fixes MPI at pair level
