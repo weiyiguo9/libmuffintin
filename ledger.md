@@ -1687,3 +1687,20 @@ executor is to run the WSL gate on every commit that reaches master.
 
 - state: ctf-rs = active: B1 bisect of the ungated formatting commit f2039d3, then the R1 acceptance rerun (Codex on MSI)
 - note: ctf-rs = R1 faithful on cyclic_reshuffle (identical traces); failure predates R1; suspect f2039d3; S1 held
+
+## 2026-09-09 · evt-0057 · ctf-rs B1 bisect stopped by the user; the two-rank cyclic_reshuffle defect is to be fixed directly · actor: user
+
+The user stopped the B1 bisect ("fix the bug directly, do not look for
+the commit; I broke it"). The history search of evt-0056 is withdrawn;
+what it produced so far (354cf7d not passing in today's environment, the
+683bfd8 endpoint not building without three BLAS declarations) is noted
+here and not pursued. The executor now finds the defect in the current
+tree from the failing assertion along the redistribute path (tensor,
+mapping, glb_cyclic_reshuffle, dgtog_redist), with `Context::exchange`
+already cleared by evd-1010, fixes it as one commit on top of 622ef10
+without touching the test, confirms the single test at 1, 2, 4 ranks
+once, and then runs the R1 acceptance once in full. A pass closes R1; B1
+closes with the fix. Stop That Digit unchanged for the gates.
+
+- state: ctf-rs = active: direct fix of the two-rank cyclic_reshuffle defect, then the R1 acceptance rerun (Codex on MSI)
+- note: ctf-rs = bisect withdrawn by the user; fix in the current tree; R1 faithful per evd-1010; S1 held
