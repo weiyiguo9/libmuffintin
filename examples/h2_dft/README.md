@@ -537,18 +537,18 @@ checks: default single process, fft-fftw+mpi single process, and the MPI-enabled
 runs: 3; closed
 
 DIGIT / HANDOFF
-Q: first-rebuild band-space feedback at ranks 2 and 4 versus rank 1; class: R; ref: rank 1
-bound: 1e-12 absolute; Delta: unavailable
-checks: rank-one scratch probe wrote all 1,060,900 entries, then exited 1 because process::exit bypassed Universe drop and MPI_Finalize
-runs: 1 feedback probe; ranks 2 and 4 not run; no diagnostics authorized
-unresolved: obtain a cleanly finalized first-rebuild probe without spending an unapproved replacement run
+Q: first-rebuild band-space feedback at rank 2 versus rank 1; class: R; ref: rank 1
+bound: 1e-12 absolute; Delta: maximum 2.91207674214817233e-2 at (k=0,row=0,column=3)
+checks: the corrected scratch hook returned normally on both ranks and mpirun exited 0; all 1,060,900 finite entries were compared
+runs: 1 re-authorized feedback probe; rank 4, A0, and all A1 timings not run; no diagnostics authorized
+unresolved: rank-two feedback is not rank-independent within the fixed bound
 ```
 
-The feedback failure belongs to the scratch evidence hook, after its flushed
-rank-one dump, not to the committed distribution path. Nevertheless, MPI
-execution failure cannot be accepted numerically. Per the fixed stop rule,
-rank-two/rank-four dumps, the rank-two A0 run, and all three report-only A1
-timings were not run. The A1 ladder was not restarted. Evidence is under
+The scratch hook was corrected to return through the example so each retained
+MPI Universe finalized normally. The rank-two probe then completed with exit
+code 0, but its feedback comparison failed the fixed numerical bound. Per the
+fixed stop rule, the rank-four dump, rank-two A0 run, and all three report-only
+A1 timings were not run. The A1 ladder was not restarted. Evidence is under
 `evidence/2026-09-08-h2-hf-mpi/` on `harness`.
 
 ### B kernel study
