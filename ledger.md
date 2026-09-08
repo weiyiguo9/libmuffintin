@@ -1343,6 +1343,56 @@ after the run as context.
 - state: h2-hf = active: warm-start mixer follow-up (codex pane); MPI A1 timings and two-rank A0 stamp queued behind it; A1 ladder held
 - note: h2-hf = evd-0022 read: warm start effective, CDIIS start-up costs three iterations per outer; wall polluted by machine load
 
+## 2026-09-09 · evd-0023 · h2-hf zero-start-up warm-loop fixture and A0 pass · main 762c210, recorded through 9d64c5d
+
+The pre-run prediction was 22–34 exchange rebuilds, 7–9 outer iterations,
+and 2–4 iterations per warm inner loop. A result at or above 40 rebuilds was
+fixed as a handoff before execution.
+
+```text
+DIGIT / PASS
+Q: fixture exchange/eigenvalue/total identity residuals; class: R; ref: crates/mt-runtime/tests/gamma_valence_hf.rs
+bound: 1e-8; Delta: every unchanged assertion passed
+command: cargo test --release -p libmuffintin-runtime --test gamma_valence_hf --features fft-fftw
+log: evidence/2026-09-08-h2-hf-warm-start/fixture-warm2-fftw.log
+checks: one release fft-fftw fixture passed
+runs: one; fixture contract closed
+
+DIGIT / PASS
+Q: A0 E/HOMO/E_H/E_x and three driver identities (Ha); class: R; ref: evd-0010
+bound: 2e-8 absolute for energies and identities; Delta: 2.48245868306185002e-13 / 3.09803882547754483e-9 / 1.62302338235775778e-10 / 8.68805014042628443e-10 for E/HOMO/E_H/E_x
+command: RAYON_NUM_THREADS=10 /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 3600s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a0-warm2 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 1
+log: evidence/2026-09-08-h2-hf-warm-start/a0-warm2.stdout.log and compare-a0-warm2.log; examples/h2_dft/results/hf-a0-warm2.log on main
+checks: finite converged result; exit 0; maximum identity 4.76458923703848569e-9; electron-count error 6.66133814775093924e-15
+runs: one; class-R contract closed
+
+DIGIT / PASS
+Q: A0 exchange_rebuilds, outer_iterations, per-outer Fock iterations, wall_s; class: P; ref: evd-0010 and evd-0022
+bound: report-only, with 22–34 rebuild prediction and mandatory handoff at 40 or more; result: 32 rebuilds, 8 outer iterations, 7 / 5 / 4 / 4 / 3 / 3 / 3 / 3 iterations, wall_s 1228.894974
+checks: rebuild and outer-count predictions passed; first warm loop took 5 iterations, one above the report-only 2–4 prediction; all later warm loops took 3–4; supervisor wall 1229.77 s
+load: before 10.78 / 28.99 / 37.53; after 27.81 / 27.57 / 28.24
+runs: same A0 run; closed without diagnostics or repeats
+```
+
+## 2026-09-09 · evt-0051 · h2-hf zero-start-up warm-loop follow-up passes · actor: codex
+
+Main `762c210` sets `startup_steps` to zero only for warm-started Gamma
+valence `CommutatorDiis` and `QuasiNewtonDiis` loops. Cold outer iteration 1,
+the carried-feedback history boundary, configured damping and history, all
+gates and tolerances, spec structs, and other HF paths remain unchanged. The
+authorized fft-fftw fixture passed. The ten-thread A0 run converged in 32
+rebuilds over eight outer iterations, with per-outer counts
+7 / 5 / 4 / 4 / 3 / 3 / 3 / 3. Its energies pass the fixed 2e-8 Ha bounds,
+the maximum identity is `4.76458923703848569e-9`, and the electron-count
+error is `6.66133814775093924e-15`. Driver wall is 1228.894974 s and
+supervisor wall is 1229.77 s, with load averages recorded in evd-0023. Two
+of two runs were used. Numerical verification is closed; no diagnostic,
+repeat, MPI work, MPI-evidence edit, or A1-ladder run followed. Main records
+are `9d64c5d`; no push.
+
+- state: h2-hf = active: zero-start-up Gamma warm loop accepted; MPI A1 timings and two-rank A0 stamp remain queued; A1 ladder held
+- note: h2-hf = evd-0023; A0 passes in 32 rebuilds and 8 outers; first warm loop 5 iterations, later loops 3–4; main 9d64c5d
+
 ## 2026-09-09 · evt-0051 · ctf-rs plan.v2 proposed: one breaking change to rsmpi ownership; ADR-0007; gate G-CTF-R1 · actor: claude
 
 Read-only comparison of the three MPI users (libmuffintin `main`,
