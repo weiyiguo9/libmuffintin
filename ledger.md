@@ -534,3 +534,28 @@ Per evt-0020 this is a driver defect and was not investigated further.
 
 - state: h2-hf = handoff: A0 still fails the valence eigenvalue identity, now at 1.6e-7 against 1e-8, with the example's Fock exit tolerances at the fixture's values
 - note: h2-hf = evd-0007 supersedes the evd-0006 reading; main 30cc770 fix and 815fe4c docs; A1 through Bv not run
+
+## 2026-09-08 · evt-0022 · h2-hf second Fock exit tolerance step authorized, assigned to claude-worker · actor: claude
+
+Orchestrator reading of evd-0007, accepted by the user: the valence
+eigenvalue identity residual tracks the example's Fock exit tolerance
+(feedback 1e-5 to 1e-8 moved it from 3.409e-4 to 1.648e-7, a factor 2069
+for a factor 1000), with a prefactor of 16 to 34 between the residual and
+the feedback tolerance. The evt-0021 inference "16.5 times the feedback
+tolerance, therefore not a residue" divides two different quantities and
+does not follow. The driver-side finding is a contract mismatch, not
+two-site physics: the Gamma valence path gates its identities at a fixed
+2e-8 regardless of the caller's exit tolerances, while the relaxed-core
+path gates at fock_feedback_tolerance and the KH+SOC path at
+max(2e-8, N_val * feedback); the Gate error also returns before the
+iteration diagnostics are recorded, so the actual exit residuals are never
+printed. Both are deferred to the hf-input refactor (plans/hf-input). The
+user authorized one more fix(examples) commit, density 1e-9 and feedback
+1e-10, and one A0 rerun under the unchanged A0 contract with a prediction
+fixed before the run: residual in [1e-9, 4e-9], at least 40 times below
+1.648e-7; a residual within a factor 3 of 1.648e-7 is a floor and a
+genuine driver defect. A pass continues A1 through Bv. The claude-worker
+pane executes; its records continue at evt-0023 and evd-0008.
+
+- state: h2-hf = active: second A0 rerun, Fock exit tolerances 1e-9 / 1e-10, prediction 1e-9 to 4e-9 (claude-worker)
+- note: h2-hf = evd-0007 read as a convergence residue; driver gate versus exit tolerance mismatch deferred to hf-input
