@@ -853,3 +853,32 @@ checks, and no pushes.
 
 - state: h2-hf = handoff: A1 base still exceeds 1800 s; Gamma cache condition not met
 - note: h2-hf = evd-0011/0012; compile plus Coulomb 3.351%, contraction 60.270%; main 10f6b39; MPI held
+
+## 2026-09-08 · evt-0034 · h2-hf A1 time read from the Gamma profile: exchange contraction, then vertex projection; BLAS-3 perf assigned, MPI still held · actor: claude
+
+evd-0011 answers evt-0030 in the negative for the cache (basis compile plus
+Coulomb assembly is 3.4 percent of an A1 Fock iteration) and names the
+terms: `gamma.rebuild.contraction` 290.6 s of 482.1 s (60 percent) and
+`gamma.rebuild.mpb` 151.0 s (31 percent, vertices 143.4 s) at A1 row 1;
+at A0 the same two are 4.9 s and 8.1 s of 17.5 s. The A1 profile ran at
+3.1 cores on average (user 7362 s over 2400 s wall). Reading of the code:
+`CoulombVertexContractor::weighted_occupied_quadratic_sum`
+(crates/mt-coulomb/src/operator.rs) gathers every (occupied, target)
+vertex into one [n_aux, n_occ·n_target] tensor by a strided scatter (about
+5 GB at A1), runs `einsum("ab,bj->aj")` through TBLIS, copies the result
+and a conjugated weighted copy of the columns back to host, and finishes
+with `einsum("aoi,aoj->ij")`; nothing is chunked, and the plain matrix
+products do not go through the threaded faer matmul rstsr provides. The
+interstitial projection at A1 has the same shape (`vv.interstitial.gemm`,
+[pairs, n_raw] × [n_raw, n_pw] per chunk of 64). Assigned to the codex
+pane: perf on both, per occupied band, threaded matmul, no multi-GB
+intermediates, with class R checks against the first-rebuild exchange
+feedback and evd-0010's A0 energies. Feasibility, stated for the user's
+decision: at the exit tolerances A0's 1e-8 identity gate forced (evt-0022),
+a run costs 56 rebuilds; even at a fifth of today's A1 iteration the A1
+study is about 1.5 hours per row and A2 and B grow with product G and box,
+so the ladder needs either a per-row identity bound below 1e-8 for study
+rows (plan v2) or more machines running rows in parallel. MPI stays held.
+
+- state: h2-hf = active: BLAS-3 perf on the exchange contraction and vertex projection (codex pane); ladder feasibility decision pending
+- note: h2-hf = evd-0011 profile: contraction 60 percent, vertices 30 percent of an A1 Fock iteration at 3 cores
