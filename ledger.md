@@ -596,3 +596,24 @@ investigated.
 
 - state: h2-hf = handoff: A0 at Fock exit tolerances 1e-9 / 1e-10 was killed at the 1800 s cap with no residual; can the Fock loop reach 1e-10 Ha within the cap at the A0 dimension, or does the residue versus floor test need a longer cap or an intermediate tolerance?
 - note: h2-hf = evd-0008; prediction untested, no diagnostic authorized; main 08f7c21 fix and 421a447 docs; A1 through Bv not run
+
+## 2026-09-08 · evt-0024 · v0.2-isdf-thc M-L implementation closed; cross-code acceptance deferred · actor: user
+
+The plan header imported on 2026-09-08 still said "M-L open" because it was
+copied from the scratch plan last modified 2026-08-27; the M-L deliverables
+landed on main between 2026-08-29 and 2026-09-03: frozen spinor product
+input 9ae3d3f, spinor THC Coulomb bridge 24a2d42, bounded Sm THC lane on
+the SPEX snapshot b45d9b9 (8670401), MLDUMP HDF5 payloads 9880886 and
+045bb26 plus the CoQuí Cholesky ERI writer, frozen-orbital ISDF exchange
+3700ee4, core-aware four-sector THC bdfff88 with the exact-MPB sector gates
+7b2c7a5, frozen core-valence actions d145dff, explicit Dirac product modes
+760ce03. External evidence: evidence/2026-08-28-thc-smdy-experiment/RESULTS.md
+(THC against LCUT=6 SPEX, tight rank 7.1 to 7.3 orbitals) and the ML0
+weighted-QRCP rank probe (verdict PASS). Deferred, not claimed: the span
+principal-angle metric of doc 08, the Dy bcc demo (no DFT input,
+tests/dy_bcc_material_evidence.toml), and an independent cross-code number
+for the magnetic plus SOC 4c first-variation case. Successor workstream:
+hf-thc-scf (THC exchange inside the Fock loop), to be proposed.
+
+- state: v0.2-isdf-thc = closed (M-L implementation closed 2026-09-08; cross-code acceptance deferred)
+- note: v0.2-isdf-thc = deferred: span metric, Dy bcc demo, magnetic+SOC 4c cross-code; successor hf-thc-scf

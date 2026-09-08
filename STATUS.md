@@ -5,7 +5,7 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `421a44750468e8d34a375a6dea387f07fa82da4e` (2026-09-08)
-- Last ledger entries: evd-1008 (MSI), evd-0008 (Mac), evt-0023 (Mac)
+- Last ledger entries: evd-1008 (MSI), evd-0008 (Mac), evt-0024 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
@@ -16,6 +16,6 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |
 | `v0.1-lapw-foundation` | closed | `plans/v0.1-lapw-foundation/plan.v1.md`, accepted | superseded by v0.2 |
-| `v0.2-isdf-thc` | active (M-A to M-Kc closed, M-L open) | `plans/v0.2-isdf-thc/plan.v1.md`, accepted | first M-L probe in evidence/2026-08-28-ml0-adaptive-rank-probe/ |
+| `v0.2-isdf-thc` | closed (M-L implementation closed 2026-09-08; cross-code acceptance deferred) | `plans/v0.2-isdf-thc/plan.v1.md`, accepted | deferred: span metric, Dy bcc demo, magnetic+SOC 4c cross-code; successor hf-thc-scf |
 | `v0.3-mto-family` | draft, not authorized | `plans/v0.3-mto-family/plan.v1.md`, draft |  |
 | `v0.4-emto-nmto` | draft, not authorized | `plans/v0.4-emto-nmto/plan.v1.md`, draft | inherits v0.3 |
