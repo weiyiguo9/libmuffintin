@@ -1313,3 +1313,32 @@ run followed. Main records are `199eb49`; no push.
 
 - state: h2-hf = handoff: Gamma warm-start fixture passes, but A0 reaches 43 rebuilds and the 1800 s cap; A1 ladder held
 - note: h2-hf = evd-0022; two-run budget exhausted; final A0 energies unavailable; main 199eb49; MPI evidence untouched
+
+## 2026-09-08 · evt-0050 · h2-hf warm start read: the starting point moved, the CDIIS start-up still costs three iterations; follow-up assigned · actor: claude
+
+Reviewed main `a5d52b3` (17 lines, Gamma path only, doc/23 sentence
+updated) and `199eb49`; harness `05c31f4`; all pushed. Reading of
+evd-0022 (`hf-a0-warm.log`): the warm start takes effect, outer 2 starts
+at density residual 1.0e-4 instead of 1.2e-3 and outer 7 at 2.9e-8, yet
+the inner loops still take 6, 6, 6, 5, 5, 5 iterations, 43 rebuilds by
+outer 8 iteration 3 against 52 at the same point in evd-0010. The
+trajectory shows why: `FeedbackMixer` runs `startup_steps` = 2 damped
+mixes at weight 0.5 that are not pushed into the history, then one plain
+step with a one-record history, and only then extrapolates; at outer 7 the
+residual sits at 2.9e-8, 1.7e-8, 1.9e-8 for three iterations and then
+drops to 3.1e-9 and 9.8e-13 in two. The pre-run prediction of 12 to 24
+rebuilds assumed the inner loop converges in one or two steps from a close
+start and was wrong for that reason. Wall time is not readable from this
+run: the machine carried a Zoom call with screen sharing during it (load
+average 71 over 15 minutes on 10 cores), and the 42 s per rebuild against
+20.8 s in evd-0010 is that load, not the change. Follow-up assigned to the
+codex pane under the same authorization: in warm-started inner loops
+construct the mixer with zero start-up steps so extrapolation begins at
+the second record; cold outer 1 unchanged. Prediction stated now: A0 at 22
+to 34 rebuilds. Same class R contracts as evt-0048 (fixture 1e-8; A0
+energies within 2e-8 Ha of evd-0010; identities 2e-8), cap raised to
+3600 s because of the shared machine, load average recorded before and
+after the run as context.
+
+- state: h2-hf = active: warm-start mixer follow-up (codex pane); MPI A1 timings and two-rank A0 stamp queued behind it; A1 ladder held
+- note: h2-hf = evd-0022 read: warm start effective, CDIIS start-up costs three iterations per outer; wall polluted by machine load
