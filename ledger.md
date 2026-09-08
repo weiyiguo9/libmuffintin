@@ -1342,3 +1342,27 @@ after the run as context.
 
 - state: h2-hf = active: warm-start mixer follow-up (codex pane); MPI A1 timings and two-rank A0 stamp queued behind it; A1 ladder held
 - note: h2-hf = evd-0022 read: warm start effective, CDIIS start-up costs three iterations per outer; wall polluted by machine load
+
+## 2026-09-09 · evt-0051 · ctf-rs plan.v2 proposed: one breaking change to rsmpi ownership; ADR-0007; gate G-CTF-R1 · actor: claude
+
+Read-only comparison of the three MPI users (libmuffintin `main`,
+rustnumgum/fftw `fe731a02`, ctf-rs `origin/master` `f2039d3`): one
+`mpi-sys` 0.2.4 per build, three ownership models. ctf-rs's
+`Runtime::initialize` calls `MPI_Init` at Single and asserts MPI is
+uninitialized, so it cannot share a process with a host `Universe`. The
+user's direction: unify initialization and communicator ownership under
+rsmpi in one breaking change; hand-written wrappers may coexist; keep the
+thread markers and check the provided level; no libffi; MPI-IO and any
+variable-count reduce-scatter stay on `mpi::ffi`; explicit `close` stays the
+only collective free. Recorded as `plans/ctf-rs/plan.v2.md` (proposed,
+supersedes v1, whose D1 to D6 are closed) and ADR-0007, which supersedes the
+ADR-0006 lines on raw-handle crossing and on a raw adopt constructor. Gate
+G-CTF-R1 added: class R, upstream tolerances unchanged, WSL 1/2/4 once,
+native build once, D6 native set once. No code was changed and no test was
+run. The Mac clone `~/tmp/ctf-rs` is stale (`f22da3a`, diverged) and is not
+the baseline. `update-status.py` now orders state lines by entry date and
+then number; before this the MSI id range always won, so this entry's
+state would not have appeared in `STATUS.md`.
+
+- state: ctf-rs = plan.v2 proposed: R1 rsmpi binding (one breaking change) before S1; awaiting acceptance
+- note: ctf-rs = D1 to D6 closed under v1; R1 gate G-CTF-R1 proposed; executor MSI at origin/master f2039d3
