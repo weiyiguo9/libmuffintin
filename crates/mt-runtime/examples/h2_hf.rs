@@ -99,6 +99,7 @@ struct Options {
     speed_of_light: f64,
     muffin_tin_radius: f64,
     max_fock_iterations: usize,
+    verbosity: muffintin::HfVerbosity,
 }
 
 impl Default for Options {
@@ -118,6 +119,7 @@ impl Default for Options {
             speed_of_light: 137_035.989_5,
             muffin_tin_radius: DEFAULT_MUFFIN_TIN_RADIUS_BOHR,
             max_fock_iterations: FOCK_MAX_ITERATIONS,
+            verbosity: muffintin::HfVerbosity::Quiet,
         }
     }
 }
@@ -150,6 +152,14 @@ impl Options {
                 "--speed-of-light" => options.speed_of_light = value.parse()?,
                 "--rmt" => options.muffin_tin_radius = value.parse()?,
                 "--fock-max-iterations" => options.max_fock_iterations = value.parse()?,
+                "--verbosity" => {
+                    options.verbosity = match value.as_str() {
+                        "0" => muffintin::HfVerbosity::Quiet,
+                        "1" => muffintin::HfVerbosity::Progress,
+                        "2" => muffintin::HfVerbosity::Timings,
+                        _ => return Err("--verbosity must be 0, 1, or 2".into()),
+                    };
+                }
                 _ => return Err(format!("unknown option {name:?}").into()),
             }
         }
@@ -217,6 +227,7 @@ impl Options {
 fn main() -> Result<(), Box<dyn Error>> {
     let started = Instant::now();
     let options = Options::parse()?;
+    muffintin::set_hf_verbosity(options.verbosity);
     fs::create_dir_all(&options.output_directory)?;
     let radial_log_increment =
         (options.muffin_tin_radius / RADIAL_FIRST_BOHR).ln() / (RADIAL_POINTS - 1) as f64;
