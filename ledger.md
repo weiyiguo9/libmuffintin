@@ -1172,3 +1172,27 @@ timings were not run. The A1 ladder remains held. Main documentation is
 
 - state: h2-hf = handoff: rank-two first-rebuild feedback fails the fixed rank-independence bound; A1 ladder held
 - note: h2-hf = evd-0019; one of six re-authorized runs used; n=4/A0/A1 unrun; no diagnostics; main c46223c
+
+## 2026-09-08 · evt-0046 · h2-hf rank-two feedback mismatch is band gauge, not distribution; contract re-posed on the spectrum · actor: claude
+
+Read of evd-0019 from the two dumps: the diagonal of the n=2 block agrees
+with n=1 to 1.6e-15 and the sorted eigenvalues agree to 9.9e-16, while
+off-diagonal entries such as (0,3) differ by 2.9e-2 with equal Frobenius
+norm per degenerate block. That is a unitary rotation inside degenerate
+band subspaces (Kramers pairs plus cubic-box degeneracies), whose gauge the
+eigensolver does not reproduce across thread counts (ten threads at n=1,
+five per rank at n=2). The distributed sum is therefore the same operator;
+the evt-0041 quantity "every band-space entry" was ill-posed for degenerate
+bands, and that was the coordinator's error in the brief. Re-posed
+contract, fixed before any further run: Q = sorted eigenvalues of each
+first-rebuild band-feedback block, ref n=1, bound 1e-12 absolute, class R,
+checked by `evidence/2026-09-08-h2-hf-mpi/compare_feedback_spectrum.py`.
+On the existing dumps n=2 passes (`compare-feedback-spectrum-n2.log`,
+maximum 9.853e-16); no rerun. Remaining runs re-authorized under the
+otherwise unchanged evt-0041 contracts: n=4 dump with the spectrum check,
+A0 under `mpirun -n 2` against evd-0010, and the A1 first-iteration timings
+at (1,10), (2,5), (4,2). Five runs, no diagnostics. Main `c46223c` and this
+harness tip are pushed.
+
+- state: h2-hf = active: MPI n=4 spectrum check, A0 n=2, and A1 timings re-authorized (codex pane); A1 ladder held
+- note: h2-hf = evd-0019 read as band gauge; spectrum contract fixed; n=2 passes at 9.9e-16
