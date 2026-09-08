@@ -46,8 +46,10 @@ const OUTER_ENERGY_TOLERANCE_HARTREE: f64 = 1.0e-8;
 const OUTER_DENSITY_TOLERANCE: f64 = 1.0e-7;
 const OUTER_MAX_ITERATIONS: usize = 80;
 const FOCK_MAX_ITERATIONS: usize = 128;
-const FOCK_DENSITY_TOLERANCE: f64 = 1.0e-7;
-const FOCK_FEEDBACK_TOLERANCE_HARTREE: f64 = 1.0e-8;
+// The valence identity residual tracks the Fock feedback tolerance with a
+// prefactor of 16 to 34 (evd-0006, evd-0007); 1e-10 clears the driver's 2e-8 gate.
+const FOCK_DENSITY_TOLERANCE: f64 = 1.0e-9;
+const FOCK_FEEDBACK_TOLERANCE_HARTREE: f64 = 1.0e-10;
 const FOCK_DIIS_HISTORY: usize = 8;
 const FOCK_DIIS_STARTUP_STEPS: usize = 2;
 const FOCK_DIIS_DAMPING: f64 = 0.5;
