@@ -1,0 +1,49 @@
+system=H2 bond_bohr=1.400000 electron_count=2.0 route=spinor-first-variation cores=none box_bohr=8.000000 rmt_bohr=0.650000 orbital_g_bohr_inverse=4.000000 field_g_bohr_inverse=12.000000 product_g_bohr_inverse=4.000000 product_lmax=2 overlap_tolerance=1.000000e-4 exchange_coulomb=periodic-finite-body fock_fourier_g_bohr_inverse=4.000000 fock_smoothing_omega_bohr_inverse=none lexp=14 speed_of_light_au=137035.9895000000
+atomic_start_checkpoint=/tmp/libmuffintin-h2-hf/a0-warm2/h2.atomic-start.toml charge_target=2.0000000000000000e0 charge_represented=2.0000000000000271e0 charge_error=2.709e-14 normalization_scale=8.4314746035398769e-1
+[hf] Gamma valence Fock outer=1 iteration=1 density_residual=1.1700509165319579e-3 feedback_residual=inf
+[hf] Gamma valence Fock outer=1 iteration=2 density_residual=7.8779187095255235e-5 feedback_residual=1.0975883239664429e-4
+[hf] Gamma valence Fock outer=1 iteration=3 density_residual=4.4681932610423520e-5 feedback_residual=6.2223832072689535e-5
+[hf] Gamma valence Fock outer=1 iteration=4 density_residual=5.0691555652385872e-5 feedback_residual=3.5276091911157605e-5
+[hf] Gamma valence Fock outer=1 iteration=5 density_residual=7.9305497912975733e-6 feedback_residual=4.7228777201072884e-6
+[hf] Gamma valence Fock outer=1 iteration=6 density_residual=3.5941651641122446e-9 feedback_residual=2.7187911449087776e-9
+[hf] Gamma valence Fock outer=1 iteration=7 density_residual=3.3505815551981303e-11 feedback_residual=2.6906548712159195e-11
+[hf] Gamma valence Fock outer=2 iteration=1 density_residual=2.0651382416504878e-4 feedback_residual=1.3608431642491271e-4
+[hf] Gamma valence Fock outer=2 iteration=2 density_residual=3.4323040117801879e-5 feedback_residual=1.9378076230415335e-5
+[hf] Gamma valence Fock outer=2 iteration=3 density_residual=5.3033081802006084e-8 feedback_residual=3.6878609681778758e-8
+[hf] Gamma valence Fock outer=2 iteration=4 density_residual=3.0529224958640895e-10 feedback_residual=2.3965123364510371e-10
+[hf] Gamma valence Fock outer=2 iteration=5 density_residual=4.3426725118003552e-11 feedback_residual=2.8801130425894217e-11
+[hf] Gamma valence Fock outer=3 iteration=1 density_residual=1.3034374832485196e-5 feedback_residual=8.0043417350314809e-6
+[hf] Gamma valence Fock outer=3 iteration=2 density_residual=2.1378841152682333e-6 feedback_residual=1.2156589104739745e-6
+[hf] Gamma valence Fock outer=3 iteration=3 density_residual=5.3092053360299301e-9 feedback_residual=3.7681384764840994e-9
+[hf] Gamma valence Fock outer=3 iteration=4 density_residual=3.1984784989336445e-13 feedback_residual=5.3605299096718179e-13
+[hf] Gamma valence Fock outer=4 iteration=1 density_residual=1.5426284517205021e-6 feedback_residual=1.8886041190980824e-6
+[hf] Gamma valence Fock outer=4 iteration=2 density_residual=2.4212415299848982e-7 feedback_residual=1.5278408988601746e-7
+[hf] Gamma valence Fock outer=4 iteration=3 density_residual=1.5524518498872290e-8 feedback_residual=8.5613114574013480e-9
+[hf] Gamma valence Fock outer=4 iteration=4 density_residual=1.7878837031902750e-12 feedback_residual=1.6347370505875869e-12
+[hf] Gamma valence Fock outer=5 iteration=1 density_residual=1.9808989018933954e-6 feedback_residual=1.4027246739600112e-6
+[hf] Gamma valence Fock outer=5 iteration=2 density_residual=3.2492225317939644e-7 feedback_residual=1.8701640818754271e-7
+[hf] Gamma valence Fock outer=5 iteration=3 density_residual=2.5433863346218439e-11 feedback_residual=6.6403037894639001e-11
+[hf] Gamma valence Fock outer=6 iteration=1 density_residual=1.0500211250121253e-6 feedback_residual=7.2992042025247887e-7
+[hf] Gamma valence Fock outer=6 iteration=2 density_residual=1.7202508858469126e-7 feedback_residual=9.8960946340212290e-8
+[hf] Gamma valence Fock outer=6 iteration=3 density_residual=4.4500758068582829e-12 feedback_residual=1.1347133589044857e-11
+[hf] Gamma valence Fock outer=7 iteration=1 density_residual=5.8449089052837447e-8 feedback_residual=4.2456230654503054e-8
+[hf] Gamma valence Fock outer=7 iteration=2 density_residual=9.5848167175831059e-9 feedback_residual=5.5153421981389561e-9
+[hf] Gamma valence Fock outer=7 iteration=3 density_residual=3.5907374191627446e-12 feedback_residual=3.2364859490346953e-12
+[hf] Gamma valence Fock outer=8 iteration=1 density_residual=6.1701936671462908e-9 feedback_residual=3.7670174117630101e-9
+[hf] Gamma valence Fock outer=8 iteration=2 density_residual=8.6629929585931406e-10 feedback_residual=5.7821857013789363e-10
+[hf] Gamma valence Fock outer=8 iteration=3 density_residual=1.2188149701086373e-10 feedback_residual=8.1551726092629617e-11
+hf_iteration=1 fock_iterations=7 exchange_rebuilds=7 density_rms=3.7127159566517705e-3 electron_count=1.9999999999999993e0 h0_ha=-2.7715184754418132e-1 electron_hartree_ha=3.0516021270874655e-1 electron_nuclear_ha=-1.4448515467233003e0 nuclear_hartree_ha=9.2235229735514370e-3 exchange_ha=-3.3968249235757697e-2 total_ha=-6.0705678651513439e-1 exchange_identity_ha=0.0000000000000000e0 eigenvalue_identity_ha=1.7276745034600083e-9 total_identity_ha=1.7276745589711595e-9
+hf_iteration=2 fock_iterations=5 exchange_rebuilds=5 density_rms=7.1080923104152680e-4 electron_count=2.0000000000000031e0 h0_ha=-2.0468440024149517e-1 electron_hartree_ha=3.7424592645593874e-1 electron_nuclear_ha=-1.6352013729321606e0 nuclear_hartree_ha=9.2235229735514370e-3 exchange_ha=-2.3701265497232608e-2 total_ha=-5.9340806922111511e-1 exchange_identity_ha=0.0000000000000000e0 eigenvalue_identity_ha=1.6962142940224467e-9 total_identity_ha=1.6962142801446589e-9
+hf_iteration=3 fock_iterations=4 exchange_rebuilds=4 density_rms=3.1407543460675952e-4 electron_count=1.9999999999999982e0 h0_ha=-2.0324840151486315e-1 electron_hartree_ha=3.7587433618641003e-1 electron_nuclear_ha=-1.6412863270840845e0 nuclear_hartree_ha=9.2235229735514370e-3 exchange_ha=-2.3119024028867074e-2 total_ha=-5.9301823875658888e-1 exchange_identity_ha=0.0000000000000000e0 eigenvalue_identity_ha=2.8075250457781920e-12 total_identity_ha=2.8076430069745584e-12
+hf_iteration=4 fock_iterations=4 exchange_rebuilds=4 density_rms=1.8174735815945073e-5 electron_count=1.9999999999999978e0 h0_ha=-2.0649491420178845e-1 electron_hartree_ha=3.7244448319031187e-1 electron_nuclear_ha=-1.6339931809989177e0 nuclear_hartree_ha=9.2235229735514370e-3 exchange_ha=-2.3197682263823398e-2 total_ha=-5.9291355668237222e-1 exchange_identity_ha=0.0000000000000000e0 eigenvalue_identity_ha=7.1966335668527392e-11 total_identity_ha=7.1966432813042047e-11
+hf_iteration=5 fock_iterations=3 exchange_rebuilds=3 density_rms=1.4584504487632387e-5 electron_count=2.0000000000000009e0 h0_ha=-2.0570855019119694e-1 electron_hartree_ha=3.7332140591549512e-1 electron_nuclear_ha=-1.6356393044849358e0 nuclear_hartree_ha=9.2235229735514370e-3 exchange_ha=-2.3106763424057625e-2 total_ha=-5.9291319655719821e-1 exchange_identity_ha=0.0000000000000000e0 eigenvalue_identity_ha=2.7880048270034763e-10 total_identity_ha=2.7880042718919640e-10
+hf_iteration=6 fock_iterations=3 exchange_rebuilds=3 density_rms=8.4141921189183932e-7 electron_count=1.9999999999999987e0 h0_ha=-2.0608291948671398e-1 electron_hartree_ha=3.7289958652542810e-1 electron_nuclear_ha=-1.6344899348454067e0 nuclear_hartree_ha=9.2235229735514370e-3 exchange_ha=-2.3154559360238088e-2 total_ha=-5.9291354239882876e-1 exchange_identity_ha=0.0000000000000000e0 eigenvalue_identity_ha=2.4745747118082306e-11 total_identity_ha=2.4745649973567652e-11
+hf_iteration=7 fock_iterations=3 exchange_rebuilds=3 density_rms=1.8968460695429479e-7 electron_count=2.0000000000000075e0 h0_ha=-2.0605476442703102e-1 electron_hartree_ha=3.7293044204986686e-1 electron_nuclear_ha=-1.6345332126729357e0 nuclear_hartree_ha=9.2235229735514370e-3 exchange_ha=-2.3151865171553411e-2 total_ha=-5.9291354867489987e-1 exchange_identity_ha=0.0000000000000000e0 eigenvalue_identity_ha=1.5588981494563114e-10 total_identity_ha=1.5588985657899457e-10
+hf_iteration=8 fock_iterations=3 exchange_rebuilds=3 density_rms=2.8925092153964536e-8 electron_count=2.0000000000000067e0 h0_ha=-2.0605454953738866e-1 electron_hartree_ha=3.7293092568653979e-1 electron_nuclear_ha=-1.6345400434194108e0 nuclear_hartree_ha=9.2235229735514370e-3 exchange_ha=-2.3151591464802578e-2 total_ha=-5.9291354371517968e-1 exchange_identity_ha=0.0000000000000000e0 eigenvalue_identity_ha=4.7645892370384857e-9 total_identity_ha=4.7645891676495467e-9
+hf_final outer_iterations=8 fock_iterations=3 exchange_rebuilds=32 electron_count=2.0000000000000067e0 homo_ha=-1.2617886861579153e-1 wall_s=1228.894974
+hf_energy_terms_ha h0=-2.0605454953738866e-1 electron_hartree=3.7293092568653979e-1 nuclear_hartree=9.2235229735514370e-3 exchange=-2.3151591464802578e-2 occupation_correction=-8.3266726846886741e-17 band=-2.5235773723158306e-1 total=-5.9291354371517968e-1
+hf_identity_ha exchange=0.0000000000000000e0 eigenvalue=4.7645892370384857e-9 total=4.7645891676495467e-9 hartree_exchange=1.6331387137846731e-1
+real 1229.77
+user 3472.27
+sys 331.67
+launcher_exit_code=0

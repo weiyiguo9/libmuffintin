@@ -516,37 +516,41 @@ tolerance policy is still a separate user decision.
 ### Cross-outer Fock warm start
 
 Main `a5d52b3` carries only the final mixed global-basis feedback from a
-completed Gamma valence outer iteration. The next outer iteration applies it
-once to the fresh H0/S bands before the ordinary rebuild, feedback comparison,
-and CDIIS path. The first outer iteration, fixed-point definition, tolerances,
-gates, mixer, and other HF paths are unchanged. The pre-run prediction was
-12–24 exchange rebuilds and 7–9 outer iterations.
+completed Gamma valence outer iteration. Main `762c210` sets nonlinear mixer
+start-up steps to zero only for those warm-started loops, so CDIIS extrapolates
+from its second fresh record. The cold first outer iteration, fixed-point
+definition, tolerances, gates, configured damping, history length, and other
+HF paths are unchanged. The follow-up pre-run prediction was 22–34 exchange
+rebuilds, 7–9 outer iterations, and 2–4 iterations per warm inner loop.
 
 ```text
 DIGIT / PASS
 Q: fixture exchange/eigenvalue/total identity residuals; class: R; ref: gamma_valence_hf fixture
 bound: 1e-8; Delta: every unchanged assertion passed
-checks: release fixture with fft-fftw; one test passed
-runs: 1; fixture contract closed
+checks: release fixture with fft-fftw passed after the warm start and after the zero-start-up follow-up
+runs: 1 for this follow-up; fixture contract closed
 
-DIGIT / HANDOFF
+DIGIT / PASS
 Q: A0 E/HOMO/E_H/E_x and three driver identities (Ha); class: R; ref: evd-0010
-bound: 2e-8 for energies and identities; Delta: unavailable
-checks: ten-thread run reached the 1800 s cap and exited 124 before convergence, final electron count, or final energy and identity output
-runs: 1; no diagnostic or repeat
-unresolved: A0 did not produce the class-R quantities within the fixed cap
+bound: 2e-8 for energies and identities; Delta: 2.48245868306185002e-13 / 3.09803882547754483e-9 / 1.62302338235775778e-10 / 8.68805014042628443e-10 for E/HOMO/E_H/E_x
+checks: maximum identity 4.76458923703848569e-9; electron-count error 6.66133814775093924e-15; finite converged result; exit 0
+runs: 1; class-R contract closed
 
-DIGIT / HANDOFF
+DIGIT / PASS
 Q: A0 exchange_rebuilds, outer_iterations, wall_s; class: P; ref: 56, 8, 1166.331817 s
-bound: report-only, with 12–24 rebuild prediction and mandatory handoff at 40 or more; Delta: 43 completed rebuilds, 7 completed outer iterations with outer 8 in progress, final driver wall_s unavailable
-checks: supervisor wall 1800.24 s; rebuild threshold exceeded
-runs: same A0 run; no diagnostic or repeat
-unresolved: the warm start did not reduce rebuilds below the predeclared handoff threshold
+bound: report-only, with 22–34 rebuild prediction and mandatory handoff at 40 or more; result: 32 rebuilds, 8 outer iterations, wall_s 1228.894974
+checks: per-outer Fock iterations 7 / 5 / 4 / 4 / 3 / 3 / 3 / 3; supervisor wall 1229.77 s
+runs: same A0 run; closed without diagnostics or repeats
 ```
 
-The incomplete A0 log is
-[`results/hf-a0-warm.log`](results/hf-a0-warm.log). The A1 ladder and MPI
-evidence were untouched.
+The rebuild and outer-count predictions passed; the first warm inner loop took
+five iterations, one above the report-only 2–4 prediction, while all later warm
+loops took 3–4. Load averages were 10.78 / 28.99 / 37.53 immediately before
+the run and 27.81 / 27.57 / 28.24 immediately after, so wall time remains
+context rather than an acceptance quantity. The completed log is
+[`results/hf-a0-warm2.log`](results/hf-a0-warm2.log); the prior capped
+[`results/hf-a0-warm.log`](results/hf-a0-warm.log) is preserved. The A1
+ladder and MPI evidence were untouched.
 
 ### Pair-level MPI
 
