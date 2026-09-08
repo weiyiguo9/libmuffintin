@@ -2877,6 +2877,7 @@ fn solve_fixed_potential(
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
 ) -> Result<FixedPotentialResult, GammaValenceHfError> {
+    use crate::hf_diagnostics::HfPhaseTimer;
     let mut rebuilds = 0;
     let mut first_one_shot_exchange = None;
     let mut first_global_solve_identity_residual = None;
@@ -2886,11 +2887,15 @@ fn solve_fixed_potential(
     let mut feedback_mixer = FeedbackMixer::new(spec.fock_mixing);
     let mut current_density = None;
     for fock_iteration in 1..=spec.max_fock_iterations {
-        let occupation = solve_occupations(
-            bands.states(),
-            spec.config.electron_count,
-            spec.config.occupations,
-        )?;
+        let _iteration_timer = HfPhaseTimer::new("gamma.fock.iteration");
+        let occupation = {
+            let _occupation_timer = HfPhaseTimer::new("gamma.fock.occupations");
+            solve_occupations(
+                bands.states(),
+                spec.config.electron_count,
+                spec.config.occupations,
+            )?
+        };
         let occupation_rows = occupation_rows(&occupation.values, &bands)?;
         if outer_iteration == 1 && fock_iteration == 1 {
             let driver = rebuild_exchange(
@@ -2903,8 +2908,12 @@ fn solve_fixed_potential(
             )?;
             rebuilds += 1;
             first_one_shot_exchange = Some(driver.clone());
-            let band_feedback = exchange_feedback(&driver)?;
-            let global_feedback = lift_global_feedback(&bands, &band_feedback)?;
+            let (band_feedback, global_feedback) = {
+                let _feedback_lift_timer = HfPhaseTimer::new("gamma.fock.feedback_lift");
+                let band_feedback = exchange_feedback(&driver)?;
+                let global_feedback = lift_global_feedback(&bands, &band_feedback)?;
+                (band_feedback, global_feedback)
+            };
             let lifting_identity_residual =
                 lifting_identity(&bands, &band_feedback, &global_feedback)?;
             require_gate(
@@ -2912,7 +2921,10 @@ fn solve_fixed_potential(
                 lifting_identity_residual,
                 IDENTITY_TOLERANCE,
             )?;
-            let solved = bands.solve_spinor_global_feedback(&global_feedback)?;
+            let solved = {
+                let _spinor_solve_timer = HfPhaseTimer::new("gamma.fock.spinor_solve");
+                bands.solve_spinor_global_feedback(&global_feedback)?
+            };
             let solve_identity = first_global_solve_identity(&bands, &band_feedback, &solved)?;
             require_gate(
                 "first global generalized solve",
@@ -2920,19 +2932,26 @@ fn solve_fixed_potential(
                 IDENTITY_TOLERANCE,
             )?;
             first_global_solve_identity_residual = Some(solve_identity);
-            let solved_occupation = solve_occupations(
-                solved.states(),
-                spec.config.electron_count,
-                spec.config.occupations,
-            )?;
-            let (residual, solved_density) = fixed_point_density_residual(
-                physics,
-                &bands,
-                &occupation.values,
-                current_density.take(),
-                &solved,
-                &solved_occupation.values,
-            )?;
+            let solved_occupation = {
+                let _occupation_timer = HfPhaseTimer::new("gamma.fock.occupations");
+                solve_occupations(
+                    solved.states(),
+                    spec.config.electron_count,
+                    spec.config.occupations,
+                )?
+            };
+            let (residual, solved_density) = {
+                let _density_residual_timer =
+                    HfPhaseTimer::new("gamma.fock.density_residual");
+                fixed_point_density_residual(
+                    physics,
+                    &bands,
+                    &occupation.values,
+                    current_density.take(),
+                    &solved,
+                    &solved_occupation.values,
+                )?
+            };
             last_residual = residual;
             current_density = Some(solved_density);
             bands = solved;
@@ -2960,19 +2979,26 @@ fn solve_fixed_potential(
             q_fractional,
         )?;
         rebuilds += 1;
-        let fresh_band_feedback = exchange_feedback(&rebuilt)?;
-        let fresh_global_feedback = lift_global_feedback(&bands, &fresh_band_feedback)?;
+        let (fresh_band_feedback, fresh_global_feedback) = {
+            let _feedback_lift_timer = HfPhaseTimer::new("gamma.fock.feedback_lift");
+            let fresh_band_feedback = exchange_feedback(&rebuilt)?;
+            let fresh_global_feedback = lift_global_feedback(&bands, &fresh_band_feedback)?;
+            (fresh_band_feedback, fresh_global_feedback)
+        };
         let feedback_fixed_residual = previous_global_feedback
             .as_ref()
             .map(|previous| global_feedback_difference(previous, &fresh_global_feedback))
             .transpose()?
             .unwrap_or(f64::INFINITY);
         last_feedback_residual = feedback_fixed_residual;
-        let global_feedback = match &previous_global_feedback {
-            Some(previous) => {
-                feedback_mixer.mix(&bands, &occupation_rows, previous, &fresh_global_feedback)?
+        let global_feedback = {
+            let _mix_timer = HfPhaseTimer::new("gamma.fock.mix");
+            match &previous_global_feedback {
+                Some(previous) => {
+                    feedback_mixer.mix(&bands, &occupation_rows, previous, &fresh_global_feedback)?
+                }
+                None => fresh_global_feedback.clone(),
             }
-            None => fresh_global_feedback.clone(),
         };
         let lifting_identity_residual =
             lifting_identity(&bands, &fresh_band_feedback, &fresh_global_feedback)?;
@@ -2981,20 +3007,29 @@ fn solve_fixed_potential(
             lifting_identity_residual,
             IDENTITY_TOLERANCE,
         )?;
-        let solved = bands.solve_spinor_global_feedback(&global_feedback)?;
-        let solved_occupation = solve_occupations(
-            solved.states(),
-            spec.config.electron_count,
-            spec.config.occupations,
-        )?;
-        let (residual, solved_density) = fixed_point_density_residual(
-            physics,
-            &bands,
-            &occupation.values,
-            current_density.take(),
-            &solved,
-            &solved_occupation.values,
-        )?;
+        let solved = {
+            let _spinor_solve_timer = HfPhaseTimer::new("gamma.fock.spinor_solve");
+            bands.solve_spinor_global_feedback(&global_feedback)?
+        };
+        let solved_occupation = {
+            let _occupation_timer = HfPhaseTimer::new("gamma.fock.occupations");
+            solve_occupations(
+                solved.states(),
+                spec.config.electron_count,
+                spec.config.occupations,
+            )?
+        };
+        let (residual, solved_density) = {
+            let _density_residual_timer = HfPhaseTimer::new("gamma.fock.density_residual");
+            fixed_point_density_residual(
+                physics,
+                &bands,
+                &occupation.values,
+                current_density.take(),
+                &solved,
+                &solved_occupation.values,
+            )?
+        };
         last_residual = residual;
         current_density = Some(solved_density);
         crate::hf_diagnostics::hf_progress(format_args!(
@@ -3035,28 +3070,34 @@ fn rebuild_exchange(
     k_fractional: &[[f64; 3]],
     q_fractional: &[[f64; 3]],
 ) -> Result<IsdfExchangeResult, GammaValenceHfError> {
-    let inputs = q_fractional
-        .iter()
-        .map(|&q| physics.spinor_product_input_from_bands(bands, k_fractional, q))
-        .collect::<Result<Vec<_>, _>>()?;
-    let first = inputs.first().ok_or(GammaValenceHfError::QTopology)?;
-    let n_k = first.pair_columns.n_k;
-    let n_orb = first.pair_columns.n_orb;
-    let occupied_bands = (0..n_orb)
-        .filter(|&band| occupations.iter().any(|row| row[band] != 0.0))
-        .collect::<Vec<_>>();
-    let mut selections = Vec::with_capacity(n_k * occupied_bands.len() * n_orb);
-    for k in 0..n_k {
-        for &left_band in &occupied_bands {
-            for right_band in 0..n_orb {
-                selections.push(SpinorMpbSelection {
-                    k,
-                    left_band,
-                    right_band,
-                });
+    use crate::hf_diagnostics::HfPhaseTimer;
+    let (inputs, selections, occupied_bands) = {
+        let _inputs_timer = HfPhaseTimer::new("gamma.rebuild.inputs");
+        let inputs = q_fractional
+            .iter()
+            .map(|&q| physics.spinor_product_input_from_bands(bands, k_fractional, q))
+            .collect::<Result<Vec<_>, _>>()?;
+        let first = inputs.first().ok_or(GammaValenceHfError::QTopology)?;
+        let n_k = first.pair_columns.n_k;
+        let n_orb = first.pair_columns.n_orb;
+        let occupied_bands = (0..n_orb)
+            .filter(|&band| occupations.iter().any(|row| row[band] != 0.0))
+            .collect::<Vec<_>>();
+        let mut selections = Vec::with_capacity(n_k * occupied_bands.len() * n_orb);
+        for k in 0..n_k {
+            for &left_band in &occupied_bands {
+                for right_band in 0..n_orb {
+                    selections.push(SpinorMpbSelection {
+                        k,
+                        left_band,
+                        right_band,
+                    });
+                }
             }
         }
-    }
+        (inputs, selections, occupied_bands)
+    };
+    let mpb_timer = HfPhaseTimer::new("gamma.rebuild.mpb");
     let mpb = inputs
         .iter()
         .map(|input| {
@@ -3071,12 +3112,16 @@ fn rebuild_exchange(
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let operators = mpb
-        .iter()
-        .map(|result| assemble_coulomb(&result.auxiliary, &spec.coulomb))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(IsdfExchangeError::from)?;
+    drop(mpb_timer);
+    let operators = {
+        let _coulomb_assembly_timer = HfPhaseTimer::new("gamma.rebuild.coulomb_assembly");
+        mpb.iter()
+            .map(|result| assemble_coulomb(&result.auxiliary, &spec.coulomb))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(IsdfExchangeError::from)?
+    };
     let k_weights = k_weights(bands)?;
+    let _contraction_timer = HfPhaseTimer::new("gamma.rebuild.contraction");
     Ok(contract_selected_spinor_mpb_exchange_with_operators(
         &inputs,
         &mpb,
