@@ -1053,3 +1053,60 @@ held and no push is authorized.
 
 - state: h2-hf = active: implementing occupied-band MPI and fixed rank-count gates
 - note: h2-hf = evt-0040; ten-run budget; A1 ladder held; no push
+
+## 2026-09-08 · evt-0042 · h2-hf three fixture ranks passed; feedback dumps started · actor: codex
+
+The complete three-run fixture set passed: ordinary default build, one-process
+`fft-fftw,mpi`, and the MPI-enabled test binary under `mpirun -n 2` with
+five Rayon threads per rank. The fixture initializes MPI at Funneled under
+the feature and retains its Universe; the two-rank command launches the
+already built test binary, not Cargo. Every rank ran the one exact fixture
+and passed its unchanged 1e-8 identity assertions. This class-R set is closed.
+
+Proceed to the one-build feedback dumps at ranks 1, 2, and 4. Only rank zero
+writes the first-rebuild post-Allreduce block; all ranks stop together after
+a scratch-only barrier. Compare ranks 2 and 4 with rank 1 over every finite
+entry at the fixed 1e-12 absolute bound. No diagnostics or repeat on failure.
+
+- state: h2-hf = active: fixture MPI gate passed; first-feedback rank dumps running
+- note: h2-hf = three of ten executions complete; A1 ladder held; no push
+
+## 2026-09-08 · evd-0017 · h2-hf MPI fixture identities · main 33a761d032540972126e6e7bdb6fb8b4f364b9ab, recorded through a0218d3577798187dc34c174162df77d57226db8
+
+```text
+DIGIT / PASS
+Q: fixture exchange/eigenvalue/total identity residuals; class: R; ref: fixture
+bound: 1e-8; Delta: every unchanged assertion passed
+command: cargo test --release -p libmuffintin-runtime --test gamma_valence_hf -- --nocapture
+command: cargo test --release -p libmuffintin-runtime --test gamma_valence_hf --features fft-fftw,mpi -- --nocapture
+command: RAYON_NUM_THREADS=5 /opt/homebrew/bin/mpirun -n 2 target/release/deps/gamma_valence_hf-5a476f84e231c5b9 --exact gamma_hydrogen_rebuilds_full_vv_feedback_and_rejects_stale_orbitals --nocapture --test-threads=1
+log: evidence/2026-09-08-h2-hf-mpi/fixture-default.log, fixture-mpi-n1.log, fixture-mpi-n2.log
+scope: three runs; the feature-gated fixture initializes MPI at Funneled, registers world, and retains Universe. The two-rank command launches the built test binary, not two Cargo processes. Identity gate closed; no additional fixture check.
+```
+
+## 2026-09-08 · evd-0018 · h2-hf first-feedback probe execution handoff · main 33a761d032540972126e6e7bdb6fb8b4f364b9ab
+
+```text
+DIGIT / HANDOFF
+Q: every first-rebuild band-space feedback entry at n=2 and n=4 versus n=1; class: R; ref: n=1
+bound: 1e-12 absolute; Delta: unavailable
+command: RAYON_NUM_THREADS=10 H2_MPI_FEEDBACK_DUMP=/Users/zerozaki07/tmp/libmuffintin-harness/evidence/2026-09-08-h2-hf-mpi/feedback-n1.bin /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 900s /opt/homebrew/bin/mpirun -n 1 /tmp/h2-hf-mpi-probe-target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/mpi-feedback-n1 --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 2
+log: evidence/2026-09-08-h2-hf-mpi/feedback-n1.log and feedback-n1.bin
+checks: rank zero flushed one 1030-by-1030 block with 1,060,900 complex entries after the first Allreduce; scratch process then bypassed Universe drop and MPI_Finalize through process::exit, so Open MPI returned exit 1. n=2 and n=4 were not run.
+runs: one feedback probe; no diagnostic or replacement run authorized
+unresolved: obtain clean MPI finalization for a first-rebuild-only probe without exceeding the fixed run budget.
+```
+
+## 2026-09-08 · evt-0043 · h2-hf MPI numerical acceptance handed off at the scratch probe · actor: codex
+
+Implementation is on main: `f189669` optional binding, `33a761d` occupied-band
+distribution and Allreduce, `88b212d` Snellius documentation, and `a0218d3`
+the fixture/pass and probe/handoff record. The production example retains its
+Universe and finalizes normally; the defect is confined to the untracked
+first-rebuild hook. Stop That Digit forbids accepting an execution failure,
+and the task permits no failure diagnostic. Therefore n=2/n=4 feedback,
+n=2 A0, and n=1/n=2/n=4 A1 timing are unrun. The A1 ladder remains held.
+Four numerical executions total; no push.
+
+- state: h2-hf = handoff: MPI implementation built and fixtures pass; scratch first-feedback probe did not finalize
+- note: h2-hf = evd-0017/0018; main a0218d3; rank-independence, A0, and timings unrun; A1 ladder held
