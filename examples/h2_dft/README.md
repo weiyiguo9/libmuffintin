@@ -197,11 +197,12 @@ The first positional argument is the output directory. The remaining controls
 are named options: `--box`, `--orbital-g`, `--field-g`, `--product-g`,
 `--product-lmax`, `--overlap-tolerance`, `--exchange-coulomb`,
 `--fock-fourier-g`, `--fock-smoothing-omega`, `--lexp`, `--speed-of-light`,
-`--rmt`, and the A0 diagnostic control `--fock-max-iterations`.
+`--rmt`, `--verbosity` (0 quiet, the default; 1 progress; 2 timings), and the
+A0 diagnostic control `--fock-max-iterations`.
 
 ### FFTW interstitial batching
 
-The `fft-fftw` interstitial path retains one FFT correlation per band pair but
+The initial `fft-fftw` batching change retained FFT correlations per band pair but
 projects up to 64 pairs sharing a left band in one TBLIS contraction. The
 focused fixture passed once in each build. Its 432 first-build interstitial
 coefficients were dumped from an untracked test hook and compared as
@@ -262,9 +263,48 @@ The timing log is
 branch. The scratch example and the temporary selection count print were
 never committed.
 
+### Cached pair spectra and parallel left bands
+
+Main `8140032` caches each selected band's two spin spectra, sums the spin
+products before one inverse per pair, and uses a Rayon-local `PairFft`
+workspace. Projection still contracts up to 64 right bands at once. At A0,
+38 left bands and 1030 right bands need 41,276 transforms instead of
+234,840. The right cache occupies 305,242,560 bytes; callers above the 4 GB
+cache limit use disjoint right-band chunks.
+
+| First rebuild | Transforms | `vv.interstitial` (s) | `vv.mpb_rebuild` (s) |
+|---|---:|---:|---:|
+| earlier evd-0005 reference | 234840 | 27.281043 | 28.657877 |
+| 421a447 baseline, 1 thread | 234840 | 34.261638 | 37.398714 |
+| cached, 1 thread | 41276 | 21.380939 | 24.576575 |
+| cached, 10 threads | 41276 | 9.604797 | 11.903934 |
+
+```text
+DIGIT / PASS
+Q: fixture exchange/eigenvalue/total identities (Ha); class: R; ref: fixture
+bound: 1e-8; Delta: maximum 3.42933147157165052e-16
+checks: one changed run with fft-fftw and one without; closed
+
+DIGIT / PASS
+Q: fixture total_energy and exchange_energy (Ha); class: R; ref: 421a447
+bound: 1e-10; Delta: 0 in both feature variants
+checks: two baseline and two changed fixture runs; closed
+
+DIGIT / PASS
+Q: maximum absolute first-rebuild A0 interstitial vertex difference; class: R; ref: 421a447 fft-fftw
+bound: 1e-10; Delta: 6.50521335639941991e-19
+checks: 20,157,100 finite complex entries with matching selection labels; two dumps; closed
+```
+
+Timing is class P, report only. Evidence and the comparison script are under
+`evidence/2026-09-08-h2-hf-pair-fft-perf/` on `harness` (evd-0009).
+There were seven executions: four fixtures, two dumps, and one additional
+timing; the changed dump also supplied the one-thread timing. No additional
+diagnostic or numerical verification followed the passes.
+
 ### A0 smoke
 
-A0 has been run three times with the same command: orbital cutoff 4, field
+A0 was previously run three times with the same command: orbital cutoff 4, field
 cutoff 12, product cutoff 4, product $l_{max}=2$, overlap tolerance $10^{-4}$,
 box 8, and the periodic finite-body kernel, under an 1800 s supervisor. Only
 the example's Fock exit tolerances differ between the runs. None of the three
@@ -276,7 +316,7 @@ none prints a Fock iteration count or an `hf_final` wall time of its own.
 |---|---|---|---:|---:|---|
 | first | $10^{-5}$, $10^{-5}$ | gate error | $3.4089473164444770\times10^{-4}$ | 251 | [`results/hf-a0-fock1e-5.log`](results/hf-a0-fock1e-5.log) |
 | second | $10^{-7}$, $10^{-8}$ | gate error | $1.6477445782814293\times10^{-7}$ | 282 | [`results/hf-a0-fock1e-8.log`](results/hf-a0-fock1e-8.log) |
-| third | $10^{-9}$, $10^{-10}$ | killed at the cap | none produced | > 1800 | [`results/hf-a0.log`](results/hf-a0.log) |
+| third | $10^{-9}$, $10^{-10}$ | killed at the cap | none produced | > 1800 | [`results/hf-a0-fock1e-10-cap1800.log`](results/hf-a0-fock1e-10-cap1800.log) |
 
 The three diagnostics the plan allows, spent on the first run:
 
@@ -301,6 +341,8 @@ inside its first Fock cycle when the cap arrived. The loop's own limit is above
 the cap: `FOCK_MAX_ITERATIONS` is 128 and one exchange rebuild at these
 settings was measured at 28.7 s.
 
+Historical third-run handoff (superseded by the fourth run below):
+
 ```text
 DIGIT / HANDOFF
 Q: valence eigenvalue identity residual (Ha); class: A; ref: 0
@@ -310,6 +352,30 @@ prediction: untested
 unresolved: can the Fock loop reach 1e-10 Ha within the 1800 s cap at the A0 dimension, or does the residue versus floor question need a longer cap or an intermediate tolerance to be answerable?
 ```
 
+The fourth A0 run, after spectrum caching (`8140032`), Progress residual
+output (`7efe82c`), and the default-quiet verbosity flag (`ca2e5ed`), retained
+the third run's numerical settings. It added `--verbosity 1` and used a
+4500 s supervisor. Outcome **(a)**: converged and passed. Every inner Fock
+solve took seven iterations; eight outer iterations used 56 exchange rebuilds.
+
+| $E$ (Ha) | HOMO (Ha) | $E_H$ (Ha) | $E_x$ (Ha) | Exchange id. (Ha) | Eigenvalue id. (Ha) | Total id. (Ha) | $\lvert E_x+E_H/2\rvert$ (Ha) | Fock iter. | Wall (s) | Log |
+|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---|
+| −0.59291354371542793 | −0.12617886551775270 | 0.37293092552423746 | −0.023151590595997563 | 0 | 7.2523410887814777e-10 | 7.2523409500035996e-10 | 0.16331387216612117 | 7 each, 56 total | 1934.680438 | [`results/hf-a0.log`](results/hf-a0.log) |
+
+```text
+DIGIT / PASS
+Q: driver exchange/eigenvalue/total identity residuals (Ha); class: A; ref: 0
+bound: 1e-8; Delta: maxima across all outer iterations 0 / 1.7276809149979755e-9 / 1.7276811092870048e-9
+checks: converged, finite energies; final electron_count=2.0000000000000058 (bound 1e-8); outer density RMS=2.9068395716484560e-8; exit 0
+runs: 1; no diagnostics; A0 numerical verification closed
+prediction: first-outer eigenvalue residual is inside [1e-9, 4e-9] and 95.37 times below the old 1.6477445782814293e-7 residual; final residual is below that interval
+```
+
+The final inner-loop density and feedback residuals were
+1.7911055967367636e-11 and 1.3830918181578777e-11 Ha, respectively. Supervisor
+wall time was 1935.39 s. `hartree_exchange` is recorded, not judged by A0;
+this pass does not claim product-basis or external-energy acceptance.
+
 ### A1 identity-floor study
 
 Base settings are orbital cutoff 5, field cutoff 12, product cutoff 6,
@@ -318,7 +384,7 @@ finite-body kernel. Each row changes one base setting.
 
 | Row | Change | $E$ (Ha) | HOMO (Ha) | $E_H$ (Ha) | $E_x$ (Ha) | Exchange id. (Ha) | Eigenvalue id. (Ha) | Total id. (Ha) | $\lvert E_x+E_H/2\rvert$ (Ha) | Fock iter. | Wall (s) | Log |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| 1 | base | not run | – | – | – | – | – | – | – | – | – | – |
+| 1 | base | unavailable (cap) | – | – | – | – | – | – | – | 2 completed | 1800.83 | [`results/hf-a1-row1.log`](results/hf-a1-row1.log) |
 | 2 | product $G=4$ | not run | – | – | – | – | – | – | – | – | – | – |
 | 3 | product $G=8$ | not run | – | – | – | – | – | – | – | – | – | – |
 | 4 | product $G=10$ | not run | – | – | – | – | – | – | – | – | – | – |
@@ -329,9 +395,24 @@ finite-body kernel. Each row changes one base setting.
 | 9 | `lexp=18` | not run | – | – | – | – | – | – | – | – | – | – |
 | 10 | field cutoff 18 | not run | – | – | – | – | – | – | – | – | – | – |
 
-The closed A1 row list was not run because the ordered predecessor A0 handed
-off a third time, now on the 1800 s wall cap rather than on an identity value.
-Consequently A1v and A2 have no numerical evidence or stamps.
+After A0 passed, the A1 base row ran once under its authorized 1800 s cap.
+The supervisor returned exit 124 at 1800.83 s after two completed Fock
+iterations and no completed outer iteration. The last printed density and
+feedback residuals were 1.0988849307297540e-4 and 1.3734823798679154e-4 Ha,
+respectively. No energy, HOMO, three-identity row, or `hartree_exchange` was
+produced; SCF convergence and final electron count were not established.
+
+```text
+DIGIT / HANDOFF
+Q: A1 base hartree_exchange (Ha); class: P; ref: 0
+bound: none (study); Delta: unavailable
+checks: required converged finite output, three identities within 1e-8 Ha, and electron count 2 within 1e-8 not established; supervisor exit 124
+runs: 1; no diagnostics; unresolved: the A1 base row cannot finish within the authorized 1800 s cap
+```
+
+A1 rows 2–10, A1v, A2, B, and Bv were not run after this resource-budget
+handoff. The optional pair-level MPI task was not started; no MPI result or
+speedup is claimed. This does not reopen A0 or the Task 1 preservation passes.
 
 ### B kernel study
 
@@ -348,6 +429,6 @@ The B rows use the accepted A1v settings with orbital cutoff 5.
 | 7 | smoothed Spencer–Alavi | 8 | product $G$ | 3.2 | not run | – | – | – | – | – | – | – | – | – | – |
 | 8 | smoothed Spencer–Alavi | 12 | product $G$ | 0.8 | not run | – | – | – | – | – | – | – | – | – | – |
 
-The closed B row list and Bv verdict were not run after the third A0
+The closed B row list and Bv verdict were not run after the A1 base-row
 handoff. No Bv stamp exists because no box 12 sharp kernel value was
 produced.
