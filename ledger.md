@@ -1266,3 +1266,50 @@ against the warm-start A0 log at 1e-10 with the cap raised to 3600 s.
 
 - state: h2-hf = active: Fock-loop warm start (codex pane); MPI A1 timings and two-rank A0 stamp queued behind it; A1 ladder held
 - note: h2-hf = MPI spectrum passes at n=2 and n=4; two-rank A0 45 s per rebuild on one machine; warm start authorized by the user
+
+## 2026-09-08 · evd-0022 · h2-hf Gamma valence warm-start fixture pass and A0 cap handoff · main a5d52b3, recorded through 199eb49
+
+The pre-run prediction was 12–24 exchange rebuilds and 7–9 outer iterations.
+A result at or above 40 rebuilds was fixed as a handoff before execution.
+
+```text
+DIGIT / PASS
+Q: fixture exchange/eigenvalue/total identity residuals; class: R; ref: crates/mt-runtime/tests/gamma_valence_hf.rs
+bound: 1e-8; Delta: every unchanged assertion passed
+command: cargo test --release -p libmuffintin-runtime --test gamma_valence_hf --features fft-fftw
+log: evidence/2026-09-08-h2-hf-warm-start/fixture-fftw.log
+checks: one release fft-fftw fixture passed
+runs: one; fixture contract closed
+
+DIGIT / HANDOFF
+Q: A0 E/HOMO/E_H/E_x and three driver identities (Ha); class: R; ref: evd-0010
+bound: 2e-8 absolute for energies and identities; Delta: unavailable
+command: RAYON_NUM_THREADS=10 /usr/bin/time -p /opt/homebrew/bin/gtimeout --signal=TERM --kill-after=10s 1800s target/release/examples/h2_hf /tmp/libmuffintin-h2-hf/a0-warm --box 8 --orbital-g 4 --field-g 12 --product-g 4 --product-lmax 2 --overlap-tolerance 1e-4 --exchange-coulomb periodic-finite-body --lexp 14 --speed-of-light 137035.9895 --rmt 0.65 --verbosity 1
+log: evidence/2026-09-08-h2-hf-warm-start/a0.stdout.log and examples/h2_dft/results/hf-a0-warm.log on main
+checks: ten-thread supervisor exit 124 at 1800.24 s before convergence, final electron count, or final energy and identity output
+runs: one; no diagnostic or repeat
+unresolved: A0 did not produce the class-R quantities within the fixed cap
+
+DIGIT / HANDOFF
+Q: A0 exchange_rebuilds, outer_iterations, wall_s; class: P; ref: 56, 8, 1166.331817 s
+bound: report-only, with 12–24 rebuild prediction and mandatory handoff at 40 or more; Delta: 43 completed rebuilds, 7 completed outer iterations with outer 8 in progress, final driver wall_s unavailable
+checks: supervisor wall 1800.24 s; rebuild threshold exceeded
+runs: same A0 run; no diagnostic or repeat
+unresolved: the warm start did not reduce rebuilds below the predeclared handoff threshold
+```
+
+## 2026-09-08 · evt-0049 · h2-hf warm start landed; A0 handed off at 43 rebuilds and the fixed cap · actor: codex
+
+Main `a5d52b3` carries the final mixed Gamma valence global-basis feedback
+between outer iterations and applies it once to the fresh H0/S bands before
+the ordinary rebuild and CDIIS path. The first outer iteration, fixed-point
+criteria, tolerances, gates, mixer, and other HF paths are unchanged. The
+authorized fft-fftw fixture passed. The ten-thread A0 run then completed 43
+rebuilds through outer iteration 8, above the predeclared 40-rebuild handoff
+threshold, and reached the 1800 s cap before convergence or final acceptance
+output. It exited 124 at supervisor wall 1800.24 s. The two-run budget is
+exhausted; no diagnostic, repeat, MPI work, MPI-evidence edit, or A1-ladder
+run followed. Main records are `199eb49`; no push.
+
+- state: h2-hf = handoff: Gamma warm-start fixture passes, but A0 reaches 43 rebuilds and the 1800 s cap; A1 ladder held
+- note: h2-hf = evd-0022; two-run budget exhausted; final A0 energies unavailable; main 199eb49; MPI evidence untouched

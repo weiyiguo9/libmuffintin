@@ -1,0 +1,49 @@
+system=H2 bond_bohr=1.400000 electron_count=2.0 route=spinor-first-variation cores=none box_bohr=8.000000 rmt_bohr=0.650000 orbital_g_bohr_inverse=4.000000 field_g_bohr_inverse=12.000000 product_g_bohr_inverse=4.000000 product_lmax=2 overlap_tolerance=1.000000e-4 exchange_coulomb=periodic-finite-body fock_fourier_g_bohr_inverse=4.000000 fock_smoothing_omega_bohr_inverse=none lexp=14 speed_of_light_au=137035.9895000000
+atomic_start_checkpoint=/tmp/libmuffintin-h2-hf/a0-warm/h2.atomic-start.toml charge_target=2.0000000000000000e0 charge_represented=2.0000000000000271e0 charge_error=2.709e-14 normalization_scale=8.4314746035398769e-1
+[hf] Gamma valence Fock outer=1 iteration=1 density_residual=1.1700509165319579e-3 feedback_residual=inf
+[hf] Gamma valence Fock outer=1 iteration=2 density_residual=7.8779187095255235e-5 feedback_residual=1.0975883239664429e-4
+[hf] Gamma valence Fock outer=1 iteration=3 density_residual=4.4681932610423520e-5 feedback_residual=6.2223832072689535e-5
+[hf] Gamma valence Fock outer=1 iteration=4 density_residual=5.0691555652385872e-5 feedback_residual=3.5276091911157605e-5
+[hf] Gamma valence Fock outer=1 iteration=5 density_residual=7.9305497912975733e-6 feedback_residual=4.7228777201072884e-6
+[hf] Gamma valence Fock outer=1 iteration=6 density_residual=3.5941651641122446e-9 feedback_residual=2.7187911449087776e-9
+[hf] Gamma valence Fock outer=1 iteration=7 density_residual=3.3505815551981303e-11 feedback_residual=2.6906548712159195e-11
+[hf] Gamma valence Fock outer=2 iteration=1 density_residual=1.0331603839151505e-4 feedback_residual=1.3608431642491271e-4
+[hf] Gamma valence Fock outer=2 iteration=2 density_residual=5.8997323848393914e-5 feedback_residual=7.7736977800064240e-5
+[hf] Gamma valence Fock outer=2 iteration=3 density_residual=6.7372555538261462e-5 feedback_residual=4.4405638701591906e-5
+[hf] Gamma valence Fock outer=2 iteration=4 density_residual=1.1194869772840949e-5 feedback_residual=6.3241874606347320e-6
+[hf] Gamma valence Fock outer=2 iteration=5 density_residual=9.1469478694014301e-9 feedback_residual=6.4429850253839085e-9
+[hf] Gamma valence Fock outer=2 iteration=6 density_residual=6.1652501251741128e-11 feedback_residual=4.7475416393299996e-11
+[hf] Gamma valence Fock outer=3 iteration=1 density_residual=6.5176371921619166e-6 feedback_residual=8.0043388020918909e-6
+[hf] Gamma valence Fock outer=3 iteration=2 density_residual=3.7183205569789050e-6 feedback_residual=4.6100396540837800e-6
+[hf] Gamma valence Fock outer=3 iteration=3 density_residual=4.2429722016041210e-6 feedback_residual=2.6521749721228512e-6
+[hf] Gamma valence Fock outer=3 iteration=4 density_residual=6.9722650294395180e-7 feedback_residual=3.9650430969692240e-7
+[hf] Gamma valence Fock outer=3 iteration=5 density_residual=1.1391511204967029e-9 feedback_residual=8.3782015092986883e-10
+[hf] Gamma valence Fock outer=3 iteration=6 density_residual=1.0383812479622876e-13 feedback_residual=1.3404381659526840e-13
+[hf] Gamma valence Fock outer=4 iteration=1 density_residual=7.7131527437017866e-7 feedback_residual=1.8886014863436079e-6
+[hf] Gamma valence Fock outer=4 iteration=2 density_residual=4.4033048112327895e-7 feedback_residual=1.0206925202866811e-6
+[hf] Gamma valence Fock outer=4 iteration=3 density_residual=5.0287666134567046e-7 feedback_residual=5.5378102625867464e-7
+[hf] Gamma valence Fock outer=4 iteration=4 density_residual=8.0113555667376213e-8 feedback_residual=4.9408936412414541e-8
+[hf] Gamma valence Fock outer=4 iteration=5 density_residual=3.7385191729836130e-9 feedback_residual=2.0349035173908292e-9
+[hf] Gamma valence Fock outer=4 iteration=6 density_residual=4.4786047585226871e-13 feedback_residual=4.0869467098775258e-13
+[hf] Gamma valence Fock outer=5 iteration=1 density_residual=9.9045392770999671e-7 feedback_residual=1.4027215763945129e-6
+[hf] Gamma valence Fock outer=5 iteration=2 density_residual=5.6502036357594488e-7 feedback_residual=7.9486951919149115e-7
+[hf] Gamma valence Fock outer=5 iteration=3 density_residual=6.4463811069754784e-7 feedback_residual=4.5076358152866536e-7
+[hf] Gamma valence Fock outer=5 iteration=4 density_residual=1.0571139269010180e-7 feedback_residual=6.0828529653599375e-8
+[hf] Gamma valence Fock outer=5 iteration=5 density_residual=5.9147537533408304e-12 feedback_residual=1.7299939217101001e-11
+[hf] Gamma valence Fock outer=6 iteration=1 density_residual=5.2500759972705855e-7 feedback_residual=7.2991911320024767e-7
+[hf] Gamma valence Fock outer=6 iteration=2 density_residual=2.9945960455344365e-7 feedback_residual=4.1443972818486739e-7
+[hf] Gamma valence Fock outer=6 iteration=3 density_residual=3.4161609364980199e-7 feedback_residual=2.3544064964721011e-7
+[hf] Gamma valence Fock outer=6 iteration=4 density_residual=5.5962557342594192e-8 feedback_residual=3.2191278499728478e-8
+[hf] Gamma valence Fock outer=6 iteration=5 density_residual=1.0577390999053916e-12 feedback_residual=2.9128104107329207e-12
+[hf] Gamma valence Fock outer=7 iteration=1 density_residual=2.9224056032472552e-8 feedback_residual=4.2455236521883946e-8
+[hf] Gamma valence Fock outer=7 iteration=2 density_residual=1.6670053790603017e-8 feedback_residual=2.3985241494762360e-8
+[hf] Gamma valence Fock outer=7 iteration=3 density_residual=1.9017724208474065e-8 feedback_residual=1.3565292770697547e-8
+[hf] Gamma valence Fock outer=7 iteration=4 density_residual=3.1178462958885393e-9 feedback_residual=1.7938108237301395e-9
+[hf] Gamma valence Fock outer=7 iteration=5 density_residual=9.7833198274804395e-13 feedback_residual=8.6808056402876144e-13
+[hf] Gamma valence Fock outer=8 iteration=1 density_residual=3.0862669104491595e-9 feedback_residual=3.7688372526989422e-9
+[hf] Gamma valence Fock outer=8 iteration=2 density_residual=1.7597760849759035e-9 feedback_residual=2.1736392182697406e-9
+[hf] Gamma valence Fock outer=8 iteration=3 density_residual=2.0069020556584518e-9 feedback_residual=1.2518257156779802e-9
+real 1800.24
+user 4659.56
+sys 494.94
+launcher_exit_code=124
