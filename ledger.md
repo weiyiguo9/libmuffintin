@@ -882,3 +882,18 @@ rows (plan v2) or more machines running rows in parallel. MPI stays held.
 
 - state: h2-hf = active: BLAS-3 perf on the exchange contraction and vertex projection (codex pane); ladder feasibility decision pending
 - note: h2-hf = evd-0011 profile: contraction 60 percent, vertices 30 percent of an A1 Fock iteration at 3 cores
+
+## 2026-09-08 · evt-0035 · h2-hf contraction and projection performance work started · actor: codex
+
+Verified clean main `10f6b3925ed32fb4c84564c50dae3a84d47b50d1` and clean
+harness `7864b80eacdc04a9157859d9534badf524de5c32`, including evt-0034.
+The fixed class-R contracts are fixture identities within 1e-8 Ha; fixture
+total/exchange energies within 1e-10 Ha of 10f6b39; maximum absolute
+first-rebuild band-space feedback difference within 1e-10 of 10f6b39; and
+A0 E/HOMO/E_H/E_x within 1e-10 Ha of evd-0010, with identities within 1e-8.
+Budget: two baseline fixtures, two after Task 1, two after Task 2; two feedback
+dumps; one A0 at 2400 s; one report-only A1 timing at 1200 s. A failure
+hands off without diagnostics. MPI remains held; no A1 ladder or push.
+
+- state: h2-hf = active: BLAS-3 contraction implementation and baseline capture
+- note: h2-hf = evt-0034 fixed preservation bounds and finite run budget; MPI and ladder held
