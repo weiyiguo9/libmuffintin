@@ -69,6 +69,18 @@ pub fn subtract(left: &RstsrTensor, right: &RstsrTensor) -> RstsrTensor {
     (left - right).into_owned()
 }
 
+pub fn matmul(left: &RstsrTensor, right: &RstsrTensor) -> Result<RstsrTensor, TensorError> {
+    rt::matmul_f(left, right).map_err(|error| TensorError::Backend(error.to_string()))
+}
+
+pub fn matmul_adjoint_left(
+    left: &RstsrTensor,
+    right: &RstsrTensor,
+) -> Result<RstsrTensor, TensorError> {
+    let conjugated = rt::conj(left);
+    rt::matmul_f(conjugated.t(), right).map_err(|error| TensorError::Backend(error.to_string()))
+}
+
 pub fn into_column_major(data: RstsrTensor) -> RstsrTensor {
     data.to_contig(ColMajor).into_owned()
 }

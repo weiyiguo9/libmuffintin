@@ -1,6 +1,6 @@
 //! Local tensor substrate for muffin-tin numerical contractions.
 //!
-//! The public contraction language is Einstein summation. Physics modules
+//! The public contraction APIs are Einstein summation and matrix products. Physics modules
 //! write `einsum("ci,cd,dj->ij", ...)`; they do not own nested reduction
 //! loops. The default backend is RSTSR 0.7.10 linked with TBLIS. tenferro-rs
 //! is the second local backend behind the same subscripts, enabled later
@@ -160,6 +160,84 @@ pub struct ComplexTensor {
     pub(crate) data: rstsr::prelude::Tensor<Complex64, rstsr::prelude::DeviceFaer>,
     pub(crate) axes: Vec<Axis>,
     pub(crate) layout: MemoryLayout,
+}
+
+/// Dense rank-2 matrix product on the shared RSTSR faer device.
+///
+/// The contracted axes must have the same role and extent. The result axes are
+/// the uncontracted left and right axes, in that order.
+pub fn matmul(left: &ComplexTensor, right: &ComplexTensor) -> Result<ComplexTensor, TensorError> {
+    validate_matmul(left, right, false)?;
+    #[cfg(feature = "backend-rstsr")]
+    {
+        let data = rstsr_tblis::matmul(left.rstsr(), right.rstsr())?;
+        Ok(ComplexTensor::from_rstsr(
+            data,
+            vec![left.axes[0], right.axes[1]],
+        ))
+    }
+    #[cfg(not(feature = "backend-rstsr"))]
+    {
+        Err(TensorError::Backend("no tensor backend enabled".into()))
+    }
+}
+
+/// Dense rank-2 product `left` conjugate-transposed times `right`.
+pub fn matmul_adjoint_left(
+    left: &ComplexTensor,
+    right: &ComplexTensor,
+) -> Result<ComplexTensor, TensorError> {
+    validate_matmul(left, right, true)?;
+    #[cfg(feature = "backend-rstsr")]
+    {
+        let data = rstsr_tblis::matmul_adjoint_left(left.rstsr(), right.rstsr())?;
+        Ok(ComplexTensor::from_rstsr(
+            data,
+            vec![left.axes[1], right.axes[1]],
+        ))
+    }
+    #[cfg(not(feature = "backend-rstsr"))]
+    {
+        Err(TensorError::Backend("no tensor backend enabled".into()))
+    }
+}
+
+fn validate_matmul(
+    left: &ComplexTensor,
+    right: &ComplexTensor,
+    adjoint_left: bool,
+) -> Result<(), TensorError> {
+    if left.rank() != 2 {
+        return Err(TensorError::Rank {
+            expected: 2,
+            actual: left.rank(),
+        });
+    }
+    if right.rank() != 2 {
+        return Err(TensorError::Rank {
+            expected: 2,
+            actual: right.rank(),
+        });
+    }
+    let left_axis = usize::from(!adjoint_left);
+    let left_shape = left.shape();
+    let right_shape = right.shape();
+    if left.axes[left_axis] != right.axes[0] {
+        return Err(TensorError::Axis {
+            index: 0,
+            expected: left.axes[left_axis],
+            actual: right.axes[0],
+        });
+    }
+    if left_shape[left_axis] != right_shape[0] {
+        return Err(TensorError::Contraction {
+            left: left.axes[left_axis],
+            left_len: left_shape[left_axis],
+            right: right.axes[0],
+            right_len: right_shape[0],
+        });
+    }
+    Ok(())
 }
 
 impl ComplexTensor {

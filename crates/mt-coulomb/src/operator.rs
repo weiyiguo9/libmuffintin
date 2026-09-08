@@ -4,8 +4,11 @@ use crate::CoulombError;
 use muffintin_core::{Bohr, Cell, InverseBohr, ReciprocalLattice};
 use muffintin_envelope::Provenance;
 use muffintin_prodbasis::{AuxiliaryLayout, AuxiliaryRegion, PairVertex, TransferQ};
-use muffintin_tensor::{Axis, ComplexTensor, einsum};
+use muffintin_tensor::{Axis, ComplexTensor, einsum, matmul, matmul_adjoint_left};
 use num_complex::Complex64;
+use std::mem::size_of;
+
+const MAX_VERTEX_BLOCK_BYTES: usize = 1_000_000_000;
 
 /// Typed auxiliary representation stored with $V^q$. Neither mixed-product nor
 /// interpolation points is a privileged public input type; both are assembled
@@ -257,11 +260,9 @@ impl<'a> CoulombVertexContractor<'a> {
     /// Weighted sum of equal-occupied quadratic blocks.
     ///
     /// `vertices` is occupied-major with `n_target` consecutive target
-    /// columns per occupied state. The operator is applied to all columns in
-    /// one dense contraction; the equal-occupied sum is a second contraction
-    /// over auxiliary and occupied axes, not a scalar target-pair loop.
-    /// This avoids rebuilding and applying the same resident
-    /// Coulomb tensor once per occupied state.
+    /// columns per occupied state. Each occupied block is contracted through
+    /// two threaded matrix products while the resident Coulomb tensor is
+    /// reused. Target columns are tiled when one block would exceed 1 GB.
     pub fn weighted_occupied_quadratic_sum(
         &self,
         vertices: &[&PairVertex],
@@ -283,38 +284,53 @@ impl<'a> CoulombVertexContractor<'a> {
             });
         }
 
-        let columns = self.column_block(vertices)?;
-        let applied = einsum("ab,bj->aj", &[&self.matrix, &columns])?.to_host_row_major();
         let n_auxiliary = self.operator.dimension();
-        let mut weighted_left = columns.to_host_row_major();
-        drop(columns);
-        for (row, &weight) in weighted_left
-            .chunks_exact_mut(n_target)
-            .zip(occupied_weights.iter().cycle())
-        {
-            for coefficient in row {
-                *coefficient = coefficient.conj() * weight;
+        let columns_per_block = (MAX_VERTEX_BLOCK_BYTES / (n_auxiliary * size_of::<Complex64>()))
+            .max(1)
+            .min(n_target);
+        let mut result = vec![Complex64::default(); n_target * n_target];
+
+        for (occupied_vertices, &weight) in vertices.chunks_exact(n_target).zip(occupied_weights) {
+            for right_start in (0..n_target).step_by(columns_per_block) {
+                let right_end = (right_start + columns_per_block).min(n_target);
+                let right = self.column_block(&occupied_vertices[right_start..right_end])?;
+                let applied = matmul(&self.matrix, &right)?;
+
+                for left_start in (0..n_target).step_by(columns_per_block) {
+                    let left_end = (left_start + columns_per_block).min(n_target);
+                    let left = if left_start == right_start {
+                        None
+                    } else {
+                        Some(self.column_block(&occupied_vertices[left_start..left_end])?)
+                    };
+                    let left = left.as_ref().unwrap_or(&right);
+                    let contribution = matmul_adjoint_left(left, &applied)?.to_host_row_major();
+                    let block_columns = right_end - right_start;
+                    for (block_row, values) in contribution.chunks_exact(block_columns).enumerate()
+                    {
+                        let target_row = left_start + block_row;
+                        let output = &mut result[target_row * n_target + right_start
+                            ..target_row * n_target + right_end];
+                        for (value, &increment) in output.iter_mut().zip(values) {
+                            *value += weight * increment;
+                        }
+                    }
+                }
             }
         }
-        let shape = [n_auxiliary, occupied_weights.len(), n_target];
-        let axes = [Axis::Auxiliary, Axis::Band, Axis::Band];
-        let weighted_left = ComplexTensor::from_host_row_major(&shape, &axes, weighted_left)?;
-        let applied = ComplexTensor::from_host_row_major(&shape, &axes, applied)?;
-        Ok(einsum("aoi,aoj->ij", &[&weighted_left, &applied])?.to_host_row_major())
+        Ok(result)
     }
 
     /// Auxiliary-major matrix of the requested vertex coefficients.
     fn column_block(&self, vertices: &[&PairVertex]) -> Result<ComplexTensor, CoulombError> {
         let n = self.operator.dimension();
         let columns = vertices.len();
-        let mut values = vec![Complex64::default(); n * columns];
-        for (column, vertex) in vertices.iter().enumerate() {
+        let mut values = Vec::with_capacity(n * columns);
+        for vertex in vertices {
             self.operator.require_vertex(vertex)?;
-            for (row, coefficient) in vertex.coefficients().iter().enumerate() {
-                values[row * columns + column] = *coefficient;
-            }
+            values.extend_from_slice(vertex.coefficients());
         }
-        Ok(ComplexTensor::from_host_row_major(
+        Ok(ComplexTensor::from_host_column_major(
             &[n, columns],
             &[Axis::Auxiliary, Axis::PairColumn],
             values,
