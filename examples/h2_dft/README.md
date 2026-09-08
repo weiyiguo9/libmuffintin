@@ -384,7 +384,7 @@ finite-body kernel. Each row changes one base setting.
 
 | Row | Change | $E$ (Ha) | HOMO (Ha) | $E_H$ (Ha) | $E_x$ (Ha) | Exchange id. (Ha) | Eigenvalue id. (Ha) | Total id. (Ha) | $\lvert E_x+E_H/2\rvert$ (Ha) | Fock iter. | Wall (s) | Log |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| 1 | base | unavailable (cap) | – | – | – | – | – | – | – | 2 completed | 1800.83 | [`results/hf-a1-row1.log`](results/hf-a1-row1.log) |
+| 1 | base | unavailable (cap, profiled retry) | – | – | – | – | – | – | – | 3 completed | 1800.76 | [`results/hf-a1-row1.log`](results/hf-a1-row1.log) |
 | 2 | product $G=4$ | not run | – | – | – | – | – | – | – | – | – | – |
 | 3 | product $G=8$ | not run | – | – | – | – | – | – | – | – | – | – |
 | 4 | product $G=10$ | not run | – | – | – | – | – | – | – | – | – | – |
@@ -395,12 +395,16 @@ finite-body kernel. Each row changes one base setting.
 | 9 | `lexp=18` | not run | – | – | – | – | – | – | – | – | – | – |
 | 10 | field cutoff 18 | not run | – | – | – | – | – | – | – | – | – | – |
 
-After A0 passed, the A1 base row ran once under its authorized 1800 s cap.
+After A0 passed, the first A1 base attempt ran under its authorized 1800 s cap.
 The supervisor returned exit 124 at 1800.83 s after two completed Fock
 iterations and no completed outer iteration. The last printed density and
 feedback residuals were 1.0988849307297540e-4 and 1.3734823798679154e-4 Ha,
 respectively. No energy, HOMO, three-identity row, or `hartree_exchange` was
 produced; SCF convergence and final electron count were not established.
+That first log is preserved at
+[`results/hf-a1-row1-cap1800.log`](results/hf-a1-row1-cap1800.log).
+
+Historical first-attempt stamp:
 
 ```text
 DIGIT / HANDOFF
@@ -413,6 +417,46 @@ runs: 1; no diagnostics; unresolved: the A1 base row cannot finish within the au
 A1 rows 2–10, A1v, A2, B, and Bv were not run after this resource-budget
 handoff. The optional pair-level MPI task was not started; no MPI result or
 speedup is claimed. This does not reopen A0 or the Task 1 preservation passes.
+
+### Gamma Fock phase profile
+
+Main `79623b8` adds `gamma.fock.*` and `gamma.rebuild.*` timers, enabled only
+by `--verbosity 2`, without changing numerical operations. Two capped
+report-only class-P runs measured A0 Fock iterations 1 and 2 (17.479391 and
+15.698071 s) and A1 base iteration 1 (482.082668 s). The profile runs are
+not plan rows and do not reopen the accepted A0 result.
+
+The conditional cache change was **skipped**: A1 basis compilation took
+7.589190 s and Coulomb assembly 8.563591 s, together 16.152781 s or 3.351%
+of the Fock iteration, below the fixed 30% threshold. The largest measured
+phase was exchange contraction, 290.551110 s (60.270%); MPB construction
+was 151.026190 s (31.328%), including the 143.437000 s vertex rebuild.
+No cache, contraction, or pair-FFT change was made. There are no Task C
+fixture results or after-cache A0 timings; MPI remains held.
+
+Full phase tables, stdout/stderr logs, commands, and the extraction script
+are in `evidence/2026-09-08-h2-hf-gamma-profile/` on `harness` (evd-0011).
+The A0 and A1 profile supervisors returned exit 124 at 240.12 and 2400.31 s,
+respectively, as bounded profiling runs rather than converged calculations.
+
+The prescribed A1 base retry then used the unchanged evd-0010 command and
+1800 s cap (`--verbosity 1`). It exited 124 at 1800.76 s after three Fock
+iterations and no completed outer iteration. Last printed density/feedback
+residuals were 6.3664758060341759e-5 / 7.9480430635287458e-5 Ha. The table
+above now records this retry; the previous cap log remains preserved.
+
+```text
+DIGIT / HANDOFF
+Q: A1 base hartree_exchange (Ha); class: P; ref: 0
+bound: none (study); Delta: unavailable
+checks: supervisor exit 124 at 1800.76 s; three completed Fock iterations, no converged energy/identity row or final electron count
+profile: compile plus Coulomb 16.152781 / 482.082668 s = 3.351%, below the 30% cache condition; contraction 290.551110 s = 60.270%
+runs: one Task D retry; three executions for H2-HF-PROFILE including its two profiles; no diagnostics
+unresolved: A1 base still cannot finish within its authorized 1800 s cap; stop before rows 2–10, A1v, A2, B, and Bv
+```
+
+No numerical acceptance is inferred from the timing data, and the earlier
+A0 pass remains closed. No Task C fixtures or A0 rerun were performed.
 
 ### B kernel study
 

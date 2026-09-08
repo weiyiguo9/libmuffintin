@@ -2,7 +2,6 @@ system=H2 bond_bohr=1.400000 electron_count=2.0 route=spinor-first-variation cor
 atomic_start_checkpoint=/tmp/libmuffintin-h2-hf/a1-row1/h2.atomic-start.toml charge_target=2.0000000000000000e0 charge_represented=2.0000000000000271e0 charge_error=2.709e-14 normalization_scale=8.4314746035398769e-1
 [hf] Gamma valence Fock outer=1 iteration=1 density_residual=1.3888959366954300e-3 feedback_residual=inf
 [hf] Gamma valence Fock outer=1 iteration=2 density_residual=1.0988849307297540e-4 feedback_residual=1.3734823798679154e-4
-[hf] Gamma valence Fock outer=1 iteration=3 density_residual=6.3664758060341759e-5 feedback_residual=7.9480430635287458e-5
-real 1800.76
-user 5630.06
-sys 315.20
+real 1800.83
+user 4479.42
+sys 344.39
