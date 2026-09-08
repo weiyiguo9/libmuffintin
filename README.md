@@ -206,6 +206,34 @@ interstitial subset. Arbitrary parent grids retain direct sums; they are not
 guessed to be uniform. Muffin-tin radial/angular evaluation, auxiliary-space
 exchange contraction, and the dense eigensolver are unchanged.
 
+The runtime's optional `mpi` feature distributes the Gamma valence HF exchange
+build over occupied left bands. Each rank builds and contracts its round-robin
+subset, followed by one sum reduction of the band-space feedback per $k$ point;
+pair vertices are never gathered. The driver, Coulomb assembly, basis compile,
+spinor solve, occupations, and density remain redundant on every rank. The
+feature is off by default, so an ordinary build does not link MPI.
+
+On Snellius, load the 2023 toolchain with its matching `gompi` (Open MPI) and
+FFTW modules, keep rustup under the user work directory, and put the directory
+containing `libtblis.so` on `LD_LIBRARY_PATH`. Then build and launch the H2 HF
+driver with, for example:
+
+```sh
+cargo build --release -p libmuffintin-runtime \
+  --features fft-fftw,mpi --example h2_hf
+mpirun -n <ranks> target/release/examples/h2_hf <arguments>
+# Or under a Slurm allocation:
+srun --ntasks=<ranks> target/release/examples/h2_hf <arguments>
+```
+
+Set `RAYON_NUM_THREADS` to `cores per node / ranks per node`. The binary alone
+initializes MPI with `Threading::Funneled`; all collectives stay on its main
+thread while Rayon works within a rank. It passes the raw `MPI_COMM_WORLD`
+handle to the library, which verifies that system handle and obtains safe
+world views through `SimpleCommunicator::world()`. It deliberately does not use
+rsmpi's owning `FromRaw` constructor, because that constructor must not borrow
+or free `MPI_COMM_WORLD`.
+
 `libmuffintin-python` pins `pyo3` 0.27.2 and `numpy` 0.27.1; both have MSRV
 1.74, comfortably under the workspace floor. The extension uses `abi3-py310`
 and is built locally with `maturin develop`; no wheel is published.
