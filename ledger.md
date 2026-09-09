@@ -1997,3 +1997,19 @@ without rewriting either historical entry.
 
 - state: nmto-periodic-mpi = integrated and published; focused serial/source/MPI checks passed; material study not run
 - note: nmto-periodic-mpi = evd-0024; pymuffintin 0c7bf7a and libmuffintin 5f5dc92; SPEX/diamond band comparison remains separate
+
+## 2026-09-09 · evt-0062 · ctf-rs push entry ID collision superseded · actor: claude
+
+The entry "ctf-rs pushed to GitHub at 2b68406 on the user's request;
+dgtog_redistribution test contract assigned" above reused `evt-0059` after
+that ID had already been taken, in this worktree's uncommitted ledger tail,
+by the nmto-periodic-mpi entry "integrate periodic full-potential NMTO with
+Python MPI"; commit 74eccd2 then carried both headings. This append-only
+correction supersedes the ctf-rs entry's heading ID as `evt-0062`; its
+text, state, and note stand as written, and evt-0060 already closed the
+item it opened. `evt-0059` now names the nmto-periodic-mpi entry alone,
+which is how evt-0061 already reads it. The state lines below restate
+evt-0060 unchanged.
+
+- state: ctf-rs = idle: R1 line complete and pushed (b9990fa); S1 not started
+- note: ctf-rs = GitHub master b9990fa; dgtog_redistribution on the replica contract; MSI and Mac clones in sync
