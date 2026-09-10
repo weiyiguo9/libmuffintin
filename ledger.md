@@ -2093,3 +2093,35 @@ acceptance questions.
 
 - state: mt-xc-angular = repair plan recorded; implementation and numerical gates pending authorization
 - note: mt-xc-angular = evt-0064; weighted Lebedev shared-path fix; reference, tolerances, default rule, and finite budget unresolved
+
+## 2026-09-10 · evt-0065 · record target-window basis freedom and published NMTO recipe notes · actor: codex
+
+User-requested tracking point: in some cases a minimal muffin-tin/NMTO basis
+may need additional degrees of freedom to match the target bands above the
+Fermi level. The user's parenthetical target is retained as unoccupied /
+conduction bands, not valence bands. This is a case-dependent basis-adequacy
+concern, not a demonstrated limitation of every muffin-tin basis.
+
+Distinguish covering that energy window with NMTO interpolation nodes from
+enriching the spatial/radial basis. The reported three-node improvement in
+evt-0063 motivates the former; it does not prove that additional radial
+functions or empty-sphere channels are necessary or sufficient. If a residual
+target-band mismatch remains, those are candidate extra degrees of freedom,
+not authorized implementation or accepted remedies. Keep the separately
+reported occupied-valence plateau distinct from this unoccupied-band target.
+
+Publication update to evt-0063: pymuffintin README's "Production recipe"
+energy-window example and fixed-potential probe discussion were committed and
+pushed to main as `40136cb312a941bf315d205597717306dacef2cb`.
+libmuffintin main remains `5f5dc92c7bbc9d562bfc53e65e23cc9082a5f34e`.
+These are current context revisions, not newly established probe provenance.
+The user reports that gitignored scratch `validate_compare.py` now uses
+`lapw_l6g7.npz` and includes condMIN and s13/s14; that script was not part of
+the README commit and its execution was not independently verified here.
+
+This event records the concern and publication only. No numerical run,
+universal basis-limit claim, or new acceptance is added; future comparisons
+still require an explicit target band window, reference, tolerance, and budget.
+
+- state: diamond-omt = recipe notes published; reference-script update reported; target-band basis enrichment remains a candidate
+- note: diamond-omt = evt-0065; pymuffintin 40136cb; above-Fermi target distinguished from valence; no new numerical acceptance
