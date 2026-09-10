@@ -1,7 +1,8 @@
-# libmuffintin harness
+# Shared libmuffintin / pymuffintin harness
 
-This orphan branch is the tracker and ledger for the `main` branch of
-libmuffintin. It follows the code/harness separation of the sibling
+This orphan `harness` branch of libmuffintin is the shared tracker and ledger
+for libmuffintin and pymuffintin. Both repositories use this one harness;
+do not create a separate pymuffintin harness. It follows the code/harness separation of the sibling
 `graft-rs` repository with a deliberately smaller record set.
 
 - `main` owns code, tests, fixtures, the numbered derivations under `doc/`,
@@ -12,6 +13,12 @@ libmuffintin. It follows the code/harness separation of the sibling
   on `main`.
 - Nothing here is runtime content. `main` never depends on this branch and
   this branch never carries code.
+
+Cross-repository records name the affected repository and its source revision
+explicitly; paired runs record both revisions, the command, and the original
+log path. The generated status's `Code baseline` is libmuffintin's `main`,
+not a pymuffintin baseline. User-reported results without run provenance are
+recorded as observations in events, not promoted to passed gate evidence.
 
 ## Branch rules
 

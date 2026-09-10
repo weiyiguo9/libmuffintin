@@ -2013,3 +2013,83 @@ evt-0060 unchanged.
 
 - state: ctf-rs = idle: R1 line complete and pushed (b9990fa); S1 not started
 - note: ctf-rs = GitHub master b9990fa; dgtog_redistribution on the replica contract; MSI and Mac clones in sync
+
+## 2026-09-10 · evt-0063 · share harness across libmuffintin and pymuffintin; ingest OMT recommendations · actor: codex
+
+User decision: libmuffintin and pymuffintin will use this single libmuffintin
+`harness` branch for plans, tracking, decisions, and evidence. README and
+agent guidance now state this shared ownership. Existing accepted plans are
+unchanged; this event does not authorize their draft successors.
+
+Source: the user's supplied OMT improvement report in this task. The numbers
+below are user-reported observations, not a new gate run or independent
+verification. Current checkout HEADs at ingestion: libmuffintin
+`5f5dc92c7bbc9d562bfc53e65e23cc9082a5f34e`, pymuffintin
+`303beef281a03d264903436d36b4ce78b174a26e`. These are context revisions,
+not established revisions of the reported experiments. Exact run commands,
+logs, error metric definitions, and reference provenance were not supplied.
+
+| Reported improvement | Reported result and cost | Follow-up interpretation |
+|---|---|---|
+| Cover the target energy window with `energy-mesh = [-0.35, 0.25, 0.85]`, N=2 | OMT conduction-band error 0.44 → 0.12 eV; valence unchanged; about +50% time | Main lever for conduction bands; the existing two nodes suffice if only valence is targeted |
+| Set `l-max = 3` | Conduction 0.12 → 0.11 eV; valence 0.244 → 0.238 eV; time ×1.7 | Smaller improvement at higher cost |
+| Keep overlap at about 1.2a or below | 1.3a and 1.4a lower fit RMS without band improvement; valence plateaus near 0.24 eV | Report-specific recommendation, not a universal radius guard; preserve the report's undefined `a` convention pending provenance |
+
+Reported diagnosis: the remaining roughly 0.24 eV valence error
+(Γ25′ +0.26 eV, Γ1 +0.22 eV) is insensitive to nodes, overlap, l-max, and
+the numerical parameters tried. The report attributes this to the minimal
+basis at fixed potential: a large nonspherical intratomic potential
+(l=3 component about 0.2 Ha at the sphere surface), frozen spd radial shapes,
+and spherical OMT shells that cannot address that part. This causal
+interpretation is retained as reported, not newly proven here.
+
+Candidate structural remedies, not authorized implementation:
+- Empty spheres with s/p functions in diamond/silicon interstitial sites.
+  The report says libmuffintin checkpoint validation rejects
+  `atomic_number == 0`; checkpoint, core solving, and species handling need
+  cross-repository work. Verify those code boundaries when this work starts.
+- Extra radial freedom (a second NMTO set or derivative-like local orbitals),
+  explicitly distinguished from standard NMTO.
+- A self-consistent comparison with SPEX may look better because the NMTO
+  potential can partly compensate; this is an expectation, not acceptance
+  and not a substitute for the fixed-potential comparison.
+
+Separate reported issue: libmuffintin's 50-point Fibonacci XC grid affects
+both LAPW and NMTO. The report expects its correction not to change the
+comparison above, while changing absolute bands, including an approximately
+0.2 eV Γ25′ splitting. No grid fix or cancellation claim was verified here.
+
+Pending follow-ups from the report: add the conduction-window recommendation
+and three-node example to pymuffintin README's "Production recipe"; switch
+scratch `validate_compare.py` to the l6g7 reference. This task records these
+items only: neither file is changed and no numerical run is started.
+Before a future run, fix quantity, reference, tolerance, and finite budget
+under Stop That Digit; preserve fixed-potential versus self-consistent scope.
+
+- state: diamond-omt = reported study ingested; recipe/reference updates and structural remedies pending
+- note: diamond-omt = evt-0063; shared libmuffintin/pymuffintin scope; user-reported numbers, no new numerical acceptance
+
+## 2026-09-10 · evt-0064 · record production MT XC Lebedev repair plan for publication · actor: codex
+
+User requested that the supplied MT XC symmetry-breaking diagnosis and
+repair plan enter the shared harness and be committed and pushed together
+with the pending shared-harness/OMT records. Added
+`plans/mt-xc-angular/plan.v1.md`: weighted explicit-degree Lebedev quadrature,
+precision independent of potential l_max, consistent regional/core XC
+weights, and native/Python/TOML controls. Unrelated THC grids are excluded.
+
+The supplied Fibonacci reproduction, forbidden coefficients, allowed-channel
+error, and Γ splittings are recorded as reported evidence, not a newly run
+gate. Implementation and numerical execution are not authorized by this
+documentation request. Exact API/default rule, reference artifacts,
+tolerances, and finite budgets must be settled before implementation/runs
+as specified by the plan. No source changes or numerical tests were made.
+
+Clarifies evt-0063: common LAPW/NMTO quadrature does not establish error
+cancellation, and the fraction of the native LAPW–SPEX 0.14 eV discrepancy
+caused by this bug remains unquantified. Preserve fixed-density integration
+checks, fixed-potential spectra, and self-consistent comparisons as distinct
+acceptance questions.
+
+- state: mt-xc-angular = repair plan recorded; implementation and numerical gates pending authorization
+- note: mt-xc-angular = evt-0064; weighted Lebedev shared-path fix; reference, tolerances, default rule, and finite budget unresolved

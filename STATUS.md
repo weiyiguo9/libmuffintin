@@ -5,16 +5,18 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `5f5dc92c7bbc9d562bfc53e65e23cc9082a5f34e` (2026-09-09)
-- Last ledger entries: evd-1014 (MSI), evt-1004 (MSI), evd-0024 (Mac), evt-0062 (Mac)
+- Last ledger entries: evd-1014 (MSI), evt-1004 (MSI), evd-0024 (Mac), evt-0064 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
 | `ctf-rs` | R1 and dgtog_redistribution test contract closed; WSL single-test 1/2/4 passed; publication left to the Mac; S1 not started | `plans/ctf-rs/plan.v2.md`, accepted 2026-09-09 | evd-1014; test cccd5e8, local records b9990fa; three exact passes, no diagnostics or ctf-rs push |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
+| `diamond-omt` | reported study ingested; recipe/reference updates and structural remedies pending | none | evt-0063; shared libmuffintin/pymuffintin scope; user-reported numbers, no new numerical acceptance |
 | `h2-hf` | held: warm start closed (32 rebuilds); MPI-4 and the A1 ladder wait for the herdr restart and the row-placement decision | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | A0 smoke numbers 0.2 Ha from the box-8 reference, hartree_exchange 0.163 Ha; nothing at A1 settings yet; herdr protocol 22 vs 20 |
 | `h2-lda` | closed 2026-09-07 | none | evd-0001; gates in examples/h2_dft/README.md on main |
 | `hf-input` | proposed | `plans/hf-input/plan.v1.md`, proposed | ADR-0005; starts after h2-hf is closed or handoff; no physics gates |
 | `kr-hf` | open | none | 1.2 Ha total-energy gap in the VV sector as reported 2026-09-05; box and omega axes untested |
+| `mt-xc-angular` | repair plan recorded; implementation and numerical gates pending authorization | `plans/mt-xc-angular/plan.v1.md`, proposed | evt-0064; weighted Lebedev shared-path fix; reference, tolerances, default rule, and finite budget unresolved |
 | `nmto-periodic-mpi` | integrated and published; focused serial/source/MPI checks passed; material study not run | none | evd-0024; pymuffintin 0c7bf7a and libmuffintin 5f5dc92; SPEX/diamond band comparison remains separate |
 | `v0.1-lapw-foundation` | closed | `plans/v0.1-lapw-foundation/plan.v1.md`, accepted | superseded by v0.2 |
 | `v0.2-isdf-thc` | closed (M-L implementation closed 2026-09-08; cross-code acceptance deferred) | `plans/v0.2-isdf-thc/plan.v1.md`, accepted | deferred: span metric, Dy bcc demo, magnetic+SOC 4c cross-code; successor hf-thc-scf |

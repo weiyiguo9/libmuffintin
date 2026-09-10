@@ -1,8 +1,12 @@
 # Harness branch guidance
 
-- This is the orphan `harness` branch of libmuffintin: tracker, ledger,
-  plans, gates, decisions, evidence. Code lives on `main` in the adjacent
-  worktree. Never merge or rebase the two branches.
+- This is the orphan `harness` branch of libmuffintin, shared by libmuffintin
+  and pymuffintin: tracker, ledger, plans, gates, decisions, evidence. Do not
+  create a separate pymuffintin harness. Code lives in each repository's
+  `main` worktree. Never merge or rebase code and harness branches.
+- Name the affected repository and revision in records; paired runs need both
+  revisions. The generated status baseline refers only to libmuffintin.
+  Keep user-reported observations distinct from provenance-backed gate runs.
 - Start by reading `STATUS.md`, the active plan, and the tail of `ledger.md`.
   Then inspect the live `main` worktree; never infer code state from records.
 - `ledger.md` is append-only. Add `evt-NNNN` entries for state changes and
