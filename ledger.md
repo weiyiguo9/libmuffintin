@@ -2455,3 +2455,66 @@ stays unpushed until the user asks.
 
 - state: ctf-rs = plan.v4 accepted; S1 close running on MSI (S1d Hadamard-index elimination, checkpoint n=7, AMG WSL rerun); ctf-rs 0b65b90 unpushed
 - note: ctf-rs = one S1-set WSL run at 1/2/4 closes G-CTF-S1d, G-CTF-S1-CK7, G-CTF-S1-AMG and G-CTF-S1 together; brief BRIEF-S1d.md; expected records evt-1010, evd-1019, evt-1011
+
+## 2026-09-12 · evt-1010 · execute accepted S1 close plan.v4 on MSI · actor: codex
+
+- state: ctf-rs = S1 close implementation running under immutable plan.v4; CK7 then S1d, followed by the once-only final-tree gates
+- note: ctf-rs = baseline 0b65b90; G-CTF-S1d sum(abs(diff)) <1e-14, G-CTF-S1-CK7 n=7 norm2 <3.43e-6, G-CTF-S1-AMG rnorm <rnorm_alt; unchanged thirteen-target class R contract; at most three named diagnostics per failing driver; ctf-rs stays unpushed
+
+## 2026-09-12 · evd-1019 · S1 close passes all fixed plan.v4 gates · actor: codex
+
+DIGIT / PASS: G-CTF-S1d, G-CTF-S1-CK7, G-CTF-S1-AMG and G-CTF-S1.
+Code run: ctf-rs `d5861de92977809ee0a09a41ba6c5dbe1de904ed`, after CK7
+`5a5edaaff004c0148135c8dbe8569988505ecfdf`; records at
+`3dafffc62da7044b50f8e3c5542ecccc16118cd1`. Ref: pinned f69cbb46,
+class R, immutable plan.v4 contracts. All thirteen S1 targets PASS at WSL
+1/2/4 (39 invocations, once per target/rank); all three touched targets PASS
+at native1/2/4 (9 invocations, once each). Every invocation includes its
+unchanged world/parity checks. Diagnostics: zero; passing checks closed.
+
+| Target | Stamp at WSL1/2/4 | Q / reference / fixed bound / delta |
+|---|---|---|
+| upstream_apsp | DIGIT / PASS | differing weights / dense tropical / exact0 / 0,0,0 |
+| upstream_algebraic_multigrid | DIGIT / PASS | V-cycle vs twice-smoothed Jacobi: .004937970528833717 < .005547611182988828; .005085930671471991 < .005837246582193954; .005189487439309569 < .005878901083452919; Q-ref=-.000609640654155111,-.000751315910721963,-.000689413644143350 |
+| upstream_block_sparse | DIGIT / PASS | norm2 / flattened source product / <=1e-4 / 0,0,0 |
+| upstream_force_integration_sparse | DIGIT / PASS | source Boolean displacement/restore criterion true; any initial displacement >1e-6 and all restored within1e-6; actual maxima not printed |
+| upstream_btwn_central | DIGIT / PASS | norm2 / dense naive / <=6e-6 / 0,0,0 |
+| upstream_checkpoint_sparse | DIGIT / PASS | n7 norm2 round-trip delta / original values / <3.43e-6 / 1.659570583342333e-6,1.730313117560421e-6,1.6343449060870917e-6 |
+| upstream_mis | DIGIT / PASS | source SH graph overlap=0 and uncovered=0, exact assertions |
+| upstream_mis2 | DIGIT / PASS | source sparse checker stored-entry counts >1.1 and <.9 both0, exact |
+| sparse_einsum_hadamard | DIGIT / PASS | sum(abs(diff)) / same dense expressions / <1e-14 / 0,0,0 |
+| sparse_scaled_expression | DIGIT / PASS | sum(abs(diff)) / grouped dense source expression / <1e-14 / maxima 2.220446049250313e-16,2.220446049250313e-16,5.551115123125783e-16 |
+| sparse_complex | DIGIT / PASS | sum(abs(diff)) / indexed arange expression / <1e-14 / 0,0,0 |
+| sparse_sy | DIGIT / PASS | all source shape/symmetry comparisons / dense packed expressions / <1e-14 / all0 |
+| sparse_sample | DIGIT / PASS | source zero fixture sampled .5 then .3 / nonincreasing norms / (0,0,0), delta0 |
+
+Native Hadamard/scaled/CK7: DIGIT / PASS at1/2/4, same printed values as
+their WSL rows. AMG and CK7 print world Q; parity assertions pass without
+printing Q. Native AMG and the other unchanged native targets are not rerun.
+Native `scripts/acceptance-native.ps1 -BuildOnly` once: exit0, no missing
+MS-MPI symbol. Full `scripts/acceptance-wsl.sh` once: exit0, 542 DIGIT / PASS
+lines, no failure line; all prescribed rank1/2/4 and local checks completed.
+
+Exact commands (PowerShell, cwd D:/projects/ctf-rs):
+
+```powershell
+$env:CARGO_BUILD_JOBS='2'
+cmd.exe /d /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\projects\ctf-rs\scripts\acceptance-native.ps1 -BuildOnly > D:\projects\runs\ctf-rs-s1\S1d\native-build.log 2>&1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\projects\runs\ctf-rs-s1\S1d\native-executables.ps1
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-s1/S1d/acceptance.sh
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-s1/S1d/full-wsl.sh
+cmd.exe /d /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\projects\runs\ctf-rs-s1\S1d\native-runtime.ps1 > D:\projects\runs\ctf-rs-s1\S1d\native-runtime.log 2>&1"
+```
+
+Logs under `D:/projects/runs/ctf-rs-s1/S1d/`: `<target>-<ranks>.log`
+contains exact command, output, stamp and exit; native counterparts
+`native-<target>-<ranks>.{command.txt,log,err}`; `wsl.log`, `full-wsl.log`,
+`native-build.log`, `native-runtime.log`, artifact manifests and commands.md.
+ctf-rs validation.md "S1d and S1 close" has full contracts and per-target
+run counts. The n3 checkpoint history moved there; false static-source ABC
+restriction withdrawn and replaced by the source preplanning rewrite.
+
+## 2026-09-12 · evt-1011 · close S1 under plan.v4 · actor: codex
+
+- state: ctf-rs = S1 closed; G-CTF-S1d, G-CTF-S1-CK7, G-CTF-S1-AMG and G-CTF-S1 PASS at evd-1019
+- note: ctf-rs = CK7 5a5edaa, S1d d5861de, records 3dafffc; all13 WSL1/2/4 plus touched native1/2/4 and full WSL/native build PASS once; zero diagnostics; no HANDOFF question; ctf-rs remains unpushed, existing keepalive322 reused, libmuffintin/fftw code untouched
