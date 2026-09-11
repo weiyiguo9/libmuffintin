@@ -2387,3 +2387,71 @@ Existing WSL keepalive reused. No libmuffintin/fftw code changed.
 
 - state: ctf-rs = C1/S1b closed; C1-S1c delivery recorded; G-CTF-S1 HANDOFF for source ABC/checkpoint and original repaired AMG WSL2/4 gate
 - note: ctf-rs = evd-1015 through evd-1018; local0b65b90 unpushed; full native S1 10/13 targets PASS at1/2/4; all required invocations done; future plan must decide source-contract changes and AMG WSL authorization
+
+## 2026-09-11 · evt-0068 · ctf-rs C1 and S1 delivery reviewed on the Mac; the three handoffs classified · actor: claude
+
+Merged `harness-msi` b853c69 (evd-1015 to evd-1018, evt-1005 to evt-1009).
+Pulled ctf-rs `0b65b90` (25 commits, 55 files, +8980/−268, Codex on MSI in
+2 h 08 min) by bundle into the Mac clone as `msi/master`; not pushed,
+`master` stays `b9990fa`. Review:
+
+- C1 is clean: the model I/O bound was stated before the run; the C1.2
+  documentation close names the Rust functions and the drivers as the plan
+  requires; C1.4 implements the valid-mapping Allreduce; the full WSL script
+  shows 542 `DIGIT / PASS` lines and no failure line; native build and the
+  C1.5 native I/O drivers pass.
+- S1: ten of thirteen targets pass at WSL and native 1, 2, 4. The five
+  `fix(tests)` commits are type and lifetime fixes with no assertion change;
+  the two pre-existing tests touched are the `model_trainer` write/load
+  addition and a `StorageSize` signature change. Bounds match the source
+  (block 1e-4, btwn N·1e-6, force 1e-6, Python `sum(abs(diff)) < 1e-14`,
+  which is the source's own `allclose`, not numpy's).
+- Handoff 1, `sparse_einsum_hadamard` and `sparse_scaled_expression`:
+  Codex's "static source restriction" is wrong. Pinned `contraction.cxx`
+  from line 5416 eliminates a sparse Hadamard (weigh) index by expanding the
+  smaller operand with a duplicated diagonal dimension and a new contraction
+  index before folding; `can_fold` returning 0 only refuses the COO GEMM
+  fold. The Rust raw search has no such rewrite, `prepare` returns `None`,
+  and the driver panics on `unwrap` at its line 59. This is a port gap, to
+  be item S1d.
+- Handoff 2, `checkpoint_sparse`: a fixture-size artifact. The Rust driver
+  uses n=3 while the source default is n=7 (`checkpoint_sparse.cxx:67`).
+  The source's `%lf` six-decimal text format gives a round-trip error near
+  4e-7 at n=3, above the source criterion 1e-7·n·n·0.1·n = 2.7e-7; the
+  criterion scales as n³ and holds at n=7 (3.4e-6). The implementation is
+  not at fault. Resolution: a new gate at n=7, one run.
+- Handoff 3, `algebraic_multigrid` WSL 2/4: fix `1285771` landed after the
+  once-only WSL run; native 1, 2, 4 pass on the fixed tree; the WSL rerun
+  was withheld by the brief's once rule although Stop That Digit allows
+  rerunning the affected check after a genuine fix. Resolution: one WSL
+  1, 2, 4 run.
+- `claude-report` returned "Access is denied" from Codex's process but works
+  from an ssh Cygwin shell; the `harness-msi` pushes carried the reports.
+
+Proposed follow-up, awaiting the user: plan.v4 with S1d (the Hadamard-index
+expansion and the two Python drivers at WSL and native 1, 2, 4), a
+checkpoint gate at n=7, and the AMG WSL rerun. No ctf-rs push.
+
+- state: ctf-rs = S1 HANDOFF reviewed: 10 of 13 pass; Python ABC is a port gap (S1d proposed), checkpoint is fixture n=3 against source n=7, AMG WSL 2/4 rerun pending; ctf-rs 0b65b90 unpushed
+- note: ctf-rs = Mac clone msi/master = 0b65b90; harness-msi merged through b853c69; plan.v4 proposed, not written
+
+## 2026-09-12 · evt-0069 · ctf-rs plan.v4 accepted: S1d, checkpoint at n=7, AMG WSL rerun assigned to MSI · actor: user
+
+`plans/ctf-rs/plan.v4.md` accepted and immutable. It carries only the three
+open S1 items classified in evt-0068: S1d, the sparse Hadamard-index
+elimination of pinned `contraction.cxx:5417-5527` placed before planning on
+the Rust sparse contraction entry (gate `G-CTF-S1d`, the two Python
+semantics at WSL and native 1, 2, 4, bound 1e-14 unchanged); CK7, the
+checkpoint driver at the source default n=7 with the source bound
+1e-7·n·n·0.1·n = 3.43e-6 (gate `G-CTF-S1-CK7`, fixed before the run); and
+the AMG WSL 1, 2, 4 run on the close tree (gate `G-CTF-S1-AMG`). One WSL run
+of the thirteen S1 targets serves as the S1d acceptance, the two reruns, and
+the class R regression after the shared-entry change; plus the full
+`scripts/acceptance-wsl.sh` once, native build once, native 1, 2, 4 once for
+the three touched drivers. `G-CTF-S1` closes when all thirteen pass.
+Executor: Codex on MSI, brief `C:/Users/xylxp/projects/ctf-rs-s1/BRIEF-S1d.md`,
+records evt-1010, evd-1019, evt-1011 on `harness-msi`. ctf-rs `0b65b90`
+stays unpushed until the user asks.
+
+- state: ctf-rs = plan.v4 accepted; S1 close running on MSI (S1d Hadamard-index elimination, checkpoint n=7, AMG WSL rerun); ctf-rs 0b65b90 unpushed
+- note: ctf-rs = one S1-set WSL run at 1/2/4 closes G-CTF-S1d, G-CTF-S1-CK7, G-CTF-S1-AMG and G-CTF-S1 together; brief BRIEF-S1d.md; expected records evt-1010, evd-1019, evt-1011
