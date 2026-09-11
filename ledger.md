@@ -2169,3 +2169,58 @@ assigned (evt-0066).
 
 - state: ctf-tiled = draft: successor to ctf-rs S1; not authorized
 - note: ctf-tiled = the "tiled-ay" plan; CTF skeleton kept, tile sparsity added; T1 block-sparse tiles first; T4 blocked on the libmuffintin atom-centered aux
+
+## 2026-09-11 · evd-1015 · C1 closes · ctf-rs 8e5763c00f4705b6ff949a9bed956990c593283a
+
+G-CTF-C1, plan.v3. Item commits in order: 9e84575 (model I/O),
+8da79b1 (symmetrization correspondence), f53220a (dense folded/custom kernels),
+7155249 (selector count agreement), cbc8fb1 (native I/O selection),
+0968f16 (bookkeeping); records 8e5763c. ctf-rs remains unpushed.
+
+```text
+DIGIT / PASS model_io: class A, all registered coefficients versus pre-write
+in-memory values; source %1.4E bound committed in 9e84575 before execution:
+0.5*10^(floor(log10(abs(ref)))-4), zero exact; max d=0.9940440900019784.
+Runs: WSL1/2/4 once each; diagnostics 0; closed.
+INFO model_trainer: existing dense subset, four ranks once with write/load;
+one timing 24.90146141 seconds, informational only.
+DIGIT / PASS full WSL: each unchanged driver's own metric/invariants and
+bound versus f69cbb46/existing assertions; all assertions passed; emitted
+per-driver deltas in wsl.log. All 175 MPI drivers at 1/2/4 once, then all
+prescribed local/library and seven-rank checks; script exit 0; closed.
+DIGIT / PASS native build: all tests/examples compile/link, exit 0, once.
+DIGIT / PASS sparse_text_io: unchanged exact assertions, Delta 0,
+native1/2/4 once each, world+parity; closed.
+DIGIT / PASS distributed_sparse_io: unchanged exact assertions, Delta 0,
+native1/2/4 once each, world+parity; closed.
+No numerical failure, diagnostic, tolerance change or acceptance rerun.
+```
+
+Exact commands from D:/projects/ctf-rs:
+
+```powershell
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-s1/C1/model.sh
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-s1/C1/acceptance.sh
+$env:CARGO_BUILD_JOBS='2'
+cmd.exe /d /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance-native.ps1 -BuildOnly > D:\projects\runs\ctf-rs-s1\C1\native-build.log 2>&1"
+cmd.exe /d /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance-native.ps1 -C1Only > D:\projects\runs\ctf-rs-s1\C1\native-runtime.log 2>&1"
+```
+
+Logs: D:/projects/runs/ctf-rs-s1/C1/{model,wsl,native-build,native-runtime}.log;
+adjacent commands.md/model.sh/acceptance.sh retain nested commands. Model
+files/dumps remain in that run directory. Existing WSL keepalive reused.
+C1.2 per-upstream-function correspondence is in ctf-rs validation.md;
+C1.6 reconciles the README and all eleven sparse header/source status pairs.
+
+## 2026-09-11 · evt-1005 · C1 accepted; continue S1a · actor: codex
+
+C1's six item commits and fixed acceptance are complete. Continuing S1a,
+S1b and S1c autonomously under the same brief, without reopening C1 passes.
+Static S1 contract correction: pinned test/python/test_sparse.py defines
+its own allclose as sum(abs(diff)) < 1e-14, not numpy defaults. The brief's
+explicit requirement to preserve each test's own rule governs the port;
+the accepted plan is not edited and no numerical run has informed this choice.
+test_sample retains its own norm-monotonicity assertions instead.
+
+- state: ctf-rs = C1 closed (G-CTF-C1 PASS); S1a active, then S1b and S1c
+- note: ctf-rs = evd-1015; local tip 8e5763c, six ordered C1 item commits; no ctf-rs push; source Python allclose rule retained
