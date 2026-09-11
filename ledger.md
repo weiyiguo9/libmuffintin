@@ -2275,3 +2275,39 @@ commands.md and scripts retain nested commands. ctf-rs not pushed.
 
 - state: ctf-rs = C1 closed; S1a recorded with three HANDOFF drivers; S1b active, then S1c
 - note: ctf-rs = evd-1016; local 1debf2d; APSP/complex PASS; AMG repaired rank-1 diagnostic PASS, 2/4 unaccepted; sparse ABC source restriction; later GEMM-shaped drivers do not depend on ABC support
+
+## 2026-09-11 · evd-1017 · S1b passes · ctf-rs 26af71f144ccfd54c661a352180cd7f082c0c11e
+
+G-CTF-S1 / S1b: compressed sparse storage/automatic selected accumulation,
+mixed-type selected folded SSS custom kernels and the moved block_sparse
+driver implemented. Prescribed run revision 40e6350.
+
+- DIGIT / PASS upstream_block_sparse: norm2=0 at WSL 1/2/4, source n7/r10,
+  unchanged <=1e-4 bound and sparse flattened-product reference.
+- DIGIT / PASS upstream_btwn_central: norm2=0 at WSL 1/2/4, n6 sp.2 bsize2,
+  all three source batches, unchanged <=6e-6 bound against dense naive path.
+- DIGIT / PASS upstream_force_integration_sparse: source Boolean criterion=1
+  at WSL 1/2/4; some dx/dy changed >1e-6 and every component restored within
+  1e-6 after two inverse applications. Source reports no maximum delta.
+- DIGIT / PASS sparse_sy: all six source shapes and three comparisons each,
+  every sum-absolute delta=0 at WSL 1/2/4, strict <1e-14 bound.
+- Native compile/link of all four passed once successfully; runtime is S1c.
+
+12 prescribed WSL invocations (world/parity), zero diagnostics. Two WSL and
+one native build-only type/literal-error attempts preceded successful builds;
+no numerical run occurred in those attempts. Passing numerical work is closed.
+Commands:
+
+```powershell
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-s1/S1b/acceptance.sh
+cmd.exe /d /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\projects\runs\ctf-rs-s1\S1b\native-build.ps1 > D:\projects\runs\ctf-rs-s1\S1b\native-build.log 2>&1"
+```
+
+Logs: D:/projects/runs/ctf-rs-s1/S1b/{wsl.log,build.json,native-build.log},
+each <driver>-<ranks>.log, commands.md and exact scripts alongside them.
+No S1b HANDOFF; the three S1a open drivers retain their status. No ctf-rs push.
+
+## 2026-09-11 · evt-1008 · S1b accepted; continue S1c · actor: codex
+
+- state: ctf-rs = C1/S1b closed; S1a recorded with three HANDOFF drivers; S1c active
+- note: ctf-rs = evd-1017; local 26af71f; four S1b targets WSL 1/2/4 and native build PASS; final thirteen-target native S1 runtime remains required
