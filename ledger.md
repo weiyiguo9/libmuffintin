@@ -2224,3 +2224,54 @@ test_sample retains its own norm-monotonicity assertions instead.
 
 - state: ctf-rs = C1 closed (G-CTF-C1 PASS); S1a active, then S1b and S1c
 - note: ctf-rs = evd-1015; local tip 8e5763c, six ordered C1 item commits; no ctf-rs push; source Python allclose rule retained
+
+## 2026-09-11 · evt-1006 · move block_sparse to its custom-kernel batch · actor: codex
+
+The pinned block_sparse driver contracts sparse matrices of distributed tensor
+values through a custom function on MPI_COMM_SELF. It requires the custom
+folded kernel work assigned to S1b, not just S1a ordinary semiring planning.
+Per plan.v3 section 3, move block_sparse to S1b; retain its source fixture,
+flattened-product reference and norm <= 1e-4 rule. It is not dropped from S1
+or the final native set. S1a proceeds with apsp, algebraic_multigrid and its
+three Python semantics; S1b must additionally deliver block_sparse.
+
+## 2026-09-11 · evd-1016 · S1a bounded handoff · ctf-rs 1debf2da35c41e7b508ce43da368a060684bef40
+
+G-CTF-S1 / S1a: raw cached folded k1-k5 sparse CPU planning and selected
+SDD/SSD/SSS/SDS execution implemented. Prescribed WSL runs at bebe3a4:
+five drivers once at each of 1/2/4 (15 invocations), native compile/link
+of all five once successfully. Two WSL and one native compile-only attempts
+failed on driver lifetime/integer types before any numerical execution.
+
+- DIGIT / PASS upstream_apsp: differing path weights 0 at 1/2/4, exact bound 0.
+- DIGIT / PASS sparse_complex: sum(abs(diff)) 0 at 1/2/4, strict bound 1e-14.
+- DIGIT / HANDOFF sparse_einsum_hadamard and sparse_scaled_expression:
+  selected=None at 1/2/4; Q/delta uncomputed. Pinned sparse can_fold rejects
+  their ABC weigh labels and the non-inner constructor asserts dense B/C.
+  Static source restriction documented; no C++ runtime pass/fail claimed.
+- DIGIT / HANDOFF upstream_algebraic_multigrid: original 1/2/4 stop at
+  row-order assertion before residual. Source-derived repair 1285771 followed
+  by one named rank-count split diagnostic at 1: DIGIT / PASS,
+  rnorm=0.004937970528833717 < rnorm_alt=0.005547611182988828,
+  delta=-0.000609640654155111; one V-cycle timing 0.022667 s.
+  Original 2/4 gate remains unaccepted; no repeat after the diagnostic pass.
+
+AMG uses 1/3 diagnostic computations; Python failures use 0/3. No passing
+driver was repeated. Native build passed before the metadata repair; final
+S1c native build/runtime will include the repaired implementation.
+Exact commands:
+
+```powershell
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-s1/S1a/acceptance.sh
+cmd.exe /d /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\projects\runs\ctf-rs-s1\S1a\native-build.ps1 > D:\projects\runs\ctf-rs-s1\S1a\native-build.log 2>&1"
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-s1/S1a/amg-rank-split.sh
+```
+
+Logs under D:/projects/runs/ctf-rs-s1/S1a/: wsl.log, build.json,
+<driver>-<ranks>.log, native-build.log, amg-rank-split.log and build JSON;
+commands.md and scripts retain nested commands. ctf-rs not pushed.
+
+## 2026-09-11 · evt-1007 · S1a handoff; continue S1b · actor: codex
+
+- state: ctf-rs = C1 closed; S1a recorded with three HANDOFF drivers; S1b active, then S1c
+- note: ctf-rs = evd-1016; local 1debf2d; APSP/complex PASS; AMG repaired rank-1 diagnostic PASS, 2/4 unaccepted; sparse ABC source restriction; later GEMM-shaped drivers do not depend on ABC support
