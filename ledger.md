@@ -2662,3 +2662,13 @@ asks; the WSL and native runs on MSI follow on request.
 
 - state: ctf-rs = plan.v5 closed on macOS (G-CTF-A1 PASS, evd-0025); port scope complete and audited; master b87301a unpushed; WSL and native reruns pending on MSI
 - note: ctf-rs = 34 commits since 3dafffc; the Mac is now a full acceptance host; open: push, MSI reruns, clippy style classes, ctf-tiled T1 decision
+
+## 2026-09-12 · evt-0076 · ctf-rs b87301a published to origin/master · actor: user
+
+The user asked for the push. rustnumgum/ctf-rs `origin/master` moved from
+`3dafffc` to `b87301a` (the 34 plan.v5 commits). The MSI checkout
+`D:/projects/ctf-rs` is still at `3dafffc` and fetches the new tip before
+any WSL or native rerun.
+
+- state: ctf-rs = plan.v5 closed on macOS (G-CTF-A1 PASS, evd-0025); port scope complete and audited; origin/master = b87301a; WSL and native reruns pending on MSI
+- note: ctf-rs = open: MSI reruns of plan.v5 section 1, clippy style classes, ctf-tiled T1 decision
