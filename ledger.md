@@ -2527,3 +2527,42 @@ restriction withdrawn and replaced by the source preplanning rewrite.
 
 - state: ctf-rs = S1 closed; G-CTF-S1d, G-CTF-S1-CK7, G-CTF-S1-AMG and G-CTF-S1 PASS at evd-1019
 - note: ctf-rs = CK7 5a5edaa, S1d d5861de, records 3dafffc; all13 WSL1/2/4 plus touched native1/2/4 and full WSL/native build PASS once; zero diagnostics; no HANDOFF question; ctf-rs remains unpushed, existing keepalive322 reused, libmuffintin/fftw code untouched
+
+## 2026-09-12 · evt-0071 · ctf-rs S1 close reviewed on the Mac; plan.v3 and plan.v4 scope complete · actor: claude
+
+Merged `harness-msi` 221a97f (evt-1010, evd-1019, evt-1011). Pulled ctf-rs
+`3dafffc` (three commits on `0b65b90`, 9 files, +510/−142, Codex on MSI in
+58 min from prompt to push) by bundle into the Mac clone as `msi/master`;
+not pushed, `origin/master` stays `0b65b90`. Review:
+
+- CK7 `5a5edaa` changes exactly the constant `N` and the `DIGIT` line; the
+  bound stays the source expression. Q at n=7 is 1.63e-6 to 1.73e-6 against
+  3.43e-6 (d about 0.5), the value the round-trip estimate predicted.
+- S1d `d5861de` is the source rewrite as plan.v4 section 4 specifies:
+  weigh labels found per label, the last one eliminated per pass, the size
+  rule with `max(nnz or size, min(sz1, sz2))` and X = A only when A is
+  sparse and (B dense or A_sz < B_sz), the axis duplicated in place with the
+  fresh label on the new axis and the original label kept, the other
+  operand relabeled, recursion until no label is shared. The diagonal
+  placement is a key remap of owned pairs into a cyclic distribution
+  followed by a distributed write. Three entries carry it (`Tensor` with
+  sparse A, `SparseTensor` with sparse A and B, and the custom-function
+  variant); planner and kernels untouched. The two drivers changed only
+  their call sequence. Nit, not a gate matter: a `None` selection panics
+  through `expect` instead of returning an error.
+- Records `3dafffc`: both wrong known-failure sections removed, the n=3
+  history moved to `validation.md`, coverage and inventory rows corrected,
+  `sparse-search.md` no longer calls weigh labels source-ineligible.
+- Runs: 39 WSL and 9 native invocations, one per target and rank; the full
+  WSL script once with 542 `DIGIT / PASS` and no failure line, the same
+  count as the C1 close; zero diagnostics. AMG WSL values equal the S1c
+  native values to every printed digit.
+
+With G-CTF-S1 passed the plan.v3 objective holds: the README scope of
+ctf-rs (a CPU/MPI port of pinned `f69cbb46` without CUDA, Python, or C++
+compatibility) is complete. Open outside the ctf-rs plans: the libmuffintin
+`set_hf_mpi_communicator` versus `&Universe` ADR, the ADR-0006 exchange
+contraction through ctf-rs, and the `ctf-tiled` T1 authorization.
+
+- state: ctf-rs = S1 closed and reviewed; plan.v3 and plan.v4 scope complete; origin/master = 0b65b90, 3dafffc fetched on the Mac and unpushed
+- note: ctf-rs = port scope of the README complete at 3dafffc; next decisions are the ctf-tiled T1 authorization and the libmuffintin &Universe ADR
