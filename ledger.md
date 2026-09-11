@@ -2148,3 +2148,24 @@ question and the exchange-contraction integration stay outside this plan.
 
 - state: ctf-rs = active: C1 then S1a to S1c (Codex on MSI); G-CTF-C1 and G-CTF-S1 accepted
 - note: ctf-rs = plan.v3 accepted 2026-09-11; executor MSI at b9990fa; D1 to D6 gate row corrected to closed
+
+## 2026-09-11 · evt-0067 · ctf-tiled plan.v1 drafted as the successor to ctf-rs S1 · actor: user
+
+The user kept S1 running and asked for the tile-sparsity direction to be
+preserved as its own plan ("把这个保留成 tiled-ay 计划，作为 S1 的后续").
+`plans/ctf-tiled/plan.v1.md` (draft, not authorized) records the two
+analyses of 2026-09-11: keep the CTF skeleton of ctf-rs and add
+TiledArray-style tile semantics (`TileId`, `Tiling`,
+`Distribution<TileId>`, block-sparse storage, tile-level join,
+`TileKernel`), with the DBT plus LibRI (atom, R) line on the MTO family as
+the consumer target. First milestone T1: 2D/3D block-sparse tensors,
+sparse tile contraction, MPI tile ownership over the existing cyclic
+mapping, toy acceptance against the dense path; the norm filter (T2), the
+atom-pair distribution (T3), and the R-join (T4) follow. Gates G-CTF-T1
+and G-CTF-T2 to T4 proposed. Starts after ctf-rs S1 closes unless the
+user orders otherwise; an ADR and the possible rename to riir come with
+T1's authorization. ctf-rs itself is unchanged: C1 then S1a to S1c stay
+assigned (evt-0066).
+
+- state: ctf-tiled = draft: successor to ctf-rs S1; not authorized
+- note: ctf-tiled = the "tiled-ay" plan; CTF skeleton kept, tile sparsity added; T1 block-sparse tiles first; T4 blocked on the libmuffintin atom-centered aux
