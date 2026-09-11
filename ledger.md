@@ -2566,3 +2566,15 @@ contraction through ctf-rs, and the `ctf-tiled` T1 authorization.
 
 - state: ctf-rs = S1 closed and reviewed; plan.v3 and plan.v4 scope complete; origin/master = 0b65b90, 3dafffc fetched on the Mac and unpushed
 - note: ctf-rs = port scope of the README complete at 3dafffc; next decisions are the ctf-tiled T1 authorization and the libmuffintin &Universe ADR
+
+## 2026-09-12 · evt-0072 · ctf-rs 3dafffc published; global audit of the port started · actor: user
+
+The user asked for the push and then a global audit. The Mac clone
+fast-forwarded `master` to `3dafffc` and pushed rustnumgum/ctf-rs
+`origin/master`. The audit covers the completed port at that revision:
+upstream coverage against the inventory, code dead weight, the ADR-0007 MPI
+contract, test and acceptance-script consistency, documentation consistency,
+and the compiler and clippy warning inventory on the Mac.
+
+- state: ctf-rs = S1 closed; port scope complete; origin/master = 3dafffc; global audit running on the Mac
+- note: ctf-rs = audit findings to follow as evt-0073
