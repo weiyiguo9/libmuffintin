@@ -9,7 +9,7 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
-| `ctf-rs` | S1 closed; G-CTF-S1d, G-CTF-S1-CK7, G-CTF-S1-AMG and G-CTF-S1 PASS at evd-1019 | `plans/ctf-rs/plan.v5.md`, proposed 2026-09-12, not accepted | CK7 5a5edaa, S1d d5861de, records 3dafffc; all13 WSL1/2/4 plus touched native1/2/4 and full WSL/native build PASS once; zero diagnostics; no HANDOFF question; ctf-rs remains unpushed, existing keepalive322 reused, libmuffintin/fftw code untouched |
+| `ctf-rs` | S1 closed; port scope complete; audit done (evt-0073); plan.v5 remediation proposed, awaiting acceptance; origin/master = 3dafffc | `plans/ctf-rs/plan.v5.md`, proposed 2026-09-12, not accepted | audit findings in evidence/2026-09-12-ctf-rs-audit/findings.md; six remediation items A1.1 to A1.6; next decisions are plan.v5 acceptance and ctf-tiled T1 |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
 | `ctf-tiled` | draft: successor to ctf-rs S1; not authorized | `plans/ctf-tiled/plan.v1.md`, draft | the "tiled-ay" plan; CTF skeleton kept, tile sparsity added; T1 block-sparse tiles first; T4 blocked on the libmuffintin atom-centered aux |
 | `diamond-omt` | recipe notes published; reference-script update reported; target-band basis enrichment remains a candidate | none | evt-0065; pymuffintin 40136cb; above-Fermi target distinguished from valence; no new numerical acceptance |

@@ -10,9 +10,9 @@ Inputs:
 - ledger.md: entry headings ``## <date> · <evt|evd>-NNNN · <title>`` and, inside
   an entry, ``- state: <workstream> = <state>`` and ``- note: <workstream> = <text>``.
   The state and note from the latest entry per workstream win, ordered by
-  entry date and then entry number, so a Mac entry dated after an MSI entry
-  is not hidden by the MSI number range; file order is not chronological
-  after a union merge of two writers.
+  entry date and then file position, so a Mac entry dated after an MSI entry
+  is not hidden by the MSI number range, and on one date the block appended
+  last (the later merge) wins rather than the higher number range.
 - plans/<workstream>/plan.vN.md headers: ``- Workstream ID:``, ``- Plan version:``,
   ``- Approval:``. The highest version per workstream is shown.
 - ``git rev-parse main`` in the shared repository, when available.
@@ -35,16 +35,16 @@ def entry_number(entry_id):
 
 def parse_ledger(path):
     """Return (entries, states, notes); states and notes map a workstream to the
-    text from its latest entry by (date, number), so an interleaved union merge
-    cannot resurrect an older state and one writer's number range cannot hide
-    the other's later entry."""
+    text from its latest entry by (date, file position), so an older-dated
+    block merged in later cannot resurrect an older state and, on one date,
+    one writer's number range cannot hide the other's later entry."""
     entries, states, notes = [], {}, {}
     current = ("", -1)
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for position, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
         match = HEAD_RE.match(line)
         if match:
             entries.append(match.groups())
-            current = (match.group(1), entry_number(match.group(2)))
+            current = (match.group(1), position)
             continue
         for regex, table in ((STATE_RE, states), (NOTE_RE, notes)):
             match = regex.match(line)
