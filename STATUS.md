@@ -5,11 +5,11 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `5f5dc92c7bbc9d562bfc53e65e23cc9082a5f34e` (2026-09-09)
-- Last ledger entries: evd-1018 (MSI), evt-1009 (MSI), evd-0024 (Mac), evt-0069 (Mac)
+- Last ledger entries: evd-1018 (MSI), evt-1009 (MSI), evd-0024 (Mac), evt-0070 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
-| `ctf-rs` | plan.v4 accepted; S1 close running on MSI (S1d Hadamard-index elimination, checkpoint n=7, AMG WSL rerun); ctf-rs 0b65b90 unpushed | `plans/ctf-rs/plan.v4.md`, accepted 2026-09-12 | one S1-set WSL run at 1/2/4 closes G-CTF-S1d, G-CTF-S1-CK7, G-CTF-S1-AMG and G-CTF-S1 together; brief BRIEF-S1d.md; expected records evt-1010, evd-1019, evt-1011 |
+| `ctf-rs` | plan.v4 accepted; S1 close running on MSI (S1d Hadamard-index elimination, checkpoint n=7, AMG WSL rerun); origin/master = 0b65b90 | `plans/ctf-rs/plan.v4.md`, accepted 2026-09-12 | published 0b65b90 on 2026-09-12; plan.v4 commits still to come by bundle; expected records evt-1010, evd-1019, evt-1011 |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
 | `ctf-tiled` | draft: successor to ctf-rs S1; not authorized | `plans/ctf-tiled/plan.v1.md`, draft | the "tiled-ay" plan; CTF skeleton kept, tile sparsity added; T1 block-sparse tiles first; T4 blocked on the libmuffintin atom-centered aux |
 | `diamond-omt` | recipe notes published; reference-script update reported; target-band basis enrichment remains a candidate | none | evt-0065; pymuffintin 40136cb; above-Fermi target distinguished from valence; no new numerical acceptance |

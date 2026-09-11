@@ -2455,3 +2455,13 @@ stays unpushed until the user asks.
 
 - state: ctf-rs = plan.v4 accepted; S1 close running on MSI (S1d Hadamard-index elimination, checkpoint n=7, AMG WSL rerun); ctf-rs 0b65b90 unpushed
 - note: ctf-rs = one S1-set WSL run at 1/2/4 closes G-CTF-S1d, G-CTF-S1-CK7, G-CTF-S1-AMG and G-CTF-S1 together; brief BRIEF-S1d.md; expected records evt-1010, evd-1019, evt-1011
+
+## 2026-09-12 · evt-0070 · ctf-rs 0b65b90 published to origin/master · actor: user
+
+The user asked for the push. The Mac clone fast-forwarded `master` from
+`b9990fa` to `0b65b90` (msi/master, the C1 and S1a to S1c delivery) and
+pushed rustnumgum/ctf-rs `origin/master`. The MSI checkout keeps working on
+top of `0b65b90` under plan.v4; its next commits travel by bundle as before.
+
+- state: ctf-rs = plan.v4 accepted; S1 close running on MSI (S1d Hadamard-index elimination, checkpoint n=7, AMG WSL rerun); origin/master = 0b65b90
+- note: ctf-rs = published 0b65b90 on 2026-09-12; plan.v4 commits still to come by bundle; expected records evt-1010, evd-1019, evt-1011
