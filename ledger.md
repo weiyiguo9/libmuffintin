@@ -2618,3 +2618,16 @@ items, class R close), gate `G-CTF-A1` proposed. Nothing changed in ctf-rs.
 
 - state: ctf-rs = S1 closed; port scope complete; audit done (evt-0073); plan.v5 remediation proposed, awaiting acceptance; origin/master = 3dafffc
 - note: ctf-rs = audit findings in evidence/2026-09-12-ctf-rs-audit/findings.md; six remediation items A1.1 to A1.6; next decisions are plan.v5 acceptance and ctf-tiled T1
+
+## 2026-09-12 · evt-0074 · ctf-rs plan.v5 accepted; remediation executed on the Mac with subagents · actor: user
+
+The user's instruction: make the changes on this Mac with a few subagents,
+Claude reviews, test, commit. plan.v5 is accepted with that executor. The
+Mac links against Homebrew OpenBLAS and ScaLAPACK once the macOS link names
+are added (audit A5 was too generous: `cargo check` passed but the link did
+not); the Mac then runs the regression of section 1, and the WSL and native
+runs on MSI follow when the user asks. ctf-rs is committed on the Mac and
+pushed only on the user's word.
+
+- state: ctf-rs = plan.v5 accepted; audit remediation A1.1 to A1.6 in progress on the Mac; origin/master = 3dafffc
+- note: ctf-rs = executor Claude + subagents on ~/tmp/ctf-rs; regression on macOS first, MSI WSL/native later on request
