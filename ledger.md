@@ -2125,3 +2125,26 @@ still require an explicit target band window, reference, tolerance, and budget.
 
 - state: diamond-omt = recipe notes published; reference-script update reported; target-band basis enrichment remains a candidate
 - note: diamond-omt = evt-0065; pymuffintin 40136cb; above-Fermi target distinguished from valence; no new numerical acceptance
+
+## 2026-09-11 · evt-0066 · ctf-rs plan.v3 accepted; C1 and S1 assigned to Codex on MSI · actor: user
+
+The user ordered S1 and the port's own remaining pending items deployed to
+MSI ("把S1和第一层任务部署给MSI"). `plans/ctf-rs/plan.v3.md` carries S1
+from plan.v1 section 3 with its eight drivers and the five
+`test_sparse.py` semantics unchanged, split into the ordered batches S1a,
+S1b, S1c, and adds the closed C1 list (model I/O, contraction-path
+symmetrize/desymmetrize, dense custom-function folded kernels, the selector
+agreement collective, the `graph_io_aux` native run, bookkeeping). C1 runs
+first and re-gates the whole WSL set once; S1a is the first sparse
+planning code. Gates: G-CTF-C1 new, G-CTF-S1 accepted against the plan.v3
+list; the G-CTF-D1 to D6 row, still `proposed` although evd-1002 to
+evd-1008 closed it, is corrected to closed. Executor: Codex on MSI in
+`D:/projects/ctf-rs` at `b9990fa`, clean; upstream at
+`D:/projects/ctf-upstream-f69`; brief at
+`C:/Users/xylxp/projects/ctf-rs-s1/BRIEF.md`; records on `harness-msi`
+(evd-1015 upward, evt-1005 upward) merged here; ctf-rs published by the
+Mac only. The libmuffintin `set_hf_mpi_communicator` versus `&Universe`
+question and the exchange-contraction integration stay outside this plan.
+
+- state: ctf-rs = active: C1 then S1a to S1c (Codex on MSI); G-CTF-C1 and G-CTF-S1 accepted
+- note: ctf-rs = plan.v3 accepted 2026-09-11; executor MSI at b9990fa; D1 to D6 gate row corrected to closed

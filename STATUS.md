@@ -5,11 +5,11 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `5f5dc92c7bbc9d562bfc53e65e23cc9082a5f34e` (2026-09-09)
-- Last ledger entries: evd-1014 (MSI), evt-1004 (MSI), evd-0024 (Mac), evt-0065 (Mac)
+- Last ledger entries: evd-1014 (MSI), evt-1004 (MSI), evd-0024 (Mac), evt-0066 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
-| `ctf-rs` | R1 and dgtog_redistribution test contract closed; WSL single-test 1/2/4 passed; publication left to the Mac; S1 not started | `plans/ctf-rs/plan.v2.md`, accepted 2026-09-09 | evd-1014; test cccd5e8, local records b9990fa; three exact passes, no diagnostics or ctf-rs push |
+| `ctf-rs` | active: C1 then S1a to S1c (Codex on MSI); G-CTF-C1 and G-CTF-S1 accepted | `plans/ctf-rs/plan.v3.md`, accepted 2026-09-11 | plan.v3 accepted 2026-09-11; executor MSI at b9990fa; D1 to D6 gate row corrected to closed |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
 | `diamond-omt` | recipe notes published; reference-script update reported; target-band basis enrichment remains a candidate | none | evt-0065; pymuffintin 40136cb; above-Fermi target distinguished from valence; no new numerical acceptance |
 | `h2-hf` | held: warm start closed (32 rebuilds); MPI-4 and the A1 ladder wait for the herdr restart and the row-placement decision | `plans/h2-hf/plan.v1.md`, accepted 2026-09-08 | A0 smoke numbers 0.2 Ha from the box-8 reference, hartree_exchange 0.163 Ha; nothing at A1 settings yet; herdr protocol 22 vs 20 |
