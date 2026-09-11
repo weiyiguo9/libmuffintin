@@ -2631,3 +2631,34 @@ pushed only on the user's word.
 
 - state: ctf-rs = plan.v5 accepted; audit remediation A1.1 to A1.6 in progress on the Mac; origin/master = 3dafffc
 - note: ctf-rs = executor Claude + subagents on ~/tmp/ctf-rs; regression on macOS first, MSI WSL/native later on request
+
+## 2026-09-12 · evd-0025 · ctf-rs G-CTF-A1 · ctf-rs 7ffd5f2 (records at b87301a)
+
+```text
+DIGIT / PASS
+Q: every gating driver's own quantity; class: R; ref: pinned cc4s/ctf f69cbb46 through the drivers' unchanged assertions
+bound: unchanged per driver; Delta: none; 577 baseline DIGIT lines reproduced identically (wall-clock fields stripped), 6 lines added by the two newly passing targets
+command: CARGO_TARGET_DIR=~/.cache/ctf-rs-audit-target CTF_ACCEPTANCE_LOG_DIR=<dir> bash scripts/acceptance-wsl.sh   (macOS 15.7.3, rustc 1.97.1, Homebrew Open MPI 5.0.10, OpenBLAS, ScaLAPACK)
+log: evidence/2026-09-12-ctf-rs-audit/{baseline-run.log,final-run.log,baseline-digits.norm,final-digits.norm,compare.sh}
+scope: baseline e9b6bba 617/623 (the six failures were d4_memcontrol without a macOS branch and model_io without its argument, both fixed); final 7ffd5f2 622/622 at 1, 2, 4 ranks plus the seven-rank Strassen check, five lib filters and 46 local targets; cargo check, rustdoc under -D warnings and scripts/check-targets.sh clean; acceptance-native.ps1 parses on MSI but is not executed; the WSL and native runs of plan.v5 section 1 stay pending on MSI
+```
+
+## 2026-09-12 · evt-0075 · ctf-rs plan.v5 executed on the Mac; A1.1 to A1.6 landed; regression passed · actor: claude
+
+Five subagents in disjoint git worktrees (scripts, hygiene, sparse
+refactor, ffi and SAFETY, documents), reviewed and fast-forward merged in
+the order hygiene, ffi, scripts, memcontrol, sparse, documents; 34 commits
+`3dafffc..b87301a`, 41 files, about +2,100/−1,300 lines. Beyond the plan's
+list: macOS link names and a `build.rs` Homebrew search path (audit A5 was
+too generous, the link had never been tried), a macOS `memcontrol` branch
+after the pinned `__MACH__` code, and a temporary default output directory
+for `model_io`. Deviations recorded in `docs/validation.md` "A1 audit
+remediation": two shared panel executors instead of one (sparse-output and
+dense-output combine differently), and the clippy style classes left as
+they are. One agent over-shared an operand helper and caught the resulting
+panic itself through the mandated driver run before any numerical check;
+the fix was squashed into its commit. ctf-rs stays unpushed until the user
+asks; the WSL and native runs on MSI follow on request.
+
+- state: ctf-rs = plan.v5 closed on macOS (G-CTF-A1 PASS, evd-0025); port scope complete and audited; master b87301a unpushed; WSL and native reruns pending on MSI
+- note: ctf-rs = 34 commits since 3dafffc; the Mac is now a full acceptance host; open: push, MSI reruns, clippy style classes, ctf-tiled T1 decision

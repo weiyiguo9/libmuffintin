@@ -1,0 +1,577 @@
+algebra_contraction-1	DIGIT / PASS algebra_contraction: native generic Reduce, root beta, Boolean semiring, nonzero root; ranks=1
+algebra_contraction-2	DIGIT / PASS algebra_contraction: native generic Reduce, root beta, Boolean semiring, nonzero root; ranks=2
+algebra_contraction-4	DIGIT / PASS algebra_contraction: native generic Reduce, root beta, Boolean semiring, nonzero root; ranks=4
+algebra_sum-1	DIGIT / PASS algebra_sum: integer and Boolean Tensor reductions; ranks=1
+algebra_sum-2	DIGIT / PASS algebra_sum: integer and Boolean Tensor reductions; ranks=2
+algebra_sum-4	DIGIT / PASS algebra_sum: integer and Boolean Tensor reductions; ranks=4
+binary_io-1	DIGIT / PASS binary_io: exact typed bytes, offsets, dense/sparse/SY/AS/SH overwrite, virtual/replicated layouts, empty/scalar domains; world+parity
+binary_io-2	DIGIT / PASS binary_io: exact typed bytes, offsets, dense/sparse/SY/AS/SH overwrite, virtual/replicated layouts, empty/scalar domains; world+parity
+binary_io-4	DIGIT / PASS binary_io: exact typed bytes, offsets, dense/sparse/SY/AS/SH overwrite, virtual/replicated layouts, empty/scalar domains; world+parity
+bool_norm-1	DIGIT / PASS bool_norm: exact boolean MAXABS, dense/sparse false records, replicas and empty shards/domains; world+parity
+bool_norm-2	DIGIT / PASS bool_norm: exact boolean MAXABS, dense/sparse false records, replicas and empty shards/domains; world+parity
+bool_norm-4	DIGIT / PASS bool_norm: exact boolean MAXABS, dense/sparse false records, replicas and empty shards/domains; world+parity
+complex_scalar-1	DIGIT / PASS complex_scalar: f32/f64 complex algebra, contraction, Wire and MPI; ranks=1
+complex_scalar-2	DIGIT / PASS complex_scalar: f32/f64 complex algebra, contraction, Wire and MPI; ranks=2
+complex_scalar-4	DIGIT / PASS complex_scalar: f32/f64 complex algebra, contraction, Wire and MPI; ranks=4
+contract_remap-1	DIGIT / PASS contract_remap: high-order two-index reduction, mismatched input layouts, restored output; ranks=1
+contract_remap-2	DIGIT / PASS contract_remap: high-order two-index reduction, mismatched input layouts, restored output; ranks=2
+contract_remap-4	DIGIT / PASS contract_remap: high-order two-index reduction, mismatched input layouts, restored output; ranks=4
+ctr_2d-1	DIGIT / PASS ctr_2d: cyclic panel broadcasts, moving-output Reduce, strided scatter; ranks=1
+ctr_2d-2	DIGIT / PASS ctr_2d: cyclic panel broadcasts, moving-output Reduce, strided scatter; ranks=2
+ctr_2d-4	DIGIT / PASS ctr_2d: cyclic panel broadcasts, moving-output Reduce, strided scatter; ranks=4
+custom_reduce-1	DIGIT / PASS custom_reduce: MPI user op, ordered affine monoid, captured algebra and zero count; ranks=1
+custom_reduce-2	DIGIT / PASS custom_reduce: MPI user op, ordered affine monoid, captured algebra and zero count; ranks=2
+custom_reduce-4	DIGIT / PASS custom_reduce: MPI user op, ordered affine monoid, captured algebra and zero count; ranks=4
+cyclic_reshuffle-1	DIGIT / PASS cyclic_reshuffle: exact values/padding/replicas, virtual phase changes, empty/scalar, i8/bool/complex/non-Copy Wire; world+parity
+cyclic_reshuffle-2	DIGIT / PASS cyclic_reshuffle: exact values/padding/replicas, virtual phase changes, empty/scalar, i8/bool/complex/non-Copy Wire; world+parity
+cyclic_reshuffle-4	DIGIT / PASS cyclic_reshuffle: exact values/padding/replicas, virtual phase changes, empty/scalar, i8/bool/complex/non-Copy Wire; world+parity
+d4_blas_flops-1	DIGIT / PASS d4_blas_flops: four-type plain-transpose SYR and production GEMM flop snapshots exact; world+parity
+d4_blas_flops-2	DIGIT / PASS d4_blas_flops: four-type plain-transpose SYR and production GEMM flop snapshots exact; world+parity
+d4_blas_flops-4	DIGIT / PASS d4_blas_flops: four-type plain-transpose SYR and production GEMM flop snapshots exact; world+parity
+d4_timer_util-1	DIGIT / PASS d4_timer_util: timer invariants and util integer/index/layout checks exact; world+parity
+d4_timer_util-2	DIGIT / PASS d4_timer_util: timer invariants and util integer/index/layout checks exact; world+parity
+d4_timer_util-4	DIGIT / PASS d4_timer_util: timer invariants and util integer/index/layout checks exact; world+parity
+d5_algebra_interfaces-1	DIGIT / PASS d5_algebra_interfaces: ring identities, custom monoid reduction, COO/CSR/CCSR conversion; world+parity
+d5_algebra_interfaces-2	DIGIT / PASS d5_algebra_interfaces: ring identities, custom monoid reduction, COO/CSR/CCSR conversion; world+parity
+d5_algebra_interfaces-4	DIGIT / PASS d5_algebra_interfaces: ring identities, custom monoid reduction, COO/CSR/CCSR conversion; world+parity
+d5_common-1	DIGIT / PASS d5_common: default labels, column-major index conversion and scan recurrences exact; world+parity
+d5_common-2	DIGIT / PASS d5_common: default labels, column-major index conversion and scan recurrences exact; world+parity
+d5_common-4	DIGIT / PASS d5_common: default labels, column-major index conversion and scan recurrences exact; world+parity
+d5_value_interfaces-1	DIGIT / PASS d5_value_interfaces: arange and scalar root/broadcast; Tensor/Context replacements; world+parity
+d5_value_interfaces-2	DIGIT / PASS d5_value_interfaces: arange and scalar root/broadcast; Tensor/Context replacements; world+parity
+d5_value_interfaces-4	DIGIT / PASS d5_value_interfaces: arange and scalar root/broadcast; Tensor/Context replacements; world+parity
+dense_execution_algebra-1	DIGIT / PASS dense_execution_algebra: home/lowmem with Wire node backmapping; input restoration/matrix ring/integer exact; f32/complex abs<1e-6; raw permutations/scalar coefficient order; world+parity
+dense_execution_algebra-2	DIGIT / PASS dense_execution_algebra: home/lowmem with Wire node backmapping; input restoration/matrix ring/integer exact; f32/complex abs<1e-6; raw permutations/scalar coefficient order; world+parity
+dense_execution_algebra-4	DIGIT / PASS dense_execution_algebra: home/lowmem with Wire node backmapping; input restoration/matrix ring/integer exact; f32/complex abs<1e-6; raw permutations/scalar coefficient order; world+parity
+dense_execution-1	DIGIT / PASS dense_execution: raw 2D input/output panels, nested levels, padded fragments, cached search and fresh values; world+parity; abs<1e-6
+dense_execution-2	DIGIT / PASS dense_execution: raw 2D input/output panels, nested levels, padded fragments, cached search and fresh values; world+parity; abs<1e-6
+dense_execution-4	DIGIT / PASS dense_execution: raw 2D input/output panels, nested levels, padded fragments, cached search and fresh values; world+parity; abs<1e-6
+dense_folded_execution-1	DIGIT / PASS dense_folded_execution: selected/cache fold to BLAS, 2D/nested panels, partial residuals, virtual batches, padded fragments; world+parity; abs<1e-6
+dense_folded_execution-2	DIGIT / PASS dense_folded_execution: selected/cache fold to BLAS, 2D/nested panels, partial residuals, virtual batches, padded fragments; world+parity; abs<1e-6
+dense_folded_execution-4	DIGIT / PASS dense_folded_execution: selected/cache fold to BLAS, 2D/nested panels, partial residuals, virtual batches, padded fragments; world+parity; abs<1e-6
+dense_low_memory-1	DIGIT / PASS dense_low_memory: mutable input restoration exact, weighted cache reuse, partial folded raw panels and node backmapping; world+parity; abs<1e-6
+dense_low_memory-2	DIGIT / PASS dense_low_memory: mutable input restoration exact, weighted cache reuse, partial folded raw panels and node backmapping; world+parity; abs<1e-6
+dense_low_memory-4	DIGIT / PASS dense_low_memory: mutable input restoration exact, weighted cache reuse, partial folded raw panels and node backmapping; world+parity; abs<1e-6
+dense_search-1	DIGIT / PASS dense_search: folded/unfolded rank-order winners, weighted two-pass, exhaustive refinement, .01 cutoff, strict memory, custom no-fold and cache; world+parity; exact
+dense_search-2	DIGIT / PASS dense_search: folded/unfolded rank-order winners, weighted two-pass, exhaustive refinement, .01 cutoff, strict memory, custom no-fold and cache; world+parity; exact
+dense_search-4	DIGIT / PASS dense_search: folded/unfolded rank-order winners, weighted two-pass, exhaustive refinement, .01 cutoff, strict memory, custom no-fold and cache; world+parity; exact
+dense_semantics-1	DIGIT / PASS dense_semantics: diagonal extraction/trace/repeated output, indexed contraction, nonlinear sum, slice insertion, affine writes; ranks=1
+dense_semantics-2	DIGIT / PASS dense_semantics: diagonal extraction/trace/repeated output, indexed contraction, nonlinear sum, slice insertion, affine writes; ranks=2
+dense_semantics-4	DIGIT / PASS dense_semantics: diagonal extraction/trace/repeated output, indexed contraction, nonlinear sum, slice insertion, affine writes; ranks=4
+dense_views-1	DIGIT / PASS dense_views: exact slice offsets, virtual blocks, owner shifts, axis transpose, repeated labels, empty slices; ranks=1
+dense_views-2	DIGIT / PASS dense_views: exact slice offsets, virtual blocks, owner shifts, axis transpose, repeated labels, empty slices; ranks=2
+dense_views-4	DIGIT / PASS dense_views: exact slice offsets, virtual blocks, owner shifts, axis transpose, repeated labels, empty slices; ranks=4
+dgtog_redistribution-1	DIGIT / PASS dgtog_redistribution: exact LCM counts/replicas/padding/virtual/scalar/high-order legacy; world+parity
+dgtog_redistribution-2	DIGIT / PASS dgtog_redistribution: exact LCM counts/replicas/padding/virtual/scalar/high-order legacy; world+parity
+dgtog_redistribution-4	DIGIT / PASS dgtog_redistribution: exact LCM counts/replicas/padding/virtual/scalar/high-order legacy; world+parity
+distributed_canonical_contraction-1	DIGIT / PASS distributed_canonical_contraction: explicit physical mapping, packed kernel, broadcasts/reduction, distribution restore; exact i64; world+parity
+distributed_canonical_contraction-2	DIGIT / PASS distributed_canonical_contraction: explicit physical mapping, packed kernel, broadcasts/reduction, distribution restore; exact i64; world+parity
+distributed_canonical_contraction-4	DIGIT / PASS distributed_canonical_contraction: explicit physical mapping, packed kernel, broadcasts/reduction, distribution restore; exact i64; world+parity
+distributed_canonical_sum-1	DIGIT / PASS distributed_canonical_sum: packed tensor routing, reductions, broadcast, diagonals, replicas; exact i64; world+parity
+distributed_canonical_sum-2	DIGIT / PASS distributed_canonical_sum: packed tensor routing, reductions, broadcast, diagonals, replicas; exact i64; world+parity
+distributed_canonical_sum-4	DIGIT / PASS distributed_canonical_sum: packed tensor routing, reductions, broadcast, diagonals, replicas; exact i64; world+parity
+distributed_coo_2d-1	DIGIT / PASS distributed_coo_2d: native COO leaf, variable duplicate/zero panels, A/B broadcast, dense C cyclic reduction and strided scatter; exact i64; world+parity
+distributed_coo_2d-2	DIGIT / PASS distributed_coo_2d: native COO leaf, variable duplicate/zero panels, A/B broadcast, dense C cyclic reduction and strided scatter; exact i64; world+parity
+distributed_coo_2d-4	DIGIT / PASS distributed_coo_2d: native COO leaf, variable duplicate/zero panels, A/B broadcast, dense C cyclic reduction and strided scatter; exact i64; world+parity
+distributed_cross_diagonal-1	DIGIT / PASS distributed_cross_diagonal: cross-AS source run_diag extraction/reinsertion; atol=1e-6; world+parity
+distributed_cross_diagonal-2	DIGIT / PASS distributed_cross_diagonal: cross-AS source run_diag extraction/reinsertion; atol=1e-6; world+parity
+distributed_cross_diagonal-4	DIGIT / PASS distributed_cross_diagonal: cross-AS source run_diag extraction/reinsertion; atol=1e-6; world+parity
+distributed_dense_function-1	DIGIT / PASS distributed_dense_function: non-distributive function, no padding contributions, output-only indices, broadcasts/reductions, world+parity; exact i64
+distributed_dense_function-2	DIGIT / PASS distributed_dense_function: non-distributive function, no padding contributions, output-only indices, broadcasts/reductions, world+parity; exact i64
+distributed_dense_function-4	DIGIT / PASS distributed_dense_function: non-distributive function, no padding contributions, output-only indices, broadcasts/reductions, world+parity; exact i64
+distributed_dense_sparse-1	DIGIT / PASS distributed_dense_sparse: dense*sparse GEMM and contraction, i64 oracle, noncommutative matrix order, world+parity
+distributed_dense_sparse-2	DIGIT / PASS distributed_dense_sparse: dense*sparse GEMM and contraction, i64 oracle, noncommutative matrix order, world+parity
+distributed_dense_sparse-4	DIGIT / PASS distributed_dense_sparse: dense*sparse GEMM and contraction, i64 oracle, noncommutative matrix order, world+parity
+distributed_eigh-1	DIGIT / PASS distributed_eigh: square-subworld eigensolver and parent redistribution; ranks=1
+distributed_eigh-2	DIGIT / PASS distributed_eigh: square-subworld eigensolver and parent redistribution; ranks=2
+distributed_eigh-4	DIGIT / PASS distributed_eigh: square-subworld eigensolver and parent redistribution; ranks=4
+distributed_exhaustive_mapping-1	DIGIT / PASS distributed_exhaustive_mapping: catalog order, raw global IDs, rank partitioning and rejection holes; world+parity; exact
+distributed_exhaustive_mapping-2	DIGIT / PASS distributed_exhaustive_mapping: catalog order, raw global IDs, rank partitioning and rejection holes; world+parity; exact
+distributed_exhaustive_mapping-4	DIGIT / PASS distributed_exhaustive_mapping: catalog order, raw global IDs, rank partitioning and rejection holes; world+parity; exact
+distributed_hollow_sum-1	DIGIT / PASS distributed_hollow_sum: unfolding, projection, AS cancellation, SH factors; exact i64; world+parity
+distributed_hollow_sum-2	DIGIT / PASS distributed_hollow_sum: unfolding, projection, AS cancellation, SH factors; exact i64; world+parity
+distributed_hollow_sum-4	DIGIT / PASS distributed_hollow_sum: unfolding, projection, AS cancellation, SH factors; exact i64; world+parity
+distributed_matrix-1	DIGIT / PASS distributed_matrix: ScaLAPACK Cholesky and triangular solves, upstream L1/triangle bounds, subcommunicators, ranks=1
+distributed_matrix-2	DIGIT / PASS distributed_matrix: ScaLAPACK Cholesky and triangular solves, upstream L1/triangle bounds, subcommunicators, ranks=2
+distributed_matrix-4	DIGIT / PASS distributed_matrix: ScaLAPACK Cholesky and triangular solves, upstream L1/triangle bounds, subcommunicators, ranks=4
+distributed_mixed_coo-1	DIGIT / PASS distributed_mixed_coo: i32/bool/i64 panels, custom leaf, simultaneous B broadcast/C reduction, explicit zeros and empty COO; exact; world+parity
+distributed_mixed_coo-2	DIGIT / PASS distributed_mixed_coo: i32/bool/i64 panels, custom leaf, simultaneous B broadcast/C reduction, explicit zeros and empty COO; exact; world+parity
+distributed_mixed_coo-4	DIGIT / PASS distributed_mixed_coo: i32/bool/i64 panels, custom leaf, simultaneous B broadcast/C reduction, explicit zeros and empty COO; exact; world+parity
+distributed_mttkrp-1	DIGIT / PASS distributed_mttkrp: vector and aux-first matrix MTTKRP, all output modes, cyclic/mode-2/virtual-2 layouts, empty shards, parity subcommunicators, ranks=1
+distributed_mttkrp-2	DIGIT / PASS distributed_mttkrp: vector and aux-first matrix MTTKRP, all output modes, cyclic/mode-2/virtual-2 layouts, empty shards, parity subcommunicators, ranks=2
+distributed_mttkrp-4	DIGIT / PASS distributed_mttkrp: vector and aux-first matrix MTTKRP, all output modes, cyclic/mode-2/virtual-2 layouts, empty shards, parity subcommunicators, ranks=4
+distributed_node_fold-1	DIGIT / PASS distributed_node_fold: rank permutation exact; six raw folded maps and backmapping abs<1e-6; world+parity
+distributed_node_fold-2	DIGIT / PASS distributed_node_fold: rank permutation exact; six raw folded maps and backmapping abs<1e-6; world+parity
+distributed_node_fold-4	DIGIT / PASS distributed_node_fold: rank permutation exact; six raw folded maps and backmapping abs<1e-6; world+parity
+distributed_normal_mapping-1	DIGIT / PASS distributed_normal_mapping: source six-permutation search, old-layout subsets, template partitioning and IDs; world+parity; exact
+distributed_normal_mapping-2	DIGIT / PASS distributed_normal_mapping: source six-permutation search, old-layout subsets, template partitioning and IDs; world+parity; exact
+distributed_normal_mapping-4	DIGIT / PASS distributed_normal_mapping: source six-permutation search, old-layout subsets, template partitioning and IDs; world+parity; exact
+distributed_packed_contraction-1	DIGIT / PASS distributed_packed_contraction: canonical kernel, virtual reduction, input broadcasts and root Reduce; exact i64; world+parity
+distributed_packed_contraction-2	DIGIT / PASS distributed_packed_contraction: canonical kernel, virtual reduction, input broadcasts and root Reduce; exact i64; world+parity
+distributed_packed_contraction-4	DIGIT / PASS distributed_packed_contraction: canonical kernel, virtual reduction, input broadcasts and root Reduce; exact i64; world+parity
+distributed_packed_sum-1	DIGIT / PASS distributed_packed_sum: packed sequential, virtual, broadcast/reduce; exact i64; world+parity
+distributed_packed_sum-2	DIGIT / PASS distributed_packed_sum: packed sequential, virtual, broadcast/reduce; exact i64; world+parity
+distributed_packed_sum-4	DIGIT / PASS distributed_packed_sum: packed sequential, virtual, broadcast/reduce; exact i64; world+parity
+distributed_qr_svd-1	DIGIT / PASS distributed_qr_svd: original Frobenius bounds; ranks=1
+distributed_qr_svd-2	DIGIT / PASS distributed_qr_svd: original Frobenius bounds; ranks=2
+distributed_qr_svd-4	DIGIT / PASS distributed_qr_svd: original Frobenius bounds; ranks=4
+distributed_random_fill-1	DIGIT / PASS distributed_random_fill: four types, pre-scaling precision and padding draw consumption exact; world+parity
+distributed_random_fill-2	DIGIT / PASS distributed_random_fill: four types, pre-scaling precision and padding draw consumption exact; world+parity
+distributed_random_fill-4	DIGIT / PASS distributed_random_fill: four types, pre-scaling precision and padding draw consumption exact; world+parity
+distributed_solve_factor-1	DIGIT / PASS distributed_solve_factor: weighted factor normal-equation solves, all output modes, cyclic/mode-2/virtual-2 layouts, empty shards, parity subcommunicators, ranks=1
+distributed_solve_factor-2	DIGIT / PASS distributed_solve_factor: weighted factor normal-equation solves, all output modes, cyclic/mode-2/virtual-2 layouts, empty shards, parity subcommunicators, ranks=2
+distributed_solve_factor-4	DIGIT / PASS distributed_solve_factor: weighted factor normal-equation solves, all output modes, cyclic/mode-2/virtual-2 layouts, empty shards, parity subcommunicators, ranks=4
+distributed_sparse_2d_dense-1	DIGIT / PASS distributed_sparse_2d_dense: CSR/dense and CSR/CSR inputs, dense output, cyclic reduction, strips, layer subsets, recursive child; exact i64; world+parity
+distributed_sparse_2d_dense-2	DIGIT / PASS distributed_sparse_2d_dense: CSR/dense and CSR/CSR inputs, dense output, cyclic reduction, strips, layer subsets, recursive child; exact i64; world+parity
+distributed_sparse_2d_dense-4	DIGIT / PASS distributed_sparse_2d_dense: CSR/dense and CSR/CSR inputs, dense output, cyclic reduction, strips, layer subsets, recursive child; exact i64; world+parity
+distributed_sparse_2d_pairs-1	DIGIT / PASS distributed_sparse_2d_pairs: raw 3D keys, empty/stored-zero panels, A/B broadcast, dense cyclic reduction, strided output, layers and recursion; exact i64; world+parity
+distributed_sparse_2d_pairs-2	DIGIT / PASS distributed_sparse_2d_pairs: raw 3D keys, empty/stored-zero panels, A/B broadcast, dense cyclic reduction, strided output, layers and recursion; exact i64; world+parity
+distributed_sparse_2d_pairs-4	DIGIT / PASS distributed_sparse_2d_pairs: raw 3D keys, empty/stored-zero panels, A/B broadcast, dense cyclic reduction, strided output, layers and recursion; exact i64; world+parity
+distributed_sparse_2d-1	DIGIT / PASS distributed_sparse_2d: moving A/B/C, strided sparse output, variable payloads, CSR/CCSR reduction, layer subsets and recursive child; exact i64; world+parity
+distributed_sparse_2d-2	DIGIT / PASS distributed_sparse_2d: moving A/B/C, strided sparse output, variable payloads, CSR/CCSR reduction, layer subsets and recursive child; exact i64; world+parity
+distributed_sparse_2d-4	DIGIT / PASS distributed_sparse_2d: moving A/B/C, strided sparse output, variable payloads, CSR/CCSR reduction, layer subsets and recursive child; exact i64; world+parity
+distributed_sparse_dense_output-1	DIGIT / PASS distributed_sparse_dense_output: CCSR represented rows/zeros, beta once, rectangular grids, empty k, repeated labels, input-only sums, restored sparse layout; exact i64; world+parity
+distributed_sparse_dense_output-2	DIGIT / PASS distributed_sparse_dense_output: CCSR represented rows/zeros, beta once, rectangular grids, empty k, repeated labels, input-only sums, restored sparse layout; exact i64; world+parity
+distributed_sparse_dense_output-4	DIGIT / PASS distributed_sparse_dense_output: CCSR represented rows/zeros, beta once, rectangular grids, empty k, repeated labels, input-only sums, restored sparse layout; exact i64; world+parity
+distributed_sparse_diagonal-1	DIGIT / PASS distributed_sparse_diagonal: repeated sparse contractions, repeated A/B/output labels, exact diagonal extract/replace; world+parity
+distributed_sparse_diagonal-2	DIGIT / PASS distributed_sparse_diagonal: repeated sparse contractions, repeated A/B/output labels, exact diagonal extract/replace; world+parity
+distributed_sparse_diagonal-4	DIGIT / PASS distributed_sparse_diagonal: repeated sparse contractions, repeated A/B/output labels, exact diagonal extract/replace; world+parity
+distributed_sparse_fold_function-1	DIGIT / PASS distributed_sparse_fold_function: high-order custom sparse/dense contractions, batches, axis permutation, repeated input/output indices, world+parity; exact i64
+distributed_sparse_fold_function-2	DIGIT / PASS distributed_sparse_fold_function: high-order custom sparse/dense contractions, batches, axis permutation, repeated input/output indices, world+parity; exact i64
+distributed_sparse_fold_function-4	DIGIT / PASS distributed_sparse_fold_function: high-order custom sparse/dense contractions, batches, axis permutation, repeated input/output indices, world+parity; exact i64
+distributed_sparse_fold-1	DIGIT / PASS distributed_sparse_fold: folded sparse contractions, outer product, dot product, reshape; world+parity
+distributed_sparse_fold-2	DIGIT / PASS distributed_sparse_fold: folded sparse contractions, outer product, dot product, reshape; world+parity
+distributed_sparse_fold-4	DIGIT / PASS distributed_sparse_fold: folded sparse contractions, outer product, dot product, reshape; world+parity
+distributed_sparse_function_output-1	DIGIT / PASS distributed_sparse_function_output: source symbolic/numeric CSR custom product, structural zeros, beta clear/merge, world+parity; exact keys and i64
+distributed_sparse_function_output-2	DIGIT / PASS distributed_sparse_function_output: source symbolic/numeric CSR custom product, structural zeros, beta clear/merge, world+parity; exact keys and i64
+distributed_sparse_function_output-4	DIGIT / PASS distributed_sparse_function_output: source symbolic/numeric CSR custom product, structural zeros, beta clear/merge, world+parity; exact keys and i64
+distributed_sparse_function-1	DIGIT / PASS distributed_sparse_function: non-distributive function, stored and dense zeros, missing keys, C-only output, broadcasts/reductions, world+parity; exact i64
+distributed_sparse_function-2	DIGIT / PASS distributed_sparse_function: non-distributive function, stored and dense zeros, missing keys, C-only output, broadcasts/reductions, world+parity; exact i64
+distributed_sparse_function-4	DIGIT / PASS distributed_sparse_function: non-distributive function, stored and dense zeros, missing keys, C-only output, broadcasts/reductions, world+parity; exact i64
+distributed_sparse_gemm_function-1	DIGIT / PASS distributed_sparse_gemm_function: source CSR custom kernels and distributed panels, stored zeros, missing entries, empty sparse shards, world+parity; exact i64
+distributed_sparse_gemm_function-2	DIGIT / PASS distributed_sparse_gemm_function: source CSR custom kernels and distributed panels, stored zeros, missing entries, empty sparse shards, world+parity; exact i64
+distributed_sparse_gemm_function-4	DIGIT / PASS distributed_sparse_gemm_function: source CSR custom kernels and distributed panels, stored zeros, missing entries, empty sparse shards, world+parity; exact i64
+distributed_sparse_gemm-1	DIGIT / PASS distributed_sparse_gemm: sparse*sparse and sparse*dense GEMM, exact i64 oracle, empty A panels, restored virtual output; world+parity
+distributed_sparse_gemm-2	DIGIT / PASS distributed_sparse_gemm: sparse*sparse and sparse*dense GEMM, exact i64 oracle, empty A panels, restored virtual output; world+parity
+distributed_sparse_gemm-4	DIGIT / PASS distributed_sparse_gemm: sparse*sparse and sparse*dense GEMM, exact i64 oracle, empty A panels, restored virtual output; world+parity
+distributed_sparse_general-1	DIGIT / PASS distributed_sparse_general: C-only indices, sparse/dense fiber broadcasts, output reduction, original distribution restore, empty sparse shards, world+parity; exact i64
+distributed_sparse_general-2	DIGIT / PASS distributed_sparse_general: C-only indices, sparse/dense fiber broadcasts, output reduction, original distribution restore, empty sparse shards, world+parity; exact i64
+distributed_sparse_general-4	DIGIT / PASS distributed_sparse_general: C-only indices, sparse/dense fiber broadcasts, output reduction, original distribution restore, empty sparse shards, world+parity; exact i64
+distributed_sparse_input_reduction-1	DIGIT / PASS distributed_sparse_input_reduction: A/B-only labels, four sparse/mixed paths, repeated indices, empty reduction, replicas, virtual blocks, world+parity; exact i64
+distributed_sparse_input_reduction-2	DIGIT / PASS distributed_sparse_input_reduction: A/B-only labels, four sparse/mixed paths, repeated indices, empty reduction, replicas, virtual blocks, world+parity; exact i64
+distributed_sparse_input_reduction-4	DIGIT / PASS distributed_sparse_input_reduction: A/B-only labels, four sparse/mixed paths, repeated indices, empty reduction, replicas, virtual blocks, world+parity; exact i64
+distributed_sparse_io-1	DIGIT / PASS distributed_sparse_io: sparse indexed I/O, redistribution, views, custom identity; world+parity
+distributed_sparse_io-2	DIGIT / PASS distributed_sparse_io: sparse indexed I/O, redistribution, views, custom identity; world+parity
+distributed_sparse_io-4	DIGIT / PASS distributed_sparse_io: sparse indexed I/O, redistribution, views, custom identity; world+parity
+distributed_sparse_multilinear-1	DIGIT / PASS distributed_sparse_multilinear: stored TTTP, both factor orientations, blocked auxiliary, MTTKRP, huge sparse domain; atol=1e-6; world+parity
+distributed_sparse_multilinear-2	DIGIT / PASS distributed_sparse_multilinear: stored TTTP, both factor orientations, blocked auxiliary, MTTKRP, huge sparse domain; atol=1e-6; world+parity
+distributed_sparse_multilinear-4	DIGIT / PASS distributed_sparse_multilinear: stored TTTP, both factor orientations, blocked auxiliary, MTTKRP, huge sparse domain; atol=1e-6; world+parity
+distributed_sparse_plan-1	DIGIT / PASS distributed_sparse_plan: existing GridPlan/PlanCache reuse, changing nnz/values, topology switch, restored distribution; exact i64; world+parity
+distributed_sparse_plan-2	DIGIT / PASS distributed_sparse_plan: existing GridPlan/PlanCache reuse, changing nnz/values, topology switch, restored distribution; exact i64; world+parity
+distributed_sparse_plan-4	DIGIT / PASS distributed_sparse_plan: existing GridPlan/PlanCache reuse, changing nnz/values, topology switch, restored distribution; exact i64; world+parity
+distributed_sparse_raw-1	DIGIT / PASS distributed_sparse_raw: source raw mapped panels, beta, uneven shapes, empty shards, virtual factors; exact i64; world+parity
+distributed_sparse_raw-2	DIGIT / PASS distributed_sparse_raw: source raw mapped panels, beta, uneven shapes, empty shards, virtual factors; exact i64; world+parity
+distributed_sparse_raw-4	DIGIT / PASS distributed_sparse_raw: source raw mapped panels, beta, uneven shapes, empty shards, virtual factors; exact i64; world+parity
+distributed_sparse_reduce-1	DIGIT / PASS distributed_sparse_reduce: CSR/CCSR row partition exchange and recursive reduction, root-only assembly, exact keys/zeros and noncommutative rank order, empty/tall matrices; world+parity
+distributed_sparse_reduce-2	DIGIT / PASS distributed_sparse_reduce: CSR/CCSR row partition exchange and recursive reduction, root-only assembly, exact keys/zeros and noncommutative rank order, empty/tall matrices; world+parity
+distributed_sparse_reduce-4	DIGIT / PASS distributed_sparse_reduce: CSR/CCSR row partition exchange and recursive reduction, root-only assembly, exact keys/zeros and noncommutative rank order, empty/tall matrices; world+parity
+distributed_sparse_replicate-1	DIGIT / PASS distributed_sparse_replicate: CSR/CCSR broadcasts, virtual beta-once, output-fiber reductions, replica cleanup, stored zeros; exact i64; world+parity
+distributed_sparse_replicate-2	DIGIT / PASS distributed_sparse_replicate: CSR/CCSR broadcasts, virtual beta-once, output-fiber reductions, replica cleanup, stored zeros; exact i64; world+parity
+distributed_sparse_replicate-4	DIGIT / PASS distributed_sparse_replicate: CSR/CCSR broadcasts, virtual beta-once, output-fiber reductions, replica cleanup, stored zeros; exact i64; world+parity
+distributed_sparse_search-1	DIGIT / PASS distributed_sparse_search: normal/weighted/exhaustive selection, raw execution, zero nnz, strict memory rejection, exact i64; world+parity
+distributed_sparse_search-2	DIGIT / PASS distributed_sparse_search: normal/weighted/exhaustive selection, raw execution, zero nnz, strict memory rejection, exact i64; world+parity
+distributed_sparse_search-4	DIGIT / PASS distributed_sparse_search: normal/weighted/exhaustive selection, raw execution, zero nnz, strict memory rejection, exact i64; world+parity
+distributed_sparse_solve_factor-1	DIGIT / PASS distributed_sparse_solve_factor: weighted stored-entry Gram systems, all output and physical modes, virtual blocks, empty shards/systems, world+parity; atol=1e-8 rtol=1e-5
+distributed_sparse_solve_factor-2	DIGIT / PASS distributed_sparse_solve_factor: weighted stored-entry Gram systems, all output and physical modes, virtual blocks, empty shards/systems, world+parity; atol=1e-8 rtol=1e-5
+distributed_sparse_solve_factor-4	DIGIT / PASS distributed_sparse_solve_factor: weighted stored-entry Gram systems, all output and physical modes, virtual blocks, empty shards/systems, world+parity; atol=1e-8 rtol=1e-5
+distributed_sparse_storage_dispatch-1	DIGIT / PASS distributed_sparse_storage_dispatch: source dense-result zero retention, repeated output preservation, sparse-B operand reversal with noncommutative algebra; exact values/keys; world+parity
+distributed_sparse_storage_dispatch-2	DIGIT / PASS distributed_sparse_storage_dispatch: source dense-result zero retention, repeated output preservation, sparse-B operand reversal with noncommutative algebra; exact values/keys; world+parity
+distributed_sparse_storage_dispatch-4	DIGIT / PASS distributed_sparse_storage_dispatch: source dense-result zero retention, repeated output preservation, sparse-B operand reversal with noncommutative algebra; exact values/keys; world+parity
+distributed_sparse_sum-1	DIGIT / PASS distributed_sparse_sum: sparse/dense indexed sums, reductions, broadcasts, diagonals and layouts; world+parity
+distributed_sparse_sum-2	DIGIT / PASS distributed_sparse_sum: sparse/dense indexed sums, reductions, broadcasts, diagonals and layouts; world+parity
+distributed_sparse_sum-4	DIGIT / PASS distributed_sparse_sum: sparse/dense indexed sums, reductions, broadcasts, diagonals and layouts; world+parity
+distributed_sparse_transform-1	DIGIT / PASS distributed_sparse_transform: stored map, dense accumulation, diagonals, explicit zeros; world+parity
+distributed_sparse_transform-2	DIGIT / PASS distributed_sparse_transform: stored map, dense accumulation, diagonals, explicit zeros; world+parity
+distributed_sparse_transform-4	DIGIT / PASS distributed_sparse_transform: stored map, dense accumulation, diagonals, explicit zeros; world+parity
+distributed_spd-1	DIGIT / PASS distributed_spd: identity padding, virtual columns, subcommunicators, ranks=1
+distributed_spd-2	DIGIT / PASS distributed_spd: identity padding, virtual columns, subcommunicators, ranks=2
+distributed_spd-4	DIGIT / PASS distributed_spd: identity padding, virtual columns, subcommunicators, ranks=4
+distributed_svd_paths-1	DIGIT / PASS distributed_svd_paths: truncated and randomized distributed SVD paths; ranks=1
+distributed_svd_paths-2	DIGIT / PASS distributed_svd_paths: truncated and randomized distributed SVD paths; ranks=2
+distributed_svd_paths-4	DIGIT / PASS distributed_svd_paths: truncated and randomized distributed SVD paths; ranks=4
+distributed_sy_scalars-1	DIGIT / PASS distributed_sy_scalars: f32, integers, complex, non-Copy custom ring; exactly representable fixtures; world+parity
+distributed_sy_scalars-2	DIGIT / PASS distributed_sy_scalars: f32, integers, complex, non-Copy custom ring; exactly representable fixtures; world+parity
+distributed_sy_scalars-4	DIGIT / PASS distributed_sy_scalars: f32, integers, complex, non-Copy custom ring; exactly representable fixtures; world+parity
+distributed_sy_sum-1	DIGIT / PASS distributed_sy_sum: SY unfolding/projection, diagonals, mixed AS, three axes; atol=1e-6; world+parity
+distributed_sy_sum-2	DIGIT / PASS distributed_sy_sum: SY unfolding/projection, diagonals, mixed AS, three axes; atol=1e-6; world+parity
+distributed_sy_sum-4	DIGIT / PASS distributed_sy_sum: SY unfolding/projection, diagonals, mixed AS, three axes; atol=1e-6; world+parity
+distributed_symmetric_contraction-1	DIGIT / PASS distributed_symmetric_contraction: full-domain SY/AS/SH products, overcount, mixed cancellation, diagonals; atol=1e-6; world+parity
+distributed_symmetric_contraction-2	DIGIT / PASS distributed_symmetric_contraction: full-domain SY/AS/SH products, overcount, mixed cancellation, diagonals; atol=1e-6; world+parity
+distributed_symmetric_contraction-4	DIGIT / PASS distributed_symmetric_contraction: full-domain SY/AS/SH products, overcount, mixed cancellation, diagonals; atol=1e-6; world+parity
+distributed_symmetric_diagonal-1	DIGIT / PASS distributed_symmetric_diagonal: extraction/reinsertion, surviving AS links, SY diagonal, virtual mapping; exact i64; world+parity
+distributed_symmetric_diagonal-2	DIGIT / PASS distributed_symmetric_diagonal: extraction/reinsertion, surviving AS links, SY diagonal, virtual mapping; exact i64; world+parity
+distributed_symmetric_diagonal-4	DIGIT / PASS distributed_symmetric_diagonal: extraction/reinsertion, surviving AS links, SY diagonal, virtual mapping; exact i64; world+parity
+distributed_symmetric_function-1	DIGIT / PASS distributed_symmetric_function: exact non-distributive polynomial, repeated labels, physical i/j/k, preserved output layout/off-diagonals; world+parity
+distributed_symmetric_function-2	DIGIT / PASS distributed_symmetric_function: exact non-distributive polynomial, repeated labels, physical i/j/k, preserved output layout/off-diagonals; world+parity
+distributed_symmetric_function-4	DIGIT / PASS distributed_symmetric_function: exact non-distributive polynomial, repeated labels, physical i/j/k, preserved output layout/off-diagonals; world+parity
+distributed_symmetric_io-1	DIGIT / PASS distributed_symmetric_io: SY/AS/SH packed holes, parity, replicas, virtual redistribution; exact i64; world+parity
+distributed_symmetric_io-2	DIGIT / PASS distributed_symmetric_io: SY/AS/SH packed holes, parity, replicas, virtual redistribution; exact i64; world+parity
+distributed_symmetric_io-4	DIGIT / PASS distributed_symmetric_io: SY/AS/SH packed holes, parity, replicas, virtual redistribution; exact i64; world+parity
+distributed_symmetric_operations-1	DIGIT / PASS distributed_symmetric_operations: indexed scaling, group repack, scaled writes; exact i64; world+parity
+distributed_symmetric_operations-2	DIGIT / PASS distributed_symmetric_operations: indexed scaling, group repack, scaled writes; exact i64; world+parity
+distributed_symmetric_operations-4	DIGIT / PASS distributed_symmetric_operations: indexed scaling, group repack, scaled writes; exact i64; world+parity
+distributed_symmetric_repack-1	DIGIT / PASS distributed_symmetric_repack: canonical intersection, SY/AS/SH, partial groups, replicas; exact i64; world+parity
+distributed_symmetric_repack-2	DIGIT / PASS distributed_symmetric_repack: canonical intersection, SY/AS/SH, partial groups, replicas; exact i64; world+parity
+distributed_symmetric_repack-4	DIGIT / PASS distributed_symmetric_repack: canonical intersection, SY/AS/SH, partial groups, replicas; exact i64; world+parity
+distributed_tensor_svd-1	DIGIT / PASS distributed_tensor_svd: tensor SVD layouts, truncation/randomization, reshape; ranks=1
+distributed_tensor_svd-2	DIGIT / PASS distributed_tensor_svd: tensor SVD layouts, truncation/randomization, reshape; ranks=2
+distributed_tensor_svd-4	DIGIT / PASS distributed_tensor_svd: tensor SVD layouts, truncation/randomization, reshape; ranks=4
+distributed_tttp-1	DIGIT / PASS distributed_tttp: vector and matrix TTTP, mode remapping, balanced divisions, empty shards, parity subcommunicators, ranks=1
+distributed_tttp-2	DIGIT / PASS distributed_tttp: vector and matrix TTTP, mode remapping, balanced divisions, empty shards, parity subcommunicators, ranks=2
+distributed_tttp-4	DIGIT / PASS distributed_tttp: vector and matrix TTTP, mode remapping, balanced divisions, empty shards, parity subcommunicators, ranks=4
+foundation-1	DIGIT / PASS foundation: exact layouts, algebra, read/write, redistribution, empty shards, subcommunicators; ranks=1
+foundation-2	DIGIT / PASS foundation: exact layouts, algebra, read/write, redistribution, empty shards, subcommunicators; ranks=2
+foundation-4	DIGIT / PASS foundation: exact layouts, algebra, read/write, redistribution, empty shards, subcommunicators; ranks=4
+indexed_write_order-1	DIGIT / PASS indexed_write_order: exact source left coefficients, duplicate beta-once and antisymmetric signs with noncommutative matrix ring
+indexed_write_order-2	DIGIT / PASS indexed_write_order: exact source left coefficients, duplicate beta-once and antisymmetric signs with noncommutative matrix ring
+indexed_write_order-4	DIGIT / PASS indexed_write_order: exact source left coefficients, duplicate beta-once and antisymmetric signs with noncommutative matrix ring
+integer_random-1	DIGIT / PASS integer_random: exact i32/i64 cast order, draw state, dense/SY/AS/SH, reversed/constant intervals, empty/scalar; world+parity
+integer_random-2	DIGIT / PASS integer_random: exact i32/i64 cast order, draw state, dense/SY/AS/SH, reversed/constant intervals, empty/scalar; world+parity
+integer_random-4	DIGIT / PASS integer_random: exact i32/i64 cast order, draw state, dense/SY/AS/SH, reversed/constant intervals, empty/scalar; world+parity
+model_training-1	DIGIT / PASS model_training: history/features exact; QR/SVD fits within upstream reconstruction bound; ranks=1
+model_training-2	DIGIT / PASS model_training: history/features exact; QR/SVD fits within upstream reconstruction bound; ranks=2
+model_training-4	DIGIT / PASS model_training: history/features exact; QR/SVD fits within upstream reconstruction bound; ranks=4
+pair_read-1	DIGIT / PASS pair_read: dense/sparse/symmetric all-pairs/data, explicit zeros, virtual/replicated layouts, packed/full symmetry, empty shards/dimensions, i64/complex; world+parity
+pair_read-2	DIGIT / PASS pair_read: dense/sparse/symmetric all-pairs/data, explicit zeros, virtual/replicated layouts, packed/full symmetry, empty shards/dimensions, i64/complex; world+parity
+pair_read-4	DIGIT / PASS pair_read: dense/sparse/symmetric all-pairs/data, explicit zeros, virtual/replicated layouts, packed/full symmetry, empty shards/dimensions, i64/complex; world+parity
+plan_cache-1	DIGIT / PASS plan_cache: reuse, value/scalar changes, grid/distribution switches, scalars/empty contraction and subcontexts; ranks=1
+plan_cache-2	DIGIT / PASS plan_cache: reuse, value/scalar changes, grid/distribution switches, scalars/empty contraction and subcontexts; ranks=2
+plan_cache-4	DIGIT / PASS plan_cache: reuse, value/scalar changes, grid/distribution switches, scalars/empty contraction and subcontexts; ranks=4
+randomized_guess-1	DIGIT / PASS randomized_guess: zero-iteration in/out data exact; final oversampled guess retained and QR-orthogonal; world+parity
+randomized_guess-2	DIGIT / PASS randomized_guess: zero-iteration in/out data exact; final oversampled guess retained and QR-orthogonal; world+parity
+randomized_guess-4	DIGIT / PASS randomized_guess: zero-iteration in/out data exact; final oversampled guess retained and QR-orthogonal; world+parity
+replicated_contraction-1	DIGIT / PASS replicated_contraction: virtual beta, Reduce roots, broadcast cleanup; ranks=1
+replicated_contraction-2	DIGIT / PASS replicated_contraction: virtual beta, Reduce roots, broadcast cleanup; ranks=2
+replicated_contraction-4	DIGIT / PASS replicated_contraction: virtual beta, Reduce roots, broadcast cleanup; ranks=4
+replicated_sum-1	DIGIT / PASS replicated_sum: broadcast, native block Allreduce, root beta, virtual reduction, zero counts; ranks=1
+replicated_sum-2	DIGIT / PASS replicated_sum: broadcast, native block Allreduce, root beta, virtual reduction, zero counts; ranks=2
+replicated_sum-4	DIGIT / PASS replicated_sum: broadcast, native block Allreduce, root beta, virtual reduction, zero counts; ranks=4
+schedule-1	DIGIT / PASS schedule: exact distributed sum/contract, RAW/WAR/WAW/self updates, no-input roots, subsecond partition costs, replay, world+parity
+schedule-2	DIGIT / PASS schedule: exact distributed sum/contract, RAW/WAR/WAW/self updates, no-input roots, subsecond partition costs, replay, world+parity
+schedule-4	DIGIT / PASS schedule: exact distributed sum/contract, RAW/WAR/WAW/self updates, no-input roots, subsecond partition costs, replay, world+parity
+selected_mapping-1	DIGIT / PASS selected_mapping: normal and exhaustive IDs rebuilt on all ranks; exact layouts; world+parity
+selected_mapping-2	DIGIT / PASS selected_mapping: normal and exhaustive IDs rebuilt on all ranks; exact layouts; world+parity
+selected_mapping-4	DIGIT / PASS selected_mapping: normal and exhaustive IDs rebuilt on all ranks; exact layouts; world+parity
+selection_objective-1	DIGIT / PASS selection_objective: time/memory tradeoff, strict budget, weight cutoff, rank/local ties, selected execution and subcontexts; ranks=1
+selection_objective-2	DIGIT / PASS selection_objective: time/memory tradeoff, strict budget, weight cutoff, rank/local ties, selected execution and subcontexts; ranks=2
+selection_objective-4	DIGIT / PASS selection_objective: time/memory tradeoff, strict budget, weight cutoff, rank/local ties, selected execution and subcontexts; ranks=4
+selector-1	DIGIT / PASS selector: remote plan broadcast and execution, lowest-rank winner, missing candidates, filters, reset, subcontexts; ranks=1
+selector-2	DIGIT / PASS selector: remote plan broadcast and execution, lowest-rank winner, missing candidates, filters, reset, subcontexts; ranks=2
+selector-4	DIGIT / PASS selector: remote plan broadcast and execution, lowest-rank winner, missing candidates, filters, reset, subcontexts; ranks=4
+sparse_complex-1	DIGIT / PASS sparse_complex: real arange(27) indexed kij coefficient assignment; sum(abs(diff))<1e-14; world+parity
+sparse_complex-2	DIGIT / PASS sparse_complex: real arange(27) indexed kij coefficient assignment; sum(abs(diff))<1e-14; world+parity
+sparse_complex-4	DIGIT / PASS sparse_complex: real arange(27) indexed kij coefficient assignment; sum(abs(diff))<1e-14; world+parity
+sparse_einsum_hadamard-1	DIGIT / PASS sparse_einsum_hadamard: ijk,jkl->ijkl sparse-sparse and sparse-dense; n=11 sp=0.1; sum(abs(diff))<1e-14; world+parity
+sparse_einsum_hadamard-2	DIGIT / PASS sparse_einsum_hadamard: ijk,jkl->ijkl sparse-sparse and sparse-dense; n=11 sp=0.1; sum(abs(diff))<1e-14; world+parity
+sparse_einsum_hadamard-4	DIGIT / PASS sparse_einsum_hadamard: ijk,jkl->ijkl sparse-sparse and sparse-dense; n=11 sp=0.1; sum(abs(diff))<1e-14; world+parity
+sparse_permuted_io-1	DIGIT / PASS sparse_permuted_io: all seven sparse combinations, explicit-zero versus dense-zero scatter, canonical sparse-of-packed source, orbit gather; exact world+parity
+sparse_permuted_io-2	DIGIT / PASS sparse_permuted_io: all seven sparse combinations, explicit-zero versus dense-zero scatter, canonical sparse-of-packed source, orbit gather; exact world+parity
+sparse_permuted_io-4	DIGIT / PASS sparse_permuted_io: all seven sparse combinations, explicit-zero versus dense-zero scatter, canonical sparse-of-packed source, orbit gather; exact world+parity
+sparse_random_fill-1	DIGIT / PASS sparse_random_fill: exact source candidate count/keys/dedup/sample order, seven scalar families, dense and sparse branches, zero density resets; world+parity
+sparse_random_fill-2	DIGIT / PASS sparse_random_fill: exact source candidate count/keys/dedup/sample order, seven scalar families, dense and sparse branches, zero density resets; world+parity
+sparse_random_fill-4	DIGIT / PASS sparse_random_fill: exact source candidate count/keys/dedup/sample order, seven scalar families, dense and sparse branches, zero density resets; world+parity
+sparse_sample-1	DIGIT / PASS sparse_sample: source zero (4,3,5), sample .5 then .3, nonincreasing norm2; world+parity
+sparse_sample-2	DIGIT / PASS sparse_sample: source zero (4,3,5), sample .5 then .3, nonincreasing norm2; world+parity
+sparse_sample-4	DIGIT / PASS sparse_sample: source zero (4,3,5), sample .5 then .3, nonincreasing norm2; world+parity
+sparse_scaled_expression-1	DIGIT / PASS sparse_scaled_expression: ijl,kjl->ijk with sparse A/B/C and dense twin; n=5 sp=0.1; sum(abs(diff))<1e-14; world+parity
+sparse_scaled_expression-2	DIGIT / PASS sparse_scaled_expression: ijl,kjl->ijk with sparse A/B/C and dense twin; n=5 sp=0.1; sum(abs(diff))<1e-14; world+parity
+sparse_scaled_expression-4	DIGIT / PASS sparse_scaled_expression: ijl,kjl->ijk with sparse A/B/C and dense twin; n=5 sp=0.1; sum(abs(diff))<1e-14; world+parity
+sparse_sy-1	DIGIT / PASS sparse_sy: six source shapes/symmetries; three strict allclose comparisons; world+parity
+sparse_sy-2	DIGIT / PASS sparse_sy: six source shapes/symmetries; three strict allclose comparisons; world+parity
+sparse_sy-4	DIGIT / PASS sparse_sy: six source shapes/symmetries; three strict allclose comparisons; world+parity
+sparse_text_io-1	DIGIT / PASS sparse_text_io: four scalar families, distributed dense/sparse additive reads and writes, duplicate keys, reverse/no-value records, tiny/empty files; exact fixtures, world+parity
+sparse_text_io-2	DIGIT / PASS sparse_text_io: four scalar families, distributed dense/sparse additive reads and writes, duplicate keys, reverse/no-value records, tiny/empty files; exact fixtures, world+parity
+sparse_text_io-4	DIGIT / PASS sparse_text_io: four scalar families, distributed dense/sparse additive reads and writes, duplicate keys, reverse/no-value records, tiny/empty files; exact fixtures, world+parity
+storage_conversion-1	DIGIT / PASS storage_conversion: exact nonzero/signed/absolute/custom predicates, padding call order, virtual blocks, primary sparse layers and collective dense replicas; world+parity
+storage_conversion-2	DIGIT / PASS storage_conversion: exact nonzero/signed/absolute/custom predicates, padding call order, virtual blocks, primary sparse layers and collective dense replicas; world+parity
+storage_conversion-4	DIGIT / PASS storage_conversion: exact nonzero/signed/absolute/custom predicates, padding call order, virtual blocks, primary sparse layers and collective dense replicas; world+parity
+subcomm_dense-1	DIGIT / PASS subcomm_dense: split-context repeated sum, generic contraction and MPI BLAS; world ranks=1
+subcomm_dense-2	DIGIT / PASS subcomm_dense: split-context repeated sum, generic contraction and MPI BLAS; world ranks=2
+subcomm_dense-4	DIGIT / PASS subcomm_dense: split-context repeated sum, generic contraction and MPI BLAS; world ranks=4
+subworld_transfer-1	DIGIT / PASS subworld_transfer: alpha/beta parent-child transfers, cyclic/virtual/replicated layouts, reversed odd/even child ranks, i64/complex/noncommutative matrix
+subworld_transfer-2	DIGIT / PASS subworld_transfer: alpha/beta parent-child transfers, cyclic/virtual/replicated layouts, reversed odd/even child ranks, i64/complex/noncommutative matrix
+subworld_transfer-4	DIGIT / PASS subworld_transfer: alpha/beta parent-child transfers, cyclic/virtual/replicated layouts, reversed odd/even child ranks, i64/complex/noncommutative matrix
+sum_remap-1	DIGIT / PASS sum_remap: mapped union indices, reduction+broadcast, transpose, restored distribution; ranks=1
+sum_remap-2	DIGIT / PASS sum_remap: mapped union indices, reduction+broadcast, transpose, restored distribution; ranks=2
+sum_remap-4	DIGIT / PASS sum_remap: mapped union indices, reduction+broadcast, transpose, restored distribution; ranks=4
+symmetric_norms-1	DIGIT / PASS symmetric_norms: SY/AS/SH/NS, source typed-square vs manual norm2, exact distributed unpack, virtual/padded/empty shards; finite abs<1e-6, world+parity
+symmetric_norms-2	DIGIT / PASS symmetric_norms: SY/AS/SH/NS, source typed-square vs manual norm2, exact distributed unpack, virtual/padded/empty shards; finite abs<1e-6, world+parity
+symmetric_norms-4	DIGIT / PASS symmetric_norms: SY/AS/SH/NS, source typed-square vs manual norm2, exact distributed unpack, virtual/padded/empty shards; finite abs<1e-6, world+parity
+symmetric_permuted_io-1	DIGIT / PASS symmetric_permuted_io: six mixed/packed paths, signed full-orbit gather, canonical scatter, skipped coords, beta-once, reversed/root-only subworlds; exact world+parity
+symmetric_permuted_io-2	DIGIT / PASS symmetric_permuted_io: six mixed/packed paths, signed full-orbit gather, canonical scatter, skipped coords, beta-once, reversed/root-only subworlds; exact world+parity
+symmetric_permuted_io-4	DIGIT / PASS symmetric_permuted_io: six mixed/packed paths, signed full-orbit gather, canonical scatter, skipped coords, beta-once, reversed/root-only subworlds; exact world+parity
+symmetric_random-1	DIGIT / PASS symmetric_random: exact typed packed draws, padding/virtual holes, SY/AS/SH, scalar/zero extent; world+parity
+symmetric_random-2	DIGIT / PASS symmetric_random: exact typed packed draws, padding/virtual holes, SY/AS/SH, scalar/zero extent; world+parity
+symmetric_random-4	DIGIT / PASS symmetric_random: exact typed packed draws, padding/virtual holes, SY/AS/SH, scalar/zero extent; world+parity
+symmetric_reshuffle-1	DIGIT / PASS symmetric_reshuffle: exact SY/AS/SH/mixed groups, physical/virtual/replica changes, holes/padding, empty/scalar, integer/complex; world+parity
+symmetric_reshuffle-2	DIGIT / PASS symmetric_reshuffle: exact SY/AS/SH/mixed groups, physical/virtual/replica changes, holes/padding, empty/scalar, integer/complex; world+parity
+symmetric_reshuffle-4	DIGIT / PASS symmetric_reshuffle: exact SY/AS/SH/mixed groups, physical/virtual/replica changes, holes/padding, empty/scalar, integer/complex; world+parity
+symmetric_subworld-1	DIGIT / PASS symmetric_subworld: exact SY/AS/SH affine accumulation, reversed noncontiguous children, virtual/replicas, empty/scalar-sized domains, integer/complex; world+parity
+symmetric_subworld-2	DIGIT / PASS symmetric_subworld: exact SY/AS/SH affine accumulation, reversed noncontiguous children, virtual/replicas, empty/scalar-sized domains, integer/complex; world+parity
+symmetric_subworld-4	DIGIT / PASS symmetric_subworld: exact SY/AS/SH affine accumulation, reversed noncontiguous children, virtual/replicas, empty/scalar-sized domains, integer/complex; world+parity
+symmetric_text_io-1	DIGIT / PASS symmetric_text_io: four types, canonical SY/AS/SH export, reverse indices, signed orbit accumulation; exact world+parity
+symmetric_text_io-2	DIGIT / PASS symmetric_text_io: four types, canonical SY/AS/SH export, reverse indices, signed orbit accumulation; exact world+parity
+symmetric_text_io-4	DIGIT / PASS symmetric_text_io: four types, canonical SY/AS/SH export, reverse indices, signed orbit accumulation; exact world+parity
+tensor_blas_fold-1	DIGIT / PASS tensor_blas_fold: high-order weighted multi-index reduction, outer product, empty contraction and scalar; ranks=1
+tensor_blas_fold-2	DIGIT / PASS tensor_blas_fold: high-order weighted multi-index reduction, outer product, empty contraction and scalar; ranks=2
+tensor_blas_fold-4	DIGIT / PASS tensor_blas_fold: high-order weighted multi-index reduction, outer product, empty contraction and scalar; ranks=4
+tensor_contract-1	DIGIT / PASS tensor_contract: generic aligned matrix contraction, physical+virtual reduction, restored replicas; ranks=1
+tensor_contract-2	DIGIT / PASS tensor_contract: generic aligned matrix contraction, physical+virtual reduction, restored replicas; ranks=2
+tensor_contract-4	DIGIT / PASS tensor_contract: generic aligned matrix contraction, physical+virtual reduction, restored replicas; ranks=4
+tensor_gemm-1	DIGIT / PASS tensor_gemm: MPI panels + BLAS, uneven dimensions, restored distribution, zero reduction; ranks=1
+tensor_gemm-2	DIGIT / PASS tensor_gemm: MPI panels + BLAS, uneven dimensions, restored distribution, zero reduction; ranks=2
+tensor_gemm-4	DIGIT / PASS tensor_gemm: MPI panels + BLAS, uneven dimensions, restored distribution, zero reduction; ranks=4
+tensor_norms-1	DIGIT / PASS tensor_norms: dense/sparse real norms, complex/bool norm2, source NS storage reduction on replicas, empty local shards, unchanged inputs; finite abs<1e-6; world+parity
+tensor_norms-2	DIGIT / PASS tensor_norms: dense/sparse real norms, complex/bool norm2, source NS storage reduction on replicas, empty local shards, unchanged inputs; finite abs<1e-6; world+parity
+tensor_norms-4	DIGIT / PASS tensor_norms: dense/sparse real norms, complex/bool norm2, source NS storage reduction on replicas, empty local shards, unchanged inputs; finite abs<1e-6; world+parity
+tensor_sum-1	DIGIT / PASS tensor_sum: aligned Tensor API, local/physical reductions, broadcast and transpose; ranks=1
+tensor_sum-2	DIGIT / PASS tensor_sum: aligned Tensor API, local/physical reductions, broadcast and transpose; ranks=2
+tensor_sum-4	DIGIT / PASS tensor_sum: aligned Tensor API, local/physical reductions, broadcast and transpose; ranks=4
+tttp_memory-1	DIGIT / PASS tttp_memory: exact dense/sparse blocked TTTP, uneven rank-local budgets and MPI_MAX, both factor orientations, virtual mappings and stored zeros; world+parity
+tttp_memory-2	DIGIT / PASS tttp_memory: exact dense/sparse blocked TTTP, uneven rank-local budgets and MPI_MAX, both factor orientations, virtual mappings and stored zeros; world+parity
+tttp_memory-4	DIGIT / PASS tttp_memory: exact dense/sparse blocked TTTP, uneven rank-local budgets and MPI_MAX, both factor orientations, virtual mappings and stored zeros; world+parity
+typed_distributed_eigh-1	DIGIT / PASS typed_distributed_eigh: four scalar types, Hermitian and degenerate spectra, square subworld and original distribution, source Frobenius bounds; world+parity
+typed_distributed_eigh-2	DIGIT / PASS typed_distributed_eigh: four scalar types, Hermitian and degenerate spectra, square subworld and original distribution, source Frobenius bounds; world+parity
+typed_distributed_eigh-4	DIGIT / PASS typed_distributed_eigh: four scalar types, Hermitian and degenerate spectra, square subworld and original distribution, source Frobenius bounds; world+parity
+typed_distributed_qr-1	DIGIT / PASS typed_distributed_qr: four native scalar GEQRF/ORGQR/UNGQR families, rectangular/empty local shards and subcontexts; source Frobenius residual/orthogonality bounds
+typed_distributed_qr-2	DIGIT / PASS typed_distributed_qr: four native scalar GEQRF/ORGQR/UNGQR families, rectangular/empty local shards and subcontexts; source Frobenius residual/orthogonality bounds
+typed_distributed_qr-4	DIGIT / PASS typed_distributed_qr: four native scalar GEQRF/ORGQR/UNGQR families, rectangular/empty local shards and subcontexts; source Frobenius residual/orthogonality bounds
+typed_distributed_svd-1	DIGIT / PASS typed_distributed_svd: four native scalar GESVD families, rectangular/one-row/empty local shards and subcontexts; ordered real singular values, source Frobenius bounds
+typed_distributed_svd-2	DIGIT / PASS typed_distributed_svd: four native scalar GESVD families, rectangular/one-row/empty local shards and subcontexts; ordered real singular values, source Frobenius bounds
+typed_distributed_svd-4	DIGIT / PASS typed_distributed_svd: four native scalar GESVD families, rectangular/one-row/empty local shards and subcontexts; ordered real singular values, source Frobenius bounds
+typed_folded_execution-1	DIGIT / PASS typed_folded_execution: four BLAS scalar types, raw panels, partial folds, node ordering, home/lowmem, weighted cache; exact inputs/layouts and finite abs<1e-6; world+parity
+typed_folded_execution-2	DIGIT / PASS typed_folded_execution: four BLAS scalar types, raw panels, partial folds, node ordering, home/lowmem, weighted cache; exact inputs/layouts and finite abs<1e-6; world+parity
+typed_folded_execution-4	DIGIT / PASS typed_folded_execution: four BLAS scalar types, raw panels, partial folds, node ordering, home/lowmem, weighted cache; exact inputs/layouts and finite abs<1e-6; world+parity
+typed_grid_blas-1	DIGIT / PASS typed_grid_blas: four scalar types, rectangular/square grids, uneven and empty shards, reordered batches; exact inputs/layouts and finite abs<1e-6; world+parity
+typed_grid_blas-2	DIGIT / PASS typed_grid_blas: four scalar types, rectangular/square grids, uneven and empty shards, reordered batches; exact inputs/layouts and finite abs<1e-6; world+parity
+typed_grid_blas-4	DIGIT / PASS typed_grid_blas: four scalar types, rectangular/square grids, uneven and empty shards, reordered batches; exact inputs/layouts and finite abs<1e-6; world+parity
+typed_matrix_factors-1	DIGIT / PASS typed_matrix_factors: native four-type distributed POTRF/POSV/TRSM, Hermitian reconstruction, padding and zero local rows; world+parity; upstream L1<=1e-3 or relative<=1e-3, triangle<=1e-6
+typed_matrix_factors-2	DIGIT / PASS typed_matrix_factors: native four-type distributed POTRF/POSV/TRSM, Hermitian reconstruction, padding and zero local rows; world+parity; upstream L1<=1e-3 or relative<=1e-3, triangle<=1e-6
+typed_matrix_factors-4	DIGIT / PASS typed_matrix_factors: native four-type distributed POTRF/POSV/TRSM, Hermitian reconstruction, padding and zero local rows; world+parity; upstream L1<=1e-3 or relative<=1e-3, triangle<=1e-6
+typed_multilinear-1	DIGIT / PASS typed_multilinear: dense/sparse TTTP and MTTKRP, four float types, exact integers/noncommutative matrix semiring, virtual/replicated layouts and stored zeros; abs<1e-6; world+parity
+typed_multilinear-2	DIGIT / PASS typed_multilinear: dense/sparse TTTP and MTTKRP, four float types, exact integers/noncommutative matrix semiring, virtual/replicated layouts and stored zeros; abs<1e-6; world+parity
+typed_multilinear-4	DIGIT / PASS typed_multilinear: dense/sparse TTTP and MTTKRP, four float types, exact integers/noncommutative matrix semiring, virtual/replicated layouts and stored zeros; abs<1e-6; world+parity
+typed_randomized_svd-1	DIGIT / PASS typed_randomized_svd: four scalar types, dense+sparse randomized SVD, missing-row/empty-shard rank-two fixture, complex plain-transpose projection, oversampled and zero-iteration guess semantics, source Frobenius bound; world+parity
+typed_randomized_svd-2	DIGIT / PASS typed_randomized_svd: four scalar types, dense+sparse randomized SVD, missing-row/empty-shard rank-two fixture, complex plain-transpose projection, oversampled and zero-iteration guess semantics, source Frobenius bound; world+parity
+typed_randomized_svd-4	DIGIT / PASS typed_randomized_svd: four scalar types, dense+sparse randomized SVD, missing-row/empty-shard rank-two fixture, complex plain-transpose projection, oversampled and zero-iteration guess semantics, source Frobenius bound; world+parity
+typed_svd_truncation-1	DIGIT / PASS typed_svd_truncation: four native scalar types, exact rank/threshold branches including zero-rank full-factor quirk; distributed sliced reconstruction; world+parity
+typed_svd_truncation-2	DIGIT / PASS typed_svd_truncation: four native scalar types, exact rank/threshold branches including zero-rank full-factor quirk; distributed sliced reconstruction; world+parity
+typed_svd_truncation-4	DIGIT / PASS typed_svd_truncation: four native scalar types, exact rank/threshold branches including zero-rank full-factor quirk; distributed sliced reconstruction; world+parity
+typed_tensor_svd-1	DIGIT / PASS typed_tensor_svd: four scalar types, sparse/dense permuted factor indices, truncated/randomized paths, normalized reconstruction<1e-6 and original orthogonality bounds; world+parity
+typed_tensor_svd-2	DIGIT / PASS typed_tensor_svd: four scalar types, sparse/dense permuted factor indices, truncated/randomized paths, normalized reconstruction<1e-6 and original orthogonality bounds; world+parity
+typed_tensor_svd-4	DIGIT / PASS typed_tensor_svd: four scalar types, sparse/dense permuted factor indices, truncated/randomized paths, normalized reconstruction<1e-6 and original orthogonality bounds; world+parity
+upstream_algebraic_multigrid-1	DIGIT / PASS algebraic_multigrid: n=4 original_nlvl=2 ndiv=2 nsmooth=3; multigrid_rnorm=4.937970528833717e-3 < jacobi_rnorm=5.547611182988828e-3; ; world+parity
+upstream_algebraic_multigrid-2	DIGIT / PASS algebraic_multigrid: n=4 original_nlvl=2 ndiv=2 nsmooth=3; multigrid_rnorm=5.085930671471991e-3 < jacobi_rnorm=5.837246582193954e-3; ; world+parity
+upstream_algebraic_multigrid-4	DIGIT / PASS algebraic_multigrid: n=4 original_nlvl=2 ndiv=2 nsmooth=3; multigrid_rnorm=5.189487439309569e-3 < jacobi_rnorm=5.878901083452919e-3; ; world+parity
+upstream_ao_mo_transf-1	DIGIT / PASS upstream_ao_mo_transf: pinned n=6 m=9 double, float and nonsymmetric AO-MO paths completed; source has no numerical gate; world+parity
+upstream_ao_mo_transf-2	DIGIT / PASS upstream_ao_mo_transf: pinned n=6 m=9 double, float and nonsymmetric AO-MO paths completed; source has no numerical gate; world+parity
+upstream_ao_mo_transf-4	DIGIT / PASS upstream_ao_mo_transf: pinned n=6 m=9 double, float and nonsymmetric AO-MO paths completed; source has no numerical gate; world+parity
+upstream_apsp-1	DIGIT / PASS apsp: dense tropical path doubling equals sparse augmented path doubling; n=9; Q=0; ref=0; bound=0; world+parity
+upstream_apsp-2	DIGIT / PASS apsp: dense tropical path doubling equals sparse augmented path doubling; n=9; Q=0; ref=0; bound=0; world+parity
+upstream_apsp-4	DIGIT / PASS apsp: dense tropical path doubling equals sparse augmented path doubling; n=9; Q=0; ref=0; bound=0; world+parity
+upstream_bitonic_sort-1	DIGIT / PASS bitonic_sort: min-semiring tensor contractions sort the random vector exactly; logn=4; exact nondecreasing order; world+parity
+upstream_bitonic_sort-2	DIGIT / PASS bitonic_sort: min-semiring tensor contractions sort the random vector exactly; logn=4; exact nondecreasing order; world+parity
+upstream_bitonic_sort-4	DIGIT / PASS bitonic_sort: min-semiring tensor contractions sort the random vector exactly; logn=4; exact nondecreasing order; world+parity
+upstream_bivar_function-1	DIGIT / PASS upstream_bivar_function: source four-dimensional identity, deterministic global-key fixture; abs(error)<1e-6; world+parity
+upstream_bivar_function-2	DIGIT / PASS upstream_bivar_function: source four-dimensional identity, deterministic global-key fixture; abs(error)<1e-6; world+parity
+upstream_bivar_function-4	DIGIT / PASS upstream_bivar_function: source four-dimensional identity, deterministic global-key fixture; abs(error)<1e-6; world+parity
+upstream_bivar_transform-1	DIGIT / PASS upstream_bivar_transform: original mutable-output identity, deterministic global-key values, abs(error)<1e-6; world+parity
+upstream_bivar_transform-2	DIGIT / PASS upstream_bivar_transform: original mutable-output identity, deterministic global-key values, abs(error)<1e-6; world+parity
+upstream_bivar_transform-4	DIGIT / PASS upstream_bivar_transform: original mutable-output identity, deterministic global-key values, abs(error)<1e-6; world+parity
+upstream_block_sparse-1	DIGIT / PASS block_sparse: source matrix-of-distributed-Tensor local CSR contraction and flattened reference; n=7; r=10; Q=0; ref=source flattened product; bound=1e-4; world+parity
+upstream_block_sparse-2	DIGIT / PASS block_sparse: source matrix-of-distributed-Tensor local CSR contraction and flattened reference; n=7; r=10; Q=0; ref=source flattened product; bound=1e-4; world+parity
+upstream_block_sparse-4	DIGIT / PASS block_sparse: source matrix-of-distributed-Tensor local CSR contraction and flattened reference; n=7; r=10; Q=0; ref=source flattened product; bound=1e-4; world+parity
+upstream_btwn_central-1	DIGIT / PASS btwn_central: Bellman/Brandes custom sparse SSS versus dense naive; n=6 sp=0.2 bsize=2 test=1 sp_B=1 sp_C=1; norm2<=6e-6; world+parity
+upstream_btwn_central-2	DIGIT / PASS btwn_central: Bellman/Brandes custom sparse SSS versus dense naive; n=6 sp=0.2 bsize=2 test=1 sp_B=1 sp_C=1; norm2<=6e-6; world+parity
+upstream_btwn_central-4	DIGIT / PASS btwn_central: Bellman/Brandes custom sparse SSS versus dense naive; n=6 sp=0.2 bsize=2 test=1 sp_B=1 sp_C=1; norm2<=6e-6; world+parity
+upstream_ccsd-1	DIGIT / PASS upstream_ccsd: pinned no=4 nv=6 deterministic integral/amplitude fixture and full iteration completed; source has no numerical gate; world+parity
+upstream_ccsd-2	DIGIT / PASS upstream_ccsd: pinned no=4 nv=6 deterministic integral/amplitude fixture and full iteration completed; source has no numerical gate; world+parity
+upstream_ccsd-4	DIGIT / PASS upstream_ccsd: pinned no=4 nv=6 deterministic integral/amplitude fixture and full iteration completed; source has no numerical gate; world+parity
+upstream_ccsdt_map-1	DIGIT / PASS upstream_ccsdt_map: source n=4 zero-input six-order mapping smoke; world+parity
+upstream_ccsdt_map-2	DIGIT / PASS upstream_ccsdt_map: source n=4 zero-input six-order mapping smoke; world+parity
+upstream_ccsdt_map-4	DIGIT / PASS upstream_ccsdt_map: source n=4 zero-input six-order mapping smoke; world+parity
+upstream_ccsdt_t3_to_t2-1	DIGIT / PASS upstream_ccsdt_t3_to_t2: AS packed and NS expanded CCSDT contraction equality; norm checks <1e-6; residual <=1e-6; world+parity
+upstream_ccsdt_t3_to_t2-2	DIGIT / PASS upstream_ccsdt_t3_to_t2: AS packed and NS expanded CCSDT contraction equality; norm checks <1e-6; residual <=1e-6; world+parity
+upstream_ccsdt_t3_to_t2-4	DIGIT / PASS upstream_ccsdt_t3_to_t2: AS packed and NS expanded CCSDT contraction equality; norm checks <1e-6; residual <=1e-6; world+parity
+upstream_checkpoint_sparse-1	DIGIT / PASS checkpoint_sparse: rank-seeded MT sparse 3D .1 text round trip; n=7; Q=1.659570583342333e-6; ref=source six-decimal sparse file round trip; bound=1e-8*n^3=3.4299999999999998e-6; world+parity
+upstream_checkpoint_sparse-2	DIGIT / PASS checkpoint_sparse: rank-seeded MT sparse 3D .1 text round trip; n=7; Q=1.730313117560421e-6; ref=source six-decimal sparse file round trip; bound=1e-8*n^3=3.4299999999999998e-6; world+parity
+upstream_checkpoint_sparse-4	DIGIT / PASS checkpoint_sparse: rank-seeded MT sparse 3D .1 text round trip; n=7; Q=1.6343449060870917e-6; ref=source six-decimal sparse file round trip; bound=1e-8*n^3=3.4299999999999998e-6; world+parity
+upstream_checkpoint-1	DIGIT / PASS checkpoint: dense two-offset MPI-IO round trip; n=7; both norms<=1e-9*n; world+parity
+upstream_checkpoint-2	DIGIT / PASS checkpoint: dense two-offset MPI-IO round trip; n=7; both norms<=1e-9*n; world+parity
+upstream_checkpoint-4	DIGIT / PASS checkpoint: dense two-offset MPI-IO round trip; n=7; both norms<=1e-9*n; world+parity
+upstream_dense-1	DIGIT / PASS upstream diag_ctr: delta=0e0, bound=1e-10
+upstream_dense-1	DIGIT / PASS upstream reduce_bcast variant 0: Frobenius=0e0, bound=1e-6
+upstream_dense-1	DIGIT / PASS upstream reduce_bcast variant 1: Frobenius=0e0, bound=1e-6
+upstream_dense-2	DIGIT / PASS upstream diag_ctr: delta=0e0, bound=1e-10
+upstream_dense-2	DIGIT / PASS upstream reduce_bcast variant 0: Frobenius=0e0, bound=1e-6
+upstream_dense-2	DIGIT / PASS upstream reduce_bcast variant 1: Frobenius=0e0, bound=1e-6
+upstream_dense-4	DIGIT / PASS upstream diag_ctr: delta=0e0, bound=1e-10
+upstream_dense-4	DIGIT / PASS upstream reduce_bcast variant 0: Frobenius=0e0, bound=1e-6
+upstream_dense-4	DIGIT / PASS upstream reduce_bcast variant 1: Frobenius=0e0, bound=1e-6
+upstream_dft_3d-1	DIGIT / PASS dft_3D: 3D normalized DFT contraction produces the diagonal mesh; n=6; per-element real error<1e-9; world+parity
+upstream_dft_3d-2	DIGIT / PASS dft_3D: 3D normalized DFT contraction produces the diagonal mesh; n=6; per-element real error<1e-9; world+parity
+upstream_dft_3d-4	DIGIT / PASS dft_3D: 3D normalized DFT contraction produces the diagonal mesh; n=6; per-element real error<1e-9; world+parity
+upstream_dft-1	DIGIT / PASS upstream_dft: SY complex DFT/inverse and custom scalar sum; original real error <1e-9; world+parity
+upstream_dft-2	DIGIT / PASS upstream_dft: SY complex DFT/inverse and custom scalar sum; original real error <1e-9; world+parity
+upstream_dft-4	DIGIT / PASS upstream_dft: SY complex DFT/inverse and custom scalar sum; original real error <1e-9; world+parity
+upstream_diag_ctr-1	DIGIT / PASS upstream_diag_ctr: source double-diagonal trace identity; absolute 1e-10; world+parity
+upstream_diag_ctr-2	DIGIT / PASS upstream_diag_ctr: source double-diagonal trace identity; absolute 1e-10; world+parity
+upstream_diag_ctr-4	DIGIT / PASS upstream_diag_ctr: source double-diagonal trace identity; absolute 1e-10; world+parity
+upstream_diag_sym-1	DIGIT / PASS upstream_diag_sym: source paired-symmetry diagonal summation identity; norm<1e-10; world+parity
+upstream_diag_sym-2	DIGIT / PASS upstream_diag_sym: source paired-symmetry diagonal summation identity; norm<1e-10; world+parity
+upstream_diag_sym-4	DIGIT / PASS upstream_diag_sym: source paired-symmetry diagonal summation identity; norm<1e-10; world+parity
+upstream_endomorphism_cust_sp-1	DIGIT / PASS upstream_endomorphism_cust_sp: stored string lengths; exact; world+parity
+upstream_endomorphism_cust_sp-2	DIGIT / PASS upstream_endomorphism_cust_sp: stored string lengths; exact; world+parity
+upstream_endomorphism_cust_sp-4	DIGIT / PASS upstream_endomorphism_cust_sp: stored string lengths; exact; world+parity
+upstream_endomorphism_cust-1	DIGIT / PASS upstream_endomorphism_cust: cached string lengths; exact; world+parity
+upstream_endomorphism_cust-2	DIGIT / PASS upstream_endomorphism_cust: cached string lengths; exact; world+parity
+upstream_endomorphism_cust-4	DIGIT / PASS upstream_endomorphism_cust: cached string lengths; exact; world+parity
+upstream_endomorphism-1	DIGIT / PASS upstream_endomorphism: A=A^3; abs<1e-6; world+parity
+upstream_endomorphism-2	DIGIT / PASS upstream_endomorphism: A=A^3; abs<1e-6; world+parity
+upstream_endomorphism-4	DIGIT / PASS upstream_endomorphism: A=A^3; abs<1e-6; world+parity
+upstream_fast_3mm-1	DIGIT / PASS upstream_fast_3mm: source SY/AS decomposition; n=5; world_norm=3.76822190084106e-15; parity_norm=3.76822190084106e-15; norm<=1e-10
+upstream_fast_3mm-2	DIGIT / PASS upstream_fast_3mm: source SY/AS decomposition; n=5; world_norm=3.972054645195637e-15; parity_norm=3.76822190084106e-15; norm<=1e-10
+upstream_fast_3mm-4	DIGIT / PASS upstream_fast_3mm: source SY/AS decomposition; n=5; world_norm=4.864753555590494e-15; parity_norm=3.972054645195637e-15; norm<=1e-10
+upstream_fast_as_as_sy_tensor_ctr-1	DIGIT / PASS upstream_fast_as_as_sy_tensor_ctr: n=4,s=t=v=1; internal-AS/SY world=2.6645352591003757e-15 parity=2.6645352591003757e-15 <=1e-6; final world=1.3349332759368577e-15 parity=1.3349332759368577e-15 <=1e-3
+upstream_fast_as_as_sy_tensor_ctr-2	DIGIT / PASS upstream_fast_as_as_sy_tensor_ctr: n=4,s=t=v=1; internal-AS/SY world=2.6645352591003757e-15 parity=2.6645352591003757e-15 <=1e-6; final world=1.3349332759368575e-15 parity=1.3349332759368577e-15 <=1e-3
+upstream_fast_as_as_sy_tensor_ctr-4	DIGIT / PASS upstream_fast_as_as_sy_tensor_ctr: n=4,s=t=v=1; internal-AS/SY world=2.6645352591003757e-15 parity=2.6645352591003757e-15 <=1e-6; final world=1.3980737370470151e-15 parity=1.3349332759368575e-15 <=1e-3
+upstream_fast_diagram-1	DIGIT / PASS upstream_fast_diagram: source AS/SH/diagonal decomposition; n=5; world_norm=2.822563383523573e-13; parity_norm=2.822563383523573e-13; norm<=1e-10
+upstream_fast_diagram-2	DIGIT / PASS upstream_fast_diagram: source AS/SH/diagonal decomposition; n=5; world_norm=2.9893504870362093e-13; parity_norm=2.822563383523573e-13; norm<=1e-10
+upstream_fast_diagram-4	DIGIT / PASS upstream_fast_diagram: source AS/SH/diagonal decomposition; n=5; world_norm=2.868692552935151e-13; parity_norm=2.9893504870362093e-13; norm<=1e-10
+upstream_fast_sy_as_as_tensor_ctr-1	DIGIT / PASS upstream_fast_sy_as_as_tensor_ctr: n=4,s=t=v=1; internal-AS/SY world=1.9329521701561158e-16 parity=1.9329521701561158e-16 <=1e-6; final world=1.5853512473345908e-16 parity=1.5853512473345908e-16 <=1e-3
+upstream_fast_sy_as_as_tensor_ctr-2	DIGIT / PASS upstream_fast_sy_as_as_tensor_ctr: n=4,s=t=v=1; internal-AS/SY world=1.7690777709386488e-16 parity=1.9329521701561158e-16 <=1e-6; final world=1.6332216545761085e-16 parity=1.5853512473345908e-16 <=1e-3
+upstream_fast_sy_as_as_tensor_ctr-4	DIGIT / PASS upstream_fast_sy_as_as_tensor_ctr: n=4,s=t=v=1; internal-AS/SY world=1.7690777709386488e-16 parity=1.7690777709386488e-16 <=1e-6; final world=1.9748438260743943e-16 parity=1.6332216545761085e-16 <=1e-3
+upstream_fast_sym_4d-1	DIGIT / PASS upstream_fast_sym_4D: source SH fast symmetric 4D contraction; n=6; world_norm=6.178232776096625e-14; parity_norm=6.178232776096625e-14; norm<=1e-10
+upstream_fast_sym_4d-2	DIGIT / PASS upstream_fast_sym_4D: source SH fast symmetric 4D contraction; n=6; world_norm=6.881907520048741e-14; parity_norm=6.178232776096625e-14; norm<=1e-10
+upstream_fast_sym_4d-4	DIGIT / PASS upstream_fast_sym_4D: source SH fast symmetric 4D contraction; n=6; world_norm=6.544255328434869e-14; parity_norm=6.881907520048741e-14; norm<=1e-10
+upstream_fast_sym-1	DIGIT / PASS upstream_fast_sym: n=13; source fast symmetric matrix product identity; world=4.940779362819616e-14; parity=4.940779362819616e-14; norm<=1e-10
+upstream_fast_sym-2	DIGIT / PASS upstream_fast_sym: n=13; source fast symmetric matrix product identity; world=4.839553726947542e-14; parity=4.940779362819616e-14; norm<=1e-10
+upstream_fast_sym-4	DIGIT / PASS upstream_fast_sym: n=13; source fast symmetric matrix product identity; world=5.1686337223012393e-14; parity=4.839553726947542e-14; norm<=1e-10
+upstream_fast_tensor_ctr-1	DIGIT / PASS upstream_fast_tensor_ctr: n=4,s=t=v=1; C_ans_sym world=0e0 parity=0e0; Z_mults_sym world=1.2306961192854808e-14 parity=1.2306961192854808e-14; final world=1.7852165294699933e-14 parity=1.7852165294699933e-14; final<=1e-3
+upstream_fast_tensor_ctr-2	DIGIT / PASS upstream_fast_tensor_ctr: n=4,s=t=v=1; C_ans_sym world=0e0 parity=0e0; Z_mults_sym world=1.2306961192854808e-14 parity=1.2306961192854808e-14; final world=1.7852165294699933e-14 parity=1.7852165294699933e-14; final<=1e-3
+upstream_fast_tensor_ctr-4	DIGIT / PASS upstream_fast_tensor_ctr: n=4,s=t=v=1; C_ans_sym world=0e0 parity=0e0; Z_mults_sym world=1.2306961192854808e-14 parity=1.2306961192854808e-14; final world=1.8757184323041964e-14 parity=1.7852165294699933e-14; final<=1e-3
+upstream_fft_with_idx_partition-1	DIGIT / PASS fft_with_idx_partition: recursive fiber FFT equals SY DFT contraction; n=6 logm=8; error<=n*n*m*1e-6; world+parity
+upstream_fft_with_idx_partition-2	DIGIT / PASS fft_with_idx_partition: recursive fiber FFT equals SY DFT contraction; n=6 logm=8; error<=n*n*m*1e-6; world+parity
+upstream_fft_with_idx_partition-4	DIGIT / PASS fft_with_idx_partition: recursive fiber FFT equals SY DFT contraction; n=6 logm=8; error<=n*n*m*1e-6; world+parity
+upstream_fft-1	DIGIT / PASS fft: iterative folded radix-2 FFT equals DFT; n=16; real/imag residual<=1e-6; world+parity
+upstream_fft-2	DIGIT / PASS fft: iterative folded radix-2 FFT equals DFT; n=16; real/imag residual<=1e-6; world+parity
+upstream_fft-4	DIGIT / PASS fft: iterative folded radix-2 FFT equals DFT; n=16; real/imag residual<=1e-6; world+parity
+upstream_force_integration_sparse-1	DIGIT / PASS force_integration_sparse: one selected compressed-AS uacc changes any particle by >1e-6; twice inverse uacc restores every dx/dy within 1e-6; n=5; world+parity
+upstream_force_integration_sparse-2	DIGIT / PASS force_integration_sparse: one selected compressed-AS uacc changes any particle by >1e-6; twice inverse uacc restores every dx/dy within 1e-6; n=5; world+parity
+upstream_force_integration_sparse-4	DIGIT / PASS force_integration_sparse: one selected compressed-AS uacc changes any particle by >1e-6; twice inverse uacc restores every dx/dy within 1e-6; n=5; world+parity
+upstream_force_integration-1	DIGIT / PASS force_integration: dense AS force doubled then inverted twice; first modifies each particle, restored dx/dy within 1e-6; n=5; world+parity
+upstream_force_integration-2	DIGIT / PASS force_integration: dense AS force doubled then inverted twice; first modifies each particle, restored dx/dy within 1e-6; n=5; world+parity
+upstream_force_integration-4	DIGIT / PASS force_integration: dense AS force doubled then inverted twice; first modifies each particle, restored dx/dy within 1e-6; n=5; world+parity
+upstream_gemm4d-1	DIGIT / PASS upstream_gemm4d: source NS/SY/AS/SH associativity; n=7; abs(error)<1e-6; world+parity
+upstream_gemm4d-2	DIGIT / PASS upstream_gemm4d: source NS/SY/AS/SH associativity; n=7; abs(error)<1e-6; world+parity
+upstream_gemm4d-4	DIGIT / PASS upstream_gemm4d: source NS/SY/AS/SH associativity; n=7; abs(error)<1e-6; world+parity
+upstream_hosvd-1	DIGIT / PASS upstream_hosvd: source sequential four-mode SVD/scaling/reconstruction, n=2 R=1/2, dense+sparse fixtures, f32/f64/Complex32/64, finite source residual bound; world+parity
+upstream_hosvd-2	DIGIT / PASS upstream_hosvd: source sequential four-mode SVD/scaling/reconstruction, n=2 R=1/2, dense+sparse fixtures, f32/f64/Complex32/64, finite source residual bound; world+parity
+upstream_hosvd-4	DIGIT / PASS upstream_hosvd: source sequential four-mode SVD/scaling/reconstruction, n=2 R=1/2, dense+sparse fixtures, f32/f64/Complex32/64, finite source residual bound; world+parity
+upstream_jacobi-1	DIGIT / PASS upstream_jacobi: dense/sparse Jacobi iterations, source residual stopping threshold 1e-4 and final difference<=1e-6; bounded n=3; world+parity
+upstream_jacobi-2	DIGIT / PASS upstream_jacobi: dense/sparse Jacobi iterations, source residual stopping threshold 1e-4 and final difference<=1e-6; bounded n=3; world+parity
+upstream_jacobi-4	DIGIT / PASS upstream_jacobi: dense/sparse Jacobi iterations, source residual stopping threshold 1e-4 and final difference<=1e-6; bounded n=3; world+parity
+upstream_matmul-1	DIGIT / PASS matmul: sparse A/B/C GEMM equals dense reference; m=17 n=32 k=9 sp=0.2; residual<=1e-6; world+parity
+upstream_matmul-2	DIGIT / PASS matmul: sparse A/B/C GEMM equals dense reference; m=17 n=32 k=9 sp=0.2; residual<=1e-6; world+parity
+upstream_matmul-4	DIGIT / PASS matmul: sparse A/B/C GEMM equals dense reference; m=17 n=32 k=9 sp=0.2; residual<=1e-6; world+parity
+upstream_mis-1	DIGIT / PASS mis: source SH random graph n=16 sp=0.1; independent overlap=0 and every vertex covered; world+parity
+upstream_mis-2	DIGIT / PASS mis: source SH random graph n=16 sp=0.1; independent overlap=0 and every vertex covered; world+parity
+upstream_mis-4	DIGIT / PASS mis: source SH random graph n=16 sp=0.1; independent overlap=0 and every vertex covered; world+parity
+upstream_mis2-1	DIGIT / PASS mis2: source sparse 2-independent-set expressions and stored-entry checks; n=16 sp=.1; world+parity
+upstream_mis2-2	DIGIT / PASS mis2: source sparse 2-independent-set expressions and stored-entry checks; n=16 sp=.1; world+parity
+upstream_mis2-4	DIGIT / PASS mis2: source sparse 2-independent-set expressions and stored-entry checks; n=16 sp=.1; world+parity
+upstream_mttkrp-1	DIGIT / PASS mttkrp: sparse order-4 TTTP/MTTKRP, f32/f64/complex32/complex64, norm/size<1e-5; world+parity
+upstream_mttkrp-2	DIGIT / PASS mttkrp: sparse order-4 TTTP/MTTKRP, f32/f64/complex32/complex64, norm/size<1e-5; world+parity
+upstream_mttkrp-4	DIGIT / PASS mttkrp: sparse order-4 TTTP/MTTKRP, f32/f64/complex32/complex64, norm/size<1e-5; world+parity
+upstream_multi_tsr_sym-1	DIGIT / PASS upstream_multi_tsr_sym: source NS/SY Gram equality; world_error=0e0; parity_error=0e0; norm<1e-6
+upstream_multi_tsr_sym-2	DIGIT / PASS upstream_multi_tsr_sym: source NS/SY Gram equality; world_error=0e0; parity_error=0e0; norm<1e-6
+upstream_multi_tsr_sym-4	DIGIT / PASS upstream_multi_tsr_sym: source NS/SY Gram equality; world_error=0e0; parity_error=0e0; norm<1e-6
+upstream_neural_network-1	DIGIT / PASS upstream_neural_network: pinned n=16 m=9 d=4 sparsity=0.2 rotation/convolution chain; output norm2>=1e-6; world+parity
+upstream_neural_network-2	DIGIT / PASS upstream_neural_network: pinned n=16 m=9 d=4 sparsity=0.2 rotation/convolution chain; output norm2>=1e-6; world+parity
+upstream_neural_network-4	DIGIT / PASS upstream_neural_network: pinned n=16 m=9 d=4 sparsity=0.2 rotation/convolution chain; output norm2>=1e-6; world+parity
+upstream_particle_interaction-1	DIGIT / PASS particle_interaction: reduced pair force equals NS force-matrix row reduction; n=5; magnitude residual norm2<1e-6; world+parity
+upstream_particle_interaction-2	DIGIT / PASS particle_interaction: reduced pair force equals NS force-matrix row reduction; n=5; magnitude residual norm2<1e-6; world+parity
+upstream_particle_interaction-4	DIGIT / PASS particle_interaction: reduced pair force equals NS force-matrix row reduction; n=5; magnitude residual norm2<1e-6; world+parity
+upstream_permute_multiworld-1	DIGIT / PASS upstream_permute_multiworld: NS blocked cross-world gather/scatter, nonuniform/empty regions, skip maps and sparse-of-dense scatter semantics; exact/abs<1e-9, world+parity
+upstream_permute_multiworld-2	DIGIT / PASS upstream_permute_multiworld: NS blocked cross-world gather/scatter, nonuniform/empty regions, skip maps and sparse-of-dense scatter semantics; exact/abs<1e-9, world+parity
+upstream_permute_multiworld-4	DIGIT / PASS upstream_permute_multiworld: NS blocked cross-world gather/scatter, nonuniform/empty regions, skip maps and sparse-of-dense scatter semantics; exact/abs<1e-9, world+parity
+upstream_qinformatics-1	DIGIT / PASS upstream_qinformatics: pinned d=2 L=15 folded and unfolded contraction chains completed; source has no numerical gate; world+parity
+upstream_qinformatics-2	DIGIT / PASS upstream_qinformatics: pinned d=2 L=15 folded and unfolded contraction chains completed; source has no numerical gate; world+parity
+upstream_qinformatics-4	DIGIT / PASS upstream_qinformatics: pinned d=2 L=15 folded and unfolded contraction chains completed; source has no numerical gate; world+parity
+upstream_readall-1	DIGIT / PASS upstream_readall: root subworld fill, distributed read_all equivalent, world+parity
+upstream_readall-2	DIGIT / PASS upstream_readall: root subworld fill, distributed read_all equivalent, world+parity
+upstream_readall-4	DIGIT / PASS upstream_readall: root subworld fill, distributed read_all equivalent, world+parity
+upstream_readwrite-1	DIGIT / PASS upstream_readwrite: NS/SY/SH/AS diagonal writes and self contractions, world+parity
+upstream_readwrite-2	DIGIT / PASS upstream_readwrite: NS/SY/SH/AS diagonal writes and self contractions, world+parity
+upstream_readwrite-4	DIGIT / PASS upstream_readwrite: NS/SY/SH/AS diagonal writes and self contractions, world+parity
+upstream_recursive_matmul-1	DIGIT / PASS recursive_matmul: recursive slice/subworld GEMM; n=256 m=128 k=512; residual<1e-9; world+parity
+upstream_recursive_matmul-2	DIGIT / PASS recursive_matmul: recursive slice/subworld GEMM; n=256 m=128 k=512; residual<1e-9; world+parity
+upstream_recursive_matmul-4	DIGIT / PASS recursive_matmul: recursive slice/subworld GEMM; n=256 m=128 k=512; residual<1e-9; world+parity
+upstream_reduce_bcast-1	DIGIT / PASS upstream_reduce_bcast: source reduction/broadcast identities; norm<=1e-6; world+parity
+upstream_reduce_bcast-2	DIGIT / PASS upstream_reduce_bcast: source reduction/broadcast identities; norm<=1e-6; world+parity
+upstream_reduce_bcast-4	DIGIT / PASS upstream_reduce_bcast: source reduction/broadcast identities; norm<=1e-6; world+parity
+upstream_scalar-1	DIGIT / PASS upstream_scalar: scalar tensor, zero-edge contractions, norm tolerances, world+parity
+upstream_scalar-2	DIGIT / PASS upstream_scalar: scalar tensor, zero-edge contractions, norm tolerances, world+parity
+upstream_scalar-4	DIGIT / PASS upstream_scalar: scalar tensor, zero-edge contractions, norm tolerances, world+parity
+upstream_scan-1	DIGIT / PASS upstream_scan: recursive AS->SH->NS shift contractions, seeded f64 vector adapter, source abs(error)<1e-9*N; world+parity
+upstream_scan-2	DIGIT / PASS upstream_scan: recursive AS->SH->NS shift contractions, seeded f64 vector adapter, source abs(error)<1e-9*N; world+parity
+upstream_scan-4	DIGIT / PASS upstream_scan: recursive AS->SH->NS shift contractions, seeded f64 vector adapter, source abs(error)<1e-9*N; world+parity
+upstream_sparse_mp3_t-1	DIGIT / PASS upstream sparse_mp3 sparse-T sparse*dense: parity_ranks=1 dense_energy=-2.7409399877137064e-3 sparse_energy=-2.7409399877137064e-3 relative=0e0
+upstream_sparse_mp3_t-1	DIGIT / PASS upstream sparse_mp3 sparse-T sparse*dense: world_ranks=1 dense_energy=-2.7409399877137064e-3 sparse_energy=-2.7409399877137064e-3 relative=0e0
+upstream_sparse_mp3_t-2	DIGIT / PASS upstream sparse_mp3 sparse-T sparse*dense: parity_ranks=1 dense_energy=-2.7409399877137064e-3 sparse_energy=-2.7409399877137064e-3 relative=0e0
+upstream_sparse_mp3_t-2	DIGIT / PASS upstream sparse_mp3 sparse-T sparse*dense: world_ranks=2 dense_energy=-2.7409399877137064e-3 sparse_energy=-2.7409399877137072e-3 relative=3.164468181997279e-16
+upstream_sparse_mp3_t-4	DIGIT / PASS upstream sparse_mp3 sparse-T sparse*dense: parity_ranks=2 dense_energy=-2.7409399877137064e-3 sparse_energy=-2.7409399877137072e-3 relative=3.164468181997279e-16
+upstream_sparse_mp3_t-4	DIGIT / PASS upstream sparse_mp3 sparse-T sparse*dense: world_ranks=4 dense_energy=-2.740939987713705e-3 sparse_energy=-2.7409399877137072e-3 relative=7.9111704549932e-16
+upstream_sparse_mp3-1	DIGIT / PASS upstream sparse_mp3 dense-T sparse*dense: parity_ranks=1 dense_energy=-2.7409399877137064e-3 sparse_energy=-2.7409399877137064e-3 relative=0e0
+upstream_sparse_mp3-1	DIGIT / PASS upstream sparse_mp3 dense-T sparse*dense: world_ranks=1 dense_energy=-2.7409399877137064e-3 sparse_energy=-2.7409399877137064e-3 relative=0e0
+upstream_sparse_mp3-2	DIGIT / PASS upstream sparse_mp3 dense-T sparse*dense: parity_ranks=1 dense_energy=-2.7409399877137064e-3 sparse_energy=-2.7409399877137064e-3 relative=0e0
+upstream_sparse_mp3-2	DIGIT / PASS upstream sparse_mp3 dense-T sparse*dense: world_ranks=2 dense_energy=-2.7409399877137064e-3 sparse_energy=-2.7409399877137072e-3 relative=3.164468181997279e-16
+upstream_sparse_mp3-4	DIGIT / PASS upstream sparse_mp3 dense-T sparse*dense: parity_ranks=2 dense_energy=-2.7409399877137064e-3 sparse_energy=-2.7409399877137072e-3 relative=3.164468181997279e-16
+upstream_sparse_mp3-4	DIGIT / PASS upstream sparse_mp3 dense-T sparse*dense: world_ranks=4 dense_energy=-2.740939987713705e-3 sparse_energy=-2.7409399877137072e-3 relative=7.9111704549932e-16
+upstream_spectral_element-1	DIGIT / PASS upstream_spectral_element: source D/u/G spectral kernel, bounded n=3, norm2>=1e-6; world+parity
+upstream_spectral_element-2	DIGIT / PASS upstream_spectral_element: source D/u/G spectral kernel, bounded n=3, norm2>=1e-6; world+parity
+upstream_spectral_element-4	DIGIT / PASS upstream_spectral_element: source D/u/G spectral kernel, bounded n=3, norm2>=1e-6; world+parity
+upstream_speye-1	DIGIT / PASS upstream_speye: sparse A[iii]=1, distinct/repeated reductions equal n; abs<1e-9; world+parity
+upstream_speye-2	DIGIT / PASS upstream_speye: sparse A[iii]=1, distinct/repeated reductions equal n; abs<1e-9; world+parity
+upstream_speye-4	DIGIT / PASS upstream_speye: sparse A[iii]=1, distinct/repeated reductions equal n; abs<1e-9; world+parity
+upstream_spmv-1	DIGIT / PASS upstream_spmv: sparse A*dense b, dense/sparse outputs, source operand-order second term; initial norm>=1e-6 and residual<=1e-6; world+parity
+upstream_spmv-2	DIGIT / PASS upstream_spmv: sparse A*dense b, dense/sparse outputs, source operand-order second term; initial norm>=1e-6 and residual<=1e-6; world+parity
+upstream_spmv-4	DIGIT / PASS upstream_spmv: sparse A*dense b, dense/sparse outputs, source operand-order second term; initial norm>=1e-6 and residual<=1e-6; world+parity
+upstream_sptensor_sum-1	DIGIT / PASS upstream_sptensor_sum: B[abij]+=A[abij], sparse union and overlap; abs<=1e-9; world+parity
+upstream_sptensor_sum-2	DIGIT / PASS upstream_sptensor_sum: B[abij]+=A[abij], sparse union and overlap; abs<=1e-9; world+parity
+upstream_sptensor_sum-4	DIGIT / PASS upstream_sptensor_sum: B[abij]+=A[abij], sparse union and overlap; abs<=1e-9; world+parity
+upstream_sssp-1	DIGIT / PASS upstream_sssp: bounded tropical sparse Bellman-Ford, source SUM convergence check, injected negative cycle; world+parity
+upstream_sssp-2	DIGIT / PASS upstream_sssp: bounded tropical sparse Bellman-Ford, source SUM convergence check, injected negative cycle; world+parity
+upstream_sssp-4	DIGIT / PASS upstream_sssp: bounded tropical sparse Bellman-Ford, source SUM convergence check, injected negative cycle; world+parity
+upstream_strassen-1	DIGIT / PASS upstream_strassen: source one-level seven-product slicing, NS/AS/SY/SH, strict err<1e-10; parent and divisible-by-7 subworld branches; world+parity
+upstream_strassen-2	DIGIT / PASS upstream_strassen: source one-level seven-product slicing, NS/AS/SY/SH, strict err<1e-10; parent and divisible-by-7 subworld branches; world+parity
+upstream_strassen-4	DIGIT / PASS upstream_strassen: source one-level seven-product slicing, NS/AS/SY/SH, strict err<1e-10; parent and divisible-by-7 subworld branches; world+parity
+upstream_strassen-7	DIGIT / PASS upstream_strassen: source one-level seven-product slicing, NS/AS/SY/SH, strict err<1e-10; parent and divisible-by-7 subworld branches; world+parity
+upstream_subworld_gemm-1	DIGIT / PASS upstream_subworld_gemm: source replicated-product identity, drand48 sequence, default/tiny shapes, divisions1/2/4, Frobenius<1e-9; world+parity
+upstream_subworld_gemm-2	DIGIT / PASS upstream_subworld_gemm: source replicated-product identity, drand48 sequence, default/tiny shapes, divisions1/2/4, Frobenius<1e-9; world+parity
+upstream_subworld_gemm-4	DIGIT / PASS upstream_subworld_gemm: source replicated-product identity, drand48 sequence, default/tiny shapes, divisions1/2/4, Frobenius<1e-9; world+parity
+upstream_sy_times_ns-1	DIGIT / PASS upstream_sy_times_ns: literal-source world=0e0 parity=0e0; adapted-nonzero world=1.6478959984131287e-16 parity=1.6478959984131287e-16; norm<1e-10
+upstream_sy_times_ns-2	DIGIT / PASS upstream_sy_times_ns: literal-source world=0e0 parity=0e0; adapted-nonzero world=1.6184142622847344e-16 parity=1.6478959984131287e-16; norm<1e-10
+upstream_sy_times_ns-4	DIGIT / PASS upstream_sy_times_ns: literal-source world=0e0 parity=0e0; adapted-nonzero world=2.2591401799415137e-16 parity=1.6184142622847344e-16; norm<1e-10
+upstream_test_suite_dense-1	DIGIT / PASS test_suite_dense: pinned dense cases; n=6; corrected n*n=36; per-case source criteria asserted; world+parity
+upstream_test_suite_dense-2	DIGIT / PASS test_suite_dense: pinned dense cases; n=6; corrected n*n=36; per-case source criteria asserted; world+parity
+upstream_test_suite_dense-4	DIGIT / PASS test_suite_dense: pinned dense cases; n=6; corrected n*n=36; per-case source criteria asserted; world+parity
+upstream_trace-1	DIGIT / PASS upstream_trace: NS ABCD cyclic trace identities, seeded f64 fixture, source relative error<=1e-10; world+parity
+upstream_trace-2	DIGIT / PASS upstream_trace: NS ABCD cyclic trace identities, seeded f64 fixture, source relative error<=1e-10; world+parity
+upstream_trace-4	DIGIT / PASS upstream_trace: NS ABCD cyclic trace identities, seeded f64 fixture, source relative error<=1e-10; world+parity
+upstream_univar_function-1	DIGIT / PASS upstream_univar_function: A=0.25*A+A^4; abs<1e-6; world+parity
+upstream_univar_function-2	DIGIT / PASS upstream_univar_function: A=0.25*A+A^4; abs<1e-6; world+parity
+upstream_univar_function-4	DIGIT / PASS upstream_univar_function: A=0.25*A+A^4; abs<1e-6; world+parity
+upstream_weigh4d-1	DIGIT / PASS upstream_weigh4d: source NS/SY/AS C=A*B and in-place divide; signed relative criterion; world+parity
+upstream_weigh4d-2	DIGIT / PASS upstream_weigh4d: source NS/SY/AS C=A*B and in-place divide; signed relative criterion; world+parity
+upstream_weigh4d-4	DIGIT / PASS upstream_weigh4d: source NS/SY/AS C=A*B and in-place divide; signed relative criterion; world+parity
