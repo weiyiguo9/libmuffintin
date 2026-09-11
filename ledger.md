@@ -2311,3 +2311,79 @@ No S1b HANDOFF; the three S1a open drivers retain their status. No ctf-rs push.
 
 - state: ctf-rs = C1/S1b closed; S1a recorded with three HANDOFF drivers; S1c active
 - note: ctf-rs = evd-1017; local 26af71f; four S1b targets WSL 1/2/4 and native build PASS; final thirteen-target native S1 runtime remains required
+
+## 2026-09-11 · evd-1018 · S1c and full native S1 delivery · ctf-rs 0b65b907ee37548b0ae7f54f991da80c78642d52
+
+G-CTF-S1 remains **DIGIT / HANDOFF**, not a numerical close. All four
+milestone commit series, prescribed invocations and evidence are delivered.
+Run revision 1a0d822; final source evidence revision 0b65b90. No ctf-rs push.
+
+S1c implements explicit configured sparse sum search/cache, selected
+pin/permutation/replication/virtual execution and custom apply/accumulator
+paths; direct sparse owner/replica buckets and sorted read merges; source SH
+random generation/canonical orientation; sparse persistence and MIS drivers.
+Existing text persistence format remains six decimals, unchanged.
+
+| S1c driver | WSL 1/2/4 | Q / unchanged source bound |
+|---|---|---|
+| upstream_mis | DIGIT / PASS | f32 independence overlap=0, dense uncovered count=0; exact |
+| upstream_mis2 | DIGIT / PASS | stored-entry counts >1.1 and <.9 both0; exact source checker |
+| sparse_sample | DIGIT / PASS | norms (0,0,0), both differences0; source nonincreasing bounds |
+| upstream_checkpoint_sparse | DIGIT / HANDOFF | 3.9769591334653147e-7 at1; 3.4024306287098844e-7 at2; world4 bound passes with Q unprinted, parity4 Q=3.4024306287098844e-7 fails; strict bound2.7e-7 |
+
+One named **dense twin** diagnostic at rank1 gave identical checkpoint
+Q=3.9769591334653147e-7 after the same generated fixture went through dense
+text I/O/subtraction. It separates sparse key/selected-sum storage from the
+source six-decimal format expectation. Budget1/3, no precision adjustment,
+fixture enlargement or additional study. It is not a C++ runtime reproduction.
+Known bounded source discrepancy recorded in docs/upstream-known-failures.md.
+
+Native compile/link of all thirteen targets passed once successfully. One
+WSL and one native build-only lifetime-error attempt preceded successful
+builds; neither performed a numerical run. Full native S1 then ran **39
+invocations**, each target once at1/2/4, with30 exits0 and9 exits101; no timeout,
+missing symbol or omitted target:
+
+- DIGIT / PASS at native1/2/4: upstream_apsp (different weights0, exact0),
+  upstream_block_sparse (norm0 <=1e-4), upstream_btwn_central (norm0 <=6e-6),
+  upstream_force_integration_sparse (source Boolean1, any initial >1e-6 and
+  every component restored within1e-6), upstream_mis (overlap/uncovered0),
+  upstream_mis2 (both stored violation counts0), sparse_complex (delta0 <1e-14),
+  sparse_sy (all source strict comparisons pass), sparse_sample (norms0/0/0).
+- DIGIT / PASS native upstream_algebraic_multigrid, strict rnorm<rnorm_alt:
+  rank1 0.004937970528833717 <0.005547611182988828,
+  rank2 0.005085930671471991 <0.005837246582193954,
+  rank4 0.005189487439309569 <0.005878901083452919.
+  One informational V-cycle timing each:0.142621/0.108778/0.046671s.
+- DIGIT / HANDOFF native upstream_checkpoint_sparse: same failed quantities
+  as WSL above and unchanged <2.7e-7. No extra diagnostic after the dense twin.
+- DIGIT / HANDOFF native sparse_einsum_hadamard and sparse_scaled_expression:
+  selected=None at1/2/4; Q/delta uncomputed, source <1e-14 unchanged. The pinned
+  sparse ABC restriction remains; no fallback or driver rewrite hides it.
+
+Native AMG passes do not retroactively replace its original WSL2/4 failures.
+That repaired WSL gate remains unaccepted under the brief's once-only rule.
+Across S1, all39 prescribed WSL and39 prescribed native invocations occurred;
+only two extra diagnostics total (S1a AMG rank split, S1c checkpoint dense twin).
+No passing numerical check was rerun for confidence. No later batch remains.
+
+Exact commands:
+
+```powershell
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-s1/S1c/acceptance.sh
+cmd.exe /d /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\projects\runs\ctf-rs-s1\S1c\native-build.ps1 > D:\projects\runs\ctf-rs-s1\S1c\native-build.log 2>&1"
+wsl -d Ubuntu-26.04 -- bash /mnt/d/projects/runs/ctf-rs-s1/S1c/checkpoint-dense-twin.sh
+cmd.exe /d /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\projects\runs\ctf-rs-s1\S1c\native-runtime.ps1 > D:\projects\runs\ctf-rs-s1\S1c\native-runtime.log 2>&1"
+```
+
+Logs under D:/projects/runs/ctf-rs-s1/S1c/: wsl.log, build.json,
+<driver>-<ranks>.log, native-build.log/json, native-runtime.log,
+native-<driver>-<ranks>.log/err, checkpoint-dense-twin.rs/sh/log and its text
+output; commands.md/scripts preserve nested commands. Source validation.md
+contains full tables, references, bounds, deltas, timings and run counts.
+Existing WSL keepalive reused. No libmuffintin/fftw code changed.
+
+## 2026-09-11 · evt-1009 · four-milestone delivery complete with S1 handoffs · actor: codex
+
+- state: ctf-rs = C1/S1b closed; C1-S1c delivery recorded; G-CTF-S1 HANDOFF for source ABC/checkpoint and original repaired AMG WSL2/4 gate
+- note: ctf-rs = evd-1015 through evd-1018; local0b65b90 unpushed; full native S1 10/13 targets PASS at1/2/4; all required invocations done; future plan must decide source-contract changes and AMG WSL authorization
