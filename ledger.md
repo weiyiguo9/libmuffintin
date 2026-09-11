@@ -2434,3 +2434,24 @@ checkpoint gate at n=7, and the AMG WSL rerun. No ctf-rs push.
 
 - state: ctf-rs = S1 HANDOFF reviewed: 10 of 13 pass; Python ABC is a port gap (S1d proposed), checkpoint is fixture n=3 against source n=7, AMG WSL 2/4 rerun pending; ctf-rs 0b65b90 unpushed
 - note: ctf-rs = Mac clone msi/master = 0b65b90; harness-msi merged through b853c69; plan.v4 proposed, not written
+
+## 2026-09-12 · evt-0069 · ctf-rs plan.v4 accepted: S1d, checkpoint at n=7, AMG WSL rerun assigned to MSI · actor: user
+
+`plans/ctf-rs/plan.v4.md` accepted and immutable. It carries only the three
+open S1 items classified in evt-0068: S1d, the sparse Hadamard-index
+elimination of pinned `contraction.cxx:5417-5527` placed before planning on
+the Rust sparse contraction entry (gate `G-CTF-S1d`, the two Python
+semantics at WSL and native 1, 2, 4, bound 1e-14 unchanged); CK7, the
+checkpoint driver at the source default n=7 with the source bound
+1e-7·n·n·0.1·n = 3.43e-6 (gate `G-CTF-S1-CK7`, fixed before the run); and
+the AMG WSL 1, 2, 4 run on the close tree (gate `G-CTF-S1-AMG`). One WSL run
+of the thirteen S1 targets serves as the S1d acceptance, the two reruns, and
+the class R regression after the shared-entry change; plus the full
+`scripts/acceptance-wsl.sh` once, native build once, native 1, 2, 4 once for
+the three touched drivers. `G-CTF-S1` closes when all thirteen pass.
+Executor: Codex on MSI, brief `C:/Users/xylxp/projects/ctf-rs-s1/BRIEF-S1d.md`,
+records evt-1010, evd-1019, evt-1011 on `harness-msi`. ctf-rs `0b65b90`
+stays unpushed until the user asks.
+
+- state: ctf-rs = plan.v4 accepted; S1 close running on MSI (S1d Hadamard-index elimination, checkpoint n=7, AMG WSL rerun); ctf-rs 0b65b90 unpushed
+- note: ctf-rs = one S1-set WSL run at 1/2/4 closes G-CTF-S1d, G-CTF-S1-CK7, G-CTF-S1-AMG and G-CTF-S1 together; brief BRIEF-S1d.md; expected records evt-1010, evd-1019, evt-1011
