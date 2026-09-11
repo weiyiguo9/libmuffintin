@@ -2578,3 +2578,43 @@ and the compiler and clippy warning inventory on the Mac.
 
 - state: ctf-rs = S1 closed; port scope complete; origin/master = 3dafffc; global audit running on the Mac
 - note: ctf-rs = audit findings to follow as evt-0073
+
+## 2026-09-12 · evt-0073 · ctf-rs global audit complete; plan.v5 remediation proposed · actor: claude
+
+Audit of ctf-rs `3dafffc`, read-only, on the Mac (rustc 1.97.1, Homebrew
+Open MPI) plus five parallel reviews against the pinned upstream tree. Full
+list: `evidence/2026-09-12-ctf-rs-audit/findings.md`. Summary, high items
+first:
+
+- Acceptance scripts: 17 `[[test]]` targets are in neither script (the
+  thirteen S1 targets among them); both scripts batch every MPI target into
+  one `cargo test` per rank count with no `--no-fail-fast` and no per-target
+  record, so one failing binary voids the rest of a run; one driver prints
+  `PASS` without the `DIGIT / ` prefix.
+- Dead weight: the sparse 2D panel state machine is written seven times
+  across `sparse_2d.rs` and `sparse_contract_general.rs` (about 550 lines
+  for one generic executor of about 150); three executors have no caller
+  and no test (`contract_sparse_dense_from_selected` and two
+  `sparse_functions.rs` peers); the S1d recursion is triplicated.
+- Documents: the closing commit left README, `native-windows.md`,
+  `sparse-output.md`, two inventory rows, and one coverage row stating the
+  three S1 handoffs; `automatic-planning.md` keeps a sentence its own
+  boundary note retracts; four inventory rows name the removed
+  `src/runtime.rs`; `validation.md` (3,008 lines, 163 sections) has no
+  index and is not chronological.
+- MPI contract: compliant on every ADR-0007 rule (no init or finalize, no
+  `Drop`, `ManuallyDrop` on the split communicator, no libffi, thread level
+  checked, markers present); gaps are `#[must_use]` not firing through
+  `Option<Context>` on `split` (verified), no `SAFETY:` comments, and one
+  hand-rolled non-blocking exchange rsmpi could cover.
+- Coverage: complete at file level; the one undisclosed scope limit is the
+  expression layer's automatic multi-term chain ordering, which has no Rust
+  equivalent.
+- Clean: bounds printed by drivers equal the code, RNG rank-seeded, no
+  ignored or tautological tests, no dead error variants, builds on macOS.
+
+`plans/ctf-rs/plan.v5.md` proposed with the closed remediation list (six
+items, class R close), gate `G-CTF-A1` proposed. Nothing changed in ctf-rs.
+
+- state: ctf-rs = S1 closed; port scope complete; audit done (evt-0073); plan.v5 remediation proposed, awaiting acceptance; origin/master = 3dafffc
+- note: ctf-rs = audit findings in evidence/2026-09-12-ctf-rs-audit/findings.md; six remediation items A1.1 to A1.6; next decisions are plan.v5 acceptance and ctf-tiled T1

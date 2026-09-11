@@ -5,11 +5,11 @@ and the `main` tip. Do not edit by hand; append to the ledger instead.
 `ledger.md` and the live `main` worktree are authoritative.
 
 - Code baseline: `main` at `5f5dc92c7bbc9d562bfc53e65e23cc9082a5f34e` (2026-09-09)
-- Last ledger entries: evd-1019 (MSI), evt-1011 (MSI), evd-0024 (Mac), evt-0072 (Mac)
+- Last ledger entries: evd-1019 (MSI), evt-1011 (MSI), evd-0024 (Mac), evt-0073 (Mac)
 
 | Workstream | State | Plan | Notes |
 |---|---|---|---|
-| `ctf-rs` | S1 closed; G-CTF-S1d, G-CTF-S1-CK7, G-CTF-S1-AMG and G-CTF-S1 PASS at evd-1019 | `plans/ctf-rs/plan.v4.md`, accepted 2026-09-12 | CK7 5a5edaa, S1d d5861de, records 3dafffc; all13 WSL1/2/4 plus touched native1/2/4 and full WSL/native build PASS once; zero diagnostics; no HANDOFF question; ctf-rs remains unpushed, existing keepalive322 reused, libmuffintin/fftw code untouched |
+| `ctf-rs` | S1 closed; G-CTF-S1d, G-CTF-S1-CK7, G-CTF-S1-AMG and G-CTF-S1 PASS at evd-1019 | `plans/ctf-rs/plan.v5.md`, proposed 2026-09-12, not accepted | CK7 5a5edaa, S1d d5861de, records 3dafffc; all13 WSL1/2/4 plus touched native1/2/4 and full WSL/native build PASS once; zero diagnostics; no HANDOFF question; ctf-rs remains unpushed, existing keepalive322 reused, libmuffintin/fftw code untouched |
 | `ctf-slate-binding` | frozen | `plans/ctf-slate-binding/plan.v1.md`, frozen 2026-09-08 | superseded by plans/ctf-rs/plan.v1.md |
 | `ctf-tiled` | draft: successor to ctf-rs S1; not authorized | `plans/ctf-tiled/plan.v1.md`, draft | the "tiled-ay" plan; CTF skeleton kept, tile sparsity added; T1 block-sparse tiles first; T4 blocked on the libmuffintin atom-centered aux |
 | `diamond-omt` | recipe notes published; reference-script update reported; target-band basis enrichment remains a candidate | none | evt-0065; pymuffintin 40136cb; above-Fermi target distinguished from valence; no new numerical acceptance |
