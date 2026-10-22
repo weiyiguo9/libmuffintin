@@ -29,16 +29,35 @@ Format:
 
     <type>[optional scope]: <description>
 
-    <body: 1-3 sentences explaining what changed and why>
+    <body: explain the motivation, mechanism, and relevant validation>
 
     [optional footer(s)]
 
 Rules:
 
+- Write commit messages in English.
 - type: feat | fix | refactor | perf | docs | test | build | ci | chore
 - description: imperative mood, lowercase, no trailing period, ≤72 chars total
 - Body is required for feat, fix, refactor, perf; optional for docs/chore.
-  Explain motivation and effect, not a restatement of the diff.
+- For non-trivial changes, use 2–4 prose paragraphs, typically
+  120–250 words. Simple changes may be shorter; never pad the body
+  merely to meet a word count.
+- Make the body understandable without opening the diff:
+  - Explain the previous behavior and why it was wrong or insufficient.
+  - Describe the key change and how it addresses the problem.
+  - Include relevant validation and its result, when performed.
+- For bug fixes, explain the root cause and, when known, why existing
+  tests missed it. Describe how a regression test distinguishes the
+  old behavior from the corrected behavior.
+- Include concrete identifiers, conventions, or numerical evidence
+  when they clarify the mechanism. Do not narrate every changed file.
+- Report only validation actually performed. Do not invent results,
+  root causes, or claims that a test failed before the fix.
+- Separate paragraphs with a blank line. Hard-wrap body prose at
+  72 columns using actual newline characters, not UI soft wrapping.
+  Keep URLs, long identifiers, and trailers intact.
+- These body-detail requirements apply to commit messages, not to
+  the final chat response.
 - Breaking changes: append `!` after type/scope and add a
   `BREAKING CHANGE:` footer describing migration.
 - scope: use module/crate/package name when the change is localized,
