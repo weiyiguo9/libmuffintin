@@ -154,6 +154,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             functional: XcFunctional::LdaPw92,
             noncollinear_route: DftNoncollinearXcRoute::LocalSpinFrame,
             interstitial_grid: options.xc_grid,
+            angular_order: None,
         },
         free_atom_scf: FreeAtomScfSpec {
             speed_of_light: options.speed_of_light,
@@ -370,6 +371,7 @@ fn scf_input(orbital_g_cutoff: f64, xc_grid: Option<[usize; 3]>) -> Input {
             xc: ExchangeCorrelation::LdaPw92 {
                 noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
                 interstitial_grid: xc_grid,
+                angular_order: None,
             },
             mixing: Mixing::PulayAnderson {
                 beta: MIXING_BETA,

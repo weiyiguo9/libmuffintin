@@ -38,9 +38,40 @@ $\sum_a w_a^{(\Omega)}=4\pi$, gives
  w_{ia}=w_i^{(r)}r_i^2w_a^{(\Omega)}.
 ```
 
-Production callers may supply a Lebedev rule.  The built-in Fibonacci rule is
-a deterministic fallback for tests and exploratory grids; it is not assigned
-a polynomial exactness order.
+`AngularGrid::lebedev(order)` supplies positive-weight Lebedev–Laikov rules,
+where `order` is the algebraic exactness degree, not the number of points.
+The `lebedev_laikov` dependency supplies the nodes and unit-normalized
+weights; the grid converts weights to the solid-angle normalization above.
+Generator calls are serialized because its C implementation uses mutable
+static scratch variables. Orders 13, 25 and 27 have negative weights and are
+excluded to preserve `AngularGrid`'s positive-weight contract. Unsupported
+explicit orders fail rather than being rounded. `AngularGrid::LEBEDEV_ORDERS`
+lists the supported orders through 131.
+
+Production regional XC uses the same weighted rule for potential projection,
+XC energy and the density–potential contraction. Complete and scalar-block
+evaluation share the order, as does the associated core XC spherical average.
+The automatic rule is the first supported order at least $\max(29,2L)$, with
+$L$ the output harmonic cutoff; order 29 has 302 points. The $2L$ floor makes
+harmonic inner products exact but does not guarantee accuracy of nonlinear
+LDA/PBE transforms. Order 29 is checked against order 59 on the fixed cubic
+regression in `mt-dft/src/xc_field.rs`, not certified for every material.
+
+| Interface | Explicit XC control |
+|---|---|
+| Rust field transform | `XcFieldSpec::angular_order` |
+| Rust SCF / core continuation | `ScfExchangeCorrelation::angular_order` / `CorePotentialBuildSpec::xc_angular_order` |
+| Native runtime TOML | `angular-order` under `[task.<name>.xc]` |
+| Python complete / block preparation | keyword-only `angular_order` on `build_regional_potential` / `prepare_scf_potential_blocks` |
+| Python block payload / evaluator | `angular_order`, replacing the former point-count field |
+| pymuffintin TOML | `xc-angular-order` under `[task.scf.nmto]` |
+
+Omitting optional SCF/Python/TOML controls selects the automatic rule. Explicit
+orders below $2L$ fail. The built-in Fibonacci rule remains available for
+tests, exploratory grids and existing unrelated atomic-start, molecular and
+THC sampling; those paths are unchanged and carry no polynomial exactness
+claim. The Lebedev grid preserves its own octahedral symmetry; arbitrary
+crystal rotations or site groups are not automatically symmetry projected.
 
 The uniform cell grid uses the midpoint rule in fractional coordinates.  Its
 interstitial subset drops a point when its periodic nearest-image distance to

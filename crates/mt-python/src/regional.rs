@@ -457,11 +457,12 @@ impl RegionalPotential {
 }
 
 #[pyfunction]
-#[pyo3(signature = (density, xc, noncollinear_route="local-spin-frame"))]
+#[pyo3(signature = (density, xc, noncollinear_route="local-spin-frame", *, angular_order=None))]
 pub(crate) fn build_regional_potential(
     density: PyRef<'_, RegionalDensity>,
     xc: &str,
     noncollinear_route: &str,
+    angular_order: Option<u32>,
 ) -> PyResult<RegionalPotential> {
     let functional = match xc {
         "lda-pw92" => XcFunctional::LdaPw92,
@@ -488,6 +489,7 @@ pub(crate) fn build_regional_potential(
             functional,
             noncollinear_route,
             interstitial_grid: None,
+            angular_order,
         },
     )
     .map_err(py_error)?;

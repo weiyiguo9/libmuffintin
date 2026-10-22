@@ -1077,6 +1077,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             functional: XcFunctional::LdaPw92,
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
             interstitial_grid: None,
+            angular_order: None,
         },
         mixing: cli
             .outer_mixing

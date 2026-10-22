@@ -328,6 +328,7 @@ fn consume_b45d9b9_spex_snapshot_and_run_bounded_sm_lane() {
             functional: XcFunctional::LdaPw92,
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
             interstitial_grid: None,
+            angular_order: None,
         },
         mixing: ScfMixing::Linear { alpha: 1.0 },
         relativity: ScfRelativity::SpinorFirstVariation,

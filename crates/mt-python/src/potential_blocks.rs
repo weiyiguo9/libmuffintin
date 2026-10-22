@@ -144,7 +144,7 @@ impl PreparedScfPotential {
             "angular_basis",
             convention_name(convention.unwrap_or(HarmonicConvention::Complex)),
         )?;
-        dict.set_item("angular_point_count", spec.angular_point_count)?;
+        dict.set_item("angular_order", spec.angular_order)?;
         dict.set_item("output_l_max", spec.output_l_max)?;
         dict.set_item("output_lm_count", output_lm_count)?;
         dict.set_item("radial_block_size", RADIAL_BLOCK_SIZE)?;
@@ -220,11 +220,12 @@ impl PreparedScfPotential {
 }
 
 #[pyfunction]
-#[pyo3(signature = (density, xc, noncollinear_route="local-spin-frame"))]
+#[pyo3(signature = (density, xc, noncollinear_route="local-spin-frame", *, angular_order=None))]
 fn prepare_scf_potential_blocks(
     density: PyRef<'_, RegionalDensity>,
     xc: &str,
     noncollinear_route: &str,
+    angular_order: Option<u32>,
 ) -> PyResult<PreparedScfPotential> {
     let functional = parse_functional(xc)?;
     let noncollinear_route = parse_noncollinear_route(noncollinear_route)?;
@@ -234,7 +235,10 @@ fn prepare_scf_potential_blocks(
         .flat_map(|field| field.field().channels().map(|(channel, _)| channel.l))
         .max()
         .unwrap_or(0);
-    let xc_spec = xc_spec_for_density(density.inner.as_ref(), output_l_max, noncollinear_route);
+    let mut xc_spec = xc_spec_for_density(density.inner.as_ref(), output_l_max, noncollinear_route);
+    if let Some(angular_order) = angular_order {
+        xc_spec.angular_order = angular_order;
+    }
 
     let started = Instant::now();
     let electrostatic = evaluate_regional_electrostatics(
@@ -271,7 +275,7 @@ fn prepare_scf_potential_blocks(
     charge_channels,
     input_l_max,
     output_l_max,
-    angular_point_count,
+    angular_order,
     radial_start,
     potential_out,
     integrands_out
@@ -283,7 +287,7 @@ fn evaluate_muffin_tin_xc_block(
     charge_channels: PyReadonlyArray2<'_, Complex64>,
     input_l_max: u32,
     output_l_max: u32,
-    angular_point_count: usize,
+    angular_order: u32,
     radial_start: usize,
     mut potential_out: PyReadwriteArray3<'_, Complex64>,
     mut integrands_out: PyReadwriteArray2<'_, f64>,
@@ -305,7 +309,7 @@ fn evaluate_muffin_tin_xc_block(
         charge_channels.as_slice()?,
         input_l_max,
         output_l_max,
-        angular_point_count,
+        angular_order,
         radial_start,
         potential_out.as_slice_mut()?,
         integrands_out.as_slice_mut()?,

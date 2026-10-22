@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::PathBuf;
 
-use muffintin_core::{Hartree, InverseBohr};
+use muffintin_core::{AngularGrid, Hartree, InverseBohr};
 use muffintin_io::LengthUnit;
 use serde::{Deserialize, Serialize};
 
@@ -348,6 +348,7 @@ impl Task {
                 symmetry,
                 basis,
                 occupations,
+                xc,
                 mixing,
                 relativity,
                 convergence,
@@ -358,6 +359,7 @@ impl Task {
                 symmetry.validate(&format!("{base}.symmetry"))?;
                 basis.validate(&format!("{base}.basis"))?;
                 occupations.validate(&format!("{base}.occupations"))?;
+                xc.validate(&format!("{base}.xc"))?;
                 mixing.validate(&format!("{base}.mixing"))?;
                 relativity.validate(&format!("{base}.relativity"))?;
                 convergence.validate(&format!("{base}.convergence"))?;
@@ -592,6 +594,12 @@ pub enum ExchangeCorrelation {
             skip_serializing_if = "Option::is_none"
         )]
         interstitial_grid: Option<[usize; 3]>,
+        #[serde(
+            default,
+            rename = "angular-order",
+            skip_serializing_if = "Option::is_none"
+        )]
+        angular_order: Option<u32>,
     },
     #[serde(rename = "pbe")]
     Pbe {
@@ -603,7 +611,30 @@ pub enum ExchangeCorrelation {
             skip_serializing_if = "Option::is_none"
         )]
         interstitial_grid: Option<[usize; 3]>,
+        #[serde(
+            default,
+            rename = "angular-order",
+            skip_serializing_if = "Option::is_none"
+        )]
+        angular_order: Option<u32>,
     },
+}
+
+impl ExchangeCorrelation {
+    fn validate(&self, path: &str) -> Result<(), InputValidationError> {
+        let angular_order = match self {
+            Self::LdaPw92 { angular_order, .. } | Self::Pbe { angular_order, .. } => *angular_order,
+        };
+        if let Some(order) = angular_order {
+            if !AngularGrid::LEBEDEV_ORDERS.contains(&order) {
+                return Err(InputValidationError::UnsupportedAngularOrder {
+                    path: format!("{path}.angular-order"),
+                    order,
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Noncollinear reduction used by the pointwise XC kernel.

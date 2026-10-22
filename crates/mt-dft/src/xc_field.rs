@@ -45,15 +45,18 @@ pub enum NoncollinearXcRoute {
 /// point, including the smooth plane-wave continuation inside the spheres, and
 /// the interstitial region enters through the analytic step function truncated
 /// to the density layout, so the region itself does not depend on the grid.
-/// The seedless Fibonacci rule controls the
-/// angular projection. Muffin-tin Cartesian derivatives use fourth-order
+/// A positive-weight Lebedev rule controls the angular projection. Its
+/// algebraic exactness order is independent of the output harmonic cutoff;
+/// exact harmonic inner products do not guarantee nonlinear XC accuracy.
+/// Muffin-tin Cartesian derivatives use fourth-order
 /// symmetric differences with a step equal to one quarter of the local radial
 /// spacing, capped at one fifth of the shell radius; five neighboring
 /// exponential-mesh samples provide the local quartic radial interpolant.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct XcFieldSpec {
     pub interstitial_divisions: [usize; 3],
-    pub angular_point_count: usize,
+    /// Exact algebraic order of a supported positive-weight Lebedev rule.
+    pub angular_order: u32,
     pub output_l_max: u32,
     pub noncollinear_route: NoncollinearXcRoute,
 }
@@ -65,9 +68,6 @@ impl XcFieldSpec {
                 self.interstitial_divisions,
             ));
         }
-        if self.angular_point_count == 0 {
-            return Err(RegionalXcError::ZeroAngularPointCount);
-        }
         if self.output_l_max > i32::MAX as u32 {
             return Err(RegionalXcError::OutputLMaxTooLarge(self.output_l_max));
         }
@@ -75,12 +75,7 @@ impl XcFieldSpec {
         if channel_count > usize::MAX as u64 {
             return Err(RegionalXcError::OutputLMaxTooLarge(self.output_l_max));
         }
-        if self.angular_point_count < channel_count as usize {
-            return Err(RegionalXcError::UndersampledAngularGrid {
-                points: self.angular_point_count,
-                channels: channel_count as usize,
-            });
-        }
+        validate_angular_order(self.angular_order, self.output_l_max)?;
         for axis in 0..3 {
             let maximum = layout
                 .vectors()
@@ -102,6 +97,17 @@ impl XcFieldSpec {
         }
         Ok(())
     }
+}
+
+fn validate_angular_order(order: u32, l_max: u32) -> Result<(), RegionalXcError> {
+    if !AngularGrid::LEBEDEV_ORDERS.contains(&order) {
+        return Err(GridError::UnsupportedLebedevOrder { order }.into());
+    }
+    let required = 2 * u64::from(l_max);
+    if u64::from(order) < required {
+        return Err(RegionalXcError::InsufficientAngularOrder { order, required });
+    }
+    Ok(())
 }
 
 /// Regional XC potential and the two energy-functional contractions needed by SCF.
@@ -330,7 +336,7 @@ pub fn evaluate_scalar_muffin_tin_xc_shell_block(
     charge_channels: &[Complex64],
     input_l_max: u32,
     output_l_max: u32,
-    angular_point_count: usize,
+    angular_order: u32,
     radial_start: usize,
     potential_out: &mut [Complex64],
     integrand_out: &mut [f64],
@@ -352,15 +358,10 @@ pub fn evaluate_scalar_muffin_tin_xc_shell_block(
     {
         return Err(RegionalXcError::InvalidScalarMuffinTinBlock);
     }
-    if angular_point_count < output_channel_count {
-        return Err(RegionalXcError::UndersampledAngularGrid {
-            points: angular_point_count,
-            channels: output_channel_count,
-        });
-    }
+    validate_angular_order(angular_order, output_l_max)?;
 
     potential_out.fill(Complex64::default());
-    let angular = AngularGrid::fibonacci(angular_point_count)?;
+    let angular = AngularGrid::lebedev(angular_order)?;
     let angular_harmonics = angular
         .points()
         .iter()
@@ -654,7 +655,7 @@ pub fn evaluate_regional_xc(
 ) -> Result<RegionalXcResult, RegionalXcError> {
     let layout = density.charge().interstitial().layout();
     spec.validate(layout)?;
-    let angular = AngularGrid::fibonacci(spec.angular_point_count)?;
+    let angular = AngularGrid::lebedev(spec.angular_order)?;
 
     let interstitial = transform_interstitial(
         functional,
@@ -1865,8 +1866,6 @@ pub enum RegionalXcError {
     InvalidScalarRegionalAssembly,
     #[error("interstitial grid divisions must be nonzero, got {0:?}")]
     ZeroInterstitialDivision([usize; 3]),
-    #[error("angular point count must be nonzero")]
-    ZeroAngularPointCount,
     #[error("output l_max is too large: {0}")]
     OutputLMaxTooLarge(u32),
     #[error("reciprocal integer coordinate cannot be negated or bounded safely")]
@@ -1879,8 +1878,8 @@ pub enum RegionalXcError {
         divisions: usize,
         required: usize,
     },
-    #[error("angular grid has {points} points, fewer than the {channels} output harmonic channels")]
-    UndersampledAngularGrid { points: usize, channels: usize },
+    #[error("Lebedev order {order} is below the harmonic-product degree {required}")]
+    InsufficientAngularOrder { order: u32, required: u64 },
     #[error("{quantity} has imaginary part {imaginary}, tolerance {tolerance}")]
     NonRealTransform {
         quantity: &'static str,
@@ -1907,7 +1906,10 @@ pub enum RegionalXcError {
 
 /// XC field controls derived from a density: interstitial divisions covering
 /// the stored reciprocal support, an angular rule for the requested output
-/// `l_max`, and the caller's noncollinear route.
+/// `l_max`, and the caller's noncollinear route. The default is the first
+/// supported positive-weight Lebedev order at least `max(29, 2*l_max)`.
+/// Order 29 has 302 points. This is a starting accuracy choice, not a
+/// convergence guarantee for arbitrary nonlinear densities.
 pub fn xc_spec_for_density(
     density: &crate::RegionalDensity,
     output_l_max: u32,
@@ -1923,10 +1925,17 @@ pub fn xc_spec_for_density(
             .unwrap_or(0);
         (2 * maximum + 1).max(4)
     });
-    let angular_point_count = ((output_l_max as usize + 1).pow(2) * 2).max(50);
+    let required = output_l_max.saturating_mul(2).max(29);
+    let angular_order = AngularGrid::LEBEDEV_ORDERS
+        .iter()
+        .copied()
+        .find(|&order| order >= required)
+        // Preserve an unsupported requirement so validation reports it, rather
+        // than silently using a rule below the harmonic-product floor.
+        .unwrap_or(required);
     XcFieldSpec {
         interstitial_divisions: divisions,
-        angular_point_count,
+        angular_order,
         output_l_max,
         noncollinear_route,
     }
@@ -2052,7 +2061,7 @@ mod tests {
     fn spec(divisions_x: usize) -> XcFieldSpec {
         XcFieldSpec {
             interstitial_divisions: [divisions_x, 3, 3],
-            angular_point_count: 50,
+            angular_order: 29,
             output_l_max: 0,
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
         }
@@ -2184,7 +2193,7 @@ mod tests {
         let density = RegionalDensity::new(charge, [zero.clone(), zero, field(up - down)]).unwrap();
         let spec = XcFieldSpec {
             interstitial_divisions: [8; 3],
-            angular_point_count: 50,
+            angular_order: 29,
             output_l_max: 0,
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
         };
@@ -2861,7 +2870,7 @@ mod tests {
             &density,
             XcFieldSpec {
                 interstitial_divisions: [8, 8, 8],
-                angular_point_count: 100,
+                angular_order: 29,
                 output_l_max: 0,
                 noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
             },
@@ -2886,6 +2895,153 @@ mod tests {
     }
 
     #[test]
+    fn lebedev_cubic_xc_preserves_symmetry_and_matches_reference() {
+        // Fixed, positive cubic density. The l=4 radial polynomial keeps the
+        // existing Cartesian finite-difference treatment out of this regression.
+        // Order 59 is a fixed reference, not an adaptive convergence sweep.
+        let mesh = ExponentialMesh::new(Bohr(0.5), (1.42_f64 / 0.5).ln() / 8.0, 9).unwrap();
+        let cubic_ratio = (5.0_f64 / 14.0).sqrt();
+        let channels = [(0, 0), (4, 0), (4, -4), (4, 4)].map(|(l, m)| {
+            let samples = mesh
+                .radii()
+                .iter()
+                .map(|r| {
+                    let value = if l == 0 {
+                        (4.0 * PI).sqrt() * (0.3 + 0.02 * r.get().powi(2))
+                    } else {
+                        0.01 * r.get().powi(4) * if m == 0 { 1.0 } else { cubic_ratio }
+                    };
+                    Complex64::new(value, 0.0)
+                })
+                .collect::<Vec<_>>();
+            ((l, m), samples)
+        });
+        let geometry = InterstitialGeometry::new(
+            VolumeBohr3(TAU.powi(3)),
+            vec![Sphere {
+                center: [Bohr(0.0); 3],
+                radius: Bohr(1.42),
+            }],
+        )
+        .unwrap();
+        let charge = RegionalScalarField::new(
+            geometry,
+            vec![
+                MuffinTinField::new(
+                    mesh.clone(),
+                    SphereField::new(HarmonicConvention::Complex, channels).unwrap(),
+                )
+                .unwrap(),
+            ],
+            interstitial_field(layout(&[[0; 3]]), [([0; 3], Complex64::new(0.3, 0.0))]),
+        )
+        .unwrap();
+        let density =
+            RegionalDensity::new(charge.clone(), std::array::from_fn(|_| charge.zero_like()))
+                .unwrap();
+        let spec = xc_spec_for_density(&density, 4, NoncollinearXcRoute::LocalSpinFrame);
+        assert_eq!(spec.angular_order, 29);
+
+        for functional in [XcFunctional::LdaPw92, XcFunctional::Pbe] {
+            let full = evaluate_regional_xc(functional, &density, spec).unwrap();
+            let reference = evaluate_regional_xc(
+                functional,
+                &density,
+                XcFieldSpec {
+                    angular_order: 59,
+                    ..spec
+                },
+            )
+            .unwrap();
+            let mut prepared = prepare_scalar_regional_xc(functional, &density, spec).unwrap();
+            let mut mt_potential = vec![Complex64::default(); mesh.len() * 4 * lm_count(4)];
+            let mut mt_integrands = vec![0.0; mesh.len() * 2];
+            evaluate_scalar_muffin_tin_xc_shell_block(
+                functional,
+                prepared.muffin_tin_convention(0),
+                prepared.muffin_tin_radii(0),
+                prepared.muffin_tin_charge_channels(0),
+                prepared.muffin_tin_input_l_max(0),
+                spec.output_l_max,
+                spec.angular_order,
+                0,
+                &mut mt_potential,
+                &mut mt_integrands,
+            )
+            .unwrap();
+            let point_count = prepared.interstitial_point_count();
+            let mut ir_potential = vec![0.0; point_count * 4];
+            let mut ir_integrands = vec![0.0; point_count * 2];
+            evaluate_scalar_interstitial_xc_point_block(
+                functional,
+                prepared.interstitial_density_derivatives(),
+                point_count,
+                prepared.interstitial_step(),
+                prepared.interstitial_point_weight(),
+                0,
+                &mut ir_potential,
+                &mut ir_integrands,
+            )
+            .unwrap();
+            let blocked = assemble_scalar_regional_xc(
+                &mut prepared,
+                &mt_potential,
+                &mt_integrands,
+                &ir_potential,
+                &ir_integrands,
+            )
+            .unwrap();
+            let full_mt = full.potential.scalar().muffin_tins()[0].field();
+            let reference_mt = reference.potential.scalar().muffin_tins()[0].field();
+            let blocked_mt = blocked.potential.scalar().muffin_tins()[0].field();
+            let mut symmetry_error = 0.0_f64;
+            let mut reference_error = 0.0_f64;
+            let mut block_error = 0.0_f64;
+            for (lm, values) in full_mt.channels() {
+                let reference_values = reference_mt.channel(lm.l, lm.m).unwrap();
+                let blocked_values = blocked_mt.channel(lm.l, lm.m).unwrap();
+                for (i, &value) in values.iter().enumerate() {
+                    assert!(value.re.is_finite() && value.im.is_finite());
+                    assert!((value - reference_values[i]).norm() <= 1e-8);
+                    assert!((value - blocked_values[i]).norm() <= 1e-10);
+                    reference_error = reference_error.max((value - reference_values[i]).norm());
+                    block_error = block_error.max((value - blocked_values[i]).norm());
+                    let residual = match (lm.l, lm.m) {
+                        (0, 0) | (4, 0) => value.im.abs(),
+                        (4, -4) | (4, 4) => {
+                            (value - cubic_ratio * full_mt.channel(4, 0).unwrap()[i]).norm()
+                        }
+                        _ => value.norm(),
+                    };
+                    assert!(residual <= 5e-10, "{functional:?} {lm:?}: {residual:e}");
+                    symmetry_error = symmetry_error.max(residual);
+                }
+            }
+            for (actual, expected, block) in [
+                (
+                    full.exchange_correlation_energy,
+                    reference.exchange_correlation_energy,
+                    blocked.exchange_correlation_energy,
+                ),
+                (
+                    full.density_potential_integral,
+                    reference.density_potential_integral,
+                    blocked.density_potential_integral,
+                ),
+            ] {
+                assert!(actual.get().is_finite());
+                assert!((actual.get() - expected.get()).abs() <= 1e-8);
+                assert!((actual.get() - block.get()).abs() <= 1e-10);
+                reference_error = reference_error.max((actual.get() - expected.get()).abs());
+                block_error = block_error.max((actual.get() - block.get()).abs());
+            }
+            eprintln!(
+                "DIGIT {functional:?}: symmetry={symmetry_error:e} reference={reference_error:e} full_block={block_error:e} Ha"
+            );
+        }
+    }
+
+    #[test]
     fn transform_spec_rejects_aliasing_and_empty_quadratures() {
         let density = uniform_density(0.2, 0.1);
         assert!(matches!(
@@ -2893,8 +3049,23 @@ mod tests {
                 XcFunctional::LdaPw92,
                 &density,
                 XcFieldSpec {
+                    angular_order: 7,
+                    output_l_max: 4,
+                    ..spec(4)
+                }
+            ),
+            Err(RegionalXcError::InsufficientAngularOrder {
+                order: 7,
+                required: 8
+            })
+        ));
+        assert!(matches!(
+            evaluate_regional_xc(
+                XcFunctional::LdaPw92,
+                &density,
+                XcFieldSpec {
                     interstitial_divisions: [0, 1, 1],
-                    angular_point_count: 1,
+                    angular_order: 3,
                     output_l_max: 0,
                     noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
                 }
@@ -2907,12 +3078,14 @@ mod tests {
                 &density,
                 XcFieldSpec {
                     interstitial_divisions: [1; 3],
-                    angular_point_count: 0,
+                    angular_order: 0,
                     output_l_max: 0,
                     noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
                 }
             ),
-            Err(RegionalXcError::ZeroAngularPointCount)
+            Err(RegionalXcError::Grid(GridError::UnsupportedLebedevOrder {
+                order: 0
+            }))
         ));
 
         let cosine = interstitial_density(

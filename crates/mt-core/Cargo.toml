@@ -15,6 +15,7 @@ default = []
 rstsr = ["dep:rstsr"]
 
 [dependencies]
+lebedev_laikov = "0.1.0"
 num-complex.workspace = true
 rstsr = { version = "0.7.10", optional = true, default-features = false, features = ["std"] }
 thiserror.workspace = true

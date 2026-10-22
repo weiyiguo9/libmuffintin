@@ -65,6 +65,7 @@ pub fn sample_input() -> Input {
                     xc: ExchangeCorrelation::LdaPw92 {
                         noncollinear_route: Default::default(),
                         interstitial_grid: None,
+                        angular_order: None,
                     },
                     mixing: Mixing::PulayAnderson {
                         beta: 0.4,
@@ -223,6 +224,7 @@ pub fn supported_input() -> Input {
                 xc: ExchangeCorrelation::LdaPw92 {
                     noncollinear_route: Default::default(),
                     interstitial_grid: None,
+                    angular_order: None,
                 },
                 mixing: Mixing::Linear { beta: 1.0 },
                 relativity: Relativity::Scalar {},

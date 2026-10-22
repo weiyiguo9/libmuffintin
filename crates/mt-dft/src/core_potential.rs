@@ -39,8 +39,8 @@ pub struct CorePotentialBuildSpec {
     pub xc_functional: XcFunctional,
     /// The same noncollinear reduction used to produce the supplied XC result.
     pub xc_noncollinear_route: NoncollinearXcRoute,
-    /// Fibonacci angular points used for each outer XC spherical average.
-    pub xc_angular_point_count: usize,
+    /// Lebedev algebraic exactness order, shared with the regional XC build.
+    pub xc_angular_order: u32,
 }
 
 /// Evidence for aligning a frozen checkpoint's two potential representations.
@@ -87,7 +87,7 @@ pub fn build_extended_core_potentials(
     let nuclear_charges = electrostatics.raw_nuclear.nuclear_charges();
     let geometry = density.geometry();
     let xc_potential = &exchange_correlation.potential;
-    let angular = AngularGrid::fibonacci(spec.xc_angular_point_count)?;
+    let angular = AngularGrid::lebedev(spec.xc_angular_order)?;
     let site_count = geometry.spheres().len();
     if raw.muffin_tins().len() != site_count {
         return Err(CorePotentialBuildError::RawSiteCount {
@@ -922,7 +922,7 @@ mod tests {
             &density,
             XcFieldSpec {
                 interstitial_divisions: [8; 3],
-                angular_point_count: 14,
+                angular_order: 29,
                 output_l_max: 0,
                 noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
             },
@@ -940,7 +940,7 @@ mod tests {
                 },
                 xc_functional: XcFunctional::LdaPw92,
                 xc_noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
-                xc_angular_point_count: 26,
+                xc_angular_order: 29,
             },
         )
         .unwrap();
@@ -954,7 +954,7 @@ mod tests {
             &transverse_density,
             XcFieldSpec {
                 interstitial_divisions: [8; 3],
-                angular_point_count: 14,
+                angular_order: 29,
                 output_l_max: 0,
                 noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
             },
@@ -971,7 +971,7 @@ mod tests {
                 },
                 xc_functional: XcFunctional::LdaPw92,
                 xc_noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
-                xc_angular_point_count: 26,
+                xc_angular_order: 29,
             },
         )
         .unwrap();
@@ -1031,7 +1031,7 @@ mod tests {
                 },
                 xc_functional: XcFunctional::LdaPw92,
                 xc_noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
-                xc_angular_point_count: 26,
+                xc_angular_order: 29,
             },
         )
         .unwrap();

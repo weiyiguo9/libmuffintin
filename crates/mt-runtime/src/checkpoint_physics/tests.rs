@@ -146,6 +146,7 @@ fn config(relativity: ScfRelativity) -> ScfConfig {
             functional: XcFunctional::LdaPw92,
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
             interstitial_grid: None,
+            angular_order: None,
         },
         mixing: ScfMixing::Linear { alpha: 1.0 },
         relativity,

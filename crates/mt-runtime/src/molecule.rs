@@ -259,18 +259,22 @@ fn map_exchange_correlation(xc: ExchangeCorrelation) -> ScfExchangeCorrelation {
         ExchangeCorrelation::LdaPw92 {
             noncollinear_route,
             interstitial_grid,
+            angular_order,
         } => ScfExchangeCorrelation {
             functional: XcFunctional::LdaPw92,
             noncollinear_route: map_noncollinear_xc_route(noncollinear_route),
             interstitial_grid,
+            angular_order,
         },
         ExchangeCorrelation::Pbe {
             noncollinear_route,
             interstitial_grid,
+            angular_order,
         } => ScfExchangeCorrelation {
             functional: XcFunctional::Pbe,
             noncollinear_route: map_noncollinear_xc_route(noncollinear_route),
             interstitial_grid,
+            angular_order,
         },
     }
 }

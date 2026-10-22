@@ -136,6 +136,9 @@ pub struct ScfExchangeCorrelation {
     /// Optional explicit interstitial sampling divisions for the nonlinear XC transform.
     /// `None` preserves the density-derived default.
     pub interstitial_grid: Option<[usize; 3]>,
+    /// Explicit Lebedev algebraic exactness order; `None` uses the
+    /// density-derived production rule independently of the harmonic cutoff.
+    pub angular_order: Option<u32>,
 }
 
 /// Density mixer and its persistent-history controls.
@@ -2059,6 +2062,7 @@ mod tests {
                 functional: XcFunctional::LdaPw92,
                 noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
                 interstitial_grid: None,
+                angular_order: None,
             },
             mixing,
             relativity: ScfRelativity::SocSecondVariation {

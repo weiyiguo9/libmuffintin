@@ -482,11 +482,7 @@ fn require_spmd_final_agreement(
     }
 
     let mut maximum_wall = 0.0;
-    world.all_reduce_into(
-        &wall_seconds,
-        &mut maximum_wall,
-        SystemOperation::max(),
-    );
+    world.all_reduce_into(&wall_seconds, &mut maximum_wall, SystemOperation::max());
     Ok(maximum_wall)
 }
 
@@ -599,6 +595,7 @@ fn scf_config(options: &Options) -> ScfConfig {
             functional: XcFunctional::LdaPw92,
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
             interstitial_grid: None,
+            angular_order: None,
         },
         mixing: ScfMixing::PulayAnderson {
             alpha: OUTER_MIXING_BETA,

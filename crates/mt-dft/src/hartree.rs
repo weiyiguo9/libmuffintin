@@ -757,6 +757,9 @@ pub fn build_scf_potential(
     if let Some(interstitial_grid) = exchange_correlation.interstitial_grid {
         xc_field_spec.interstitial_divisions = interstitial_grid;
     }
+    if let Some(angular_order) = exchange_correlation.angular_order {
+        xc_field_spec.angular_order = angular_order;
+    }
     let exchange_correlation_result =
         crate::evaluate_regional_xc(exchange_correlation.functional, density, xc_field_spec)?;
     assemble_scf_potential_from_parts(
@@ -795,7 +798,7 @@ pub fn assemble_scf_potential_from_parts(
             continuation: muffintin_sphere::CorePotentialContinuationSpec::default(),
             xc_functional: functional,
             xc_noncollinear_route: xc_field_spec.noncollinear_route,
-            xc_angular_point_count: xc_field_spec.angular_point_count,
+            xc_angular_order: xc_field_spec.angular_order,
         },
         energy_terms: crate::ScfEnergyTerms {
             madelung: electrostatic.madelung,

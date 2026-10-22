@@ -318,6 +318,7 @@ pub(crate) fn materialize_atomic_start(
             functional,
             noncollinear_route: NoncollinearXcRoute::LocalSpinFrame,
             interstitial_grid: None,
+            angular_order: None,
         },
         free_atom_scf: free_atom_controls.free_atom_scf.clone(),
         angular_grid,

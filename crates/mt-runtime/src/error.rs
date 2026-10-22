@@ -93,6 +93,8 @@ pub enum InputValidationError {
     InvalidFraction { path: String, value: f64 },
     #[error("{path} must be nonzero")]
     Zero { path: String },
+    #[error("{path} has unsupported Lebedev angular order {order}")]
+    UnsupportedAngularOrder { path: String, order: u32 },
     #[error("{path} must contain at least {minimum} entries, got {actual}")]
     TooShort {
         path: String,

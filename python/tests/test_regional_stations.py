@@ -62,7 +62,15 @@ def test_regional_density_roundtrip_and_potential_station() -> None:
     assert roundtrip.difference(density).residual_rms() == 0.0
     assert roundtrip.add_scaled(0.0, density).difference_rms(roundtrip) == 0.0
 
-    potential = mt.build_regional_potential(roundtrip, "lda-pw92")
+    with pytest.raises(ValueError):
+        mt.build_regional_potential(roundtrip, "lda-pw92", angular_order=13)
+    potential = mt.build_regional_potential(roundtrip, "lda-pw92", angular_order=29)
+    prepared = mt.prepare_scf_potential_blocks(roundtrip, "lda-pw92", angular_order=29)
+    xc_inputs = prepared.export_xc_inputs()
+    assert xc_inputs["angular_order"] == 29
+    assert "angular_point_count" not in xc_inputs
+    with pytest.raises(ValueError):
+        mt.prepare_scf_potential_blocks(roundtrip, "lda-pw92", angular_order=13)
     frozen = physics.export_frozen_potential()
     rebuilt_potential = potential.export_interstitial()
     np.testing.assert_allclose(rebuilt_potential["components"], frozen["components"])

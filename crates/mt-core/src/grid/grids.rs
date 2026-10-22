@@ -73,6 +73,9 @@ pub enum GridError {
     /// Solid-angle weights must sum to the full sphere.
     #[error("angular weights must sum to 4*pi, got {weight_sum}")]
     InvalidAngularWeightSum { weight_sum: f64 },
+    /// The requested Lebedev algebraic exactness order is unavailable.
+    #[error("unsupported Lebedev algebraic exactness order {order}")]
+    UnsupportedLebedevOrder { order: u32 },
     /// Atom centres must have finite Cartesian components.
     #[error("atom centre contains a non-finite coordinate")]
     InvalidAtomCenter,
