@@ -1377,8 +1377,14 @@ mod tests {
             &request,
             &extended,
             &muffin_tin_mesh,
-            vec![SolvedBoundCoreState {
-                solution,
+            vec![SolvedCoreState {
+                state: solution.state,
+                energy: solution.energy,
+                p: solution.p,
+                q: solution.q,
+                norm_total: solution.norm_total,
+                norm_mt: solution.norm_mt,
+                spill: solution.spill,
                 spec,
                 sourced_search: CoreSourcedSearchProvenance {
                     energy_window: EnergyBracket::from_values(-2.0, -1.0e-8).unwrap(),
@@ -1480,8 +1486,14 @@ mod tests {
             &explicit_request,
             &extended,
             &muffin_tin_mesh,
-            vec![SolvedBoundCoreState {
-                solution: solver_oracle.clone(),
+            vec![SolvedCoreState {
+                state: solver_oracle.state,
+                energy: solver_oracle.energy,
+                p: solver_oracle.p.clone(),
+                q: solver_oracle.q.clone(),
+                norm_total: solver_oracle.norm_total,
+                norm_mt: solver_oracle.norm_mt,
+                spill: solver_oracle.spill,
                 spec,
                 sourced_search: CoreSourcedSearchProvenance {
                     energy_window: EnergyBracket::from_values(-2.0, -1.0e-8).unwrap(),
