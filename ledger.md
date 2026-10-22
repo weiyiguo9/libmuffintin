@@ -2747,3 +2747,21 @@ are the previously tested repair recorded in evd-0026.
 
 - state: mt-xc-angular = published to both main branches; G-MT-XC-1 closed (evd-0026)
 - note: mt-xc-angular = libmuffintin 31609e5; pymuffintin a266b0a; rebuild/install still needed; historical diamond and SPEX validation deferred
+
+## 2026-10-22 · evt-0080 · commit-message guidance task opened and completed · actor: user
+
+The user requested the proposed AGENTS.md update in libmuffintin, based on
+main `31609e5df4863528aa796eaf4e193b8e20dabdea`. Replace the 1–3 sentence
+body limit with explanatory paragraphs, a typical 120–250 word range for
+non-trivial changes, factual validation reporting, and actual 72-column
+body wrapping. Keep the other commit conventions and code unchanged.
+This documentation-only task is complete; no numerical gate was run and
+no commit or push was requested.
+
+## 2026-10-22 · evt-0081 · commit-message guidance publication · actor: user
+
+The user requested commit and push. Published libmuffintin main
+`d5dee7c426fa87874ca42a0d5e077498d8aecd8e` with the AGENTS.md guidance
+from evt-0080. The commit changes only that file and uses the configured
+repo-local Git identity. No code, tests, or numerical acceptance changed.
+The unrelated local XC Rust log is excluded from the harness publication.
