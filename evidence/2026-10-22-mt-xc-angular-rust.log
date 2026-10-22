@@ -1,0 +1,746 @@
+    Updating crates.io index
+     Locking 2 packages to latest compatible versions
+      Adding gcc v0.3.55
+      Adding lebedev_laikov v0.1.0
+ Downloading crates ...
+  Downloaded gcc v0.3.55
+   Compiling zerocopy v0.8.56
+   Compiling rustix v1.1.4
+   Compiling bitflags v2.13.1
+   Compiling num-traits v0.2.19
+   Compiling gcc v0.3.55
+   Compiling fastrand v2.5.0
+   Compiling errno v0.3.14
+   Compiling once_cell v1.21.4
+   Compiling syn v3.0.3
+   Compiling wait-timeout v0.2.1
+   Compiling bit-vec v0.8.0
+   Compiling fnv v1.0.7
+   Compiling quick-error v1.2.3
+   Compiling rand_xorshift v0.4.0
+   Compiling rand v0.9.5
+   Compiling unarray v0.1.4
+   Compiling regex-syntax v0.8.11
+   Compiling bit-set v0.8.0
+   Compiling lebedev_laikov v0.1.0
+   Compiling thiserror-impl v2.0.20
+   Compiling num-complex v0.4.6
+   Compiling thiserror v2.0.20
+   Compiling tempfile v3.27.0
+   Compiling rusty-fork v0.3.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_chacha v0.9.0
+   Compiling proptest v1.11.0
+   Compiling libmuffintin-core v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.91s
+     Running unittests src/lib.rs (target/debug/deps/muffintin_core-9fe42451b52cc925)
+
+running 5 tests
+test grid::angular::tests::unsupported_lebedev_order_is_rejected_without_rounding ... ok
+test grid::angular::tests::supplied_rule_is_validated ... ok
+test grid::angular::tests::fibonacci_rule_is_normalized_and_deterministic ... ok
+test grid::angular::tests::production_29_rule_has_orthonormal_harmonics_through_l4 ... ok
+test grid::angular::tests::lebedev_rules_are_positive_normalized_and_exact ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 24 filtered out; finished in 0.01s
+
+   Compiling num-traits v0.2.19
+   Compiling serde_derive v1.0.229
+   Compiling num-integer v0.1.47
+   Compiling half v2.7.1
+   Compiling approx v0.5.1
+   Compiling num-bigint v0.4.8
+   Compiling num-iter v0.1.46
+   Compiling serde v1.0.229
+   Compiling num-rational v0.4.2
+   Compiling num-complex v0.4.6
+   Compiling pulp v0.21.5
+   Compiling num v0.4.3
+   Compiling nano-gemm-c32 v0.1.0
+   Compiling nano-gemm-c64 v0.1.0
+   Compiling libmuffintin-core v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-core)
+   Compiling fftw-sys v0.8.0
+   Compiling ndarray v0.15.6
+   Compiling simba v0.10.2
+   Compiling rstsr-dtype-traits v0.7.10
+   Compiling rstsr-common v0.7.10
+   Compiling opt-einsum-path v0.2.0
+   Compiling tblis-ffi v0.2.6
+   Compiling libmuffintin-sphere v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-sphere)
+   Compiling tblis v0.2.6 (/Users/zerozaki07/tmp/libmuffintin/.local-deps/tblis-rs/tblis)
+   Compiling rstsr-native-impl v0.7.10
+   Compiling libmuffintin-envelope v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-envelope)
+   Compiling fftw v0.8.0
+   Compiling gemm-common v0.18.2
+   Compiling qd v0.7.7
+   Compiling nalgebra v0.35.0
+   Compiling faer-traits v0.22.1
+   Compiling gemm-c64 v0.18.2
+   Compiling gemm-f64 v0.18.2
+   Compiling gemm-f32 v0.18.2
+   Compiling gemm-c32 v0.18.2
+   Compiling nano-gemm v0.1.3
+   Compiling gemm v0.18.2
+   Compiling faer v0.22.6
+   Compiling moyo v0.17.0
+   Compiling libmuffintin-symmetry v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-symmetry)
+   Compiling faer-ext v0.6.0
+   Compiling rstsr-core v0.7.10
+   Compiling rstsr-tblis v0.7.10
+   Compiling rstsr v0.7.10
+   Compiling libmuffintin-tensor v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-tensor)
+   Compiling libmuffintin-operators v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-operators)
+   Compiling libmuffintin-prodbasis v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-prodbasis)
+   Compiling libmuffintin-coulomb v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-coulomb)
+   Compiling libmuffintin-dft v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-dft)
+error[E0422]: cannot find struct, variant or union type `SolvedBoundCoreState` in this scope
+    --> crates/mt-dft/src/core_station.rs:1380:18
+     |
+ 188 | pub struct SolvedCoreState {
+     | -------------------------- similarly named struct `SolvedCoreState` defined here
+...
+1380 |             vec![SolvedBoundCoreState {
+     |                  ^^^^^^^^^^^^^^^^^^^^
+     |
+help: a struct with a similar name exists
+     |
+1380 -             vec![SolvedBoundCoreState {
+1380 +             vec![SolvedCoreState {
+     |
+
+error[E0422]: cannot find struct, variant or union type `SolvedBoundCoreState` in this scope
+    --> crates/mt-dft/src/core_station.rs:1483:18
+     |
+ 188 | pub struct SolvedCoreState {
+     | -------------------------- similarly named struct `SolvedCoreState` defined here
+...
+1483 |             vec![SolvedBoundCoreState {
+     |                  ^^^^^^^^^^^^^^^^^^^^
+     |
+help: a struct with a similar name exists
+     |
+1483 -             vec![SolvedBoundCoreState {
+1483 +             vec![SolvedCoreState {
+     |
+
+For more information about this error, try `rustc --explain E0422`.
+error: could not compile `libmuffintin-dft` (lib test) due to 2 previous errors
+   Compiling libmuffintin-dft v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-dft)
+error: linking with `cc` failed: exit status: 1
+  |
+  = note:  "cc" "/Users/zerozaki07/tmp/libmuffintin/target/debug/deps/rustcXMglqB/symbols.o" "<257 object files omitted>" "<sysroot>/lib/rustlib/aarch64-apple-darwin/lib/{libtest-*,libgetopts-*,librustc_std_workspace_std-*}.rlib" "/Users/zerozaki07/tmp/libmuffintin/target/debug/deps/{libmuffintin_symmetry-a8ad96950fb851ba,libmoyo-daa61815d235ed72,libstrum-cf402e7a0878a763,librustc_hash-388b7b350e8c518f,libitertools-bd12c5a0455d3576,liblog-81574e1ae92e5b7f,libunion_find-8affe5fdb6aae20e,libnalgebra-0a1f09b64bab09c6,libmatrixmultiply-053daafa207f0552,librawpointer-d66d0a0b58632008,libtypenum-f93b6faf9ab34721,libsimba-2a723c9dbae4c954,libwide-1c1d049fe8e41470,libapprox-710161a41fb42320,libmuffintin_coulomb-4825afdae4908bc1,libmuffintin_prodbasis-b2b504bc575d7a4a,libmuffintin_operators-5fe652f283de9a58,libmuffintin_envelope-ded5702596ac833d,libmuffintin_tensor-5c4e84a6691a45e3,librstsr-0eb043931c9c2ae6,librstsr_tblis-c314772495f339f7,libtblis-16dd0c76a256bb3a,libtblis_ffi-5ea3b5909541f00d,libopt_einsum_path-6501873ce7cd9701,libitertools-96c24140cd9dcb5f,librand-f7ce713f1154ee66,librand_chacha-76958e7ef761dafd,libppv_lite86-d00665557420b824,librand_core-1e7f7bd176db7941,libgetrandom-1505c7039e4c55ec,librstsr_core-b8cbf3286d924cd0,libfaer_ext-52d671db9516b091,libfaer-01e68b62ac3fde10,libgemm-991599405fcfe2d9,libgemm_c32-46273f257088d0fd,libgemm_c64-80c3da3f66269e10,libgemm_f32-f1a31cdc6dac4f38,libgemm_f64-64f1630ec3d90637,libgemm_common-30a33b5adc368902,libonce_cell-2e6000daa0446cfa,libsysctl-8e23a14f643abbe4,libbyteorder-8136f9b82228c878,libnano_gemm-893a3c618240e086,libnano_gemm_f64-973cfb9e09dac8a3,libnano_gemm_f32-dccfdaddebef7ff3,libnano_gemm_c64-8e4a2b813a045689,libnano_gemm_c32-e1b1155d152c3e5f,libnano_gemm_core-b8dfaae84f2a6ba8,libequator-d58a08c26be2b726,libgenerativity-740f13dfc46eea2d,libequator-df60bd7fad7afd1f,libreborrow-cc1c8b5b5238c622,libfaer_traits-0a98664b8cd92c3a,libqd-00010cc4042acc43,libpulp-62c92cbbd5ebb0d1,libdyn_stack-9ff969267503bb82,librstsr_native_impl-793805b5af094df3,librstsr_dtype_traits-7dfe66dbbead07b6,liblibm-1b5e0dab3bbe27f9,libhalf-bab14f4afe4d2a2f,libcfg_if-b1f43a58b930e7e9,libzerocopy-9e9f02c6fd54a932,librstsr_common-2de90a2ff285164e,libnum-c2f8c505ff67d033,libnum_iter-eac13cc31af7c4ca,libnum_rational-b4af2f30dea6649c,libnum_bigint-17329eb9cbefa0ac,libnum_integer-f632aac0dc66e0f3,librstsr_cblas_base-a5fe6aed1a18c923,libderive_builder-2932df1dd2ccfc87,libitertools-190d39675e81611f,libfftw-971d6913f4315744,libbitflags-0955b776503621b7,libthiserror-e76eb08d86c9789a,liblazy_static-6e48c52849cbe827,libfftw_sys-b5bfa34ca73f4312,libtblis_src-09b41df1caff9af0,libmuffintin_sphere-4c2429d6e8c458fa,librayon-f414213e79735307,librayon_core-2f2bad88212698bf,libcrossbeam_deque-ae34b5fc362ae80d,libcrossbeam_epoch-9d313aeff1035058,libcrossbeam_utils-ee6c53ac68e0c4c9,libeither-3ee4bf792eed0cfc,libmuffintin_core-35c3c9c89b0dc113,liblebedev_laikov-957af2a7c3ca7d1a,liblibc-e5fa898936c358d7,libnum_complex-1f73488716d4260b,libserde-3e2a8db25fd47aa3,libserde_core-c7046fe499ba80b9,libbytemuck-c5772bf511c23c5c,libnum_traits-43f08ba94a3e609c,libthiserror-627a5980e880a598}.rlib" "<sysroot>/lib/rustlib/aarch64-apple-darwin/lib/{libstd-*,libpanic_unwind-*,libobject-*,libmemchr-*,libaddr2line-*,libgimli-*,libcfg_if-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libminiz_oxide-*,libadler2-*,libunwind-*,liblibc-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "-lfftw3" "-lfftw3f" "-ltblis" "-liconv" "-lSystem" "-lc" "-lm" "-arch" "arm64" "-mmacosx-version-min=11.0.0" "-L" "/Users/zerozaki07/tmp/libmuffintin/target/debug/build/lebedev_laikov-d48e6aec3b0ab214/out" "-L" "/opt/homebrew/Cellar/tblis/2.0.0-dev-20251121" "-L" "/opt/homebrew/Cellar/tblis/2.0.0-dev-20251121/lib" "-L" "/usr" "-L" "/usr/lib" "-L" "/usr/local" "-L" "/usr/local/lib" "-L" "/usr/local/share" "-L" "/opt" "-o" "/Users/zerozaki07/tmp/libmuffintin/target/debug/deps/muffintin_dft-b572b5d9d2d327da" "-Wl,-dead_strip" "-nodefaultlibs"
+  = note: some arguments are omitted. use `--verbose` to show all linker arguments
+  = note: ld: library 'fftw3' not found
+          clang: error: linker command failed with exit code 1 (use -v to see invocation)
+
+
+error: could not compile `libmuffintin-dft` (lib test) due to 1 previous error
+   Compiling libmuffintin-dft v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-dft)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.22s
+     Running unittests src/lib.rs (target/debug/deps/muffintin_dft-b572b5d9d2d327da)
+
+running 16 tests
+test xc_field::tests::negative_spin_densities_are_clamped_to_vacuum ... ok
+test xc_field::tests::magnetization_node_with_derivatives_is_spin_rotation_covariant ... ok
+test xc_field::tests::radial_monopole_cartesian_derivatives_match_quadratic_density ... ok
+test core_potential::tests::checkpoint_bridge_preserves_mt_and_reports_compact_join ... ok
+test xc_field::tests::transform_spec_rejects_aliasing_and_empty_quadratures ... ok
+test xc_field::tests::spin_swap_swaps_potentials_and_preserves_both_integrals ... ok
+test xc_field::tests::uniform_global_spin_rotation_covariance_and_collinear_reduction ... ok
+test xc_field::tests::uniform_lda_and_pbe_match_constant_point_kernel_and_direct_integrals ... ok
+test xc_field::tests::skew_three_dimensional_pbe_fft_matches_direct_interstitial_transform ... ok
+test xc_field::tests::one_cosine_has_analytic_jet_and_nonlinear_transform_converges ... ok
+test xc_field::tests::nonuniform_global_spin_rotation_is_covariant_for_both_routes ... ok
+test xc_field::tests::textured_pbe_distinguishes_the_two_derivative_routes ... ok
+test xc_field::tests::sphere_geometry_integrates_with_the_truncated_analytic_step_function ... ok
+test xc_field::tests::radial_monopole_closes_to_a_real_muffin_tin_potential ... ok
+DIGIT LdaPw92: symmetry=6.451657058804733e-16 reference=4.1178865872737447e-13 full_block=0e0 Ha
+test core_potential::tests::nonzero_xc_uses_unmasked_pointwise_outer_field_and_joins_boundary ... ok
+DIGIT Pbe: symmetry=5.198222438708796e-16 reference=3.3617827271958944e-11 full_block=0e0 Ha
+test xc_field::tests::lebedev_cubic_xc_preserves_symmetry_and_matches_reference ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 114 filtered out; finished in 4.08s
+
+   Compiling num-complex v0.4.6
+   Compiling hdf5-metno-sys v0.11.4
+   Compiling pulp v0.21.5
+   Compiling num v0.4.3
+   Compiling nano-gemm-c64 v0.1.0
+   Compiling nano-gemm-c32 v0.1.0
+   Compiling libmuffintin-core v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-core)
+   Compiling fftw-sys v0.8.0
+   Compiling ndarray v0.15.6
+   Compiling simba v0.10.2
+   Compiling ndarray v0.17.2
+   Compiling rstsr-dtype-traits v0.7.10
+   Compiling rstsr-common v0.7.10
+   Compiling tblis-ffi v0.2.6
+   Compiling opt-einsum-path v0.2.0
+   Compiling rstsr-native-impl v0.7.10
+   Compiling tblis v0.2.6 (/Users/zerozaki07/tmp/libmuffintin/.local-deps/tblis-rs/tblis)
+   Compiling fftw v0.8.0
+   Compiling libmuffintin-sphere v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-sphere)
+   Compiling gemm-common v0.18.2
+   Compiling qd v0.7.7
+   Compiling faer-traits v0.22.1
+   Compiling nalgebra v0.35.0
+   Compiling gemm-f64 v0.18.2
+   Compiling gemm-c64 v0.18.2
+   Compiling gemm-f32 v0.18.2
+   Compiling gemm-c32 v0.18.2
+   Compiling libmuffintin-envelope v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-envelope)
+   Compiling gemm v0.18.2
+   Compiling nano-gemm v0.1.3
+   Compiling faer v0.22.6
+error: failed to run custom build command for `hdf5-metno-sys v0.11.4`
+
+Caused by:
+  process didn't exit successfully: `/Users/zerozaki07/tmp/libmuffintin/target/debug/build/hdf5-metno-sys-1688b65c27fbfbd0/build-script-build` (exit status: 101)
+  --- stdout
+  Attempting to find HDF5 via Homebrew (any version)...
+
+  --- stderr
+
+  thread 'main' (18961054) panicked at /Users/zerozaki07/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hdf5-metno-sys-0.11.4/build.rs:625:13:
+  Unable to locate HDF5 root directory and/or headers.
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+warning: build failed, waiting for other jobs to finish...
+   Compiling faer-ext v0.6.0
+   Compiling hdf5-metno-sys v0.11.4
+   Compiling moyo v0.17.0
+   Compiling rstsr-core v0.7.10
+   Compiling hdf5-metno-types v0.11.0
+   Compiling hdf5-metno v0.12.3
+   Compiling libmuffintin-symmetry v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-symmetry)
+   Compiling libmuffintin-io v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-io)
+   Compiling rstsr-tblis v0.7.10
+   Compiling rstsr v0.7.10
+   Compiling libmuffintin-tensor v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-tensor)
+   Compiling libmuffintin-operators v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-operators)
+   Compiling libmuffintin-prodbasis v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-prodbasis)
+   Compiling libmuffintin-coulomb v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-coulomb)
+   Compiling libmuffintin-dft v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-dft)
+   Compiling libmuffintin-runtime v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.11s
+     Running tests/single_dft_scf.rs (target/debug/deps/single_dft_scf-6128a9f572a1add6)
+
+running 2 tests
+test input_rejects_unsupported_explicit_xc_angular_order ... ok
+test single_dft_scf_config_maps_explicit_xc_interstitial_grid ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+    Checking bytemuck v1.25.2
+    Checking cfg-if v1.0.4
+    Checking libm v0.2.16
+    Checking serde_core v1.0.229
+    Checking libc v0.2.189
+    Checking either v1.17.0
+    Checking crossbeam-utils v0.8.22
+    Checking bitflags v2.13.1
+    Checking once_cell v1.21.4
+    Checking reborrow v0.5.5
+    Checking thiserror v1.0.69
+    Checking byteorder v1.5.0
+    Checking zerocopy v0.8.56
+    Checking raw-cpuid v11.6.0
+    Checking nano-gemm-core v0.1.0
+    Checking rawpointer v0.2.1
+    Checking dyn-stack v0.13.2
+    Checking derive_builder v0.20.2
+    Checking matrixmultiply v0.3.11
+    Checking thiserror v2.0.20
+    Checking equator v0.2.2
+    Checking nano-gemm-f32 v0.1.0
+    Checking nano-gemm-f64 v0.1.0
+    Checking crossbeam-epoch v0.9.20
+   Compiling memchr v2.8.3
+    Checking sysctl v0.6.0
+    Checking getrandom v0.3.4
+    Checking crossbeam-deque v0.8.7
+    Checking rand_core v0.9.5
+    Checking generativity v1.2.1
+    Checking rayon-core v1.13.0
+    Checking equator v0.4.2
+    Checking itertools v0.13.0
+    Checking num-traits v0.2.19
+   Compiling aho-corasick v1.1.5
+    Checking rstsr-cblas-base v0.1.1
+    Checking lazy_static v1.5.0
+    Checking rayon v1.12.0
+    Checking lebedev_laikov v0.1.0
+    Checking itertools v0.14.0
+    Checking num-integer v0.1.47
+    Checking num-bigint v0.4.8
+    Checking num-iter v0.1.46
+    Checking serde v1.0.229
+   Compiling regex-automata v0.4.18
+   Compiling libloading v0.8.9
+    Checking approx v0.5.1
+    Checking wide v1.7.0
+    Checking num-complex v0.4.6
+    Checking smallvec v1.15.2
+   Compiling hashbrown v0.17.1
+    Checking scopeguard v1.2.0
+   Compiling equivalent v1.0.2
+    Checking num-rational v0.4.2
+    Checking lock_api v0.4.14
+    Checking parking_lot_core v0.9.12
+    Checking pulp v0.21.5
+    Checking nano-gemm-c64 v0.1.0
+    Checking nano-gemm-c32 v0.1.0
+    Checking num v0.4.3
+    Checking libmuffintin-core v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-core)
+    Checking rstsr-common v0.7.10
+    Checking tblis-ffi v0.2.6
+    Checking fftw-sys v0.8.0
+    Checking ndarray v0.15.6
+    Checking libmuffintin-sphere v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-sphere)
+    Checking ppv-lite86 v0.2.21
+    Checking half v2.7.1
+    Checking rand_chacha v0.9.0
+    Checking rand v0.9.5
+   Compiling regex v1.13.1
+    Checking rstsr-dtype-traits v0.7.10
+    Checking rstsr-native-impl v0.7.10
+   Compiling indexmap v2.14.0
+    Checking opt-einsum-path v0.2.0
+    Checking tblis v0.2.6 (/Users/zerozaki07/tmp/libmuffintin/.local-deps/tblis-rs/tblis)
+   Compiling hdf5-metno-sys v0.11.4
+    Checking tblis-src v0.2.6 (/Users/zerozaki07/tmp/libmuffintin/vendor/tblis-src)
+    Checking zmij v1.0.23
+    Checking typenum v1.20.1
+    Checking itoa v1.0.18
+   Compiling toml_edit v0.25.13+spec-1.1.0
+    Checking libmuffintin-envelope v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-envelope)
+    Checking parking_lot v0.12.5
+    Checking serde_json v1.0.151
+    Checking itertools v0.15.0
+    Checking fftw v0.8.0
+    Checking union-find v0.4.4
+    Checking strum v0.28.0
+    Checking rustc-hash v2.1.3
+    Checking log v0.4.33
+   Compiling proc-macro-crate v3.5.0
+   Compiling hdf5-metno-types v0.11.0
+    Checking toml_datetime v0.6.11
+    Checking gemm-common v0.18.2
+    Checking qd v0.7.7
+    Checking serde_spanned v0.6.9
+    Checking ascii v1.1.0
+    Checking faer-traits v0.22.1
+    Checking toml_write v0.1.2
+    Checking winnow v0.7.15
+   Compiling hdf5-metno v0.12.3
+    Checking gemm-f32 v0.18.2
+    Checking gemm-c64 v0.18.2
+    Checking gemm-f64 v0.18.2
+    Checking gemm-c32 v0.18.2
+    Checking nano-gemm v0.1.3
+   Compiling hdf5-metno-derive v0.10.2
+    Checking ndarray v0.17.2
+    Checking gemm v0.18.2
+    Checking faer v0.22.6
+    Checking simba v0.10.2
+    Checking toml_edit v0.22.27
+    Checking toml v0.8.23
+    Checking nalgebra v0.35.0
+    Checking moyo v0.17.0
+    Checking libmuffintin-symmetry v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-symmetry)
+    Checking libmuffintin-io v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-io)
+    Checking faer-ext v0.6.0
+    Checking rstsr-core v0.7.10
+    Checking rstsr-tblis v0.7.10
+    Checking rstsr v0.7.10
+    Checking libmuffintin-tensor v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-tensor)
+    Checking libmuffintin-operators v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-operators)
+    Checking libmuffintin-prodbasis v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-prodbasis)
+    Checking libmuffintin-coulomb v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-coulomb)
+    Checking libmuffintin-dft v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-dft)
+    Checking libmuffintin-runtime v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-runtime)
+warning: unused import: `thc_fixture_common::spinor_parent_grid as parent_grid`
+  --> crates/mt-runtime/tests/spinor_hydrogen.rs:33:9
+   |
+33 | pub use thc_fixture_common::spinor_parent_grid as parent_grid;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `libmuffintin-runtime` (test "valence_hf_mesh") generated 1 warning (1 duplicate)
+warning: `libmuffintin-runtime` (test "gamma_valence_hf") generated 1 warning (run `cargo fix --test "gamma_valence_hf" -p libmuffintin-runtime` to apply 1 suggestion)
+warning: `libmuffintin-runtime` (test "relaxed_core_hf") generated 1 warning (1 duplicate)
+warning: unused import: `thc_fixture_common::scalar_parent_grid as parent_grid`
+  --> crates/mt-runtime/tests/scalar_hydrogen.rs:28:9
+   |
+28 | pub use thc_fixture_common::scalar_parent_grid as parent_grid;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `libmuffintin-runtime` (test "kh_soc_hf") generated 1 warning (run `cargo fix --test "kh_soc_hf" -p libmuffintin-runtime` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 22.41s
+   Compiling num-integer v0.1.47
+   Compiling target-lexicon v0.13.5
+   Compiling memoffset v0.9.1
+   Compiling unindent v0.2.4
+   Compiling indoc v2.0.7
+   Compiling inventory v0.3.24
+   Compiling num-bigint v0.4.8
+   Compiling num-iter v0.1.46
+   Compiling ndarray v0.15.6
+   Compiling ndarray v0.17.2
+   Compiling pyo3-build-config v0.27.2
+   Compiling num-rational v0.4.2
+   Compiling num v0.4.3
+   Compiling nalgebra v0.35.0
+   Compiling rstsr-dtype-traits v0.7.10
+   Compiling rstsr-common v0.7.10
+   Compiling tblis-ffi v0.2.6
+   Compiling opt-einsum-path v0.2.0
+   Compiling pyo3-macros-backend v0.27.2
+   Compiling pyo3-ffi v0.27.2
+   Compiling pyo3 v0.27.2
+   Compiling numpy v0.27.1
+   Compiling tblis v0.2.6 (/Users/zerozaki07/tmp/libmuffintin/.local-deps/tblis-rs/tblis)
+   Compiling fftw v0.8.0
+   Compiling rstsr-native-impl v0.7.10
+   Compiling hdf5-metno v0.12.3
+   Compiling rstsr-core v0.7.10
+   Compiling pyo3-macros v0.27.2
+   Compiling moyo v0.17.0
+   Compiling libmuffintin-symmetry v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-symmetry)
+   Compiling libmuffintin-io v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-io)
+   Compiling rstsr-tblis v0.7.10
+   Compiling rstsr v0.7.10
+   Compiling libmuffintin-tensor v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-tensor)
+   Compiling libmuffintin-operators v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-operators)
+   Compiling libmuffintin-prodbasis v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-prodbasis)
+   Compiling libmuffintin-coulomb v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-coulomb)
+   Compiling libmuffintin-dft v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-dft)
+   Compiling libmuffintin-runtime v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-runtime)
+   Compiling libmuffintin-python v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-python)
+error: linking with `cc` failed: exit status: 1
+  |
+  = note:  "cc" "-Wl,-exported_symbols_list" "-Wl,/Users/zerozaki07/tmp/libmuffintin/target/debug/deps/rustc3JKB1r/list" "/Users/zerozaki07/tmp/libmuffintin/target/debug/deps/rustc3JKB1r/symbols.o" "<257 object files omitted>" "/Users/zerozaki07/tmp/libmuffintin/target/debug/deps/{libmuffintin-171ba847e905ef8f,libnumpy-80fa9e4d0a77ae03,libpyo3-6142ae6df0a059c3,libpyo3_ffi-c1255813eb1f25b7,libmemoffset-3acc1573165b1005,libinventory-30abc1ede29cf9e6,libunindent-d8feaa7bcc986d08,libmuffintin_io-a4228cc6a84bfcdb,libtoml-206df498c0488237,libtoml_edit-a7678ce817ab3bb3,libserde_spanned-64ebb94d25a59142,libindexmap-1b841711155e6ac1,libequivalent-81554fd639d03f70,libhashbrown-1a5d786ffc1e6f1b,libwinnow-516b8bf56476de71,libtoml_write-95b68a10c9575789,libtoml_datetime-864dfbd8841545c9,libhdf5_metno-d98fff84384a7a1f,libndarray-0490695bf038d637,libhdf5_metno_types-08f59de9630c683c,libhdf5_metno_sys-d157de9d1970fd79,libparking_lot-4f8d543d85e54e2c,libparking_lot_core-65bbac1a5bf723de,libsmallvec-586b780dedee2522,liblock_api-358a578aa17a1415,libscopeguard-84356ba07672a271,libascii-3af389f12c12cd0e,libmuffintin_dft-e0256057208932ab,libmuffintin_symmetry-36fe78e3a1f87076,libmoyo-71b98fcaa6d6e1b6,libstrum-cf402e7a0878a763,librustc_hash-388b7b350e8c518f,libitertools-bd12c5a0455d3576,liblog-81574e1ae92e5b7f,libunion_find-8affe5fdb6aae20e,libnalgebra-7a8919003642863c,libmatrixmultiply-053daafa207f0552,librawpointer-d66d0a0b58632008,libtypenum-f93b6faf9ab34721,libsimba-650e86357950c7a5,libwide-1c1d049fe8e41470,libapprox-710161a41fb42320,libmuffintin_coulomb-51305355a1f99bbe,libmuffintin_prodbasis-f81df347db4c8ae4,libmuffintin_operators-41b473cfbc6bc774,libmuffintin_envelope-9014a3ce8c0cc476,libmuffintin_tensor-e0495e1401d78f16,librstsr-ae5f8c248b947bf1,librstsr_tblis-864ba654d251420e,libtblis-33cf3b6cc1582734,libtblis_ffi-2903d01d7070b82d,libopt_einsum_path-5f34ecd5653486da,libitertools-96c24140cd9dcb5f,librand-f7ce713f1154ee66,librand_chacha-76958e7ef761dafd,libppv_lite86-d00665557420b824,librand_core-1e7f7bd176db7941,libgetrandom-1505c7039e4c55ec,librstsr_core-b2bfd484eeb66f99,libfaer_ext-7ae223c0ad9989f5,libfaer-be98a9e711f91a0c,libgemm-b016ceec26a79796,libgemm_c32-484b9d64febcc6fe,libgemm_c64-33b37aceef966604,libgemm_f32-59eec6829570ebdf,libgemm_f64-a5a3b90d5851124c,libgemm_common-37390eb6bb440dbb,libonce_cell-2e6000daa0446cfa,libsysctl-8e23a14f643abbe4,libbyteorder-8136f9b82228c878,libnano_gemm-7b9192dcc616e56d,libnano_gemm_f64-973cfb9e09dac8a3,libnano_gemm_f32-dccfdaddebef7ff3,libnano_gemm_c64-ada66249d943c5a4,libnano_gemm_c32-fe5f1022c670a246,libnano_gemm_core-b8dfaae84f2a6ba8,libequator-d58a08c26be2b726,libgenerativity-740f13dfc46eea2d,libequator-df60bd7fad7afd1f,libreborrow-cc1c8b5b5238c622,libfaer_traits-d3880e2904cc2ed2,libqd-a4c43c3995908d39,libpulp-3b7cca193b44941f,libdyn_stack-9ff969267503bb82,librstsr_native_impl-1d14685f319bd753,librstsr_dtype_traits-23497142086b0cdd,liblibm-1b5e0dab3bbe27f9,libhalf-bab14f4afe4d2a2f,libcfg_if-b1f43a58b930e7e9,libzerocopy-9e9f02c6fd54a932,librstsr_common-3195591a28c50ce6,libnum-9cee63f0ef44b264,libnum_iter-88b542e4c5504b99,libnum_rational-2e2cdd6ac6c5d87d,libnum_bigint-193dbff1c64fac6d,libnum_integer-0a90d4a8ff4f1d9a,librstsr_cblas_base-a5fe6aed1a18c923,libderive_builder-2932df1dd2ccfc87,libitertools-190d39675e81611f,libfftw-e9e1d4f129ff3f82,libbitflags-0955b776503621b7,libthiserror-e76eb08d86c9789a,liblazy_static-6e48c52849cbe827,libfftw_sys-5272d008e9b5e6be,libtblis_src-09b41df1caff9af0,libmuffintin_sphere-f6f01fac2cb5d258,librayon-f414213e79735307,librayon_core-2f2bad88212698bf,libcrossbeam_deque-ae34b5fc362ae80d,libcrossbeam_epoch-9d313aeff1035058,libcrossbeam_utils-ee6c53ac68e0c4c9,libeither-3ee4bf792eed0cfc,libmuffintin_core-98aff145d33724fd,liblebedev_laikov-957af2a7c3ca7d1a,liblibc-e5fa898936c358d7,libnum_complex-49006fe256117629,libserde-e324fa09c7d713b9,libserde_core-c7046fe499ba80b9,libbytemuck-c5772bf511c23c5c,libnum_traits-43f08ba94a3e609c,libthiserror-e1bee9a1adfcadf4}.rlib" "<sysroot>/lib/rustlib/aarch64-apple-darwin/lib/{libstd-*,libpanic_unwind-*,libobject-*,libmemchr-*,libaddr2line-*,libgimli-*,libcfg_if-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libminiz_oxide-*,libadler2-*,libunwind-*,liblibc-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "-lhdf5" "-lfftw3" "-lfftw3f" "-ltblis" "-liconv" "-lSystem" "-lc" "-lm" "-arch" "arm64" "-mmacosx-version-min=11.0.0" "-L" "/Users/zerozaki07/tmp/libmuffintin/target/debug/build/lebedev_laikov-d48e6aec3b0ab214/out" "-L" "/opt/homebrew/Cellar/tblis/2.0.0-dev-20251121" "-L" "/opt/homebrew/Cellar/tblis/2.0.0-dev-20251121/lib" "-L" "/usr" "-L" "/usr/lib" "-L" "/usr/local" "-L" "/usr/local/lib" "-L" "/usr/local/share" "-L" "/opt" "-L" "/opt/homebrew/opt/hdf5/lib" "-L" "/opt/homebrew/opt/hdf5/bin" "-o" "/Users/zerozaki07/tmp/libmuffintin/target/debug/deps/libmuffintin_python.dylib" "-Wl,-dead_strip" "-dynamiclib" "-nodefaultlibs"
+  = note: some arguments are omitted. use `--verbose` to show all linker arguments
+  = note: ld: warning: object file (/Users/zerozaki07/tmp/libmuffintin/target/debug/deps/liblebedev_laikov-957af2a7c3ca7d1a.rlib[5](Lebedev-Laikov.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libstd-cbae73a2a9ea889e.rlib[4](std-cbae73a2a9ea889e.std.baab03b253eddc1-cgu.0.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libpanic_unwind-dee0a2ae3c2e2626.rlib[4](panic_unwind-dee0a2ae3c2e2626.panic_unwind.b1fb6437cdbab858-cgu.0.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libobject-b16b6fd7543b0411.rlib[4](object-b16b6fd7543b0411.object.98f2221f9e069d4a-cgu.0.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libaddr2line-c110a9a15f9b2592.rlib[4](addr2line-c110a9a15f9b2592.addr2line.56e45749b3d00793-cgu.0.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libgimli-ac0cd1b7057bbde8.rlib[4](gimli-ac0cd1b7057bbde8.gimli.5454f83e2cec4165-cgu.0.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/librustc_demangle-912bf8003be978d0.rlib[4](rustc_demangle-912bf8003be978d0.rustc_demangle.7b777fc23505e076-cgu.0.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libhashbrown-e25d96bdb422244e.rlib[4](hashbrown-e25d96bdb422244e.hashbrown.4289b5e3075b72dd-cgu.0.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libminiz_oxide-33a2d9c6433ed574.rlib[4](miniz_oxide-33a2d9c6433ed574.miniz_oxide.97ed5ba79fdd8d5-cgu.0.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libadler2-e6bb8462f52aeb45.rlib[4](adler2-e6bb8462f52aeb45.adler2.f7804c7867593aae-cgu.0.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/liballoc-7ede31b2640a6dac.rlib[4](alloc-7ede31b2640a6dac.alloc.2e33f66dc5e331eb-cgu.0.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcore-1cde0f96743b0308.rlib[4](core-1cde0f96743b0308.core.7ef55acc681f1df7-cgu.0.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[20](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.016.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[97](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.093.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[98](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.094.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[99](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.095.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[100](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.096.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[116](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.112.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[135](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.131.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[139](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.135.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[144](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.140.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[168](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.164.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[173](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.169.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[183](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.179.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[199](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.195.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[200](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.196.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          ld: warning: object file (/opt/homebrew/Cellar/rust/1.97.1/lib/rustlib/aarch64-apple-darwin/lib/libcompiler_builtins-d3eb2d83a0f9f63a.rlib[204](compiler_builtins-d3eb2d83a0f9f63a.compiler_builtins.3eb55f489c2182e3-cgu.200.rcgu.o)) was built for newer 'macOS' version (15.0) than being linked (11.0)
+          Undefined symbols for architecture arm64:
+            "_PyBaseObject_Type", referenced from:
+                __RNvXs8_NtNtCs2bg39RgwkUa_4pyo36pycell5impl_INtB5_17PyClassObjectBaseNtNtCsb6szinPzEwG_8pyo3_ffi6object8PyObjectEINtB5_19PyClassObjectLayoutNtNtNtB9_5types3any5PyAnyE10tp_deallocCsgiNEuFz8um6_5numpy in libnumpy-80fa9e4d0a77ae03.rlib[6](numpy-80fa9e4d0a77ae03.numpy.bde4d7a7cdde1924-cgu.2.rcgu.o)
+                __RNCNvXs1_NtNtCs2bg39RgwkUa_4pyo35types3anyNtB7_5PyAnyNtNtBb_11type_object10PyTypeInfo15type_object_raw0Bb_ in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+                __RNvNvXNtNtCs2bg39RgwkUa_4pyo35impl_12pyclass_initINtB4_23PyNativeTypeInitializerpEINtB4_12PyObjectInitpE15into_new_object5inner in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+            "_PyBytes_AsString", referenced from:
+                __RNvMs0_NtNtCs2bg39RgwkUa_4pyo35types5bytesINtNtB9_8instance8BorrowedNtB5_7PyBytesE8as_bytes in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyBytes_Size", referenced from:
+                __RNvMs0_NtNtCs2bg39RgwkUa_4pyo35types5bytesINtNtB9_8instance8BorrowedNtB5_7PyBytesE8as_bytes in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyCMethod_New", referenced from:
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi12methodobject17PyCFunction_NewExCs2bg39RgwkUa_4pyo3 in libpyo3-6142ae6df0a059c3.rlib[17](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.13.rcgu.o)
+            "_PyCapsule_GetContext", referenced from:
+                __RNvNvNtNtCs2bg39RgwkUa_4pyo35types7capsule18capsule_destructor15get_pointer_ctx in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyCapsule_GetName", referenced from:
+                __RNvNvNtNtCs2bg39RgwkUa_4pyo35types7capsule18capsule_destructor15get_pointer_ctx in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyCapsule_GetPointer", referenced from:
+                __RNvXs_NtNtCs2bg39RgwkUa_4pyo35types7capsuleINtNtB8_8instance5BoundNtB4_9PyCapsuleENtB4_16PyCapsuleMethods15pointer_checked in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+                __RNvNvNtNtCs2bg39RgwkUa_4pyo35types7capsule18capsule_destructor15get_pointer_ctx in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyCapsule_New", referenced from:
+                __RINvMNtNtCs2bg39RgwkUa_4pyo35types7capsuleNtB3_9PyCapsule19new_with_destructorNtNtNtCsgiNEuFz8um6_5numpy6borrow6shared6SharedNCNvB1g_13insert_shared0EB1k_ in libnumpy-80fa9e4d0a77ae03.rlib[6](numpy-80fa9e4d0a77ae03.numpy.bde4d7a7cdde1924-cgu.2.rcgu.o)
+            "_PyCapsule_Type", referenced from:
+                __RNCNvXs3_NtNtCs2bg39RgwkUa_4pyo35types7capsuleNtB7_9PyCapsuleNtNtBb_11type_object10PyTypeInfo15type_object_raw0CsgiNEuFz8um6_5numpy in libnumpy-80fa9e4d0a77ae03.rlib[6](numpy-80fa9e4d0a77ae03.numpy.bde4d7a7cdde1924-cgu.2.rcgu.o)
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi9pycapsule20PyCapsule_CheckExactCsgiNEuFz8um6_5numpy in libnumpy-80fa9e4d0a77ae03.rlib[7](numpy-80fa9e4d0a77ae03.numpy.bde4d7a7cdde1924-cgu.3.rcgu.o)
+            "_PyDict_New", referenced from:
+                __RNvMNtNtCs2bg39RgwkUa_4pyo35types4dictNtB2_6PyDict3new in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyDict_Next", referenced from:
+                __RNvXNtNtNtCs2bg39RgwkUa_4pyo35types4dict13borrowed_iterNtB2_16BorrowedDictIterNtNtNtNtCsaTNopw4qKPP_4core4iter6traits8iterator8Iterator4nextCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.6w07tcc644ld6tb63wbrr8pop.1tn2218.rcgu.o
+                __RNvMs1_NtNtCs2bg39RgwkUa_4pyo35types4dictNtB5_12DictIterImpl14next_uncheckedCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.efdlznnu0y10bln2n6w5pp7ww.1tn2218.rcgu.o
+            "_PyDict_SetItem", referenced from:
+                __RNvNvXs_NtNtCs2bg39RgwkUa_4pyo35types4dictINtNtBa_8instance5BoundNtB6_6PyDictENtB6_13PyDictMethods8set_item5inner in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyDict_Size", referenced from:
+                __RNvNtNtCs2bg39RgwkUa_4pyo35types4dict8dict_len in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyDict_Type", referenced from:
+                __RNCNvXsb_NtNtCs2bg39RgwkUa_4pyo35types4dictNtB7_6PyDictNtNtBb_11type_object10PyTypeInfo15type_object_raw0Bb_ in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyErr_Fetch", referenced from:
+                __RNvMs1_NtNtCs2bg39RgwkUa_4pyo33err9err_stateNtB5_20PyErrStateNormalized4take in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+                __RNvNtNtCs2bg39RgwkUa_4pyo33err9err_state30lazy_into_normalized_ffi_tuple in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyErr_GivenExceptionMatches", referenced from:
+                __RNvMs_NtCs2bg39RgwkUa_4pyo33errNtB4_5PyErr11is_instanceB6_ in libpyo3-6142ae6df0a059c3.rlib[10](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.06.rcgu.o)
+            "_PyErr_NewExceptionWithDoc", referenced from:
+                __RNvMs_NtCs2bg39RgwkUa_4pyo33errNtB4_5PyErr8new_type in libpyo3-6142ae6df0a059c3.rlib[10](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.06.rcgu.o)
+            "_PyErr_NormalizeException", referenced from:
+                __RNvMs1_NtNtCs2bg39RgwkUa_4pyo33err9err_stateNtB5_20PyErrStateNormalized4take in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+                __RNvNtNtCs2bg39RgwkUa_4pyo33err9err_state30lazy_into_normalized_ffi_tuple in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyErr_Print", referenced from:
+                __RNvNtCs2bg39RgwkUa_4pyo33err17panic_after_error in libpyo3-6142ae6df0a059c3.rlib[10](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.06.rcgu.o)
+            "_PyErr_PrintEx", referenced from:
+                __RNvMs_NtCs2bg39RgwkUa_4pyo33errNtB4_5PyErr22print_panic_and_unwind in libpyo3-6142ae6df0a059c3.rlib[10](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.06.rcgu.o)
+            "_PyErr_Restore", referenced from:
+                __RNvMs2_NtNtCs2bg39RgwkUa_4pyo33err9err_stateNtB5_15PyErrStateInner7restore in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyErr_SetObject", referenced from:
+                __RNvNtNtCs2bg39RgwkUa_4pyo33err9err_state10raise_lazy in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyErr_SetString", referenced from:
+                __RNvNtNtCs2bg39RgwkUa_4pyo33err9err_state10raise_lazy in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyErr_WriteUnraisable", referenced from:
+                __RNvMs_NtCs2bg39RgwkUa_4pyo33errNtB4_5PyErr16write_unraisableCsgiNEuFz8um6_5numpy in libnumpy-80fa9e4d0a77ae03.rlib[6](numpy-80fa9e4d0a77ae03.numpy.bde4d7a7cdde1924-cgu.2.rcgu.o)
+                __RNvMs_NtCs2bg39RgwkUa_4pyo33errNtB4_5PyErr16write_unraisableB6_ in libpyo3-6142ae6df0a059c3.rlib[10](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.06.rcgu.o)
+            "_PyEval_RestoreThread", referenced from:
+                __RNvXs4_NtNtCs2bg39RgwkUa_4pyo38internal5stateNtB5_13SuspendAttachNtNtNtCsaTNopw4qKPP_4core3ops4drop4Drop4drop in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyEval_SaveThread", referenced from:
+                __RNCNvNtCs2bg39RgwkUa_4pyo321interpreter_lifecycle10initialize0B5_ in libpyo3-6142ae6df0a059c3.rlib[6](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.02.rcgu.o)
+                __RNvMs3_NtNtCs2bg39RgwkUa_4pyo38internal5stateNtB5_13SuspendAttach3new in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyExc_AttributeError", referenced from:
+                __RNCNvXsG_NtCs2bg39RgwkUa_4pyo310exceptionsNtB7_16PyAttributeErrorNtNtB9_11type_object10PyTypeInfo15type_object_raw0B9_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+                __RNCNvXsG_NtCs2bg39RgwkUa_4pyo310exceptionsNtB7_16PyAttributeErrorNtNtB9_11type_object10PyTypeInfo15type_object_raw0B9_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyExc_BaseException", referenced from:
+                __RNCNvXs2_NtCs2bg39RgwkUa_4pyo310exceptionsNtB7_15PyBaseExceptionNtNtB9_11type_object10PyTypeInfo15type_object_raw0B9_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+                __RNCNvXs2_NtCs2bg39RgwkUa_4pyo310exceptionsNtB7_15PyBaseExceptionNtNtB9_11type_object10PyTypeInfo15type_object_raw0B9_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyExc_ImportError", referenced from:
+                __RNCNvXs15_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_13PyImportErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+                __RNCNvXs15_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_13PyImportErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyExc_IndexError", referenced from:
+                __RNCNvXs1f_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_12PyIndexErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0CsgiNEuFz8um6_5numpy in libnumpy-80fa9e4d0a77ae03.rlib[6](numpy-80fa9e4d0a77ae03.numpy.bde4d7a7cdde1924-cgu.2.rcgu.o)
+                __RNCNvXs1f_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_12PyIndexErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0CsgiNEuFz8um6_5numpy in libnumpy-80fa9e4d0a77ae03.rlib[6](numpy-80fa9e4d0a77ae03.numpy.bde4d7a7cdde1924-cgu.2.rcgu.o)
+            "_PyExc_OSError", referenced from:
+                __RNCNvXs10_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_9PyOSErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+                __RNCNvXs10_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_9PyOSErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyExc_OverflowError", referenced from:
+                __RNCNvXs1E_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_15PyOverflowErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+                __RNCNvXs1E_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_15PyOverflowErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyExc_RuntimeError", referenced from:
+                __RNCNvXs1J_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_14PyRuntimeErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+                __RNCNvXs1J_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_14PyRuntimeErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyExc_TypeError", referenced from:
+                __RNCNvXs2i_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_11PyTypeErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+                __RNCNvXs2i_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_11PyTypeErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyExc_ValueError", referenced from:
+                __RNCNvXs2M_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_12PyValueErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+                __RNCNvXs2M_NtCs2bg39RgwkUa_4pyo310exceptionsNtB8_12PyValueErrorNtNtBa_11type_object10PyTypeInfo15type_object_raw0Ba_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyException_GetCause", referenced from:
+                __RNvMs_NtCs2bg39RgwkUa_4pyo33errNtB4_5PyErr5cause in libpyo3-6142ae6df0a059c3.rlib[10](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.06.rcgu.o)
+            "_PyException_GetTraceback", referenced from:
+                __RNvMs1_NtNtCs2bg39RgwkUa_4pyo33err9err_stateNtB5_20PyErrStateNormalized3new in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyException_SetCause", referenced from:
+                __RNvMs_NtCs2bg39RgwkUa_4pyo33errNtB4_5PyErr9set_cause in libpyo3-6142ae6df0a059c3.rlib[10](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.06.rcgu.o)
+            "_PyException_SetTraceback", referenced from:
+                __RNvMs_NtCs2bg39RgwkUa_4pyo33errNtB4_5PyErr10into_value in libpyo3-6142ae6df0a059c3.rlib[10](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.06.rcgu.o)
+            "_PyFloat_AsDouble", referenced from:
+                __RNvXs2_NtNtCs2bg39RgwkUa_4pyo35types5floatdNtNtB9_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+            "_PyFloat_FromDouble", referenced from:
+                __RNvMNtNtCs2bg39RgwkUa_4pyo35types5floatNtB2_7PyFloat3new in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+            "_PyGILState_Ensure", referenced from:
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi7pystate17PyGILState_Ensure in libpyo3_ffi-c1255813eb1f25b7.rlib[4](pyo3_ffi-c1255813eb1f25b7.pyo3_ffi.81566a4f4221fbc4-cgu.0.rcgu.o)
+            "_PyGILState_Release", referenced from:
+                __RNvXs_NtNtCs2bg39RgwkUa_4pyo38internal5stateNtB4_11AttachGuardNtNtNtCsaTNopw4qKPP_4core3ops4drop4Drop4drop in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyImport_Import", referenced from:
+                __RINvMNtNtCs2bg39RgwkUa_4pyo35types6moduleNtB3_8PyModule6importRINtNtB7_8instance5BoundNtNtB5_6string8PyStringEEB7_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+                __RINvMNtNtCs2bg39RgwkUa_4pyo35types6moduleNtB3_8PyModule6importReEB7_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyInterpreterState_Get", referenced from:
+                __RNvMs_NtNtCs2bg39RgwkUa_4pyo35impl_8pymoduleNtB4_9ModuleDef11make_module in libpyo3-6142ae6df0a059c3.rlib[6](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.02.rcgu.o)
+            "_PyInterpreterState_GetID", referenced from:
+                __RNvMs_NtNtCs2bg39RgwkUa_4pyo35impl_8pymoduleNtB4_9ModuleDef11make_module in libpyo3-6142ae6df0a059c3.rlib[6](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.02.rcgu.o)
+            "_PyIter_Next", referenced from:
+                __RNvMs1_NtNtCs2bg39RgwkUa_4pyo35types8iteratorINtNtB9_8instance8BorrowedNtB5_10PyIteratorE4next in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyList_Append", referenced from:
+                __RNvNvXs_NtNtCs2bg39RgwkUa_4pyo35types4listINtNtBa_8instance5BoundNtB6_6PyListENtB6_13PyListMethods6append5inner in libpyo3-6142ae6df0a059c3.rlib[18](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.14.rcgu.o)
+            "_PyList_New", referenced from:
+                __RINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtB13_5slice4iter4IterjENCINvYRjNtNtB6_10conversion12IntoPyObject31borrowed_sequence_into_pyobjectRSjE0EECsh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+                __RINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtCs3XW7gbOxCtj_5alloc3vec9into_iter8IntoIterINtNtB13_6option6OptiondEENCINvYB2w_NtNtB6_10conversion12IntoPyObject28owned_sequence_into_pyobjectINtB1N_3VecB2w_EE0EECsh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+                __RINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtCs3XW7gbOxCtj_5alloc3vec9into_iter8IntoIterNtNtB1P_6string6StringENCINvYB2w_NtNtB6_10conversion12IntoPyObject28owned_sequence_into_pyobjectINtB1N_3VecB2w_EE0EECsh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+                __RINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtCs3XW7gbOxCtj_5alloc3vec9into_iter8IntoIterReENCINvYB2w_NtNtB6_10conversion12IntoPyObject28owned_sequence_into_pyobjectINtB1N_3VecB2w_EE0EECsh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+                __RINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtCs3XW7gbOxCtj_5alloc3vec9into_iter8IntoIterdENCINvYdNtNtB6_10conversion12IntoPyObject28owned_sequence_into_pyobjectINtB1N_3VecdEE0EECsh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+                __RINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtCs3XW7gbOxCtj_5alloc3vec9into_iter8IntoIterjENCINvYjNtNtB6_10conversion12IntoPyObject28owned_sequence_into_pyobjectINtB1N_3VecjEE0EECsh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+                __RNvMNtNtCs2bg39RgwkUa_4pyo35types4listNtB2_6PyList5empty in libpyo3-6142ae6df0a059c3.rlib[18](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.14.rcgu.o)
+                ...
+            "_PyList_SetItem", referenced from:
+                __RNCINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtB15_5slice4iter4IterjENCINvYRjNtNtB8_10conversion12IntoPyObject31borrowed_sequence_into_pyobjectRSjE0EE0Csh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+                __RNCINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtCs3XW7gbOxCtj_5alloc3vec9into_iter8IntoIterINtNtB15_6option6OptiondEENCINvYB2y_NtNtB8_10conversion12IntoPyObject28owned_sequence_into_pyobjectINtB1P_3VecB2y_EE0EE0Csh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+                __RNCINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtCs3XW7gbOxCtj_5alloc3vec9into_iter8IntoIterNtNtB1R_6string6StringENCINvYB2y_NtNtB8_10conversion12IntoPyObject28owned_sequence_into_pyobjectINtB1P_3VecB2y_EE0EE0Csh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+                __RNCINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtCs3XW7gbOxCtj_5alloc3vec9into_iter8IntoIterReENCINvYB2y_NtNtB8_10conversion12IntoPyObject28owned_sequence_into_pyobjectINtB1P_3VecB2y_EE0EE0Csh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+                __RNCINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtCs3XW7gbOxCtj_5alloc3vec9into_iter8IntoIterdENCINvYdNtNtB8_10conversion12IntoPyObject28owned_sequence_into_pyobjectINtB1P_3VecdEE0EE0Csh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+                __RNCINvNtNtCs2bg39RgwkUa_4pyo35types4list17try_new_from_iterQINtNtNtNtCsaTNopw4qKPP_4core4iter8adapters3map3MapINtNtNtCs3XW7gbOxCtj_5alloc3vec9into_iter8IntoIterjENCINvYjNtNtB8_10conversion12IntoPyObject28owned_sequence_into_pyobjectINtB1P_3VecjEE0EE0Csh0Q8cfxzV0T_16muffintin_python in muffintin_python.2ttpkicbjb8i088mm3b2telir.1tn2218.rcgu.o
+            "_PyList_Type", referenced from:
+                __RNCNvXs8_NtNtCs2bg39RgwkUa_4pyo35types4listNtB7_6PyListNtNtBb_11type_object10PyTypeInfo15type_object_raw0Bb_ in libpyo3-6142ae6df0a059c3.rlib[18](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.14.rcgu.o)
+            "_PyLong_AsLong", referenced from:
+                __RNvXs0_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numhNtNtBb_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+                __RNvXsb_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numtNtNtBb_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+                __RNvXse_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numlNtNtBb_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+                __RNvXsh_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3nummNtNtBb_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+                __RNvXsk_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numxNtNtBb_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+                __RNvXsn_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numiNtNtBb_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+            "_PyLong_AsUnsignedLongLong", referenced from:
+                __RNvXst_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numyNtNtBb_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+                __RNvXst_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numyNtNtBb_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+            "_PyLong_FromLong", referenced from:
+                __RNvXNtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numhNtNtB8_10conversion12IntoPyObject13into_pyobject in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+                __RNvXsc_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numlNtNtBb_10conversion12IntoPyObject13into_pyobject in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+                __RNvXsf_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3nummNtNtBb_10conversion12IntoPyObject13into_pyobject in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+                __RNvXsi_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numxNtNtBb_10conversion12IntoPyObject13into_pyobject in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+            "_PyLong_FromSsize_t", referenced from:
+                __RNvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass30get_sequence_item_from_mapping in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+                __RNvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass33assign_sequence_item_from_mapping in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyLong_FromUnsignedLongLong", referenced from:
+                __RNvXsr_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numyNtNtBb_10conversion12IntoPyObject13into_pyobject in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+            "_PyLong_Type", referenced from:
+                __RNCNvXs0_NtNtCs2bg39RgwkUa_4pyo35types3numNtB7_5PyIntNtNtBb_11type_object10PyTypeInfo15type_object_raw0Bb_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyModule_Create2", referenced from:
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi10modsupport15PyModule_CreateCs2bg39RgwkUa_4pyo3 in libpyo3-6142ae6df0a059c3.rlib[13](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.09.rcgu.o)
+            "_PyModule_GetNameObject", referenced from:
+                __RNvXs_NtNtCs2bg39RgwkUa_4pyo35types6moduleINtNtB8_8instance5BoundNtB4_8PyModuleENtB4_15PyModuleMethods4name in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyNumber_Index", referenced from:
+                __RNvXst_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std3numyNtNtBb_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+            "_PyOS_FSPath", referenced from:
+                __RNvXNtNtNtCs2bg39RgwkUa_4pyo311conversions3std4pathNtNtCs106jutQF6X5_3std4path7PathBufNtNtB8_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[8](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.04.rcgu.o)
+            "_PyObject_Call", referenced from:
+                __RNvXs3_NtCs2bg39RgwkUa_4pyo34callINtNtB7_8instance8BorrowedNtNtNtB7_5types5tuple7PyTupleENtB5_10PyCallArgs15call_positionalCsgiNEuFz8um6_5numpy in libnumpy-80fa9e4d0a77ae03.rlib[9](numpy-80fa9e4d0a77ae03.numpy.bde4d7a7cdde1924-cgu.5.rcgu.o)
+            "_PyObject_CallNoArgs", referenced from:
+                __RNvXs_NtNtCs2bg39RgwkUa_4pyo35types3anyINtNtB8_8instance5BoundNtB4_5PyAnyENtB4_12PyAnyMethods5call0B8_ in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyObject_DelItem", referenced from:
+                __RNvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass33assign_sequence_item_from_mapping in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyObject_GC_UnTrack", referenced from:
+                __RINvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass18tp_dealloc_with_gcNtNtCsh0Q8cfxzV0T_16muffintin_python10checkpoint10CheckpointEB11_ in muffintin_python.58dbgt6xl34inel08cjo0v7g4.1tn2218.rcgu.o
+                __RINvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass18tp_dealloc_with_gcNtNtCsh0Q8cfxzV0T_16muffintin_python10checkpoint11AtomicStartEB11_ in muffintin_python.58dbgt6xl34inel08cjo0v7g4.1tn2218.rcgu.o
+                __RINvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass18tp_dealloc_with_gcNtNtCsh0Q8cfxzV0T_16muffintin_python10checkpoint16FreeAtomControlsEB11_ in muffintin_python.58dbgt6xl34inel08cjo0v7g4.1tn2218.rcgu.o
+                __RINvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass18tp_dealloc_with_gcNtNtCsh0Q8cfxzV0T_16muffintin_python10checkpoint17CheckpointPhysicsEB11_ in muffintin_python.58dbgt6xl34inel08cjo0v7g4.1tn2218.rcgu.o
+                __RINvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass18tp_dealloc_with_gcNtNtCsh0Q8cfxzV0T_16muffintin_python10checkpoint18ScalarProductInputEB11_ in muffintin_python.58dbgt6xl34inel08cjo0v7g4.1tn2218.rcgu.o
+                __RINvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass18tp_dealloc_with_gcNtNtCsh0Q8cfxzV0T_16muffintin_python10checkpoint18ScalarProductSliceEB11_ in muffintin_python.58dbgt6xl34inel08cjo0v7g4.1tn2218.rcgu.o
+                __RINvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass18tp_dealloc_with_gcNtNtCsh0Q8cfxzV0T_16muffintin_python10checkpoint19RegionalFieldLayoutEB11_ in muffintin_python.58dbgt6xl34inel08cjo0v7g4.1tn2218.rcgu.o
+                ...
+            "_PyObject_GenericGetDict", referenced from:
+                __RNvMNtNtCs2bg39RgwkUa_4pyo37pyclass18create_type_objectNtB2_13PyTypeBuilder31finalize_methods_and_properties in libpyo3-6142ae6df0a059c3.rlib[9](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.05.rcgu.o)
+            "_PyObject_GenericSetDict", referenced from:
+                __RNvMNtNtCs2bg39RgwkUa_4pyo37pyclass18create_type_objectNtB2_13PyTypeBuilder31finalize_methods_and_properties in libpyo3-6142ae6df0a059c3.rlib[9](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.05.rcgu.o)
+            "_PyObject_GetAttr", referenced from:
+                __RNvNvXs_NtNtCs2bg39RgwkUa_4pyo35types3anyINtNtBa_8instance5BoundNtB6_5PyAnyENtB6_12PyAnyMethods7getattr5inner in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+            "_PyObject_GetItem", referenced from:
+                __RNvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass30get_sequence_item_from_mapping in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+                __RNvNvXs_NtNtCs2bg39RgwkUa_4pyo35types3anyINtNtBa_8instance5BoundNtB6_5PyAnyENtB6_12PyAnyMethods8get_item5inner in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+            "_PyObject_GetIter", referenced from:
+                __RNvMNtNtCs2bg39RgwkUa_4pyo35types8iteratorNtB2_10PyIterator11from_object in libpyo3-6142ae6df0a059c3.rlib[17](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.13.rcgu.o)
+            "_PyObject_Repr", referenced from:
+                __RNvXs_NtNtCs2bg39RgwkUa_4pyo35types3anyINtNtB8_8instance5BoundNtB4_5PyAnyENtB4_12PyAnyMethods4repr in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyObject_SetAttr", referenced from:
+                __RNvNvXs_NtNtCs2bg39RgwkUa_4pyo35types3anyINtNtBa_8instance5BoundNtB6_5PyAnyENtB6_12PyAnyMethods7setattr5inner in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+            "_PyObject_SetAttrString", referenced from:
+                __RNvNtNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass16lazy_type_object18initialize_tp_dict in libpyo3-6142ae6df0a059c3.rlib[18](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.14.rcgu.o)
+            "_PyObject_SetItem", referenced from:
+                __RNvNtNtCs2bg39RgwkUa_4pyo35impl_7pyclass33assign_sequence_item_from_mapping in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "_PyObject_Size", referenced from:
+                __RNvXs_NtNtCs2bg39RgwkUa_4pyo35types3anyINtNtB8_8instance5BoundNtB4_5PyAnyENtB4_12PyAnyMethods3len in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyObject_Str", referenced from:
+                __RNvXs_NtNtCs2bg39RgwkUa_4pyo35types3anyINtNtB8_8instance5BoundNtB4_5PyAnyENtB4_12PyAnyMethods3str in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PySequence_Check", referenced from:
+                __RINvNtNtNtCs2bg39RgwkUa_4pyo311conversions3std3vec16extract_sequenceAdj3_ECsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1ulurj6r17vqlbvwskso3yh5q.1tn2218.rcgu.o
+                __RINvNtNtNtCs2bg39RgwkUa_4pyo311conversions3std3vec16extract_sequenceAlj3_ECsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1ulurj6r17vqlbvwskso3yh5q.1tn2218.rcgu.o
+                __RINvNtNtNtCs2bg39RgwkUa_4pyo311conversions3std3vec16extract_sequenceINtNtB8_8instance2PyNtNtCsh0Q8cfxzV0T_16muffintin_python4core8CoreSiteEEB1s_ in muffintin_python.1ulurj6r17vqlbvwskso3yh5q.1tn2218.rcgu.o
+                __RINvNtNtNtCs2bg39RgwkUa_4pyo311conversions3std3vec16extract_sequenceINtNtB8_8instance2PyNtNtCsh0Q8cfxzV0T_16muffintin_python4core9CoreStateEEB1s_ in muffintin_python.1ulurj6r17vqlbvwskso3yh5q.1tn2218.rcgu.o
+                __RINvNtNtNtCs2bg39RgwkUa_4pyo311conversions3std3vec16extract_sequenceINtNtCs3XW7gbOxCtj_5alloc3vec3VecTmdEEECsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1ulurj6r17vqlbvwskso3yh5q.1tn2218.rcgu.o
+                __RINvNtNtNtCs2bg39RgwkUa_4pyo311conversions3std3vec16extract_sequenceINtNtCsaTNopw4qKPP_4core6option6OptionNtNtCs3XW7gbOxCtj_5alloc6string6StringEECsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1ulurj6r17vqlbvwskso3yh5q.1tn2218.rcgu.o
+                __RINvNtNtNtCs2bg39RgwkUa_4pyo311conversions3std3vec16extract_sequenceTddjEECsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1ulurj6r17vqlbvwskso3yh5q.1tn2218.rcgu.o
+                ...
+            "_PyTraceBack_Print", referenced from:
+                __RNvXNtNtCs2bg39RgwkUa_4pyo35types9tracebackINtNtB6_8instance5BoundNtB2_11PyTracebackENtB2_18PyTracebackMethods6format in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyTuple_GetItem", referenced from:
+                __RNvMs0_NtNtCs2bg39RgwkUa_4pyo35types5tupleINtNtB9_8instance8BorrowedNtB5_7PyTupleE17get_borrowed_item in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyTuple_New", referenced from:
+                __RINvNtNtCs2bg39RgwkUa_4pyo35types5tuple16array_into_tupleKj1_EB6_ in libpyo3-6142ae6df0a059c3.rlib[18](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.14.rcgu.o)
+            "_PyTuple_SetItem", referenced from:
+                __RINvNtNtCs2bg39RgwkUa_4pyo35types5tuple16array_into_tupleKj1_EB6_ in libpyo3-6142ae6df0a059c3.rlib[18](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.14.rcgu.o)
+            "_PyTuple_Size", referenced from:
+                __RNvXs_NtNtCs2bg39RgwkUa_4pyo35types5tupleINtNtB8_8instance5BoundNtB4_7PyTupleENtB4_14PyTupleMethods3len in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyTuple_Type", referenced from:
+                __RNCNvXse_NtNtCs2bg39RgwkUa_4pyo35types5tupleNtB7_7PyTupleNtNtBb_11type_object10PyTypeInfo15type_object_raw0Bb_ in libpyo3-6142ae6df0a059c3.rlib[18](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.14.rcgu.o)
+            "_PyType_FromSpec", referenced from:
+                __RNvMNtNtCs2bg39RgwkUa_4pyo37pyclass18create_type_objectNtB2_13PyTypeBuilder5build in libpyo3-6142ae6df0a059c3.rlib[9](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.05.rcgu.o)
+            "_PyType_GenericAlloc", referenced from:
+                __RNvNvXNtNtCs2bg39RgwkUa_4pyo35impl_12pyclass_initINtB4_23PyNativeTypeInitializerpEINtB4_12PyObjectInitpE15into_new_object5inner in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+            "_PyType_GetFlags", referenced from:
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi6object17PyType_HasFeatureCs2bg39RgwkUa_4pyo3 in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+            "_PyType_GetSlot", referenced from:
+                __RNvXs7_NtNtCs2bg39RgwkUa_4pyo38internal8get_slotINtB5_4SlotKl4a_ENtB5_11GetSlotImpl8get_slotCsgiNEuFz8um6_5numpy in libnumpy-80fa9e4d0a77ae03.rlib[7](numpy-80fa9e4d0a77ae03.numpy.bde4d7a7cdde1924-cgu.3.rcgu.o)
+                __RNvXs3_NtNtCs2bg39RgwkUa_4pyo38internal8get_slotINtB5_4SlotKl2f_ENtB5_11GetSlotImpl8get_slotB9_ in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+                __RNvXs4_NtNtCs2bg39RgwkUa_4pyo38internal8get_slotINtB5_4SlotKl30_ENtB5_11GetSlotImpl8get_slotB9_ in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+                __RNvXs5_NtNtCs2bg39RgwkUa_4pyo38internal8get_slotINtB5_4SlotKl33_ENtB5_11GetSlotImpl8get_slotB9_ in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+            "_PyType_IsSubtype", referenced from:
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi6object18PyObject_TypeCheckCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.43juo1c5jn7r2wxxt3u32feee.1tn2218.rcgu.o
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi6object18PyObject_TypeCheckCsgiNEuFz8um6_5numpy in libnumpy-80fa9e4d0a77ae03.rlib[6](numpy-80fa9e4d0a77ae03.numpy.bde4d7a7cdde1924-cgu.2.rcgu.o)
+            "_PyType_Type", referenced from:
+                __RNCNvXs1_NtNtCs2bg39RgwkUa_4pyo35types10typeobjectNtB7_6PyTypeNtNtBb_11type_object10PyTypeInfo15type_object_raw0Bb_ in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+            "_PyUnicode_AsEncodedString", referenced from:
+                __RNvMs0_NtNtCs2bg39RgwkUa_4pyo35types6stringINtNtB9_8instance8BorrowedNtB5_8PyStringE15to_string_lossy in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyUnicode_AsUTF8AndSize", referenced from:
+                __RNvMs0_NtNtCs2bg39RgwkUa_4pyo35types6stringINtNtB9_8instance8BorrowedNtB5_8PyStringE6to_str in libpyo3-6142ae6df0a059c3.rlib[4](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.00.rcgu.o)
+            "_PyUnicode_EncodeFSDefault", referenced from:
+                __RNvXs0_NtNtNtCs2bg39RgwkUa_4pyo311conversions3std5osstrNtNtNtCs106jutQF6X5_3std3ffi6os_str8OsStringNtNtBb_10conversion12FromPyObject7extract in libpyo3-6142ae6df0a059c3.rlib[11](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.07.rcgu.o)
+            "_PyUnicode_FromStringAndSize", referenced from:
+                __RNvMNtNtCs2bg39RgwkUa_4pyo35types6stringNtB2_8PyString3new in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+                __RNvMNtNtCs2bg39RgwkUa_4pyo35types6stringNtB2_8PyString6intern in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyUnicode_InternInPlace", referenced from:
+                __RNvMNtNtCs2bg39RgwkUa_4pyo35types6stringNtB2_8PyString6intern in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_PyUnicode_Type", referenced from:
+                __RNCNvXsd_NtNtCs2bg39RgwkUa_4pyo35types6stringNtB7_8PyStringNtNtBb_11type_object10PyTypeInfo15type_object_raw0Bb_ in libpyo3-6142ae6df0a059c3.rlib[19](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.15.rcgu.o)
+            "_Py_GetVersion", referenced from:
+                __RNvMs0_NtCs2bg39RgwkUa_4pyo36markerNtB5_6Python7version in libpyo3-6142ae6df0a059c3.rlib[9](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.05.rcgu.o)
+            "_Py_InitializeEx", referenced from:
+                __RNCNvNtCs2bg39RgwkUa_4pyo321interpreter_lifecycle10initialize0B5_ in libpyo3-6142ae6df0a059c3.rlib[6](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.02.rcgu.o)
+            "_Py_IsInitialized", referenced from:
+                __RNCNvNtCs2bg39RgwkUa_4pyo321interpreter_lifecycle10initialize0B5_ in libpyo3-6142ae6df0a059c3.rlib[6](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.02.rcgu.o)
+                __RNCNvNtCs2bg39RgwkUa_4pyo321interpreter_lifecycle18ensure_initialized0B5_ in libpyo3-6142ae6df0a059c3.rlib[6](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.02.rcgu.o)
+                __RNvMNtNtCs2bg39RgwkUa_4pyo38internal5stateNtB2_11AttachGuard10try_attach in libpyo3-6142ae6df0a059c3.rlib[7](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.03.rcgu.o)
+            "__Py_DecRef", referenced from:
+                __RNvXs8_NtCs2bg39RgwkUa_4pyo38instanceINtB5_5BoundINtNtCsgiNEuFz8um6_5numpy5array7PyArrayINtCslfJ9z0dHeUv_11num_complex7ComplexdEINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj1_EEENtNtNtCsaTNopw4qKPP_4core3ops4drop4Drop4dropCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1bzkyuqgw37aix2lrqioyvyyz.1tn2218.rcgu.o
+                __RNvXs8_NtCs2bg39RgwkUa_4pyo38instanceINtB5_5BoundINtNtCsgiNEuFz8um6_5numpy5array7PyArrayINtCslfJ9z0dHeUv_11num_complex7ComplexdEINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj2_EEENtNtNtCsaTNopw4qKPP_4core3ops4drop4Drop4dropCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1bzkyuqgw37aix2lrqioyvyyz.1tn2218.rcgu.o
+                __RNvXs8_NtCs2bg39RgwkUa_4pyo38instanceINtB5_5BoundINtNtCsgiNEuFz8um6_5numpy5array7PyArrayINtCslfJ9z0dHeUv_11num_complex7ComplexdEINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj3_EEENtNtNtCsaTNopw4qKPP_4core3ops4drop4Drop4dropCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1bzkyuqgw37aix2lrqioyvyyz.1tn2218.rcgu.o
+                __RNvXs8_NtCs2bg39RgwkUa_4pyo38instanceINtB5_5BoundINtNtCsgiNEuFz8um6_5numpy5array7PyArraybINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj1_EEENtNtNtCsaTNopw4qKPP_4core3ops4drop4Drop4dropCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1bzkyuqgw37aix2lrqioyvyyz.1tn2218.rcgu.o
+                __RNvXs8_NtCs2bg39RgwkUa_4pyo38instanceINtB5_5BoundINtNtCsgiNEuFz8um6_5numpy5array7PyArraydINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj1_EEENtNtNtCsaTNopw4qKPP_4core3ops4drop4Drop4dropCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1bzkyuqgw37aix2lrqioyvyyz.1tn2218.rcgu.o
+                __RNvXs8_NtCs2bg39RgwkUa_4pyo38instanceINtB5_5BoundINtNtCsgiNEuFz8um6_5numpy5array7PyArraydINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj2_EEENtNtNtCsaTNopw4qKPP_4core3ops4drop4Drop4dropCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1bzkyuqgw37aix2lrqioyvyyz.1tn2218.rcgu.o
+                __RNvXs8_NtCs2bg39RgwkUa_4pyo38instanceINtB5_5BoundINtNtCsgiNEuFz8um6_5numpy5array7PyArraylINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj1_EEENtNtNtCsaTNopw4qKPP_4core3ops4drop4Drop4dropCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.1bzkyuqgw37aix2lrqioyvyyz.1tn2218.rcgu.o
+                ...
+            "__Py_FalseStruct", referenced from:
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi10boolobject8Py_FalseCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.9ngitihuwessbdwxq5xs8ufgb.1tn2218.rcgu.o
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi10boolobject8Py_FalseCs2bg39RgwkUa_4pyo3 in libpyo3-6142ae6df0a059c3.rlib[10](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.06.rcgu.o)
+            "__Py_IncRef", referenced from:
+                __RNvMsq_NtCs2bg39RgwkUa_4pyo38instanceINtB5_2PyINtNtCsgiNEuFz8um6_5numpy5array7PyArrayINtCslfJ9z0dHeUv_11num_complex7ComplexdEINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj2_EEE9clone_refCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.cje2q4xzmu8focezz4hdwh5d2.1tn2218.rcgu.o
+                __RNvMsq_NtCs2bg39RgwkUa_4pyo38instanceINtB5_2PyINtNtCsgiNEuFz8um6_5numpy5array7PyArrayINtCslfJ9z0dHeUv_11num_complex7ComplexdEINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj3_EEE9clone_refCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.cje2q4xzmu8focezz4hdwh5d2.1tn2218.rcgu.o
+                __RNvMsq_NtCs2bg39RgwkUa_4pyo38instanceINtB5_2PyINtNtCsgiNEuFz8um6_5numpy5array7PyArraydINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj1_EEE9clone_refCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.cje2q4xzmu8focezz4hdwh5d2.1tn2218.rcgu.o
+                __RNvMsq_NtCs2bg39RgwkUa_4pyo38instanceINtB5_2PyINtNtCsgiNEuFz8um6_5numpy5array7PyArraydINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj2_EEE9clone_refCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.cje2q4xzmu8focezz4hdwh5d2.1tn2218.rcgu.o
+                __RNvMsq_NtCs2bg39RgwkUa_4pyo38instanceINtB5_2PyINtNtCsgiNEuFz8um6_5numpy5array7PyArrayxINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj1_EEE9clone_refCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.cje2q4xzmu8focezz4hdwh5d2.1tn2218.rcgu.o
+                __RNvMsq_NtCs2bg39RgwkUa_4pyo38instanceINtB5_2PyINtNtCsgiNEuFz8um6_5numpy5array7PyArrayxINtNtNtCscUs6SrhorEM_7ndarray9dimension3dim3DimAjj2_EEE9clone_refCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.cje2q4xzmu8focezz4hdwh5d2.1tn2218.rcgu.o
+                __RNvMsq_NtCs2bg39RgwkUa_4pyo38instanceINtB5_2PyNtNtCsh0Q8cfxzV0T_16muffintin_python10checkpoint10CheckpointE9clone_refBM_ in muffintin_python.cje2q4xzmu8focezz4hdwh5d2.1tn2218.rcgu.o
+                ...
+            "__Py_NoneStruct", referenced from:
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi6object7Py_NoneCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.43juo1c5jn7r2wxxt3u32feee.1tn2218.rcgu.o
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi6object7Py_NoneCs2bg39RgwkUa_4pyo3 in libpyo3-6142ae6df0a059c3.rlib[16](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.12.rcgu.o)
+            "__Py_TrueStruct", referenced from:
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi10boolobject7Py_TrueCsh0Q8cfxzV0T_16muffintin_python in muffintin_python.9ngitihuwessbdwxq5xs8ufgb.1tn2218.rcgu.o
+                __RNvNtCsb6szinPzEwG_8pyo3_ffi10boolobject7Py_TrueCs2bg39RgwkUa_4pyo3 in libpyo3-6142ae6df0a059c3.rlib[10](pyo3-6142ae6df0a059c3.pyo3.19690f07f0af9a0c-cgu.06.rcgu.o)
+          ld: symbol(s) not found for architecture arm64
+          clang: error: linker command failed with exit code 1 (use -v to see invocation)
+
+
+error: could not compile `libmuffintin-python` (lib) due to 1 previous error
+   Compiling libmuffintin-python v0.2.0 (/Users/zerozaki07/tmp/libmuffintin/crates/mt-python)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.33s

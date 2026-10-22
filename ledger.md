@@ -2672,3 +2672,78 @@ any WSL or native rerun.
 
 - state: ctf-rs = plan.v5 closed on macOS (G-CTF-A1 PASS, evd-0025); port scope complete and audited; origin/master = b87301a; WSL and native reruns pending on MSI
 - note: ctf-rs = open: MSI reruns of plan.v5 section 1, clippy style classes, ctf-tiled T1 decision
+
+## 2026-10-21 · evt-0077 · mt-xc-angular implementation authorized · actor: user
+
+Live libmuffintin main `5f5dc92c7bbc9d562bfc53e65e23cc9082a5f34e` still uses
+Fibonacci in both regional XC paths and core XC averaging. Implement weighted
+positive-rule Lebedev, explicit algebraic order in native/Python/TOML, and
+the paired pymuffintin transport; leave other angular grids unchanged.
+The user requests one focused verification, not the historical diamond SCF
+or SPEX comparison. Plan v2 fixes this bounded acceptance scope.
+
+- state: mt-xc-angular = implementation in progress; targeted regression authorized
+- note: mt-xc-angular = default order at least max(29, 2L); unsupported explicit rules fail; G-MT-XC-1 fixed before running
+
+## 2026-10-22 · evd-0026 · mt-xc-angular G-MT-XC-1 · main 5f5dc92 plus uncommitted repair
+
+```text
+DIGIT / PASS
+Q: fixed cubic-density MT coefficients, cubic symmetry, XC energy and density-potential integral (Ha); class: A
+ref: exact cubic invariants and fixed Lebedev order 59; full/block equivalence
+bound: symmetry 5e-10; reference 1e-8; full/block 1e-10
+Delta: LDA symmetry 6.451657058804733e-16, reference 4.1178865872737447e-13, full/block 0
+Delta: PBE symmetry 5.198222438708796e-16, reference 3.3617827271958944e-11, full/block 0
+max d: 0.0033617827271958944
+libmuffintin: 5f5dc92c7bbc9d562bfc53e65e23cc9082a5f34e plus this uncommitted repair
+pymuffintin: 40136cb312a941bf315d205597717306dacef2cb plus this uncommitted repair
+env: TBLIS_DIR=$(brew --prefix tblis); LIBRARY_PATH=$(brew --prefix fftw)/lib; HDF5_DIR=$(brew --prefix hdf5)
+commands (cwd /Users/zerozaki07/tmp/libmuffintin):
+  cargo test -p libmuffintin-core --lib grid::angular::tests -- --nocapture
+  cargo test -p libmuffintin-dft --features fft-fftw --lib -- xc_field::tests core_potential::tests --nocapture
+  cargo test -p libmuffintin-runtime --features fft-fftw --test single_dft_scf -- xc_ --nocapture
+  cargo check -p libmuffintin-runtime --features fft-fftw --all-targets
+  cargo rustc -p libmuffintin-python --features fft-fftw -- -C link-arg=-undefined -C link-arg=dynamic_lookup
+python env: PYTHONPATH=/tmp/libmuffintin-lebedev.GcCNiV:/Users/zerozaki07/tmp/pymuffintin/src:/Users/zerozaki07/tmp/pymuffintin/.venv/lib/python3.14/site-packages; OPENBLAS_NUM_THREADS=1; OMP_NUM_THREADS=1; RAYON_NUM_THREADS=2
+python command (after unalias python; unalias python3):
+  /opt/homebrew/bin/python3 -m pytest --import-mode=importlib -q /Users/zerozaki07/tmp/libmuffintin/python/tests/test_regional_stations.py::test_regional_density_roundtrip_and_potential_station /Users/zerozaki07/tmp/pymuffintin/tests/test_nmto_scf_input.py /Users/zerozaki07/tmp/pymuffintin/tests/test_nmto_scf_loop.py /Users/zerozaki07/tmp/pymuffintin/tests/test_nmto_potential_mpi.py
+logs: evidence/2026-10-22-mt-xc-angular-{rust,python}.log
+checks: 5 grid, 16 XC/core, 2 TOML tests passed; runtime all-target check passed; 16 Python tests passed using newly built native binary in an isolated package
+scope: one numerical acceptance run; build prerequisites corrected before running pending checks, passing checks not repeated; no SCF, diamond spectrum, SPEX, or multi-rank acceptance
+```
+
+Initial DFT-test compilation exposed two stale `SolvedBoundCoreState` test
+fixtures, updated to the existing `SolvedCoreState` fields without changing
+core production code. FFTW/HDF5 Homebrew discovery and macOS Python dynamic
+lookup required the explicit environment/link arguments recorded above.
+Runtime all-target compilation retains unrelated unused-import warnings.
+The isolated Python package contains the current `python/libmuffintin/__init__.py`
+and `target/debug/libmuffintin_python.dylib` copied as `_native.abi3.so`;
+no existing installed extension was overwritten.
+
+## 2026-10-22 · evt-0078 · mt-xc-angular scoped repair and validation complete · actor: codex
+
+Production regional full/block XC and associated core averages now use
+weighted Lebedev, with optional order controls through Rust, Python and
+native/pymuffintin TOML. Unrelated angular grids and workspace MSRV are
+unchanged. Main-agent integration review completed once; G-MT-XC-1 is
+closed by evd-0026. Code, paired Python changes and harness records remain
+uncommitted; no push or installation was requested.
+
+- state: mt-xc-angular = implemented; targeted regression passed (evd-0026); uncommitted
+- note: mt-xc-angular = historical diamond checkpoint, Γ splitting and SPEX attribution remain untested; rebuild/install the paired native extension before production use
+
+## 2026-10-22 · evt-0079 · mt-xc-angular paired main publication · actor: user
+
+The user requested commit and push. Published libmuffintin main
+`31609e5df4863528aa796eaf4e193b8e20dabdea` (Lebedev XC repair), preceded by
+the test-fixture-only prerequisite `73c293758843945ce7f87832785b4fac22db9182`,
+and pymuffintin main `a266b0a7b806046203eb8081b5f0197721d73a40` (order
+transport). Both repositories use their configured weiyiguo9 Git identity
+and `gitwg` SSH origin. Local HEAD, origin/main and `git ls-remote` agree
+for both repositories; both code worktrees are clean. No force push, new
+numerical run or installation was performed. The committed source trees
+are the previously tested repair recorded in evd-0026.
+
+- state: mt-xc-angular = published to both main branches; G-MT-XC-1 closed (evd-0026)
+- note: mt-xc-angular = libmuffintin 31609e5; pymuffintin a266b0a; rebuild/install still needed; historical diamond and SPEX validation deferred

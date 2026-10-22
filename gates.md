@@ -30,6 +30,19 @@ the crates on `main` are not gates and are not listed here.
 | G-HFI-2 | `hf-input` | `hf_energy_terms_ha total`, converted `h2_hf` example, A0 settings | the `h2-hf` A0 log on `main` | 1e-10 Ha | `examples/h2_dft/compare.py` HF mode | proposed |
 ## Discipline
 
+### G-MT-XC-1 (2026-10-21; class A)
+
+State: closed, evd-0026 (2026-10-22).
+
+Fixed manufactured cubic density and orders specified in mt-xc-angular plan.v2.
+LDA-PW92 and PBE: maximum forbidden coefficient and cubic l=4 relation
+residual <= 5e-10 Ha; all coefficients versus fixed order 59 <= 1e-8 Ha;
+XC energy and density-potential integral versus order 59 <= 1e-8 Ha;
+full versus block coefficients and both integrals <= 1e-10 Ha. All outputs
+must remain finite. Focused test: `xc_field::tests::lebedev_cubic_xc_preserves_symmetry_and_matches_reference`.
+Existing quadrature, core-continuation and input/API assertions retain their
+own bounds. One integrated focused run, no post-pass numerical checks.
+
 Every gate run follows Stop That Digit
 (`~/.codex/skills/stop-that-digit/SKILL.md`):
 
